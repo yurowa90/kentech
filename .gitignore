@@ -1,0 +1,6 @@
+.kcp-test/
+tests/.venv/
+tests/results/
+tests/shots/
+__pycache__/
+.DS_Store
