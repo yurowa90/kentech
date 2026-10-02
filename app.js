@@ -480,27 +480,55 @@
   };
 
   /* ---------- 타이머 ---------- */
+  function makeTimer(year, of) {
+    const mins = KCP.minutes(year, of);
+    const total = mins === null ? 0 : Math.round(mins * 60);
+    const timer = { of, mode: KCP.settings().timeMode, running: false, left: total, total };
+    if (mins === null) timer.used = 0;
+    return timer;
+  }
+  const timerInProgress = (timer) => timer.running || (timer.mode === "free" ? timer.used > 0 : timer.left < timer.total);
+  function timerDiffers(year, timer) {
+    const current = makeTimer(year, timer.of);
+    return timer.mode !== current.mode || timer.total !== current.total;
+  }
   const Timer = {
     id: null,
+    tick: null,
     start(state, year, onTick) {
       this.stop();
-      state.timer.running = true;
-      this.id = setInterval(() => {
-        state.timer.left = Math.max(0, state.timer.left - 1);
-        if (state.timer.left === 0) {
-          state.timer.running = false;
+      const timer = state.timer;
+      const free = timer.mode === "free";
+      timer.running = true;
+      if (free) timer.startAt = Date.now() - (timer.used || 0) * 1000;
+      else timer.endAt = Date.now() + timer.left * 1000;
+      this.tick = () => {
+        const old = free ? timer.used : timer.left;
+        if (free) timer.used = Math.max(0, Math.floor((Date.now() - timer.startAt) / 1000));
+        else timer.left = Math.max(0, Math.ceil((timer.endAt - Date.now()) / 1000));
+        const finished = !free && timer.left === 0;
+        if (finished) {
+          timer.running = false;
+          delete timer.endAt;
           this.stop();
-          KCP.toast(state.phase === "prep" ? "준비 시간이 끝났습니다. 면접실로 이동하세요." : "면접 시간이 끝났습니다.");
+          if (KCP.settings().endAlert) KCP.toast(timer.of === "prep" ? "준비 시간이 끝났습니다. 면접실로 이동하세요." : "면접 시간이 끝났습니다.");
         }
-        KCP.save(year, state);
-        onTick();
-      }, 1000);
+        if (old !== (free ? timer.used : timer.left) || finished) {
+          onTick();
+          KCP.save(year, state);
+        }
+      };
+      this.id = setInterval(this.tick, 250);
     },
     stop() {
       if (this.id) clearInterval(this.id);
       this.id = null;
+      this.tick = null;
     },
   };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && Timer.id && Timer.tick) Timer.tick();
+  });
 
   /* ---------- 홈 ---------- */
   function renderHome(app) {
@@ -523,6 +551,18 @@
         </span>
       </a>`;
     }).join("");
+    const originals = (KCP.ORIGINAL_ORDER || []).map((id) => {
+      const m = KCP.YEARS[id], st = KCP.load(id);
+      const touched = st.memo || Object.keys(st.game).length;
+      return `<a class="opkg" href="#y${esc(id)}">
+        <span class="fmt">${esc(m.title)}</span>
+        <span class="desc">${esc(m.desc)}</span>
+        <span class="meta">${(m.topics || []).map((topic) => `<span class="chip">${esc(topic)}</span>`).join("")}
+          <span class="chip num">준비 ${esc(m.prep)}분 · 답변 ${esc(m.answer)}분</span>
+          ${touched ? '<span class="chip accent">이어서 하기</span>' : ""}
+        </span>
+      </a>`;
+    }).join("");
 
     app.innerHTML = `
       <header class="masthead">
@@ -533,6 +573,11 @@
       </header>
       <div class="home-grid">${cards}</div>
       <div id="home-slot" class="stack ext-slot"></div>
+      ${originals ? `<section id="home-originals">
+        <h2>창작 쟁점 게임 <span class="tag-mine">창작 게임 · 대학 출제와 무관</span></h2>
+        <p class="small muted">기출을 옮긴 게임이 아니라, 과학·사회 쟁점과 기술 정책을 다루도록 연습실이 새로 만든 게임입니다. 배경과 수치는 가상입니다.</p>
+        <div class="original-grid">${originals}</div>
+      </section>` : ""}
       <div class="home-notes">
         <section>
           <h2>면접 공통 원칙</h2>
@@ -549,23 +594,54 @@
             <li><b>준비실</b>에서 타이머를 켜고 자료를 조작하며 답을 만듭니다.</li>
             <li><b>면접실</b>에서는 내 계획에 맞춰 나오는 후속 질문에 말로 답해 보고, 핵심을 적어 둡니다.</li>
             <li><b>성찰</b>에서 공식 평가 기준 9개 항목으로 자기 평가를 하고, 출제 의도와 예시 답안을 비교합니다.</li>
-            <li>수업에서는 짝이 면접위원 역할을 맡아 후속 질문 카드를 읽어 주면 실제 형식에 가깝습니다.</li>
+            <li>수업에서는 짝이 면접위원 역할을 맡아 면접실의 [면접위원 보기]로 질문을 하나씩 읽고 반문해 주면 실제 형식에 가깝습니다.</li>
+            <li>시간이 부족하면 게임 화면 위 띠의 [시간 설정]에서 연장 1.5배나 시간 제한 없음으로 연습할 수 있습니다.</li>
+            <li>짧은 판단 훈련장에서는 가상 과제로 같은 절차(기준 → 얻고 잃는 것 → 반문)를 연습합니다.</li>
+            <li>창작 쟁점 게임은 기출과 같은 순서로 진행하며, 과학·사회 쟁점에서 같은 습관을 연습합니다.</li>
+          </ul>
+        </section>
+        <section>
+          <h2>표시 읽는 법</h2>
+          <ul>
+            <li><span class="tag-official">보고서 요약</span>, <span class="tag-official">보고서 문항</span>처럼 청록 테두리 표시는 선행학습 영향평가 보고서에서 옮기거나 요약한 내용입니다.</li>
+            <li><span class="tag-mine">재구성</span>, <span class="tag-mine">연습용 질문</span>처럼 황색 테두리 표시는 이 연습실이 새로 만든 질문·계산식·해설·척도·연습 도구입니다. 대학의 평가 기준이 아닙니다.</li>
+            <li>색을 구분하기 어려우면 태그 글자를 보세요. 새로 만든 내용의 태그는 연습용으로 시작하거나 재구성, 비공식 해설, 가상 자료, 가상의 답 가운데 하나입니다.</li>
           </ul>
         </section>
       </div>
       <section class="evo">
         <h2 style="font-size:17px;margin-bottom:8px">다섯 해 형식 변화</h2>
         <table>
-          <thead><tr><th>학년도</th><th>과제 형식</th><th>시간</th><th>면접 구성</th><th>핵심 사고</th></tr></thead>
+          <thead><tr><th>학년도</th><th>과제 형식</th><th>시간</th><th>면접 구성</th><th>핵심 사고 <span class="tag-mine">연습용 정리</span></th></tr></thead>
           <tbody>
-            <tr><td class="num">2022</td><td>카드·지도·데이터로 발전소 배치</td><td class="num">30 + 25분</td><td>학생부 30 · 창의성 70</td><td>공간 자료 통합, 트레이드오프</td></tr>
+            <tr><td class="num">2022</td><td>카드·지도·데이터로 발전소 배치</td><td class="num">30 + 25분</td><td>학생부 30 · 창의성 70</td><td>공간 자료 통합, 얻는 것과 잃는 것</td></tr>
             <tr><td class="num">2023</td><td>경로도를 따라 10년 실행 계획</td><td class="num">35 + 25분</td><td>창의성 70 · 학생부 30</td><td>시간축 의사결정, 경쟁국 비교</td></tr>
             <tr><td class="num">2024</td><td>온라인 정착 시뮬레이션, 맞춤형 질문 최대 8개</td><td class="num">35 + 25분</td><td>창의성 70 · 학생부 30</td><td>균형과 집중, 가설 검증</td></tr>
             <tr><td class="num">2025</td><td>가상 신문 4부 발행 순서 추론</td><td class="num">30 + 15분</td><td>창의성 100</td><td>인과 추론, 기술과 사회</td></tr>
             <tr><td class="num">2026</td><td>평가위원이 되어 홍보자료 비판적 평가</td><td class="num">30 + 15분</td><td>창의성 100</td><td>데이터 문해력, 다기준 판단</td></tr>
           </tbody>
         </table>
-      </section>`;
+      </section>
+      <footer class="home-foot">
+        <p class="small muted">입력한 내용은 이 브라우저에만 저장됩니다. 학교 공용 컴퓨터라면 연습을 마친 뒤 지우세요.</p>
+        <button class="btn small ghost" id="wipeAll" type="button">이 기기 기록 모두 지우기</button>
+        <div id="wipeConfirm" class="caution" hidden>이 브라우저에 저장된 연습실 기록이 모두 지워집니다(다섯 해${(KCP.ORIGINAL_ORDER || []).length ? "와 창작 게임" : ""}의 입력과 판단 노트·반문·짝 관찰, 훈련장 기록, 지난 목표, 시간 설정). 되돌릴 수 없습니다.
+          <div class="row"><button class="btn small" id="wipeYes" type="button">지우기</button><button class="btn small ghost" id="wipeNo" type="button">취소</button></div>
+        </div>
+      </footer>`;
+    KCP.$("#wipeAll", app).onclick = () => {
+      KCP.$("#wipeConfirm", app).hidden = false;
+      KCP.$("#wipeNo", app).focus();
+    };
+    KCP.$("#wipeNo", app).onclick = () => {
+      KCP.$("#wipeConfirm", app).hidden = true;
+      KCP.$("#wipeAll", app).focus();
+    };
+    KCP.$("#wipeYes", app).onclick = () => {
+      KCP.clearAll();
+      KCP.rerender();
+      KCP.toast("이 기기의 기록을 지웠습니다");
+    };
     KCP.emit("home:render", { app, slot: KCP.$("#home-slot", app) });
   }
 
@@ -576,8 +652,12 @@
     const meta = KCP.YEARS[year];
     const game = KCP.games[year];
     const state = KCP.load(year);
-    if (!state.timer) state.timer = { left: meta.prep * 60, total: meta.prep * 60, running: false, of: "prep" };
+    if (!plain(state.timer)) state.timer = makeTimer(year, "prep");
+    if (!state.timer.mode) state.timer.mode = "real";
     state.timer.running = false;
+    delete state.timer.endAt;
+    delete state.timer.startAt;
+    if (!timerInProgress(state.timer) && timerDiffers(year, state.timer)) state.timer = makeTimer(year, state.timer.of);
     const save = () => KCP.save(year, state);
     document.title = `${KCP.gameShort(year)} · 켄텍 창의성 면접 연습실`;
 
@@ -585,6 +665,7 @@
       <div class="strip" id="strip">
         <a href="#home">← 연습실</a>
         <span class="ttl">${esc(KCP.gameShort(year))}<small>${esc(meta.format)}</small></span>
+        <span class="chip tmode" id="tmode" hidden></span>
         <div class="phases" role="group" aria-label="단계">
           <button data-phase="prep">준비실</button>
           <button data-phase="room">면접실</button>
@@ -595,39 +676,176 @@
           <span class="clock" id="clock" aria-live="off"></span>
           <button id="tgo">시작</button>
           <button id="treset" title="시간 초기화">↺</button>
+          <button id="tset" type="button" aria-expanded="false" aria-controls="timeset">시간 설정</button>
         </div>
         <div class="progress" id="tbar"></div>
       </div>
-      <div class="brief">${game.brief(state)}</div>
+      <section class="panel timeset" id="timeset" hidden aria-labelledby="timeset-h">
+        <h3 id="timeset-h">시간 설정</h3>
+        <div class="field">
+          <span class="small">시간 모드</span>
+          <div class="seg" role="group" aria-label="시간 모드">
+            <button type="button" data-tm="real" aria-pressed="false">실전</button>
+            <button type="button" data-tm="ext" aria-pressed="false">연장 1.5배</button>
+            <button type="button" data-tm="custom" aria-pressed="false">직접 정하기</button>
+            <button type="button" data-tm="free" aria-pressed="false">시간 제한 없음</button>
+          </div>
+          <div class="row" id="tm-custom" hidden>
+            <label class="field" for="tm-prep">준비(분)<input class="note" type="number" id="tm-prep" min="1" max="90" step="1"></label>
+            <label class="field" for="tm-answer">답변(분)<input class="note" type="number" id="tm-answer" min="1" max="90" step="1"></label>
+          </div>
+        </div>
+        <div class="field">
+          <span class="small">질문마다 생각 시간</span>
+          <div class="seg" role="group" aria-label="질문마다 생각 시간">
+            <button type="button" data-think="0" aria-pressed="false">없음</button>
+            <button type="button" data-think="10" aria-pressed="false">10초</button>
+            <button type="button" data-think="30" aria-pressed="false">30초</button>
+          </div>
+          <p class="small muted">말해 보기를 누른 뒤 말하기 전에 주는 시간입니다.</p>
+        </div>
+        <label class="small"><input type="checkbox" id="tm-alert"> 시간이 끝나면 알림</label>
+        <p class="small muted">처음에는 연장이나 시간 제한 없이 형식에 익숙해지고, 시험이 가까워지면 실전 시간으로 연습하세요. <span class="tag-mine">연습용 조언</span></p>
+        <div id="tm-confirm" class="caution" hidden>진행 중인 시간이 처음부터 다시 시작됩니다.
+          <div class="row"><button class="btn small" id="tm-yes" type="button">바꾸기</button><button class="btn small ghost" id="tm-no" type="button">취소</button></div>
+        </div>
+        <p class="small muted" id="tm-url" hidden></p>
+      </section>
+      <div class="brief">${meta.original ? '<p class="small original-notice"><span class="tag-mine">창작 게임 · 가상 자료</span></p>' : ""}${game.brief(state)}</div>
+      <p class="small muted tm-tip" id="tm-tip">시간이 부족하면 [시간 설정]에서 연장하거나 시간 제한 없이 연습할 수 있습니다. <span class="tag-mine">연습용 조언</span></p>
       <main id="phase"></main>`;
 
     const clock = KCP.$("#clock");
     const tgo = KCP.$("#tgo");
     const tbar = KCP.$("#tbar");
     const tlabel = KCP.$("#tlabel");
+    const tmode = KCP.$("#tmode");
+    const timeset = KCP.$("#timeset");
+    const tset = KCP.$("#tset");
+    let timePatch = null;
+    const paintTimeMode = () => {
+      const s = KCP.settings();
+      let text = "";
+      if (timerInProgress(state.timer) && timerDiffers(year, state.timer)) text = "이전 설정으로 진행 중";
+      else if (s.fromUrl) {
+        text = s.timeMode === "free" ? "수업 주소 · 시간 제한 없음"
+          : `수업 주소 ${s.prep}·${s.answer}분` + (s.timeMode === "ext" ? " · 연장 1.5배" : "");
+      } else if (s.timeMode === "ext") text = "연장 1.5배";
+      else if (s.timeMode === "custom") text = `직접 ${s.prep}·${s.answer}분`;
+      else if (s.timeMode === "free") text = "시간 제한 없음";
+      tmode.textContent = text;
+      tmode.hidden = !text;
+      KCP.$("#tm-tip").hidden = s.timeMode !== "real" || s.fromUrl;
+    };
+    const paintSettings = () => {
+      const s = KCP.settings();
+      KCP.$$("[data-tm]", timeset).forEach((b) => {
+        const mode = b.dataset.tm;
+        b.setAttribute("aria-pressed", String(s.fromUrl && mode === "real" ? s.timeMode === "custom" : !(s.fromUrl && mode === "custom") && s.timeMode === mode));
+        b.disabled = s.fromUrl && mode === "custom";
+        if (mode === "real") b.textContent = s.fromUrl ? "수업 주소 시간" : "실전";
+      });
+      KCP.$("#tm-custom", timeset).hidden = s.timeMode !== "custom" || s.fromUrl;
+      ["prep", "answer"].forEach((of) => {
+        const input = KCP.$("#tm-" + of, timeset);
+        // 확인을 기다리는 값이 있으면 사용자가 방금 쓴 값을 그대로 보여 준다
+        input.value = timePatch && of in timePatch ? timePatch[of] : s[of];
+        input.disabled = s.fromUrl;
+      });
+      KCP.$$("[data-think]", timeset).forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.think) === s.think)));
+      KCP.$("#tm-alert", timeset).checked = s.endAlert;
+      const url = KCP.$("#tm-url", timeset);
+      url.hidden = !s.fromUrl;
+      url.textContent = s.fromUrl ? `수업 주소에 지정된 시간(준비 ${s.prep}분 · 답변 ${s.answer}분)을 쓰는 중입니다. 연장이나 시간 제한 없음은 그대로 고를 수 있습니다.` : "";
+      paintTimeMode();
+    };
     const paintTimer = () => {
-      clock.textContent = KCP.fmt(state.timer.left);
-      clock.classList.toggle("low", state.timer.left <= 300);
+      const free = state.timer.mode === "free";
+      clock.textContent = KCP.fmt(free ? state.timer.used || 0 : state.timer.left);
+      clock.classList.toggle("low", !free && state.timer.left <= 300);
       tgo.textContent = state.timer.running ? "일시정지" : "시작";
-      tlabel.textContent = state.timer.of === "prep" ? "준비" : "답변";
-      tbar.style.width = (100 * (1 - state.timer.left / state.timer.total)).toFixed(1) + "%";
+      tlabel.textContent = (state.timer.of === "prep" ? "준비" : "답변") + (free ? " 경과" : "");
+      tbar.hidden = free;
+      tbar.style.width = (state.timer.total ? 100 * (1 - state.timer.left / state.timer.total) : 0).toFixed(1) + "%";
+      paintTimeMode();
     };
     const setTimerFor = (of) => {
       Timer.stop();
-      const mins = of === "prep" ? meta.prep : meta.answer;
-      state.timer = { left: mins * 60, total: mins * 60, running: false, of };
+      state.timer = makeTimer(year, of);
       paintTimer();
       save();
     };
     tgo.onclick = () => {
       if (state.timer.running) {
+        if (Timer.tick) Timer.tick();
         state.timer.running = false;
+        delete state.timer.endAt;
+        delete state.timer.startAt;
         Timer.stop();
       } else Timer.start(state, year, paintTimer);
       paintTimer();
       save();
     };
     KCP.$("#treset").onclick = () => setTimerFor(state.phase === "room" ? "answer" : "prep");
+    const applyTimePatch = (patch) => {
+      KCP.setSettings(patch);
+      setTimerFor(state.timer.of);
+      timePatch = null;
+      KCP.$("#tm-confirm", timeset).hidden = true;
+      paintSettings();
+      focusPressedMode();
+    };
+    // 확인창을 닫으면 포커스를 패널 안의 눌린 모드 버튼으로 돌린다(Escape로 패널을 닫을 수 있게)
+    const focusPressedMode = () => {
+      const pressed = KCP.$('[data-tm][aria-pressed="true"]', timeset) || KCP.$("[data-tm]", timeset);
+      if (pressed && !timeset.hidden) pressed.focus();
+    };
+    const requestTimePatch = (patch) => {
+      if (timerInProgress(state.timer)) {
+        timePatch = patch;
+        KCP.$("#tm-confirm", timeset).hidden = false;
+        paintSettings();
+        KCP.$("#tm-yes", timeset).focus();
+      } else applyTimePatch(patch);
+    };
+    KCP.$$("[data-tm]", timeset).forEach((b) => {
+      b.onclick = () => requestTimePatch({ timeMode: b.dataset.tm });
+    });
+    ["prep", "answer"].forEach((of) => {
+      KCP.$("#tm-" + of, timeset).onchange = (e) => {
+        const value = Number(e.target.value);
+        if (!KCP.settings().fromUrl && validSetting[of](value)) requestTimePatch({ [of]: value });
+        else paintSettings();
+      };
+    });
+    KCP.$("#tm-yes", timeset).onclick = () => { if (timePatch) applyTimePatch(timePatch); };
+    KCP.$("#tm-no", timeset).onclick = () => {
+      timePatch = null;
+      KCP.$("#tm-confirm", timeset).hidden = true;
+      paintSettings();
+      focusPressedMode();
+    };
+    KCP.$$("[data-think]", timeset).forEach((b) => {
+      b.onclick = () => { KCP.setSettings({ think: Number(b.dataset.think) }); paintSettings(); };
+    });
+    KCP.$("#tm-alert", timeset).onchange = (e) => { KCP.setSettings({ endAlert: e.target.checked }); paintSettings(); };
+    const closeSettings = () => {
+      timeset.hidden = true;
+      tset.setAttribute("aria-expanded", "false");
+      tset.focus({ preventScroll: true });
+    };
+    tset.onclick = () => {
+      if (!timeset.hidden) { closeSettings(); return; }
+      paintSettings();
+      timeset.hidden = false;
+      tset.setAttribute("aria-expanded", "true");
+      window.scrollTo({ top: 0 });
+      KCP.$('[data-tm][aria-pressed="true"]', timeset).focus({ preventScroll: true });
+    };
+    timeset.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); closeSettings(); }
+    });
+    paintSettings();
     paintTimer();
 
     const phaseEl = KCP.$("#phase");
@@ -658,27 +876,47 @@
   }
 
   /* ---------- 면접실 ---------- */
+  const hasAnswer = (state, key) => String(state.answers[key] || "").trim() !== "";
+  const staleAnswer = (state, q, i) => hasAnswer(state, i) && state.answerQ[i] && state.answerQ[i] !== q.q;
+  const orphanKeys = (state, qs) => Object.keys(state.answers)
+    .filter((key) => /^[0-9]+$/.test(key) && Number(key) >= qs.length && hasAnswer(state, key))
+    .sort((a, b) => Number(a) - Number(b));
+  const legacyAnswers = (state) => Object.keys(state.answers).some((key) => hasAnswer(state, key) && !state.answerQ[key]);
   function renderRoom(root, state, save, year, next) {
     const game = KCP.games[year];
     const meta = KCP.YEARS[year];
     const qs = game.questions(state);
     const recap = game.recap(state);
+    const orphans = orphanKeys(state, qs);
+    const c = KCP.findCriterion(year, /비판적 의견|한계점/);
+    const f = KCP.findCriterion(year, /유연한 사고/);
+    let advice = "반문을 받으면 답을 고치거나, 유지한다면 그 이유를 말합니다.";
+    if (!meta.original && c) advice += ` 이 해의 평가 기준: “${esc(c)}” <span class="tag-official">평가 기준</span>`;
+    else if (!meta.original && f) advice += ` 이 해의 평가 기준표에는 비판 수용 항목이 따로 없습니다. 조건이 바뀔 때의 대응은 다음 기준과 가깝다고 봅니다. <span class="tag-mine">연습용 해석</span> “${esc(f)}” <span class="tag-official">평가 기준</span>`;
     root.innerHTML = `
       <div id="room-main">
       <div class="desk">
         <div class="stack">
           <section class="panel">
-            <h3>면접위원 질문 <span class="chip num">${qs.length}개</span></h3>
+            <h3>면접 질문 카드 <span class="chip num">${qs.length}개</span></h3>
             <p class="small muted" style="margin-bottom:10px">질문을 소리 내어 읽고 1~3분 안에 말로 답해 보세요. 짝이 있다면 짝이 면접위원이 되어 읽어 줍니다. 답한 뒤 핵심만 적어 둡니다.</p>
+            <p class="small muted room-sources">${meta.original
+              ? "이 게임의 질문은 모두 연습실이 준비실 결과에 맞춰 만든 연습용 질문입니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."
+              : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."}</p>
+            ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}
             <div id="room-tools" class="stack ext-slot"></div>
             <div class="qdeck">
               ${qs
                 .map(
                   (q, i) => `<div class="qcard">
-                    <div class="who">질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""}</div>
+                    <div class="who">질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""} ${KCP.srcTag(q)}</div>
                     <div class="q">${esc(q.q)}</div>
                     ${q.time ? `<div class="rec">권장 답변 시간: ${esc(q.time)}</div>` : ""}
                     ${q.rec ? `<div class="rec">${esc(q.rec)}</div>` : ""}
+                    ${staleAnswer(state, q, i) ? `<div class="stale caution small" data-stale="${i}">
+                      이 메모를 쓴 뒤 질문이 바뀌었습니다. 준비실 내용을 바꾸면 질문도 바뀝니다. 메모를 쓸 때의 질문: '${esc(String(state.answerQ[i]).slice(0, 60))}${String(state.answerQ[i]).length > 60 ? "…" : ""}'
+                      <div class="row"><button class="btn small" type="button" data-stale-keep="${i}">지금 질문의 메모로 쓰기</button><button class="btn small ghost" type="button" data-stale-clear="${i}">메모 비우기</button></div>
+                    </div>` : ""}
                     <textarea class="note" data-a="${i}" id="ans-${year}-${i}" aria-label="질문 ${i + 1} 답변 메모" placeholder="답변의 핵심 한두 문장">${esc(
                       state.answers[i] || ""
                     )}</textarea>
@@ -687,6 +925,12 @@
                 )
                 .join("")}
             </div>
+            ${orphans.length ? `<div id="room-orphans" class="caution small">
+              <h4>질문 목록에서 빠진 메모</h4>
+              <p>준비실 내용이 바뀌어 질문 수가 줄었습니다. 필요한 내용은 지금 질문 칸으로 옮겨 적으세요.</p>
+              <ul>${orphans.map((key) => `<li>${state.answerQ[key] ? `(메모를 쓸 때의 질문: ${esc(state.answerQ[key])}) ` : ""}${esc(state.answers[key])}</li>`).join("")}</ul>
+              <button class="btn small ghost" id="orphan-clear" type="button">빠진 메모 지우기</button>
+            </div>` : ""}
           </section>
         </div>
         <div class="stack">
@@ -695,24 +939,60 @@
             <dl class="recap">${recap.map((r) => `<dt>${esc(r.t)}</dt><dd>${r.html ? r.d : esc(r.d || "(비어 있음)")}</dd>`).join("")}</dl>
           </section>
           <div id="room-side" class="stack ext-slot"></div>
-          <section class="panel">
-            <h3>답변 요령</h3>
+          <section class="panel answer-tips">
+            <h3 class="h-wrap">답변 요령 <span class="tag-mine">연습용 조언</span></h3>
             <ul class="small muted" style="margin:0;padding-left:1.1em">
               <li>결론을 먼저 말하고 근거를 두세 개 붙입니다.</li>
               <li>자료의 숫자나 문장을 짚어 근거로 씁니다.</li>
-              <li>반문을 받으면 답을 고쳐도 됩니다. 보고서는 한계를 인정하고 개선안을 찾는 태도를 평가 기준으로 명시합니다.</li>
+              <li>${advice}</li>
             </ul>
             <div class="row" style="margin-top:12px"><button class="btn primary" id="toReflect">성찰로 이동</button></div>
           </section>
         </div>
       </div>
       </div><div id="room-alt" hidden></div>`;
+    const refreshLegacy = () => {
+      if (!legacyAnswers(state)) KCP.$("#room-legacy", root)?.remove();
+    };
     KCP.$$("textarea[data-a]", root).forEach((t) =>
       t.addEventListener("input", () => {
         state.answers[t.dataset.a] = t.value;
+        state.answerQ[t.dataset.a] = qs[Number(t.dataset.a)].q;
+        KCP.$(`[data-stale="${t.dataset.a}"]`, root)?.remove();
+        refreshLegacy();
         save();
       })
     );
+    KCP.$$("[data-stale-keep]", root).forEach((b) => {
+      b.onclick = () => {
+        const i = b.dataset.staleKeep;
+        state.answerQ[i] = qs[Number(i)].q;
+        save();
+        KCP.$(`[data-stale="${i}"]`, root).remove();
+        refreshLegacy();
+        KCP.$(`textarea[data-a="${i}"]`, root)?.focus();
+      };
+    });
+    KCP.$$("[data-stale-clear]", root).forEach((b) => {
+      b.onclick = () => {
+        const i = b.dataset.staleClear;
+        delete state.answers[i];
+        delete state.answerQ[i];
+        KCP.$(`textarea[data-a="${i}"]`, root).value = "";
+        save();
+        KCP.$(`[data-stale="${i}"]`, root).remove();
+        refreshLegacy();
+        KCP.$(`textarea[data-a="${i}"]`, root)?.focus();
+      };
+    });
+    if (orphans.length) KCP.$("#orphan-clear", root).onclick = () => {
+      orphans.forEach((key) => { delete state.answers[key]; delete state.answerQ[key]; });
+      save();
+      KCP.$("#room-orphans", root).remove();
+      refreshLegacy();
+      const notes = KCP.$$(".qdeck textarea[data-a]", root);
+      if (notes.length) notes[notes.length - 1].focus();
+    };
     KCP.$("#toReflect", root).onclick = next;
     KCP.$$(".qdeck .qcard", root).forEach((card, i) => {
       const q = qs[i], slot = KCP.$(`.qx[data-qx="${i}"]`, card);
@@ -727,10 +1007,20 @@
     const meta = KCP.YEARS[year];
     const game = KCP.games[year];
     const levels = ["미흡", "보통", "잘함"];
+    const rubricKeys = [];
+    const compare = state.compare;
+    const placeholders = {
+      "2022": "예: 주민 건강을 발전 비용보다 앞에 두었다",
+      "2023": "예: 환경 지수를 과학 지수보다 앞에 두었다",
+      "2024": "예: 정착민의 건강을 에너지 여유보다 앞에 두었다",
+      "2025": "예: 창간호를 처음에 둔 근거",
+      "2026": "예: 안전성을 기능/효과보다 무겁게 보았다",
+    };
     let rows = "";
     Object.entries(meta.rubric).forEach(([dom, items]) => {
       items.forEach((it, i) => {
         const key = dom + i;
+        rubricKeys.push(key);
         const v = state.rubric[key];
         rows += `<tr>
           ${i === 0 ? `<td class="dom" rowspan="${items.length}">${esc(dom)}</td>` : ""}
@@ -745,11 +1035,13 @@
       <div class="desk">
         <div class="stack">
           <section class="panel">
-            <h3>자기 평가 <span class="tag-official">공식 평가 기준</span> <span class="spacer"></span><span class="chip num" id="rsum"></span></h3>
+            <h3 class="h-wrap">자기 평가 ${meta.original ? '<span class="tag-mine">연습용 평가 기준</span>' : '<span class="tag-official">기준 문구: 보고서</span>'} <span class="tag-mine">연습용 척도</span></h3>
+            <p class="small num" id="rsum"></p>
             <div class="table-wrap"><table class="rubric">
               <thead><tr><th>평가 요소</th><th>평가 기준</th><th>나의 수준</th></tr></thead>
               <tbody>${rows}</tbody>
             </table></div>
+            <p class="small muted rubric-note">이 연습실은 대학의 채점 단계나 배점을 옮기지 않았습니다. 세 단계는 스스로 돌아보기 위한 구분입니다.</p>
           </section>
           <section class="panel">
             <h3>다음 연습에서 바꿀 한 가지</h3>
@@ -759,21 +1051,42 @@
         </div>
         <div class="stack">
           <section class="panel">
-            <h3>출제 의도 <span class="tag-official">보고서 원문 요약</span></h3>
+            <h3 class="h-wrap">${meta.original ? '설계 의도 <span class="tag-mine">연습실 설계</span>' : '출제 의도 <span class="tag-official">보고서 원문 요약</span>'}</h3>
             <ul class="intent small" style="margin:0;padding-left:1.1em">${meta.intent.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
           </section>
-          <section class="panel">
+          <section class="panel compare-panel">
             <h3>비교해 보기</h3>
-            ${game.reflectExtra(state)}
+            <p class="small muted">${meta.original ? "아래 예시 판단은 연습실이 만든 가능한 판단의 일부입니다." : "보고서는 이 면접 문항에 정답이나 모범 답안이 없다고 밝힙니다. 아래 예시 답안은 보고서가 소개한 가능한 답의 일부입니다."}</p>
+            <div class="field">
+              <label for="before-${year}">예시를 열기 전에 · 내 답에서 가장 무겁게 본 판단 기준 한 줄</label>
+              <textarea class="note" id="before-${year}" placeholder="${esc(placeholders[year] || "예: 안전을 비용보다 무겁게 보았다")}">${esc(compare.before || "")}</textarea>
+            </div>
+            <div class="row" id="ex-open-row"${compare.open === true ? " hidden" : ""}>
+              <button class="btn" id="openEx" type="button"${String(compare.before || "").trim().length < 10 ? " disabled" : ""}>${meta.original ? "예시 판단과 해설 열기" : "예시 답안과 해설 열기"}</button>
+              <span class="hint">한 줄(10자 이상)을 쓰면 열립니다</span>
+            </div>
+            <p id="ex-skip-row"${compare.open === true ? " hidden" : ""}><button id="skipEx" class="ex-skip small" type="button">교사 시연용: 적지 않고 열기</button></p>
+            <div id="exwrap"${compare.open === true ? "" : " hidden"}>${game.reflectExtra(state)}</div>
+            <div id="exafter"${compare.open === true ? "" : " hidden"}>
+              <div class="field">
+                <label for="better-${year}">${meta.original ? "예시 판단이" : "예시 답안이"} 내 답보다 나은 점 하나</label>
+                <textarea class="note" id="better-${year}">${esc(compare.better || "")}</textarea>
+              </div>
+              <div class="field">
+                <label for="gap-${year}">${meta.original ? "예시 판단의" : "예시 답안의"} 빈틈이나 자료와 맞지 않는 곳 하나</label>
+                <textarea class="note" id="gap-${year}">${esc(compare.gap || "")}</textarea>
+              </div>
+              ${year !== "2026" ? '<p class="small muted">예시 답안도 자료와 대조해 읽습니다.</p>' : ""}
+            </div>
           </section>
           <section class="panel">
             <h3>내 답안 내보내기</h3>
             <p class="small muted">준비실 답과 면접실 메모, 자기 평가를 글로 묶어 복사합니다. 수업 과제 제출이나 교사 피드백에 쓰세요.</p>
             <div class="row" style="margin-top:8px">
               <button class="btn primary" id="copyAll">답안 복사</button>
-              <button class="btn ghost" id="resetAll">이 해 기록 지우기</button>
+              <button class="btn ghost" id="resetAll">${meta.original ? "이 게임 기록 지우기" : "이 해 기록 지우기"}</button>
             </div>
-            <div id="confirmReset" hidden class="caution" style="margin-top:8px">이 학년도의 입력 내용이 모두 지워집니다.
+            <div id="confirmReset" hidden class="caution" style="margin-top:8px">${meta.original ? "이 게임에" : "이 학년도에"} 입력한 내용과, 여기서 정한 다음 연습 목표가 지워집니다.
               <div class="row" style="margin-top:6px"><button class="btn small" id="doReset">지우기</button><button class="btn small ghost" id="noReset">취소</button></div>
             </div>
             <textarea class="note copybox" id="copyFallback-${year}" hidden aria-label="복사용 텍스트"></textarea>
@@ -782,12 +1095,11 @@
         </div>
       </div>`;
     const paintSum = () => {
-      const vals = Object.values(state.rubric);
-      const sum = vals.reduce((a, b) => a + b, 0);
-      KCP.$("#rsum", root).textContent = `${sum} / 27점 · ${vals.length}/9 항목`;
+      const vals = rubricKeys.map((key) => state.rubric[key]).filter((v) => [1, 2, 3].includes(v));
+      KCP.$("#rsum", root).textContent = `점검 ${vals.length}/${rubricKeys.length} · 잘함 ${vals.filter((v) => v === 3).length} · 보통 ${vals.filter((v) => v === 2).length} · 미흡 ${vals.filter((v) => v === 1).length}`;
     };
     paintSum();
-    KCP.$$(".seg button", root).forEach((b) =>
+    KCP.$$(".seg button[data-k][data-v]", root).forEach((b) =>
       b.addEventListener("click", () => {
         state.rubric[b.dataset.k] = Number(b.dataset.v);
         KCP.$$(`.seg button[data-k="${CSS.escape(b.dataset.k)}"]`, root).forEach((x) =>
@@ -797,6 +1109,24 @@
         save();
       })
     );
+    ["before", "better", "gap"].forEach((key) => {
+      KCP.$(`#${key}-${year}`, root).addEventListener("input", (e) => {
+        compare[key] = e.target.value;
+        if (key === "before") KCP.$("#openEx", root).disabled = compare.before.trim().length < 10;
+        save();
+      });
+    });
+    const openExamples = () => {
+      compare.open = true;
+      save();
+      KCP.$("#exwrap", root).hidden = false;
+      KCP.$("#exafter", root).hidden = false;
+      KCP.$("#ex-open-row", root).hidden = true;
+      KCP.$("#ex-skip-row", root).hidden = true;
+      KCP.$("#exwrap summary", root)?.focus();
+    };
+    KCP.$("#openEx", root).onclick = openExamples;
+    KCP.$("#skipEx", root).onclick = openExamples;
     KCP.$(`#nextstep-${year}`, root).addEventListener("input", (e) => {
       state.nextstep = e.target.value;
       save();
@@ -808,11 +1138,17 @@
       qs: game.questions(state), year, meta, state, save });
     KCP.$("#copyAll", root).onclick = () => {
       const qs = game.questions(state);
-      let out = `[${year}학년도 KENTECH 창의성 면접 연습 · ${meta.title}]\n\n`;
+      let out = meta.original ? `[${meta.title} · 창작 쟁점 게임 연습]\n\n` : `[${year}학년도 KENTECH 창의성 면접 연습 · ${meta.title}]\n\n`;
       out += "■ 준비실 답안\n";
       game.recap(state).forEach((r) => (out += `- ${r.t}: ${r.text != null ? r.text : r.d || "(비어 있음)"}\n`));
       out += "\n■ 면접실 답변 메모\n";
-      qs.forEach((q, i) => (out += `Q${i + 1}. ${q.q}\n→ ${state.answers[i] || "(미작성)"}\n`));
+      qs.forEach((q, i) => {
+        out += `Q${i + 1}. [${q.src === "report" ? "보고서 문항" : "연습용 질문"}] ${q.q}\n`;
+        out += `→ ${staleAnswer(state, q, i) ? `(메모를 쓸 때의 질문: ${state.answerQ[i]}) ` : ""}${state.answers[i] || "(미작성)"}\n`;
+      });
+      orphanKeys(state, qs).forEach((key) => {
+        out += `- 질문 목록에서 빠진 메모: ${state.answerQ[key] ? `(메모를 쓸 때의 질문: ${state.answerQ[key]}) ` : ""}${state.answers[key]}\n`;
+      });
       out += "\n■ 자기 평가\n";
       Object.entries(meta.rubric).forEach(([dom, items]) =>
         items.forEach((it, i) => {
@@ -820,6 +1156,10 @@
           out += `- [${dom}] ${it}: ${v ? levels[v - 1] : "-"}\n`;
         })
       );
+      const comparison = [["내 기준", compare.before], ["예시가 나은 점", compare.better], ["예시의 빈틈", compare.gap]]
+        .filter(([, value]) => String(value || "").trim())
+        .map(([label, value]) => `${label}: ${value}`);
+      if (comparison.length) out += "\n■ 예시와 비교\n" + comparison.join("\n") + "\n";
       const parts = [];
       KCP.emit("export:text", { year, meta, state, qs, parts });
       out += parts.join("");
