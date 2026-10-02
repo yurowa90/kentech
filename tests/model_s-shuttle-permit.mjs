@@ -50,9 +50,9 @@ function make({v, rule='R1', liab='L1', useOp=false, tests=[]} = {}) {
   for (const [c, speed, count] of tests) for (let i=0; i<count; i++) s = add(s,c,speed);
   return s;
 }
-function locked(s, decisions=1) {
+function locked(s, decisions=1, prev) {
   const p = plain(s);
-  const input = {version:1,...p,reason:'가상의 심사 이유',decisions,
+  const input = {version:1,...p,reason:'가상의 심사 이유',decisions,...(prev ? {prev:plain(prev)} : {}),
     locked:{modelVersion:1,plan:{...p,reason:'가상의 심사 이유',decisions},result:{}}};
   // 파생 result를 신뢰하지 않고 재계산하는 계약에 맞춘 유효한 저장 입력.
   return copy({game:input});
@@ -72,7 +72,8 @@ block('6.1 물리', () => {
     check(`6.1 distance(60,${a})`,()=>M.distance(60,a),d,6);
   for (const [c,v,z] of [['rain',60,'band'],['fog',60,'above'],['fog',35,'band'],['fog',40,'above'],['clear',0,'ban']])
     check(`6.1 ${c}/${v} 물리 상태`,()=>M.zone(c,v),z);
-  for (const [a,mu] of [[6.5,.66],[7,.71],[3,.31],[5,.51]])
+  // 성찰 해설의 μ≈a/g 표기(안개 4.0~5.5 → 0.41~0.56 포함)를 직접 대조한다.
+  for (const [a,mu] of [[6.5,.66],[7,.71],[3,.31],[5,.51],[4,.41],[5.5,.56]])
     check(`6.1 마찰계수 a=${a}`,()=>Number(M.fmt(a/9.8)),mu);
 });
 block('6.1 상한', () => {
@@ -117,12 +118,14 @@ const operations = {
   E:[[.8,.1,.96,true,6.5,.52,0],[1.6,.1,1.92,true,2.5,.4,1],[3.5,.1,4.2,true,1,.35,1]]
 };
 // 6.5: 화면 표시 자체를 검증한다. 내부 값은 fmt 후 비교, 판정에 반올림하지 않는다.
+// 마지막 값 waitAlt = 시험 개월 수 ÷ 12 × 대안 이동 위험(기본 1.50). 시험 기간의 기다림 비용을
+// 근거 없는 가정으로 드러내는 비교 행(검토 반영): B·D 10개월 → 1.25, C 3개월 → 0.375 → 0.38.
 const display = {
-  A:['0.0','0.00',0,'100.0','100.0','0.00','0.00',0,'0.0','0.00','1.50'],
-  B:['65.0','0.52',0,'100.0','40.0','0.00','6.24',10,'65.0','0.59','0.92'],
-  C:['90.0','0.72',1,'51.3','100.0','10.80','10.80',3,'90.0','0.81','0.69'],
-  D:['65.0','0.52',0,'100.0','100.0','0.00','15.60',10,'65.0','0.59','0.92'],
-  E:['100.0','1.27',2,'36.3','40.0','0.00','15.24',0,'97.5','0.90','0.60']
+  A:['0.0','0.00',0,'100.0','100.0','0.00','0.00',0,'0.0','0.00','1.50','0.00'],
+  B:['65.0','0.52',0,'100.0','40.0','0.00','6.24',10,'65.0','0.59','0.92','1.25'],
+  C:['90.0','0.72',1,'51.3','100.0','10.80','10.80',3,'90.0','0.81','0.69','0.38'],
+  D:['65.0','0.52',0,'100.0','100.0','0.00','15.60',10,'65.0','0.59','0.92','1.25'],
+  E:['100.0','1.27',2,'36.3','40.0','0.00','15.24',0,'97.5','0.90','0.60','0.00']
 };
 const plans = {};
 check('5.3 defaults 수치 입력',()=>M.defaults(),base());
@@ -140,13 +143,13 @@ for (const id of Object.keys(inputs)) block(`6.2~6.5 ${id}`,()=>{
     for (const [j,key] of ['r','p','cost','provide','Nyear','lambda','y'].entries())
       check(`6.4 ${id}/${c} ${key}`,()=>row[key],operations[id][i][j],['r','p','cost','Nyear','lambda'].includes(key)?6:null);
   }
-  const keys=['share','expected','actual','tailPct','comp','publicCost','operatorCost','delay','benefit','altReduced','altRemaining'];
+  const keys=['share','expected','actual','tailPct','comp','publicCost','operatorCost','delay','benefit','altReduced','altRemaining','waitAlt'];
   keys.forEach((key,i)=>check(`6.5 ${id} ${key}`,()=>{
     const n=result[key];
     return ['actual','delay'].includes(key)?n:M.fmt(['share','comp'].includes(key)?100*n:n,['share','tailPct','comp','benefit'].includes(key)?1:2);
   },display[id][i]));
   const zero=M.evaluateAssumptions(s,copy({alt:0}));
-  for (const key of ['altReduced','altRemaining']) check(`6.5 ${id} alt=0 ${key}`,()=>M.fmt(zero[key]),'0.00');
+  for (const key of ['altReduced','altRemaining','waitAlt']) check(`6.5 ${id} alt=0 ${key}`,()=>M.fmt(zero[key]),'0.00');
   for (const key of ['share','expected','actual','benefit','publicCost','operatorCost']) check(`6.5 ${id} alt 변경 불변 ${key}`,()=>zero[key],result[key]);
   check(`6.5 ${id} 원본 불변`,()=>s,before);
 });
@@ -242,26 +245,43 @@ block('5.2 저속 증거 전수',()=>{
 
 block('8 질문 분기 예시',()=>{
   const examples={
-    A:[['sp-fog-ban','sp-evidence-independent','sp-governance-R1-L1'],['안개 낀 밤은 운행 금지','추가 시험을 하지 않았습니다.','증거가 없는 조건','시험을 시작할 기준']],
-    B:[['sp-boundary','sp-spread-op','sp-governance-R2-L2'],['안개 낀 밤','60 km/h','32.89 km/h','맑음 4회, 비 3회, 안개 3회','상한 기준을 충족한 조건은 0개']],
-    C:[['sp-fog-denied','sp-spread-op','sp-governance-R3-L3'],['30 km/h','선택한 인증 기준을 충족하지 못해','맑음 1회, 비 1회, 안개 1회','상한 기준을 충족한 조건은 1개']],
-    D:[['sp-fog-ban','sp-concentrate-independent','sp-governance-R1-L1'],['추가 시험 10회 중 10회를 맑은 밤','기다림의 비용']],
-    E:[['sp-fog-permit','sp-outlier','sp-governance-R2-L2'],['300 km, 위험 상황 0건','상한 100.00','실현 사고는 2건','예상 1.27건','36.3%','쉬운 구간에 치우쳤을 가능성']],
-    제외:[['sp-fog-ban','sp-excluded-independent','sp-governance-R1-L1'],['느린 시험의 위험 상황 1건','무인 허가','빠진 기록까지 넣으면 판단이 달라지나요?']]
+    // 검토 반영: 운영사 질문은 다른 카드에 덧붙이지 않고 운영사 자료가 허가 근거가 된 경우 자기 카드(sp-op)로 묻는다.
+    // 카드 내용이 운영사 선택에 따라 달라지지 않으므로 -op/-independent 접미사를 없앴다.
+    A:[['sp-fog-ban','sp-evidence','sp-governance-R1-L1'],['안개 낀 밤은 운행 금지','추가 시험을 하지 않았습니다.','증거가 없는 조건','시험을 시작할 기준']],
+    B:[['sp-boundary','sp-spread','sp-governance-R2-L2'],['안개 낀 밤','60 km/h','32.89 km/h','맑음 4회, 비 3회, 안개 3회','상한 기준을 충족한 조건은 0개']],
+    C:[['sp-fog-denied','sp-op','sp-governance-R3-L3'],['30 km/h','선택한 인증 기준을 충족하지 못해','맑은 밤, 비 오는 밤의 허가 근거','허용 속도 조건 때문에 운영사 자료 중 실제로 증거에 들어간 부분은 어디까지였나요?','그 자료가 쉬운 구간에 치우쳤을 가능성은 어떻게 따졌나요?']],
+    D:[['sp-fog-ban','sp-concentrate','sp-governance-R1-L1'],['추가 시험 10회 중 10회를 맑은 밤','기다림의 비용']],
+    E:[['sp-fog-permit','sp-outlier','sp-governance-R2-L2'],['300 km, 위험 상황 0건','상한 100.00','실현 사고는 2건','예상 1.27건','36.3%']],
+    제외:[['sp-fog-ban','sp-excluded','sp-governance-R1-L1'],['느린 시험의 위험 상황 1건','무인 허가','빠진 기록까지 넣으면 판단이 달라지나요?']]
   };
+  // 답변 15분: 확정 뒤 7장, 카드마다 주 질문 하나와 짧은 보조 질문 하나까지(물음·요청 문장 2개 이하, 200자 이하).
+  const asks = q => (q.match(/[?？]|주세요\./g) || []).length;
   for(const [id,[keys,fragments]] of Object.entries(examples)) {
     const state=locked(id==='제외'?excluded:plans[id]); const before=plain(state);
     const qs=game.questions(state);
-    check(`8 ${id} 키 순서`,()=>qs.map(q=>q.k),['sp-c1','sp-c2','sp-hum',...keys,'sp-counter','sp-div']);
-    check(`8 ${id} 고유 키`,()=>new Set(qs.map(q=>q.k)).size,8);
+    check(`8 ${id} 키 순서`,()=>qs.map(q=>q.k),['sp-c1','sp-c2',...keys,'sp-counter','sp-div']);
+    check(`8 ${id} 고유 키`,()=>new Set(qs.map(q=>q.k)).size,7);
+    for(const q of qs) {
+      check(`8 ${id} ${q.k} 묻는 문장 2개 이하`,()=>asks(q.q)<=2,true);
+      check(`8 ${id} ${q.k} 200자 이하`,()=>q.q.length<=200,true);
+    }
+    check(`8 ${id} 운영사 질문을 덧붙이지 않음`,()=>qs.filter(q=>q.k!=='sp-op').some(q=>q.q.includes('운영사 자료 중 실제로')),false);
     check(`8 ${id} src 없음`,()=>qs.some(q=>Object.hasOwn(q,'src')),false);
     for(const fragment of fragments) check(`8 ${id} 문구 ${fragment}`,()=>qs.some(q=>q.q.includes(fragment)),true);
     check(`8 ${id} 순수 호출`,()=>state,before);
     check(`8 ${id} 재호출 동일`,()=>game.questions(state),plain(qs));
-    const second=game.questions(locked(id==='제외'?excluded:plans[id],2));
-    check(`8 ${id} 재결정 키 유지`,()=>second.map(q=>q.k),qs.map(q=>q.k));
-    check(`8 ${id} 재결정 선행 문장`,()=>second[4].q.startsWith('앞선 결정의 1년 결과를 본 뒤 계획을 바꾸었습니다. 무엇을 보고 바꾸었나요? '),true);
-    if(id==='A') check('8 A 지연 비용 단정 없음',()=>/0개월|기다림의 비용|더 늦어졌/.test(qs[4].q),false);
+    // 재결정 문장은 다시 심사 직전의 계획(prev)과 비교해 바꾼 경우와 유지한 경우를 구분한다(검토 반영).
+    const plan=id==='제외'?excluded:plans[id], other=copy({...plain(plan),liab:plan.liab==='L3'?'L1':'L3'});
+    const neutral=game.questions(locked(plan,2)), kept=game.questions(locked(plan,2,plan)), changed=game.questions(locked(plan,2,other));
+    for(const [label,second,prefix] of [['기록 없음',neutral,'앞선 결정의 1년 결과를 본 뒤 다시 결정했습니다. 무엇을 보고 바꾸거나 그대로 두었나요? '],
+      ['유지',kept,'앞선 결정의 1년 결과를 본 뒤에도 같은 계획으로 다시 결정했습니다. 무엇을 보고 그대로 두었나요? '],
+      ['변경',changed,'앞선 결정의 1년 결과를 본 뒤 계획을 바꾸었습니다. 무엇을 보고 바꾸었나요? ']]) {
+      check(`8 ${id} 재결정(${label}) 키 유지`,()=>second.map(q=>q.k),qs.map(q=>q.k));
+      check(`8 ${id} 재결정(${label}) 선행 문장`,()=>second[3].q.startsWith(prefix),true);
+      check(`8 ${id} 재결정(${label}) 보조 질문 대신`,()=>asks(second[3].q)<=2,true);
+    }
+    check(`8 ${id} 첫 결정에는 재결정 문장 없음`,()=>qs.some(q=>q.q.includes('앞선 결정')),false);
+    if(id==='A') check('8 A 지연 비용 단정 없음',()=>/0개월|기다림의 비용|더 늦어졌/.test(qs[3].q),false);
   }
   const state=copy({game:{}}), before=plain(state), qs=game.questions(state);
   check('8 미확정 질문',()=>qs.map(q=>q.k),['sp-c1','sp-c2','sp-hum','sp-prep','sp-counter','sp-div']);
@@ -269,24 +289,26 @@ block('8 질문 분기 예시',()=>{
   check('8 미확정 원본 보존',()=>state,before);
   const fixedText = [
     '허가 조건을 설명해 주세요. 판단 기준 세 가지와 우선순위를 먼저 말하고, 그 선택에서 얻는 것과 잃는 것을 한 문장에 담아 주세요.',
-    '가정판의 사고 전환 비율, 결함 입증 비율, 대안 이동 위험 가운데 결론을 가장 크게 좌우한 것은 무엇인가요? 그 값을 바꾸면 판단이 어떻게 달라지며, 대안 이동 위험을 0으로 두어도 결정을 유지하나요?',
-    '자율주행 셔틀은 사람 운전자보다 얼마나 더 안전해야 허가받아야 할까요? 같은 사고라도 기계가 낸 사고를 더 무겁게 느끼는 이유와, 그 느낌을 인증 기준에 반영할지 설명해 주세요.',
+    '가정판의 사고 전환 비율, 결함 입증 비율, 대안 이동 위험 가운데 결론을 가장 크게 좌우한 것은 무엇인가요? 대안 이동 위험을 0으로 두어도 결정을 유지하나요?',
+    '자율주행 셔틀은 사람 운전자보다 얼마나 더 안전해야 허가받아야 할까요? 같은 사고라도 기계가 낸 사고를 더 무겁게 느낀다면, 그 느낌을 인증 기준에 반영할지도 말해 주세요.',
     '아직 허가를 확정하지 않았습니다. 어떤 증거를 더 확인하고 어떤 조건에서 결정을 내릴지 설명해 주세요.',
-    '한 위원은 “허가하지 않는 것이 가장 안전하다”고 말하고, 다른 위원은 “야간 노동자의 귀갓길이 지금 위험하다”고 말합니다. 두 주장에 각각 어떤 근거가 더 필요할까요? 두 의견을 듣고 답을 고칠지 유지할지, 그 이유와 보완 조건을 말해 주세요.',
-    '시험 주행 말고 안전 증거를 얻는 방법 두 가지를 제안해 주세요. 각 방법이 밝힐 수 있는 위험과 놓칠 수 있는 위험은 무엇이며, 누구의 검증을 받게 하겠습니까?'
+    '한 위원은 “허가하지 않는 것이 가장 안전하다”고 말하고, 다른 위원은 “야간 노동자의 귀갓길이 지금 위험하다”고 말합니다. 두 의견을 듣고 답을 고칠지 유지할지 정하고, 그 이유를 말해 주세요. 보완할 조건이 있다면 하나만 덧붙여 주세요.',
+    '시험 주행 말고 안전 증거를 얻는 방법 두 가지를 제안해 주세요. 각 방법이 놓칠 수 있는 위험은 무엇인가요?'
   ];
   fixedText.forEach((q,i)=>check(`8 일반 질문 문안 ${i+1}`,()=>qs[i].q,q));
+  for(const q of qs) check(`8 미확정 ${q.k} 묻는 문장 2개 이하`,()=>asks(q.q)<=2,true);
   const priority=copy({...plain(excluded),v:{clear:45,rain:40,fog:30},rule:'R2',liab:'L2',useOp:true});
   const priorityState=locked(priority), priorityResult=M.evaluate(priority);
   check('8 결과변동/빠진 기록 동시 성립 lowX',()=>priorityResult.rows[0].lowX,1);
   check('8 결과변동/빠진 기록 동시 성립 예상',()=>priorityResult.expected,1.27,2);
   check('8 결과변동/빠진 기록 동시 성립 실현',()=>priorityResult.actual,2);
-  check('8 결과변동 우선',()=>game.questions(priorityState)[4].k,'sp-outlier');
+  check('8 결과변동 우선',()=>game.questions(priorityState)[3].k,'sp-outlier');
   check('8 우선순위와 관계없이 recap 제외 사건 유지',()=>game.recap(priorityState).some(r=>r.t==='조건별 증거'&&r.d.includes('제외 시험의 위험 상황 1건')),true);
   for(const rule of ['R1','R2','R3']) for(const liab of ['L1','L2','L3']) {
-    const s=make({rule,liab,useOp:true}), q=game.questions(locked(s))[5];
+    const s=make({rule,liab,useOp:true}), q=game.questions(locked(s))[4];
     const withdrawal=rule==='R2' && liab==='L1';
     check(`8 ${rule}/${liab} 책임 분기`,()=>q.k,`sp-governance-${rule}-${liab}${withdrawal?'-withdraw':''}`);
+    if(rule==='R1') check(`8 R1/${liab} 사람 운전자 비교(옛 sp-hum 주제)`,()=>q.q.includes('사람 운전자'),true);
     check(`8 ${rule}/${liab} 문구`,()=>q.q.includes(liab==='L1'?(withdrawal?'안개 낀 밤은 허가됐지만':'피해자의 입증 부담을 줄였습니다'):liab==='L2'?'알고리즘과 운행 기록에 접근하기 어렵다면':'공공이 보상의 절반을 부담합니다'),true);
   }
 });
