@@ -85,7 +85,8 @@
       const cut = allocate(load, u, p.shed);
       const ext = p.curt === "C1" ? curt * .7 : Math.min(curt, pv * .7), coop = curt - ext;
       soc = clamp(soc + ch * .95 * 3 - dis * 3 / .95, 1.6, 16);
-      const dcharge = Math.min(g, Math.max(0, ch - Math.max(0, r - L)));
+      // 충전하지 않았다면 줄었을 디젤 발전량(한계 기준). 최소 출력에 묶였거나 출력제한 중이면 0.
+      const dcharge = n ? Math.max(0, g - clamp(x - ch, n, 3 * n)) : 0;
       const heat = t >= 33 ? cut[0] * p.weights[0] + cut[1] * p.weights[1] + cut[2] : 0;
       const starts = Math.max(0, n - (b ? p.n[b - 1] : 0));
       rows.push({ b, w, t, d, cell, pv, r, L, n, before, capCh, capDis, ch, dis, x0, x, g, e, u, curt, ext, coop, soc, cut, heat, dcharge, starts, type, clip: Math.abs(v) > capCh + capDis + EPS });
@@ -108,10 +109,11 @@
   function individualKeys(P, crit, rs, correctionCount) {
     const s1 = rs[0], hasCut = Math.max(...rs.map(r => r.u)) > EPS;
     const firstTrue = (items, fallback) => items.find(([, ok]) => ok)?.[0] || fallback;
+    // 가중치는 폭염 구간 차단이 실제로 있을 때만 결과를 바꾼다.
+    const weightsMatter = (P.weights[0] !== 3 || P.weights[1] !== 1.5) && rs.some(r => r.heat > EPS);
     return [
       hasCut ? "ig-b-outage" : "ig-b-reserve",
-      firstTrue([["ig-b-correction", correctionCount > 0], ["ig-b-tomorrow", s1.delta <= -2 + EPS], ["ig-b-dcharge", rs.some(r => r.dcharge > EPS)], ["ig-b-curtail", s1.curt >= 4 - EPS]], "ig-b-uncertainty"),
-      firstTrue([["ig-b-weights", P.weights[0] !== 3 || P.weights[1] !== 1.5], ["ig-b-cost", crit.includes("cost")], ["ig-b-diesel-long", s1.h >= 15], ["ig-b-diesel-short", s1.h <= 6], ["ig-b-dr", P.dr.filter(Boolean).length > 0]], "ig-b-feeders")
+      firstTrue([["ig-b-weights", weightsMatter], ["ig-b-cost", crit.includes("cost")], ["ig-b-correction", correctionCount > 0], ["ig-b-tomorrow", s1.delta <= -2 + EPS], ["ig-b-dcharge", rs.some(r => r.dcharge > EPS)], ["ig-b-curtail", s1.curt >= 4 - EPS], ["ig-b-diesel-long", s1.h >= 15], ["ig-b-diesel-short", s1.h <= 6], ["ig-b-dr", P.dr.filter(Boolean).length > 0]], "ig-b-uncertainty")
     ];
   }
   function defaults() {
@@ -251,7 +253,7 @@
       <ul class="rules">
         <li>하루를 3시간씩 8구간으로 나눕니다. 배터리는 −4~+4 MW, 디젤은 0~3기, 항구 수요반응은 하루 최대 2구간을 정합니다. 배터리의 양수는 충전, 음수는 방전입니다.</li>
         <li>세 날씨에 같은 계획을 적용합니다. 디젤 대수, 수요반응 시간, 배터리 충전·방전 요청은 모두 전날 정한 대로 갑니다. 날씨를 본 뒤 충전을 방전으로 바꾸거나 방전을 늘릴 수 없고, 잔량 한도와 수급 때문에 요청보다 줄이는 것만 가능합니다. 수급 때문에 줄일 때는 내용을 확인한 뒤 승인하거나 계획을 고칩니다. 잔량 한도 제한은 즉시 표시합니다.</li>
-        <li>선택한 원칙에 따라 필수시설도 공급이 끊길 수 있습니다. R1은 부족이 작아도 모든 급전선을 같은 비율로 줄이고, R2·R3은 부족이 클 때 마지막에 필수시설을 줄입니다. 차단과 출력제한의 분담 원칙을 골라 부담을 누구에게 어떻게 나눌지 설명합니다.</li>
+        <li>선택한 원칙에 따라 필수시설도 공급이 끊길 수 있습니다. R1은 부족이 작아도 모든 급전선을 같은 비율로 줄이고, R2·R3은 부족이 클 때 마지막에 필수시설을 줄입니다. 이 게임은 부족분을 급전선마다 연속된 양으로 나누어 줄이며, 급전선을 통째로 차례차례 끊는 실제 순환 정전과는 다릅니다. 차단과 출력제한의 분담 원칙을 골라 부담을 누구에게 어떻게 나눌지 설명합니다.</li>
         <li>설비 고장과 송전 손실은 없다고 가정합니다. 자료에 없는 대안을 제안할 수 있습니다. 그 대안이 결과를 바꾼다고 말할 때는 계산에 넣지 않은 가정임을 밝히세요.</li>
         <li>계획은 여러 번 시험할 수 있습니다. 확정한 계획으로 면접 질문을 만듭니다. 다시 계획하기를 누르면 수정할 수 있습니다.</li>
       </ul>
@@ -273,7 +275,7 @@
   ];
   const assetsCopy = [
     ["태양광 20 MW", "외부 사업자 14 MW, 주민 협동조합 6 MW입니다. 같은 일사·온도 조건을 적용하므로 발전량도 70:30입니다. 남는 전력은 태양광부터 줄입니다. 20 MW는 기준 조건에서의 정격입니다."],
-    ["풍력 2 MW 1기", "바람이 약한 날의 출력을 자료표로 제공합니다. 이번 모형에서는 풍력을 줄이지 않습니다."],
+    ["풍력 2 MW 1기", "구간별 출력은 이 게임이 정한 가정값으로 자료표에 있습니다. 정격의 35~50%여서 바람이 약한 날로 보기에는 넉넉한 값입니다. 이번 모형에서는 풍력을 줄이지 않습니다."],
     ["배터리 16 MWh · 최대 4 MW", "시작 잔량은 8 MWh, 하한은 1.6 MWh입니다. 충전·방전 때 각각 5%가 손실됩니다. 4 MW로 3시간 요청해도 잔량과 수급 조건 때문에 실제 충전·방전은 더 작을 수 있습니다. 이 게임에서는 배터리도 전날 정한 구간별 요청대로만 움직입니다. 부족이 생겨도 남은 잔량을 자동으로 꺼내 쓰지 않습니다."],
     ["디젤 3기", "기당 출력은 가동 중 1~3 MW입니다. 1기를 켜 두면 수요가 적어도 최소 1 MW를 냅니다(최소 출력). 가동 대수는 전날 정하고, 그 안에서 실제 출력은 날씨별 부족량에 맞춥니다. 발전기는 서부 마을 옆에 있습니다."],
     ["항구 수요반응", "선택한 구간에 항구 냉동창고가 1.5 MW를 줄입니다. 하루 최대 2구간, 최대 9 MWh입니다. 계약 보상이 운영비 지수에 들어갑니다. 이 감축은 합의한 조절이며 미공급에 넣지 않습니다. 이후 반동 수요와 상품 손상은 없다고 가정합니다."],
@@ -324,11 +326,11 @@
         ["폭염 지수", "기온 문턱 33 °C, F1 선택값 2/3/4, F2 1.2/1.5/2.0, F3=1, F4=0. 임상 문턱·역학 추정값 아님"],
         ["운영비 지수", "디젤 1점/MWh + 새 기동 2점/기 + DR 3점/구간 + 배터리 계통 측 처리량 0.05점/MWh. 돈이나 종합 평가 점수가 아님"],
         ["수산물 손실 지수", "F4 미공급 1 MWh당 1. 수요반응 감축은 제외"],
-        ["시작 가동 대수", "전날 마지막 구간의 가동 대수를 0기로 가정해 b0의 n기 모두 새 기동으로 셈"],
+        ["시작 가동 대수", "전날 마지막 구간의 가동 대수를 0기로 가정해 b0의 n기 모두 새 기동으로 셈. 전날 밤 수요를 재생 발전과 배터리만으로 채웠다는 뜻이 되어 실제와 맞지 않을 수 있는 단순화이며, 운영비 지수에만 영향"],
         ["수치 허용오차", "EPS=10⁻⁹. 값 비교용, 계산 결과를 구간마다 반올림하지 않음"]
       ], "모형의 계수와 가정")}
-      <p>PV=20fw×(1−0.004×max(0,Tcell−25)), 재생 발전 R=PV+풍력. 실제 충전 ch·방전 dis로 SOC를 SOC+ch×0.95×3−dis×3/0.95로 바꿉니다.</p>
-      <h4>실제 관계·값</h4><p>1 h=3600 s, 1 kWh=3.6×10⁶ J(단위 환산), 물 1톤의 질량=1000 kg, 양수 예시의 지표면 중력가속도 근삿값 g=9.8 m/s²(실제 위치에 따라 다름). 이 항목은 게임이 만든 물성이 아니다. 높이 100 m와 물 1톤은 발산 문항에서 정한 사례 조건이다.</p>`;
+      <p>PV=20fw×(1−0.004×max(0,Tcell−25)), 재생 발전 R=PV+풍력. 실제 충전 ch·방전 dis로 배터리 잔량(저장 에너지) E를 E+ch×0.95×3−dis×3/0.95로 바꿉니다. 디젤 배정 충전량은 그 구간에 충전하지 않았다면 줄었을 디젤 발전량, 곧 g−clamp(L−R−dis, n, 3n)입니다.</p>
+      <h4>실제 관계·값</h4><p>1 h=3600 s, 1 kWh=3.6×10⁶ J(단위 환산), 물 1톤의 질량=1000 kg, 양수 예시의 지표면 중력가속도 근삿값 g=9.8 m/s²(실제 위치에 따라 다름). 이 항목은 게임이 만든 물성이 아니다. 높이 100 m와 저장량 16 MWh는 발산 문항에서 정한 사례 조건이다.</p>`;
   }
   function dataPanes() {
     return `<div id="ig-pane-weather" class="ig-pane" role="tabpanel" aria-labelledby="ig-tab-weather">
@@ -336,7 +338,7 @@
       ${table(["시간", "수요 (MW)", "기온 (°C)"], times.map((t, b) => [t, D[b], T[b]]), "수요·기온")}
       ${table(["시간", "일사 비율", "풍력 (MW)"], times.map((t, b) => [t, F[b], WIND[b]]), "일사·풍력")}
       <p><b>가상 날씨, 실제 확률 아님</b></p>${cards(weatherCopy)}
-      <p>정체 고기압 아래에서 바람이 약한 날을 설정했습니다. 2 MW 풍력기의 구간 평균은 0.7~1.0 MW로 약하게 변합니다. 세 시나리오의 풍력은 같게 두었습니다. 이 값은 풍속으로 환산하지 않습니다.</p>
+      <p>풍력은 이 게임이 정한 가정 출력입니다. 2 MW 풍력기의 구간 평균은 0.7~1.0 MW로, 정격의 35~50%입니다. 실제로 폭염을 부르는 정체 고기압 아래에서는 바람이 훨씬 잔잔해 출력이 이보다 크게 낮을 수 있습니다. 세 시나리오의 풍력은 같게 두었습니다. 이 값은 풍속으로 환산하지 않습니다.</p>
     </div>
     <div id="ig-pane-assets" class="ig-pane" role="tabpanel" aria-labelledby="ig-tab-assets" hidden>${cards(assetsCopy)}</div>
     <div id="ig-pane-people" class="ig-pane" role="tabpanel" aria-labelledby="ig-tab-people" hidden>${cards(peopleCopy)}${cards(Object.entries(shedNames).map(([k, n]) => [`${k} · ${n}`, shedCopy[k]]))}${cards(Object.entries(curtNames).map(([k, n]) => [`${k} · ${n}`, curtCopy[k]]))}</div>
@@ -358,39 +360,44 @@
     const ids = worstIds(first), actual = ids.map(s => scenarios[s]).join(" · ");
     const tie = ids[0] === "none" ? "세 날씨 모두 미공급이 없었습니다. " : ids.length > 1 ? `${actual}의 미공급량이 같았습니다. ` : "";
     const within = meetsBaseline(run.baseline, rs), hit = predictionMatches(g.firstPredict, first);
+    const replanned = !same(g.firstRun.plan, P);
+    const predicted = scenarios[g.firstPredict];
+    const gap = g.firstPredict === "none" ? "정전 위험을 실제보다 작게 본 셈입니다." : ids[0] === "none" ? "정전 위험을 실제보다 크게 본 셈입니다." : "정전 위험이 어느 날씨에 몰릴지를 다르게 본 셈입니다.";
+    const firstResult = ids[0] === "none" ? "세 날씨 모두 정전이 없었습니다." : `미공급이 가장 컸던 날씨는 ‘${actual}’입니다.`;
+    const planNote = replanned ? "확정한 계획은 첫 시험 뒤 고친 계획입니다." : "확정한 계획은 첫 시험 계획과 같습니다.";
     const q = [
-      { k: "ig-c1", tag: "공통 1 · 계획", q: `운영 계획을 설명해 주세요. 배터리를 언제 채우고 언제 쓰게 했는지, 첫째 기준 ‘${crit1}’${j(crit1, "와/과")} 둘째 기준 ‘${crit2}’${j(crit2, "이/가")} 계획의 어디에 드러나는지 함께 말해 주세요.` },
-      within ? { k: "ig-c2-in", tag: "공통 2 · 기준선", q: `${bn}에서 미공급을 ${display2(run.baseline.limit)} MWh 이하로 두겠다고 선언했고, 결과는 ${display2(bu)} MWh로 기준선 이내였습니다. 이 기준을 충분하다고 정한 근거는 무엇이며, 다른 날씨에서 남는 부담도 받아들이겠습니까?` } : { k: "ig-c2-over", tag: "공통 2 · 기준선", q: `${bn}에서 미공급을 ${display2(run.baseline.limit)} MWh 이하로 두겠다고 선언했지만, 결과는 ${display2(bu)} MWh였습니다. 기준을 바꾸겠습니까, 계획을 바꾸겠습니까? 선택한 이유와 먼저 바꿀 구간을 말해 주세요.` },
-      hit ? { k: "ig-c3-hit", tag: "공통 3 · 예측", q: `첫 예측 ‘${scenarios[g.firstPredict]}’은 처음 완료한 시험의 결과와 맞았습니다. ${tie}모두가 같은 예측을 할 때 놓치기 쉬운 위험은 무엇일까요? 예측이 맞았다는 것만으로 결정도 적절했다고 말할 수 있을까요?` } : { k: "ig-c3-miss", tag: "공통 3 · 예측", q: `첫 예측은 ‘${scenarios[g.firstPredict]}’이었고, 처음 완료한 시험의 결과는 ‘${actual}’이었습니다. 어느 변수나 제약을 과소평가했나요? 이후 고친 계획과 첫 예측의 차이를 설명해 주세요.` }
+      { k: "ig-c1", tag: "공통 1 · 계획", q: `첫째 기준 ‘${crit1}’${j(crit1, "와/과")} 둘째 기준 ‘${crit2}’${j(crit2, "이/가")} 운영 계획의 어디에 드러나는지, 배터리를 채우고 쓰는 시간을 예로 들어 설명해 주세요. 마지막으로 이 계획으로 얻는 것과 잃는 것을 한 문장으로 말해 주세요.` },
+      within ? { k: "ig-c2-in", tag: "공통 2 · 기준선", q: `${bn}에서 미공급을 ${display2(run.baseline.limit)} MWh 이하로 두겠다고 먼저 선언했고, 결과는 ${display2(bu)} MWh로 기준선 이내였습니다. 다른 날씨에 남는 부담까지 생각할 때, 이 기준을 충분하다고 본 근거는 무엇인가요?` } : { k: "ig-c2-over", tag: "공통 2 · 기준선", q: `${bn}에서 미공급을 ${display2(run.baseline.limit)} MWh 이하로 두겠다고 먼저 선언했지만, 결과는 ${display2(bu)} MWh였습니다. 기준과 계획 가운데 무엇을 바꾸겠습니까? 그 이유를 말해 주세요.` },
+      hit ? { k: "ig-c3-hit", tag: "공통 3 · 예측", q: `첫 예측 ‘${predicted}’${j(predicted, "은/는")} 처음 완료한 시험의 결과와 맞았습니다. ${tie}예측이 맞았다는 것만으로 결정도 적절했다고 말할 수 있을까요?` } : { k: "ig-c3-miss", tag: "공통 3 · 예측", q: `첫 예측으로 ‘${predicted}’${j(predicted, "을/를")} 골랐습니다. 처음 완료한 시험에서 ${firstResult} ${gap} ${planNote} 예측을 빗나가게 한 변수나 제약은 무엇이었다고 보나요?` }
     ];
     const keys = individualKeys(P, run.crit, rs, run.corrections.length);
     const c = run.corrections[0];
     const di = rs.findIndex(r => r.dcharge > EPS);
-    const defaultHeat = simulate({ ...P, weights: [3, 1.5] }, scenarioIds[widx], v => approvalMatches(run.corrections, v)).heat;
+    const hi = rs.reduce((best, r, i) => r.heat > rs[best].heat + EPS ? i : best, 0);
+    const defaultHeat = simulate({ ...P, weights: [3, 1.5] }, scenarioIds[hi], v => approvalMatches(run.corrections, v)).heat;
     const dieselSentence = P.n[bi] === 0 ? `그 급전선의 차단이 가장 컸던 ${times[bi]}에는 디젤을 한 대도 켜 두지 않았습니다.` : `그 급전선의 차단이 가장 컸던 ${times[bi]}에는 디젤 ${P.n[bi]}기가 가동 중이었습니다.`;
     const candidates = {
       "ig-b-outage": ["개별 · 정전", () => `${scenarios[scenarioIds[widx]]}에서 ${display2(wr.u)} MWh가 부족했습니다. ‘${Rname}’에 따라 ${feeders[fi]}의 하루 차단량은 ${display2(wr.cut[fi])} MWh였습니다. ${dieselSentence} 그 구간이 시작될 때 배터리 잔량은 ${display2(wr.rows[bi].before)} MWh였습니다. 해당 급전선 대표 앞에서 이 결정을 어떻게 설명하겠습니까?`],
       "ig-b-reserve": ["개별 · 여유", () => `세 날씨 모두 미공급이 없었습니다. 예보대로인 S1에서는 디젤 ${display2(s1.diesel)} MWh, CO₂ ${display2(s1.co2)} t, 태양광 출력제한 ${display2(s1.curt)} MWh였습니다. 이 여유가 지나친지 적당한지 무엇으로 판단했나요?`],
-      "ig-b-correction": ["개별 · 보정", () => `확정 계획에서 수급 보정을 승인한 구간은 ${run.corrections.length}개입니다. 첫 기록인 ${scenarios[c.s]} · ${times[c.b]}에서 요청 ${c.type === "charge" ? "충전" : "방전"} ${signed(c.requested)} MW는 잔량 한도 뒤 ${display2(c.capBefore)} MW, 수급 보정 뒤 ${display2(c.proposed)} MW가 되었습니다. 계획이 물리 제약에 막힌 지점을 어떻게 읽었고, 직접 계획을 바꾸는 대신 보정을 승인한 이유는 무엇인가요?`],
-      "ig-b-diesel-long": ["개별 · 서부 마을", () => `디젤을 2기 이상 켜 둔 시간은 ${s1.h}시간이고, S1 발전량은 ${display2(s1.diesel)} MWh입니다. 발전기 옆 서부 마을의 공기와 공급 안정을 어떻게 저울질했나요? 이 시간만으로 실제 대기오염 피해를 알 수 없는 이유도 말해 주세요.`],
-      "ig-b-diesel-short": ["개별 · 서부 마을", () => `디젤을 2기 이상 켜 둔 시간은 ${s1.h}시간이고, 최악 날씨 미공급은 ${display2(maxU)} MWh입니다. 가동 대수를 이렇게 정한 이유는 무엇이며, 날씨 오차가 커질 때 누구에게 부담이 갈까요?`],
-      "ig-b-curtail": ["개별 · 출력제한", () => `S1의 출력제한은 ${display2(s1.curt)} MWh입니다. ‘${Cname}’에 따라 외부 사업자 ${display2(s1.ext)} MWh, 협동조합 ${display2(s1.coop)} MWh를 줄였습니다. 절대량과 발전량 대비 비율 중 무엇을 공정성의 기준으로 삼았나요? 출력을 덜 줄이는 방법과 그 대가는 무엇인가요?`],
-      "ig-b-tomorrow": ["개별 · 내일", () => `S1의 하루 끝 잔량은 ${display2(s1.soc)} MWh로 시작보다 ${display2(-s1.delta)} MWh 적습니다. 폭염이 다음 날까지 이어진다면 이 계획은 어떤 부담을 남기나요? 오늘의 선택을 바꾸려면 무엇을 더 알아야 할까요?`],
-      "ig-b-dcharge": ["개별 · 저장 효율", () => `${scenarios[scenarioIds[di]]}에서 재생 발전이 남지 않는 시간에 충전해 디젤 몫으로 계산된 충전량은 ${display2(rs[di].dcharge)} MWh입니다. 왕복 효율은 90.25%인데도 에너지를 저장해 쓸 이유가 있었나요? 그 시간의 직접 공급과 비교해 설명해 주세요.`],
-      "ig-b-weights": ["개별 · 가중치", () => `폭염 가중치를 F1 ${P.weights[0]}, F2 ${P.weights[1]}, F3 1로 정했습니다. ${hasCut ? scenarios[scenarioIds[widx]] : "비교 기준 S1"}의 지수는 현재 가중치에서 ${display2(wr.heat)}, 기본값에서 ${display2(defaultHeat)}입니다. 가중치를 바꾸면 원칙 간 비교가 뒤집히는지 확인했나요? 지수 밖에 남는 사람의 부담도 설명해 주세요.`],
-      "ig-b-dr": ["개별 · 수요 조절", () => `수요반응을 ${times.filter((_, b) => P.dr[b]).join(" · ")}에 배치해 총 ${display2(P.dr.filter(Boolean).length * 4.5)} MWh를 줄이기로 했습니다. 자발적 계약 감축과 비자발적 차단은 어떤 점에서 다르며, 계약 보상과 다음 구간 수요에 관한 가정이 달라지면 무엇을 고치겠습니까?`],
-      "ig-b-cost": ["개별 · 비용", () => `비용을 판단 기준에 넣었습니다. S1 운영비 지수는 ${display2(s1.cost)}이며 새로 켠 발전기는 누적 ${s1.starts}기입니다. 이 지수에 포함되지 않은 비용은 무엇이고, 그것을 넣으면 계획이 어떻게 달라질까요?`],
-      "ig-b-uncertainty": ["개별 · 불확실성", () => `확정 계획의 평균 미공급은 ${display2(mean.u)} MWh, 최악은 ${display2(maxU)} MWh입니다. 첫째 기준 ‘${crit1}’에 비추어 어느 쪽을 더 무겁게 보았나요? 가상 날씨의 확률을 믿기 어려워지면 판단을 어떻게 바꾸겠습니까?`],
-      "ig-b-feeders": ["개별 · 분담", () => hasCut ? `선택한 ‘${Rname}’에서 ${scenarios[scenarioIds[widx]]}의 F1·F2·F3·F4 차단량은 각각 ${wr.cut.map(display2).join(" · ")} MWh입니다. 지금 원칙을 유지할 조건과 바꿀 조건을 하나씩 말해 주세요.` : `세 날씨 모두 차단이 없어 ‘${Rname}’을 실제로 적용할 상황은 시험하지 못했습니다. 이 원칙을 유지할 조건과 바꿀 조건을 하나씩 말해 주세요.`]
+      "ig-b-correction": ["개별 · 보정", () => `확정 계획에서 수급 보정을 승인한 구간은 ${run.corrections.length}개입니다. 첫 기록인 ${scenarios[c.s]} · ${times[c.b]}에서 요청 ${c.type === "charge" ? "충전" : "방전"} ${signed(c.requested)} MW는 잔량 한도 뒤 ${display2(c.capBefore)} MW, 수급 보정 뒤 ${display2(c.proposed)} MW가 되었습니다. 직접 계획을 바꾸는 대신 보정을 승인한 이유는 무엇인가요?`],
+      "ig-b-diesel-long": ["개별 · 서부 마을", () => `디젤을 2기 이상 켜 둔 시간은 ${s1.h}시간이고, S1 발전량은 ${display2(s1.diesel)} MWh입니다. 이 시간만으로 실제 대기오염 피해를 알 수는 없습니다. 발전기 옆 서부 마을의 공기와 공급 안정을 어떻게 저울질했나요?`],
+      "ig-b-diesel-short": ["개별 · 서부 마을", () => `디젤을 2기 이상 켜 둔 시간은 ${s1.h}시간이고, 최악 날씨 미공급은 ${display2(maxU)} MWh입니다. 날씨 오차가 더 커지면 이 가동 대수의 부담은 누구에게 먼저 돌아갈까요?`],
+      "ig-b-curtail": ["개별 · 출력제한", () => `S1의 출력제한은 ${display2(s1.curt)} MWh입니다. ‘${Cname}’에 따라 외부 사업자 ${display2(s1.ext)} MWh, 협동조합 ${display2(s1.coop)} MWh를 줄였습니다. 절대량과 발전량 대비 비율 가운데 무엇을 공정성의 기준으로 삼았나요?`],
+      "ig-b-tomorrow": ["개별 · 내일", () => `S1의 하루 끝 잔량은 ${display2(s1.soc)} MWh로 시작보다 ${display2(-s1.delta)} MWh 적습니다. 폭염이 다음 날까지 이어진다면 이 계획은 어떤 부담을 남기나요?`],
+      "ig-b-dcharge": ["개별 · 저장 효율", () => `${scenarios[scenarioIds[di]]}에서 충전 때문에 더 돌린 디젤 발전량은 ${display2(rs[di].dcharge)} MWh입니다. 그 구간에 충전하지 않았다면 줄일 수 있었던 양입니다. 왕복 효율이 90.25%인데도 디젤 전력을 저장해 뒤 구간에 쓴 이유는 무엇인가요?`],
+      "ig-b-weights": ["개별 · 가중치", () => `폭염 가중치를 F1 ${P.weights[0]}, F2 ${P.weights[1]}, F3 1로 정했습니다. ${scenarios[scenarioIds[hi]]}의 폭염 노출 지수는 현재 가중치에서 ${display2(rs[hi].heat)}, 기본값에서 ${display2(defaultHeat)}입니다. ${Math.abs(rs[hi].heat - defaultHeat) <= EPS ? `‘${Rname}’에서는 폭염 구간에 F1·F2가 차단되지 않아 두 값이 같지만, 가중치 비교 표의 다른 원칙에서는 달라질 수 있습니다. ` : ""}기본값 대신 이 가중치를 고른 근거는 무엇인가요?`],
+      "ig-b-dr": ["개별 · 수요 조절", () => `수요반응을 ${times.filter((_, b) => P.dr[b]).join(" · ")}에 배치해 총 ${display2(P.dr.filter(Boolean).length * 4.5)} MWh를 줄이기로 했습니다. 자발적인 계약 감축과 비자발적인 차단은 어떤 점에서 다르다고 보나요?`],
+      "ig-b-cost": ["개별 · 비용", () => `비용을 판단 기준에 넣었습니다. S1 운영비 지수는 ${display2(s1.cost)}이며 새로 켠 발전기는 누적 ${s1.starts}기입니다. 이 지수에 들어 있지 않은 비용 가운데 계획을 바꿀 만큼 큰 것은 무엇인가요?`],
+      "ig-b-uncertainty": ["개별 · 불확실성", () => `확정 계획의 평균 미공급은 ${display2(mean.u)} MWh, 최악은 ${display2(maxU)} MWh입니다. 첫째 기준 ‘${crit1}’에 비추어 평균과 최악 가운데 어느 쪽을 더 무겁게 보았나요?`]
     };
     keys.forEach(k => q.push({ k, tag: candidates[k][0], q: candidates[k][1]() }));
     const objections = {
-      R1: "필수시설 운영자의 반문입니다. ‘부하 비례 차단은 요양원의 냉방도 줄입니다. 같은 비율로 나누는 것을 공정하다고 볼 근거와 한계는 무엇입니까?’ 답을 고치겠습니까, 유지하겠습니까. 이유를 말해 주세요.",
-      R2: "동부 신도시 주민의 반문입니다. ‘취약한 곳을 보호할 이유는 알겠습니다. 그런데 왜 우리는 늘 먼저 끊기는 쪽입니까?’ 답을 고치겠습니까, 유지하겠습니까. 이유를 말해 주세요.",
-      R3: "서부 마을 주민의 반문입니다. ‘냉동 수산물보다 사람의 냉방이 먼저여야 하지 않습니까? 우리 마을은 발전기 옆 공기의 부담도 집니다.’ 답을 고치겠습니까, 유지하겠습니까. 이유를 말해 주세요."
+      R1: "필수시설 운영자의 반문입니다. ‘부하 비례 차단은 요양원의 냉방도 줄입니다. 같은 비율로 나누는 것을 공정하다고 볼 근거는 무엇입니까?’ 답을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요.",
+      R2: "동부 신도시 주민의 반문입니다. ‘취약한 곳을 보호할 이유는 알겠습니다. 그런데 왜 우리는 늘 먼저 끊기는 쪽입니까?’ 답을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요.",
+      R3: "서부 마을 주민의 반문입니다. ‘냉동 수산물보다 사람의 냉방이 먼저여야 하지 않습니까? 우리 마을은 발전기 옆 공기의 부담도 집니다.’ 답을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요."
     };
     q.push({ k: `ig-r-${P.shed.toLowerCase()}`, tag: "반문 · 공정성", q: objections[P.shed] });
-    q.push({ k: "ig-storage-alt", tag: "발산 · 저장", q: "배터리 말고 섬에 둘 수 있는 에너지 저장 방법 두 가지를 제안해 보세요. 양수 발전을 검토한다면 물 1톤을 100 m 올릴 때 저장되는 위치 에너지를 mgh로 계산해 보세요(g≈9.8 m/s², 1 kWh=3.6×10⁶ J). 계산 참고값은 약 9.8×10⁵ J, 0.27 kWh입니다. 이 값과 실제로 되돌려 받는 전력량은 왜 다르며, 섬에서 새로 걱정할 것은 무엇인가요?" });
+    q.push({ k: "ig-storage-alt", tag: "발산 · 저장", q: "배터리 말고 섬에 둘 만한 에너지 저장 방법을 하나 제안하고, 그 규모가 섬에서 현실적인지 어림해 보세요. 예를 들어 양수 발전이라면 섬 배터리와 같은 16 MWh를 높이 100 m에 저장하는 데 물이 대략 몇 톤 필요할까요(g≈9.8 m/s², 1 kWh=3.6×10⁶ J, 손실은 무시)?" });
     return q;
   }
   const batteryText = v => `${v > 0 ? "충전" : v < 0 ? "방전" : "정지"} ${Math.abs(v)} MW`;
@@ -417,27 +424,39 @@
     ];
   }
 
+  const examplePlans = {
+    A: { bat: [0, 0, 0, 3, 2, 0, -2, -2], n: [3, 2, 1, 1, 2, 3, 3, 3], dr: [4, 5] },
+    B: { bat: [-1, -1, 0, 4, 4, -1, -2, -2], n: [2, 2, 1, 0, 0, 2, 3, 3], dr: [4, 5] },
+    C: { bat: [0, 0, 0, 2, 0, 0, -1, 0], n: [3, 2, 1, 1, 1, 3, 3, 3], dr: [4, 5] }
+  };
+  const exampleTable = k => {
+    const p = examplePlans[k];
+    return table(["시간", "배터리 요청", "디젤 (기)", "수요반응"], times.map((t, b) => [t, batteryText(p.bat[b]), p.n[b], p.dr.includes(b) ? "켬" : "끔"]), `계획 ${k} · 구간별 요청`);
+  };
   function reflectExtra(state) {
     if (!lockedContext(state)) return "<p>계획을 확정한 뒤 예시와 비교할 수 있습니다.</p>";
     return `<section id="ig-reflect" class="ig-reflect stack">
       <details id="ig-example-a" class="reveal ig-reveal">
         <summary>A · 안정 우선 <span class="tag-mine">가상의 답</span></summary>
         <p><b>기준과 무게.</b> 정전 최소를 첫째, 피해의 공정한 분배를 둘째에 둡니다. 미공급이 생길 때에는 각 급전선의 부하 차단 비율을 같게 한다는 절차적 평등을 택합니다. 그 기준에서 R1을 지지하지만 취약성이 같다는 뜻으로 받아들이지는 않습니다.</p>
-        <p><b>선택.</b> 계획 A처럼 낮에도 디젤을 켜고 09–15시에 충전해 18–24시에 방전합니다. R1과 C1을 선택합니다. 켜 둔 발전기는 수요가 적어도 최소 출력을 내므로 발전과 배출이 있습니다. S2 미공급 0 MWh를 기준선으로 둡니다.</p>
+        <p><b>선택.</b> 아래 계획 A처럼 낮에도 디젤을 켜고 09–15시에 충전해 18–24시에 방전합니다. R1과 C1을 선택합니다. 켜 둔 발전기는 수요가 적어도 최소 출력을 내므로 발전과 배출이 있습니다. S2 미공급 0 MWh를 기준선으로 둡니다.</p>
+        ${exampleTable("A")}
         <p><b>얻는 것과 잃는 것.</b> 세 날씨에서 미공급은 0 MWh입니다. S1 디젤은 87.41 MWh, CO₂는 65.55 t, 출력제한은 29.85 MWh이며 그중 협동조합 몫은 8.95 MWh입니다. 공급 안정을 얻는 대신 배출과 발전기 주변 부담, 태양광 수입 기회를 잃습니다.</p>
         <p><b>약점.</b> 하루 끝 잔량은 세 날씨 모두 3.37 MWh로 시작보다 4.63 MWh 적습니다. 내일의 여유를 줄였습니다. 이번 시험에서 R1의 차단 피해가 실제로 나타나지 않았으므로 균등 원칙의 타당성까지 검증했다고 말할 수 없습니다. 고장이나 더 큰 예측 오차에도 무정전을 보장하지 않습니다.</p>
       </details>
       <details id="ig-example-b" class="reveal ig-reveal">
         <summary>B · 배출·지역 환경 우선 <span class="tag-mine">가상의 답</span></summary>
         <p><b>기준과 무게.</b> 배출·대기오염 최소를 첫째, 피해의 공정한 분배를 둘째에 둡니다. 부담을 똑같이 나누기보다 필수시설과 고령층의 필요를 먼저 봅니다. 그 기준에서 R2를 택하지만 F3·F4의 생활과 생업도 보호할 이유가 있음을 인정합니다.</p>
-        <p><b>선택.</b> 계획 B처럼 새벽에 방전해 낮의 저장 공간을 만들고 09–15시 디젤을 끕니다. 12–18시 두 구간에 수요반응을 쓰며 R2와 C2를 택합니다. 잔량 한도 제한을 확인하고 수급 보정은 승인합니다. S2 미공급 10 MWh를 기준선으로 둡니다.</p>
+        <p><b>선택.</b> 아래 계획 B처럼 새벽에 방전해 낮의 저장 공간을 만들고 09–15시 디젤을 끕니다. 12–18시 두 구간에 수요반응을 쓰며 R2와 C2를 택합니다. 잔량 한도 제한을 확인하고 수급 보정은 승인합니다. S2 미공급 10 MWh를 기준선으로 둡니다.</p>
+        ${exampleTable("B")}
         <p><b>얻는 것과 잃는 것.</b> S1 디젤 69.41 MWh, CO₂ 52.05 t로 A보다 작습니다. S2에서는 미공급 9.48 MWh가 생겨 F3이 6.73 MWh, F4가 2.75 MWh를 부담합니다. 배출 감소와 협동조합 보호를 얻는 대신 구름 날씨의 공급 안정과 외부 사업자의 수입 기회를 잃습니다.</p>
-        <p><b>약점.</b> 가상 확률 30%의 날씨에 부담을 몰았습니다. S2 끝 잔량은 하한 1.60 MWh입니다. 실제 대기오염 농도는 계산하지 않아 배출 감소가 주민 건강에 주는 효과의 크기를 말할 수 없습니다. R2의 낮은 폭염 지수가 항구 노동자와 신도시의 피해를 지워 주지는 않습니다.</p>
+        <p><b>약점.</b> 가상 확률 30%의 날씨에 부담을 몰았습니다. S2의 미공급 9.48 MWh는 모두 12–15시 한 구간에서 생겼는데, 그 구간이 시작될 때 배터리에는 11.90 MWh가 남아 있었습니다. 이 게임은 배터리가 전날 요청대로만 움직이게 했기 때문입니다. 남은 잔량으로 부족을 먼저 메우게 했다면 S2 하루 미공급은 약 1.23 MWh였을 것이므로, 이 부담의 상당 부분은 계획보다 운영 규칙에서 나왔습니다. S2 끝 잔량은 하한 1.60 MWh입니다. 실제 대기오염 농도는 계산하지 않아 배출 감소가 주민 건강에 주는 효과의 크기를 말할 수 없습니다. R2의 낮은 폭염 지수가 항구 노동자와 신도시의 피해를 지워 주지는 않습니다.</p>
       </details>
       <details id="ig-example-c" class="reveal ig-reveal">
         <summary>C · 내일까지 보는 관점 <span class="tag-mine">가상의 답</span></summary>
         <p><b>기준과 무게.</b> 내일 대비 잔량을 첫째, 비용 최소를 둘째에 둡니다. 세 날씨 모두 끝 잔량을 시작 이상으로 남기는 조건을 먼저 둡니다. F1을 보호하면서 항구의 보관·생업을 지킬 경제적 필요를 중시해 R3을 택하지만 실제 사회적 비용의 최솟값을 구했다고 주장하지 않습니다.</p>
-        <p><b>선택.</b> 계획 C처럼 09–12시에 충전하고 18–21시에는 1 MW만 방전합니다. 낮에도 디젤을 켜 두고 수요반응은 12–18시에 씁니다. R3과 C1을 택합니다. S2 미공급 0.5 MWh를 기준선으로 두고 다음 날 저장량을 남깁니다.</p>
+        <p><b>선택.</b> 아래 계획 C처럼 09–12시에 충전하고 18–21시에는 1 MW만 방전합니다. 낮에도 디젤을 켜 두고 수요반응은 12–18시에 씁니다. R3과 C1을 택합니다. S2 미공급 0.5 MWh를 기준선으로 두고 다음 날 저장량을 남깁니다.</p>
+        ${exampleTable("C")}
         <p><b>얻는 것과 잃는 것.</b> 끝 잔량은 세 날씨 모두 10.54 MWh입니다. S1 디젤 93.41 MWh, CO₂ 70.05 t로 A·B보다 큽니다. S2의 부족 0.48 MWh는 F2 0.21 MWh, F3 0.28 MWh에 배분됩니다. 내일의 저장 여유와 항구 보호를 얻는 대신 오늘의 배출·연료 부담을 늘립니다. 운영비 지수는 S1 109.86으로 세 예시 가운데 가장 큽니다. 첫째 조건인 끝 잔량 유지를 지키느라 둘째 기준인 비용을 양보했습니다.</p>
         <p><b>약점.</b> 잔량을 남긴 효과는 다음 날 수요·날씨를 알아야 평가할 수 있습니다. 서부 마을은 차단과 발전기 주변 부담을 함께 집니다. 운영비 지수에는 상품 손상이나 건강 부담의 실제 금액이 없습니다. 같은 잔량 조건에서도 디젤 대수를 줄여 운영비를 더 낮출 여지가 있고, F2 주민의 반문에 보완책을 제시해야 합니다.</p>
       </details>
@@ -448,12 +467,13 @@
         <p><b>일사와 전지 온도.</b> 태양 고도와 구름은 전지에 들어오는 복사 에너지에 영향을 줍니다. 일사가 강해지면 발전량이 늘 수 있지만 전지 온도도 올라갑니다. 결정질 실리콘의 출력은 같은 일사에서 전지 온도가 올라갈수록 대체로 감소합니다. 기온과 전지 온도는 같지 않으며, 이 식은 바람·설치 방식·인버터를 자세히 계산하지 않는 근사입니다.</p>
         <p><b>연소와 배출.</b> 디젤 연료의 탄소가 산소와 반응해 CO₂를 만듭니다. 디젤은 필요한 때 공급을 늘릴 수 있지만 직접 배출을 남깁니다. CO₂는 국지 대기오염 물질의 농도와 같지 않습니다. 질소산화물·입자상 물질, 배기가스 처리, 바람과 거리에 따라 주변 영향이 달라지며 이 모형은 그 농도를 구하지 않습니다.</p>
         <p><b>폭염과 체온 조절.</b> 몸은 피부 쪽 혈류를 늘리고 땀의 증발로 열을 내보냅니다. 습도가 높으면 증발이 어려워질 수 있습니다. 고령층은 체온 조절의 변화, 건강 상태와 복용 약물 등으로 폭염에 더 취약할 수 있으나 개인차가 큽니다. 이 게임의 가중치는 그 차이를 의학적으로 추정한 수치가 아닙니다.</p>
-        <p><b>다른 저장 방법.</b> 양수는 물의 위치 에너지, 수소는 전기분해 등으로 만든 물질의 화학 에너지, 축열·축냉은 온도나 상변화를 이용한 저장입니다. 수소 생산에는 에너지가 들며 수소 자체를 무한한 에너지원으로 보지 않습니다. 물 1톤을 100 m 올리면 1000×9.8×100=980000 J, 약 0.2722 kWh입니다. 실제 회수 전력량은 펌프·수로·터빈·발전기 손실 때문에 더 작습니다. 섬에서는 지형, 물, 토지, 생태, 누출·안전, 사용 목적과 저장 규모를 함께 검토해야 합니다.</p>
+        <p><b>다른 저장 방법.</b> 양수는 물의 위치 에너지, 수소는 전기분해 등으로 만든 물질의 화학 에너지, 축열·축냉은 온도나 상변화를 이용한 저장입니다. 수소 생산에는 에너지가 들며 수소 자체를 무한한 에너지원으로 보지 않습니다. 물 1톤을 100 m 올리면 1000×9.8×100=980000 J, 약 0.2722 kWh밖에 저장되지 않습니다. 섬 배터리와 같은 16 MWh는 16000×3.6×10⁶=5.76×10¹⁰ J이므로, 손실을 무시해도 필요한 물은 m=E/(gh)=5.76×10¹⁰÷(9.8×100)≈5.9×10⁷ kg, 약 5.9만 톤입니다. 길이 50 m 수영장(약 2500 m³) 20여 개를 채우는 양입니다. 실제 회수 전력량은 펌프·수로·터빈·발전기 손실 때문에 더 작아서, 같은 전력량을 되돌려 받으려면 물이 더 필요합니다. 섬에서는 지형, 물, 토지, 생태, 누출·안전, 사용 목적과 저장 규모를 함께 검토해야 합니다.</p>
       </details>
       <details id="ig-limits" class="reveal ig-reveal">
         <summary>실제 전력망과 모형의 차이 <span class="tag-mine">연습용 해설</span></summary>
         <p>이 게임은 3시간 평균으로 공급과 수요를 맞춥니다. 실제 계통은 초 단위와 그보다 짧은 시간에도 균형을 유지해야 하며, 어긋나면 주파수가 변합니다. 동기 발전기의 회전 관성은 급격한 주파수 변화를 늦추지만 부족한 에너지를 계속 공급하는 해결책은 아닙니다. 켜 둔 발전기의 남은 출력 여유는 예측 오차에 대응할 수 있는 자원입니다. 실제로는 주파수 조정, 이미 연결된 설비의 운전 예비력, 정해진 시간 안에 투입하는 대기 설비의 예비력처럼 반응 시간과 역할을 구분합니다. 배터리·제어되는 수요도 대응 자원이 될 수 있습니다. 이 모형의 3n−g는 출력 여유일 뿐, 이런 예비력의 성능이나 충분성을 계산한 값은 아닙니다.</p>
-        <p>이 게임은 배터리 충전·방전도 전날 계획대로만 움직이게 했습니다. 실제 섬 전력망에서는 배터리가 가장 빨리 출력을 바꿀 수 있는 자원이어서, 남은 잔량으로 예상 밖의 부족을 메우도록 운영하는 경우가 많습니다. 계획 B의 오후 구름 날씨 12–15시에는 잔량 11.90 MWh가 남아 계산상 최대 3.26 MW를 더 낼 수 있었고, 부족은 3.16 MW였습니다. 이 게임의 미공급은 ‘전날 계획만으로 대응할 때’의 값입니다. 송전 제약·설비 고장·주파수·관성·전압·순간 출력 변화는 계산하지 않습니다. 디젤의 기동 시간, 출력 변화 속도, 최소 운전 시간과 부하별 연비를 생략합니다. 배터리 열화·온도 영향·자기 방전, 태양광 인버터 손실도 따로 다루지 않습니다. 세 날씨의 풍력은 같고, 오후 구름으로 수요가 줄어드는 효과도 없습니다. 수요반응 뒤 반동 수요나 가격 반응은 없으며 미공급 뒤의 부하 반응도 계산하지 않습니다.</p>
+        <p>이 게임은 배터리 충전·방전도 전날 계획대로만 움직이게 했습니다. 실제 섬 전력망에서는 배터리가 가장 빨리 출력을 바꿀 수 있는 자원이어서, 남은 잔량으로 예상 밖의 부족을 메우도록 운영하는 경우가 많습니다. 계획 B의 오후 구름 날씨 12–15시에는 잔량 11.90 MWh가 남아 계산상 최대 3.26 MW를 더 낼 수 있었고, 부족은 3.16 MW였습니다. 남은 잔량으로 부족을 먼저 메우게 하면 이 구간의 부족은 사라지고, 대신 잔량이 일찍 바닥나 15–18시에 부족이 조금 생겨 S2 하루 미공급은 9.48 MWh에서 약 1.23 MWh로 줄어듭니다. 이 게임의 미공급은 ‘전날 계획만으로 대응할 때’의 값입니다. 송전 제약·설비 고장·주파수·관성·전압·순간 출력 변화는 계산하지 않습니다. 디젤의 기동 시간, 출력 변화 속도, 최소 운전 시간과 부하별 연비를 생략합니다. 하루를 시작할 때 전날 밤 가동 대수를 0기로 두어 첫 구간의 발전기를 모두 새 기동으로 세는 것도 단순화입니다. 배터리 열화·온도 영향·자기 방전, 태양광 인버터 손실도 따로 다루지 않습니다. 세 날씨의 풍력은 같고, 오후 구름으로 수요가 줄어드는 효과도 없습니다. 수요반응 뒤 반동 수요나 가격 반응은 없으며 미공급 뒤의 부하 반응도 계산하지 않습니다.</p>
+        <p>이 게임은 부족한 전력을 고른 원칙에 따라 각 급전선에서 조금씩, 연속된 양으로 줄인다고 계산합니다. 실제 순환 정전은 급전선 단위로 공급을 통째로 끊고 끊는 차례를 돌리며, 병원처럼 필수 부하가 연결된 급전선은 보통 순환 대상에서 뺍니다. 따라서 같은 MWh의 미공급이라도 실제로는 일부 지역이 한동안 완전히 정전되는 모습으로 나타납니다.</p>
         <p>배출계수는 직접 CO₂의 대표값입니다. 건설·연료 생산·폐기까지의 배출과 국지 오염 농도는 포함하지 않습니다. 폭염 노출 지수는 사망자나 환자 수를 계산하지 않는 비교용 지수입니다. 실내 온도·습도·노출 시간의 세부 변화·개인 건강·노동 환경·집단별 인구를 넣지 않았습니다. F4를 지수에서 뺀 것도 한계입니다. 운영비·수산물 손실 지수는 화폐나 실제 손상량이 아닙니다.</p>
         <p>확률과 가중치는 실제 관측·예측값이 아닙니다. 세 날씨만 시험했다고 모든 불확실성을 다룬 것은 아닙니다. 같은 결과도 무엇을 우선하느냐에 따라 다르게 판단할 수 있고, 예측이 맞아도 결정의 근거를 따로 설명해야 합니다. 과목 연계는 통합과학의 에너지 전환·효율·발전과 신재생, 물리학의 전기 에너지, 지구과학의 대기, 생명과학의 항상성 수준입니다. 단원명은 교과서마다 다를 수 있습니다.</p>
       </details>
@@ -489,7 +509,7 @@
           ["디젤 배정 충전량", `${display2(r.dcharge)} MWh`],
           ["수산물 손실 지수", `${display2(r.cut[3])} · F4 차단 1 MWh당 1. 실제 손상량·금액을 뜻하지 않습니다.`]
         ])}
-        <p class="small muted">디젤 배정 충전량은 재생 발전을 현재 부하에 먼저 배정한 뒤 남은 충전 전력에 디젤을 배정한다는 회계 규칙입니다. 실제 전자의 출처를 측정한 양이 아닙니다.</p>
+        <p class="small muted">디젤 배정 충전량은 그 구간에 충전하지 않았다면 줄일 수 있었던 디젤 발전량입니다. 디젤이 최소 출력에 묶여 있거나 태양광을 줄이는 중이라면 충전해도 디젤이 늘지 않으므로 0입니다. 실제 전자의 출처를 측정한 양이 아니라 추가분을 기준으로 한 회계 규칙입니다.</p>
         <h5>승인한 보정</h5><p>${run.corrections.filter(c => c.s === s).map(c => esc(correctionText(c))).join("<br>") || "없음"}</p>
         <div class="ig-time-cards">${r.rows.map(row => `<section class="ig-time-card"><h5>${esc(times[row.b])}</h5>${list([
           ["수요 / 수요반응 후", `${display2(row.d)} / ${display2(row.L)} MW`],
@@ -500,7 +520,7 @@
           ["배터리 요청", batteryText(p.bat[row.b])],
           ["잔량 한도 후 충전 / 방전", `${display2(row.capCh)} / ${display2(row.capDis)} MW${row.clip ? " · 한도 제한" : ""}`],
           ["실제 충전 / 방전", `${display2(row.ch)} / ${display2(row.dis)} MW`],
-          ["SOC 시작 / 끝", `${display2(row.before)} / ${display2(row.soc)} MWh`],
+          ["잔량(저장 에너지) 시작 / 끝", `${display2(row.before)} / ${display2(row.soc)} MWh`],
           ["부족 / 출력제한", `${display2(row.u)} / ${display2(row.curt)} MW`],
           ["급전선 차단", row.cut.map((v, f) => `F${f + 1} ${display2(v)}`).join(" · ") + " MW"],
           ...(row.u > EPS ? [["부족 구간 시작 잔량", `${display2(row.before)} MWh`], ["잔량으로 낼 수 있는 최대 방전", `${display2(Math.min(4, (row.before - 1.6) * .95 / 3))} MW · 잔량·출력 한도만으로 계산한 값이며 전날 요청과 별개입니다.`]] : [])
@@ -547,7 +567,7 @@
     return {
       power: KCP.lines(xs, [{ name: "수요(수요반응 후)", color: "var(--ink)", data: rows.map(r => r.L), step: true }, { name: "재생 발전", color: "var(--accent)", data: rows.map(r => r.r), step: true, dash: true }], { xmin: 0, xmax: 24, min: 0, max: 20, ticks: [0, 5, 10, 15, 20], xticks: [0, 6, 12, 18, 24], ylabel: "MW", aria: "예보대로 수요와 재생 발전" }),
       soc: KCP.lines(boundaries, series, { xmin: 0, xmax: 24, min: 0, max: 16, ticks: [0, 4, 8, 12, 16], xticks: [0, 6, 12, 18, 24], hline: 1.6, ylabel: "MWh", aria: "예보대로 배터리 잔량" }) + (start !== null ? "<p class=\"small muted\">점선: 미승인 제안값을 임시 적용한 잔량</p>" : ""),
-      table: `<summary>미리보기 수치</summary>${table(["경계 시각", "SOC (MWh)", "상태"], boundaries.map((t, b) => [`${String(t).padStart(2, "0")}시`, display2(soc[b]), start !== null && b > start ? "임시 제안값" : "잔량"]), "S1 배터리 잔량 경계값")}${table(["시간", "수요 L (MW)", "재생 R (MW)", "부족 (MW)"], rows.map(r => [times[r.b], display2(r.L), display2(r.r), display2(r.u)]), "S1 구간 평균 · 미승인 보정 이후 부족은 임시 제안값")}${!p.shed || !p.curt ? "<p>급전선·분담·지수: 원칙 선택 전</p>" : ""}`
+      table: `<summary>미리보기 수치</summary>${table(["경계 시각", "잔량 (MWh)", "상태"], boundaries.map((t, b) => [`${String(t).padStart(2, "0")}시`, display2(soc[b]), start !== null && b > start ? "임시 제안값" : "잔량"]), "S1 배터리 잔량 경계값")}${table(["시간", "수요 L (MW)", "재생 R (MW)", "부족 (MW)"], rows.map(r => [times[r.b], display2(r.L), display2(r.r), display2(r.u)]), "S1 구간 평균 · 미승인 보정 이후 부족은 임시 제안값")}${!p.shed || !p.curt ? "<p>급전선·분담·지수: 원칙 선택 전</p>" : ""}`
     };
   }
   function batterySVG(p, preview) {
@@ -579,7 +599,7 @@
     const ready = () => validPlan(G) && validCrit(G.crit) && validBaseline(G.baseline) && Object.hasOwn(scenarios, G.predict);
     const options = (dict, empty) => `<option value="">${esc(empty)}</option>${Object.entries(dict).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}`;
     const rowLabels = { bat: "배터리 요청(MW)", n: "디젤 가동(기)", dr: "항구 수요반응" };
-    const rowHTML = row => `<h4 id="ig-${row}-label">${rowLabels[row]}</h4><div id="ig-${row}-row" class="ig-control-row" tabindex="0" role="slider" aria-labelledby="ig-${row}-label" aria-roledescription="시간축 조절" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-describedby="ig-timeline-help" aria-valuemin="${row === "bat" ? -4 : 0}" aria-valuemax="${row === "bat" ? 4 : row === "n" ? 3 : 1}" aria-valuenow="0" aria-valuetext="">${row === "bat" ? '<svg id="ig-bat-svg" class="ig-bat-svg" viewBox="0 0 800 180" role="img" aria-label="배터리 요청: 양수 충전, 음수 방전"></svg>' : ""}<div class="ig-cells">${times.map((t, b) => `<div class="ig-cell" data-ig-b="${b}" aria-label="${esc(t)}"></div>`).join("")}</div></div>`;
+    const rowHTML = row => `<h4 id="ig-${row}-label">${rowLabels[row]}</h4><div id="ig-${row}-row" class="ig-control-row" tabindex="0" role="slider" aria-labelledby="ig-${row}-label" aria-roledescription="시간축 조절" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-describedby="ig-timeline-help" aria-valuemin="${row === "bat" ? -4 : 0}" aria-valuemax="${row === "bat" ? 4 : row === "n" ? 3 : 1}" aria-valuenow="0" aria-valuetext="">${row === "bat" ? '<svg id="ig-bat-svg" class="ig-bat-svg" viewBox="0 0 800 180" role="img" aria-label="배터리 요청: 양수 충전, 음수 방전"></svg>' : ""}<div class="ig-cells">${times.map((_, b) => `<div class="ig-cell" data-ig-b="${b}"></div>`).join("")}</div></div>`;
     root.innerHTML = `<div id="ig-prep" class="ig-root stack">
       <p id="ig-restore" class="caution ig-note"${restored.reset ? "" : " hidden"}>저장된 계획 형식이 달라 운영 계획을 초기화했습니다.</p>
       <div id="ig-context" class="ig-context">
@@ -609,7 +629,7 @@
       <section id="ig-principles" class="panel ig-principles"><h3>차단·출력제한 원칙</h3>
         ${[["shed", shedNames, shedCopy, "차단 원칙"], ["curt", curtNames, curtCopy, "출력제한 원칙"]].map(([field, names, copy, title]) => `<h4>${title}</h4><div class="seg ig-options">${Object.entries(names).map(([k, name]) => `<button type="button" id="ig-${field}-${k}" class="btn" data-ig-principle="${field}" data-ig-choice="${k}" aria-pressed="false" aria-describedby="ig-help-${k}">${k} · ${esc(name)}</button>`).join("")}</div>${Object.keys(names).map(k => `<p id="ig-help-${k}" class="small muted"><b>${k}</b> · ${esc(copy[k])}</p>`).join("")}`).join("")}
       </section>
-      <section id="ig-baseline" class="panel ig-baseline"><h3>미공급 기준선</h3><p>선택한 날씨에서 미공급 전력량을 ___ MWh 이하로 두겠다.</p><label for="ig-baseline-s">날씨</label><select id="ig-baseline-s">${options(Object.fromEntries(scenarioIds.map(s => [s, scenarios[s]])), "날씨 선택")}</select><label for="ig-baseline-limit">미공급 기준 (MWh)</label><input id="ig-baseline-limit" type="number" min="0" max="300" step="0.1" inputmode="decimal"></section>
+      <section id="ig-baseline" class="panel ig-baseline"><h3>미공급 기준선</h3><p>선택한 날씨에서 미공급 전력량을 ___ MWh 이하로 두겠다.</p><label for="ig-baseline-s">날씨</label><select id="ig-baseline-s">${options(Object.fromEntries(scenarioIds.map(s => [s, scenarios[s]])), "날씨 선택")}</select><label for="ig-baseline-limit">미공급 기준 (MWh)</label><input id="ig-baseline-limit" type="number" min="0" max="300" step="0.1" inputmode="decimal" aria-describedby="ig-baseline-msg"><p id="ig-baseline-msg" class="small ig-baseline-msg" role="status" hidden>미공급 기준은 0~300 사이에서 0.1 MWh 단위로 입력하세요. 이 값으로는 시험 운전을 시작할 수 없습니다.</p></section>
       <section id="ig-predict" class="panel ig-predict"><h3>정전이 가장 클 날씨는?</h3><div class="ig-pred-options">${Object.entries(scenarios).map(([s, name]) => `<label for="ig-pred-${s}"><input id="ig-pred-${s}" type="radio" name="ig-predict" value="${s}"> ${esc(name)}</label>`).join("")}</div><p class="small muted">첫 예측은 처음 완료한 시험 결과와 비교합니다.</p></section>
       <div class="row"><button type="button" id="ig-test" class="btn ig-test" disabled>세 날씨로 시험 운전</button><span id="ig-tests"></span></div>
       <section id="ig-results" class="panel ig-results" hidden></section>
@@ -652,7 +672,6 @@
         slider.classList.toggle("ig-active-row", row === key);
         slider.querySelectorAll(".ig-cell").forEach((cell, index) => {
           cell.classList.toggle("ig-selected", index === at);
-          cell.setAttribute("aria-label", rowValueText(key, index));
         });
       }
       let text = row === "bat" ? `${times[b]} 배터리 요청: ${batteryText(p.bat[b])}` : rowValueText(row, b);
@@ -727,8 +746,10 @@
       }
       $("#ig-baseline-s").value = selected.baseline.scenario;
       $("#ig-baseline-s").disabled = !!G.locked;
-      const limit = $("#ig-baseline-limit");
-      if (document.activeElement !== limit) limit.value = selected.baseline.limit === null ? "" : String(selected.baseline.limit);
+      const limit = $("#ig-baseline-limit"), limitMsg = $("#ig-baseline-msg");
+      if (G.locked) limitMsg.hidden = true;
+      // 잘못 입력한 값은 안내가 떠 있는 동안 지우지 않고 그대로 보여 준다.
+      if (document.activeElement !== limit && limitMsg.hidden) limit.value = selected.baseline.limit === null ? "" : String(selected.baseline.limit);
       limit.disabled = !!G.locked;
       $$('[data-ig-principle]').forEach(button => {
         button.setAttribute("aria-pressed", String(p[button.dataset.igPrinciple] === button.dataset.igChoice));
@@ -935,8 +956,10 @@
     $("#ig-baseline-limit").oninput = e => {
       if (!editable()) return;
       const input = e.target;
-      const v = input.value === "" || !input.validity.valid ? null : input.valueAsNumber;
-      if (v !== null && !validBaseline({ scenario: "S1", limit: v })) return;
+      let v = input.value === "" || !input.validity.valid ? null : input.valueAsNumber;
+      if (v !== null && !validBaseline({ scenario: "S1", limit: v })) v = null;
+      const bad = v === null && (input.value !== "" || input.validity.badInput);
+      $("#ig-baseline-msg").hidden = !bad;
       if (G.baseline.limit === v) return;
       G.baseline.limit = v;
       invalidate(false); paint(); persist();

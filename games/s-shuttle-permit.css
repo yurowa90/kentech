@@ -111,6 +111,10 @@
   font-family: inherit;
   font-variant-numeric: tabular-nums;
 }
+.sp-table .chip {
+  max-width: 100%;
+  white-space: normal;
+}
 .sp-cell-label {
   display: none;
 }

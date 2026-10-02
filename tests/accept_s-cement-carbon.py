@@ -84,11 +84,20 @@ def _fmt(x, digits):
 
 
 def _signed(x, digits):
-    return ("+" if x >= .5 * 10 ** -digits else "") + _fmt(x, digits)
+    # 학생 화면의 음수 기호는 −(U+2212)로 통일한다.
+    return (("+" if x >= .5 * 10 ** -digits else "") + _fmt(x, digits)).replace("-", "−")
 
 
 def _red(x):
-    return f"{math.floor(x * 100) / 100:.2f}" if 59.95 <= x < 60 - 1e-12 else _fmt(x, 1)
+    return (f"{math.floor(x * 100) / 100:.2f}" if 59.95 <= x < 60 - 1e-12 else _fmt(x, 1)).replace("-", "−")
+
+
+def _physical_line(r):
+    """명세 보완(물리 배출 기준선): 현재 대비 변화와 간접 배출 포함 합계를 독립적으로 만든다."""
+    diff = r["physical"] - BASE
+    rise = diff >= .0005
+    note = " · 장부상 감축과 달리 실제 대기 배출은 늘어남" if rise and r["reduction"] > 0 else " · 현재보다 늘어남" if rise else ""
+    return f"현재 {_fmt(BASE, 3)} 대비 {_signed(diff, 3)} Mt/년{note} · 전력 간접 배출을 더하면 {_fmt(r['physical'] + r['indirect'], 3)} Mt/년"
 
 
 def _gap(x):
@@ -181,6 +190,7 @@ def _metrics(c, plan, future, aid):
     r = _reference(plan, future)
     expected = {"#cc-ledger-reduction": _red(r["reduction"]) + "%",
                 "#cc-physical": _fmt(r["physical"], 3) + " Mt CO₂/년",
+                "#cc-physical-delta": _physical_line(r),
                 "#cc-gap": "목표 대비 차이 " + _gap(r["gap"]) + "%p",
                 "#cc-power-total": _fmt(r["power"], 3) + " TWh/년",
                 "#cc-power-extra": _signed(r["extra"], 3) + " TWh/년",
@@ -328,16 +338,17 @@ def t_12_2_d_ui_and_shell(c: Ctx):
     c.expect(c.page.locator("#cc-next").is_enabled(), f"{aid} 새로고침 후 확정 유지")
     c.eq(c.page.locator("#cc-memo").input_value(), "가상 예시 메모", f"{aid} 공통 메모 저장")
     qs = _qs(c)
-    c.eq(len(qs), 9, f"{aid} 질문9개")
-    c.eq([q["k"] for q in qs[6:]], ["cc-i-jobs-support", "cc-i-scm", "cc-i-bio"], f"{aid} 후보 우선순위")
+    c.eq(len(qs), 7, f"{aid} 질문7개")
+    c.eq([q["k"] for q in qs[5:]], ["cc-i-jobs-support", "cc-i-scm"], f"{aid} 후보 우선순위")
     c.expect("cc-c4-union" in [q["k"] for q in qs], f"{aid} 노조 반문")
     c.eq(qs[2]["k"], "cc-c3-match", f"{aid} 지원 토글은 예측 판정 불변")
     c.check(f"{aid} 준비실")
     c.page.locator("#cc-next").click()
     c.page.wait_for_selector(".qdeck .qcard")
     cards = c.page.locator(".qdeck .qcard")
-    c.expect(6 <= cards.count() <= 9, f"{aid} 공통 면접 카드6~9개")
-    c.eq(cards.count(), 9, f"{aid} D 면접 카드9개")
+    c.expect(6 <= cards.count() <= 7, f"{aid} 면접 카드6~7개")
+    c.eq(cards.count(), 7, f"{aid} D 면접 카드7개")
+    c.eq(sum("핵심" in t for t in cards.locator(".who").all_text_contents()), 2, f"{aid} 핵심 습관 카드2개 표시")
     c.expect(all("연습용 질문" in s and "보고서 문항" not in s for s in cards.all_text_contents()),
              f"{aid} 모든 질문에 연습용 표시·보고서 표시 없음")
     c.check(f"{aid} 면접실")
@@ -662,39 +673,48 @@ def t_12_3_question_fixtures(c: Ctx):
                  ("광물화100", dict(DEFAULT, mineral=100), "below", False),
                  ("C10", PLANS["C10"], "reach", False), ("D30", PLANS["D30"], "reach", False),
                  ("H", PLANS["H"], "reach", False), ("I", PLANS["I"], "below", False),
-                 ("D재예측", PLANS["D"], "below", True)]
+                 ("D재예측", PLANS["D"], "below", True),
+                 ("수요30 포집0", dict(DEFAULT, d=30, c=50, support=True), "below", False)]
+    # 면접 부담 조정: 공통 5개 + 개별 최대 2개. 목표 미달이면 목표 대비 차이 질문이 개별의 맨 앞.
     expected = {
-        "A": (7, "cc-c4-choice", ["cc-i-gap"]),
-        "B": (9, "cc-c4-union", ["cc-i-jobs-nosupport", "cc-i-scm", "cc-i-bio"]),
-        "C": (8, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
-        "D": (9, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm", "cc-i-bio"]),
-        "G0": (9, "cc-c4-env", ["cc-i-ledger-0", "cc-i-capture", "cc-i-power"]),
-        "G1": (9, "cc-c4-env", ["cc-i-ledger-100", "cc-i-capture", "cc-i-power"]),
-        "C10": (8, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
-        "D30": (9, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm", "cc-i-bio"]),
-        "H": (8, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
-        "I": (9, "cc-c4-env", ["cc-i-ledger-0", "cc-i-capture", "cc-i-power"]),
-        "D재예측": (9, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm", "cc-i-bio"]),
+        "A": (6, "cc-c4-choice", ["cc-i-gap"]),
+        "B": (7, "cc-c4-union", ["cc-i-jobs-nosupport", "cc-i-scm"]),
+        "C": (7, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
+        "D": (7, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm"]),
+        "G0": (7, "cc-c4-env", ["cc-i-gap", "cc-i-ledger-0"]),
+        "G1": (7, "cc-c4-env", ["cc-i-gap", "cc-i-ledger-100"]),
+        "C10": (7, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
+        "D30": (7, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm"]),
+        "H": (7, "cc-c4-env", ["cc-i-capture", "cc-i-storage"]),
+        "I": (7, "cc-c4-env", ["cc-i-gap", "cc-i-ledger-0"]),
+        "D재예측": (7, "cc-c4-union", ["cc-i-jobs-support", "cc-i-scm"]),
+        "수요30 포집0": (7, "cc-c4-union", ["cc-i-gap", "cc-i-jobs-support"]),
     }
     for label, plan, predict, revisited in fixtures:
         _inject(c, _snapshot(plan, predict, revisited))
         qs = _qs(c)
         keys = [q["k"] for q in qs]
-        c.expect(7 <= len(qs) <= 9, f"{aid} {label} 질문7~9개")
+        c.expect(6 <= len(qs) <= 7, f"{aid} {label} 질문6~7개")
         c.eq(len(keys), len(set(keys)), f"{aid} {label} k 유일")
         c.expect(all("src" not in q and not re.search(r"NaN|undefined|<[^>]*>", q["q"]) for q in qs), f"{aid} {label} src·비정상 문구·HTML 없음")
-        c.eq(keys[5], "cc-c6-recarbonation", f"{aid} {label} 고정 재탄산화 질문")
+        c.eq(keys[4], "cc-c5-outside", f"{aid} {label} 고정 발산 질문")
+        if _reference(plan, "smooth")["reduction"] < 60 - 1e-12:
+            c.eq(keys[5], "cc-i-gap", f"{aid} {label} 목표 미달이면 목표 대비 차이 질문 우선")
         if label in expected:
             count, c4, individual = expected[label]
             c.eq(len(qs), count, f"{aid} {label} 명세 문항수")
             c.eq(keys[3], c4, f"{aid} {label} 반문 우선순위")
-            c.eq(keys[6:], individual, f"{aid} {label} 개별 우선순위")
+            c.eq(keys[5:], individual, f"{aid} {label} 개별 우선순위")
         reached = _reference(plan, "delay")["reduction"] >= 60 - 1e-12
         c.eq(keys[2], "cc-c3-match" if (predict == "reach") == reached else "cc-c3-diff", f"{aid} {label} 예측 k")
         c.expect(_red(_reference(plan, "delay")["reduction"]) + "%" in qs[2]["q"], f"{aid} {label} 예측 수치")
         c.eq(qs[2]["q"].startswith("결과를 본 뒤 다시 한 예측입니다."), revisited, f"{aid} {label} 재예측 문구")
         if label == "I":
-            c.expect("순조 1.6%, 기술 지연 2.2%로 0.6%p 높아집니다" in next(q["q"] for q in qs if q["k"] == "cc-i-capture"), f"{aid} I 상승 분기")
+            c.expect("장부상 감축률은 1.6%, 목표 대비 차이는 −58.4%p" in qs[5]["q"], f"{aid} I 목표 대비 차이 우선")
+        if label == "C":
+            c.expect("순조 81.1%, 기술 지연 55.9%로 25.2%p 낮아집니다" in next(q["q"] for q in qs if q["k"] == "cc-i-capture"), f"{aid} C 하락 분기")
+        if label == "수요30 포집0":
+            c.expect("장부상 감축률은 52.7%, 목표 대비 차이는 −7.3%p" in qs[5]["q"], f"{aid} 포집 없는 미달 계획 목표 차이 질문")
         if label == "바이오30":
             c.expect("cc-i-bio" in keys, f"{aid} 바이오만30 후보")
         if label == "수요15":
@@ -706,6 +726,36 @@ def t_12_3_question_fixtures(c: Ctx):
         for criteria, suffix in (([key, other], wa), ([other, key], ul)):
             qs = c.page.evaluate("s=>KCP.games['s-cement-carbon'].questions(s)", _snapshot(PLANS["A"], criteria=criteria))
             c.expect(title + "’" + suffix in qs[0]["q"], f"{aid} 실제 KCP.josa {key} {'첫째' if criteria[0] == key else '둘째'}")
+
+
+def t_12_3_physical_baseline(c: Ctx):
+    aid = "12.3-물리 기준선"
+    # 장부상 감축은 목표를 넘지만 물리적 대기 배출은 현재보다 늘어나는 계획이 주 화면에서 드러나야 한다.
+    p = dict(DEFAULT, capture=90, syn=100, acct=100)
+    _inject(c, _snapshot(p))
+    r = _reference(p, "smooth")
+    c.eq(_red(r["reduction"]), "79.2", f"{aid} 역전 계획 장부상 감축률")
+    c.eq(_text(c, "#cc-physical-delta"), _physical_line(r), f"{aid} 현재 대비·간접 포함 표시")
+    c.expect("+0.127" in _text(c, "#cc-physical-delta") and "장부상 감축과 달리 실제 대기 배출은 늘어남" in _text(c, "#cc-physical-delta")
+             and "2.840 Mt/년" in _text(c, "#cc-physical-delta"), f"{aid} 역전 사실 문구")
+    c.expect(c.page.locator("#cc-physical-delta").is_visible(), f"{aid} 주 지표 아래 상시 표시")
+    c.eq(_text(c, "#cc-warn-physical"), "장부와 실제의 엇갈림: 장부상 감축률은 79.2%이지만 물리적 대기 배출은 현재보다 0.127 Mt/년 많습니다.", f"{aid} 결과 경고에 엇갈림")
+    compare = _text(c, "#cc-compare-smooth")
+    c.expect("물리적 대기 배출 현재 대비" in compare and "+0.127 Mt CO₂/년" in compare and "2.840 Mt CO₂/년" in compare, f"{aid} 세 미래 비교에도 표시")
+    c.expect("(현재 대비 +0.127)" in next(x["d"] for x in _recap(c) if x["t"] == "순조로운 전환"), f"{aid} recap 현재 대비")
+    c.expect("현재 대비 +0.127" in (c.page.locator("#cc-mini").text_content() or ""), f"{aid} 요약 띠 현재 대비")
+    c.expect("포집 기여 몫: " in (c.page.locator("#cc-capture-share").text_content() or ""), f"{aid} 포집 기여 표시")
+    c.page.locator("#cc-future-scarce").click()
+    c.eq(c.page.locator("#cc-warn-physical").count(), 1, f"{aid} 원료 부족에서도 엇갈림 경고")
+    # 포집이 장부 배출을 늘리는 계획: 음의 백분율 대신 늘어난 양.
+    _inject(c, _snapshot(dict(DEFAULT, d=5, elec=10, capture=90, syn=100)))
+    share = c.page.locator("#cc-capture-share").text_content() or ""
+    c.eq(share, "포집 기여 몫: 포집이 장부 배출을 0.113 Mt/년 늘림(포집만 끈 같은 계획 대비)", f"{aid} 포집 증가 계획 표시")
+    c.expect(not re.search(r"[−-]\d[\d.]*%", share), f"{aid} 음의 백분율 없음")
+    c.eq(c.page.locator("#cc-warn-physical").count(), 0, f"{aid} 물리 배출이 현재보다 줄어든 계획은 엇갈림 경고 없음")
+    scope = _text(c, "#cc-price-scope")
+    c.expect("수요 감축의 비용" in scope and "t당 고정비" in scope, f"{aid} 가격 모형의 수요 감축 비용 제외 공개")
+    c.check(f"{aid} 준비실")
 
 
 def t_12_3_boundary_and_work(c: Ctx):
@@ -773,12 +823,22 @@ def t_12_3_reflect_gate_examples(c: Ctx):
         lengths.append(sum(len(p) for p in paragraphs))
         bodies.append(" ".join(paragraphs))
         styles.append(ex.evaluate("e=>{const s=getComputedStyle(e);return [s.fontSize,s.fontWeight,s.backgroundColor,s.borderColor,s.padding];}"))
-    c.eq(lengths, [839, 852, 853], f"{aid} 태그 제외 본문 글자 수")
+    c.eq(lengths, [906, 928, 890], f"{aid} 태그 제외 본문 글자 수")
     c.expect(max(lengths) / min(lengths) <= 1.05, f"{aid} 해설 길이 비중")
     c.expect(styles[0] == styles[1] == styles[2], f"{aid} 동일한 예시 타이포·배경·테두리")
     for i, fragments in enumerate((["60.6%", "0.544 Mt/년", "+18.3%", "1.800 Mt/년"],
                                     ["63.6%"], ["63.2%", "0.519 Mt/년", "+13.5%", "1.500 Mt/년"])):
         c.expect(all(x in bodies[i] for x in fragments), f"{aid} 예시{i+1} C10/D30/F 조건부 수치")
+    # 경계 공정성: 포집 예시도 전력·간접 배출을 밝히고, 수요 예시는 경계에 따른 순위 역전과 가격 누락을 밝힌다.
+    c.expect("0.052·0.091·0.114 Mt/년" in bodies[2], f"{aid} 단계적 예시 간접 배출")
+    c.expect("0.311·0.316·0.271 TWh/년" in bodies[0] and "0.047·0.079·0.095 Mt/년" in bodies[0], f"{aid} 포집 예시 전력·간접 배출")
+    c.expect("0.690 대 0.703 Mt/년" in bodies[1] and "t당 고정비" in bodies[1], f"{aid} 수요 예시 경계 역전·가격 누락")
+    limits = c.page.locator("#exwrap .cc-limits").text_content() or ""
+    c.expect("0.703 Mt/년" in limits and "0.690 Mt/년" in limits and "순위가 뒤집히므로" in limits, f"{aid} 한계에 경계별 순위 역전")
+    c.expect("t당 고정비" in limits and "43%" in limits, f"{aid} 한계에 가격 누락·재탄산화 규모")
+    reflect = c.page.locator("#exwrap .cc-reflect").text_content() or ""
+    c.expect("계획(C)" not in reflect and "G0·G1" not in reflect, f"{aid} 내부 검사 이름 노출 없음")
+    c.expect("IPCC" in reflect and "5배·50배" in reflect, f"{aid} 저장 누출률의 실제 평가 맥락")
     c.eq(c.page.locator("table.rubric tbody tr").count(), 9, f"{aid} 공통 자기평가9개")
     before = _game(c)["locked"]
     c.page.locator('.seg button[data-v="3"]').first.click()

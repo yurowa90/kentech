@@ -241,6 +241,7 @@
     intent: ["누구도 모든 요구를 얻기 어려운 상황에서 손실을 나누는 기준을 세운다.", "역제안을 받아들인 순간과 거절 이유를 기록하여 반문 뒤 판단을 설명한다.", "물 배분의 변화가 다른 당사자의 기준에 미치는 연쇄를 읽는다.", "유입의 불확실성을 감량 순서로 다루고 그 조항의 비용도 살핀다.", "생물·미래 사용자·테이블 밖 납세자를 판단에 포함한다.", "실제 물성과 창작 모형을 구분하고 숫자만으로 협상을 판정하는 한계를 성찰한다."]
   };
   if (!KCP.ORIGINAL_ORDER.includes(id)) KCP.ORIGINAL_ORDER.push(id);
+  const INDIV_MAX = 3; // 공통 3 + 개별 최대 3 + 마지막 1 = 최대 7문항
   function questions(state) {
     const L = lockedFrom(state);
     if (!L) return [];
@@ -261,34 +262,45 @@
       {k: "rd-c2", tag: "공통 2", q: hardText + rejectText + " 반문을 다시 받는다면 이 안을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요."},
       {k: "rd-c3", tag: "공통 3", q: "물고기와 갯벌 생물은 협상 테이블에서 말할 수 없습니다. 이 안에서 그들의 몫은 누가, 어떻게 대변했나요? 대변자가 놓칠 수 있는 것은 무엇인가요?"}
     ];
-    const indiv = [];
+    const indiv = [], situ = [];
     const damMissing = Number(N.end < 110 + (L.mask & 1) - EPS) + Number(D.shortage > EPS);
     const cityMissing = [];
     if (N.supply < .95 + .01 * ((L.mask >> 2) & 1) - EPS) cityMissing.push("공급량 부족");
     if (N.C === null || N.C > .90 - .01 * ((L.mask >> 2) & 1) + EPS) cityMissing.push("수질 기준 미달");
     const cityIssueText = cityMissing.length === 2 ? KCP.josa(cityMissing[0], "와/과") + " " + cityMissing[1] : (cityMissing[0] || "");
-    const partyQs = [];
-    if (missing(3)) partyQs.push({k: "rd-eco", tag: "개별 · 생태 부담", q: `하구 모형 유량은 ${qf(N.Qe)}m³/s, 수온은 ${qf(N.T, 2)}℃, DO는 ${N.DO === null ? "계산 불가" : qf(N.DO) + "mg/L"}입니다. 수온과 유량·산소 소모로 이 값을 설명하고, 생물과 어업인에게 돌아가는 부담을 줄일 다른 방법을 제안해 주세요.`});
-    if (missing(2)) partyQs.push({k: "rd-city", tag: "개별 · 생활 부담", q: `도시 공급률은 ${qf(100 * N.supply, 1)}%, 취수 수질 지표는 ${qf(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(cityIssueText, "을/를")} 설명해 주세요. 제한 급수가 필요하다면 가장 먼저 영향을 받는 시민은 누구인가요?`});
-    if (missing(1)) partyQs.push({k: "rd-ag", tag: "개별 · 생계 부담", q: `농가 소득 지수는 ${qf(N.income)}입니다. 이 배분에서 농가가 잃는 몫을 무엇으로 정당화하나요? 물을 다른 용도에 더 주었다면 그 기준을 말하고, 부담을 줄일 대안을 제안해 주세요.`});
-    if (missing(0)) indiv.push(
-      {k: "rd-dam-future", tag: "개별 · 미래 비용", q: `평년 기말 저수량은 ${qf(N.end, 2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. 가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?`},
-      {k: "rd-dam-structure", tag: "개별 · 비축의 대표성", q: "미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자는 직접 반대할 수 없다는 구조를 어떻게 보나요? 이 안을 고치겠습니까, 유지하겠습니까? 이유도 말해 주세요."}
-    );
-    if (partyQs.length) indiv.push(partyQs.shift());
+    // 당사자 질문: 정해진 당사자 순서가 아니라 미충족의 심각도(심각 미달 거부 > 거부 > 조건부)로 줄을 세우고,
+    // 같은 단계에서는 기준에서 상대적으로 더 먼 당사자를 앞에 둔다. 심각 미달 당사자는 모두 자리를 받는다.
+    const sv = severe(N), cs = checks(N, D, L.mask);
+    const gapOf = c => c.value === null ? Infinity : c.key === "dry-cut" ? c.value / Math.max(D.Rplan, EPS) : c.upper ? (c.value - c.threshold) / c.threshold : (c.threshold - c.value) / c.threshold;
+    const othersMissing = [1, 2, 3].some(missing);
+    const partyText = [
+      () => ({k: "rd-dam-future", tag: "개별 · 미래 비용", q: `평년 기말 저수량은 ${qf(N.end, 2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. 가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?` + (othersMissing ? " 미래 사용자는 직접 반대할 수 없는데, 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 되지 않았는지도 말해 주세요." : "")}),
+      () => ({k: "rd-ag", tag: "개별 · 생계 부담", q: `농가 소득 지수는 ${qf(N.income)}입니다. 이 배분에서 농가가 잃는 몫을 무엇으로 정당화하나요? 물을 다른 용도에 더 주었다면 그 기준을 말하고, 부담을 줄일 대안을 제안해 주세요.`}),
+      () => ({k: "rd-city", tag: "개별 · 생활 부담", q: `도시 공급률은 ${qf(100 * N.supply, 1)}%, 취수 수질 지표는 ${qf(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(cityIssueText, "을/를")} 설명해 주세요. 제한 급수가 필요하다면 가장 먼저 영향을 받는 시민은 누구인가요?`}),
+      () => ({k: "rd-eco", tag: "개별 · 생태 부담", q: `하구 모형 유량은 ${qf(N.Qe)}m³/s, 수온은 ${qf(N.T, 2)}℃, DO는 ${N.DO === null ? "계산 불가" : qf(N.DO) + "mg/L"}입니다. 수온과 유량·산소 소모로 이 값을 설명해 주세요. 모형이 계산하지 않는 염분 침입(강물이 줄면 바닷물이 상류로 더 올라오는 현상)이 산란장에 줄 영향도 함께 생각해, 생물과 어업인에게 돌아가는 부담을 줄일 다른 방법을 제안해 주세요.`})
+    ];
+    const ranked = [0, 1, 2, 3].filter(missing).map(i => ({i, rank: sv[i] ? 0 : N.responses[i] === "reject" ? 1 : 2, gap: Math.max(...cs[i].filter(c => !c.met).map(gapOf))}))
+      .sort((a, b) => a.rank - b.rank || b.gap - a.gap || a.i - b.i);
+    const partyQs = ranked.map(x => partyText[x.i]());
+    // 반드시 묻는 당사자 질문: 심각 미달 당사자 전부, 미충족 당사자가 둘 이상이면 적어도 두 곳.
+    const must = Math.max(ranked.filter(x => x.rank === 0).length, Math.min(2, ranked.length));
+    // 상황 질문 순서: 비축의 대표성 → 학생 자신의 처리 이력(반복 거절·3회 반영) → 상정 절차 → 건조 감량 → 대책비 → 습윤 의존.
+    // 공사만 미충족일 때는 비축의 대표성 질문을 따로 둔다. 다른 당사자도 미충족이면 미래 비용 질문에 합쳤다.
+    if (missing(0) && !othersMissing) situ.push({k: "rd-dam-structure", tag: "개별 · 비축의 대표성", q: "미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자는 직접 반대할 수 없다는 구조를 어떻게 보나요? 이 안을 고치겠습니까, 유지하겠습니까? 이유도 말해 주세요."});
+    if (L.mask) situ.push({k: "rd-repeat", tag: "개별 · 반복 거절", q: `${NAMES.filter((_, i) => (L.mask >> i) & 1).join(", ")}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요? 실제 협상에서도 기준이 반드시 오를까요?`});
+    if (applied >= 3) situ.push({k: "rd-applied-three", tag: "개별 · 조정의 일관성", q: `역제안을 ${applied}번 반영했습니다. 조정위원이 요구를 받아들이는 동안 잃을 수 있는 기준이나 신뢰는 무엇인가요? 유지한 기준과 바꾼 기준을 나누어 말해 주세요.`});
     const dissentText = L.mode === "role" ? `최종 역할극 반응에서 ${KCP.josa(diss.join(", "), "이/가")} 수용하지 않았습니다.` : `최종 자동 반응에서 ${diss.join(", ")}의 모형 기준을 채우지 못했습니다.`;
-    if (diss.length) indiv.push({k: "rd-dissent", tag: "개별 · 상정 절차", q: dissentText + " 이 안을 상정하는 절차적 근거는 무엇이며, 그 당사자를 다시 협상에 참여시키려면 무엇을 바꾸겠습니까?"});
-    if (L.mask) indiv.push({k: "rd-repeat", tag: "개별 · 반복 거절", q: `${NAMES.filter((_, i) => (L.mask >> i) & 1).join(", ")}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요? 실제 협상에서도 기준이 반드시 오를까요?`});
-    if (D.shortage > EPS) indiv.push({k: "rd-dry-cut", tag: "개별 · 건조 감량", q: `건조 전망에서 계획대로 방류하면 사수위(40)보다 ${qf(D.shortage, 2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order === "proportional" ? "같은 비율로 줄이는 방식을" : ({agFirst: "농업부터 줄이는 순서를", cityFirst: "도시부터 줄이는 순서를", envFirst: "하천유지부터 줄이는 순서를"})[L.proposal.order]} 택한 이유와 먼저 부담을 지는 사람·생물을 설명해 주세요.`});
-    if (N.cost >= 50) indiv.push({k: "rd-tax", tag: "개별 · 테이블 밖 비용", q: `대책비 ${qf(N.cost, 0)}억 원을 쓰는 안입니다. 유역 밖 납세자가 이 비용을 함께 내야 하는 이유는 무엇이며, 그들에게 어떤 설명과 참여 기회를 제공하겠습니까?`});
-    if (applied >= 3) indiv.push({k: "rd-applied-three", tag: "개별 · 조정의 일관성", q: `역제안을 ${applied}번 반영했습니다. 조정위원이 요구를 받아들이는 동안 잃을 수 있는 기준이나 신뢰는 무엇인가요? 유지한 기준과 바꾼 기준을 나누어 말해 주세요.`});
-    if (W.responses.every(x => x === "accept") && !N.responses.every(x => x === "accept") && !D.responses.every(x => x === "accept")) indiv.push({k: "rd-wet-only", tag: "개별 · 비에 기대는 합의", q: "이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 충분히 오기를 기대는 합의인가요? 비가 적으면 비용을 누가 지도록 약속하겠습니까?"});
-    indiv.push(...partyQs);
+    if (diss.length) situ.push({k: "rd-dissent", tag: "개별 · 상정 절차", q: dissentText + " 이 안을 상정하는 절차적 근거는 무엇이며, 그 당사자를 다시 협상에 참여시키려면 무엇을 바꾸겠습니까?"});
+    if (D.shortage > EPS) situ.push({k: "rd-dry-cut", tag: "개별 · 건조 감량", q: `건조 전망에서 계획대로 방류하면 사수위 저수량(40백만 m³)보다 ${qf(D.shortage, 2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order === "proportional" ? "같은 비율로 줄이는 방식을" : ({agFirst: "농업부터 줄이는 순서를", cityFirst: "도시부터 줄이는 순서를", envFirst: "하천유지부터 줄이는 순서를"})[L.proposal.order]} 택한 이유와 먼저 부담을 지는 사람·생물을 설명해 주세요.`});
+    if (N.cost >= 50) situ.push({k: "rd-tax", tag: "개별 · 테이블 밖 비용", q: `대책비 ${qf(N.cost, 0)}억 원을 쓰는 안입니다. 유역 밖 납세자가 이 비용을 함께 내야 하는 이유는 무엇이며, 그들에게 어떤 설명과 참여 기회를 제공하겠습니까?`});
+    if (W.responses.every(x => x === "accept") && !N.responses.every(x => x === "accept") && !D.responses.every(x => x === "accept")) situ.push({k: "rd-wet-only", tag: "개별 · 비에 기대는 합의", q: "이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 충분히 오기를 기대는 합의인가요? 비가 적으면 비용을 누가 지도록 약속하겠습니까?"});
+    // 반드시 묻는 당사자 질문 → 상황 질문 → 남은 당사자 질문 순으로 개별 질문을 INDIV_MAX개까지 고른다.
+    indiv.push(...[...partyQs.slice(0, must), ...situ, ...partyQs.slice(must)].slice(0, INDIV_MAX));
     if (indiv.length < 2) indiv.push({k: "rd-order-reason", tag: "개별 · 감량의 원칙", q: "부족 시 감량 순서를 정하거나 비례 감량을 유지한 기준은 무엇인가요? 계획을 세우기 어려워지는 부담을 누가 지는지도 설명해 주세요."});
     const lastQ = (applied > 0 || L.mask !== 0)
       ? {k: "rd-divergent", tag: "발산 · 모형 밖 대안", q: "하류로 내려가면서 산소가 다시 녹아드는 과정인 재폭기와 유기물 분해를 모형에 넣으면 판단이 달라질까요? 하수 재이용이나 해수 담수화 시설이 생기면 협상 구도와 비용 부담은 어떻게 바뀔까요? 안을 고치거나 유지할 이유를 말해 주세요."}
       : {k: "rd-science", tag: "과학 · 회귀수와 희석", q: "같은 물이라도 도시가 쓸 때와 농업이 쓸 때 이 모형의 하구로 돌아오는 양이 다릅니다. 회귀수와 희석으로 자신의 배분을 설명하고, 회귀수 비율이 달라지면 판단을 고칠지 말해 주세요."};
-    return qs.concat(indiv.slice(0, 5), lastQ);
+    return qs.concat(indiv, lastQ);
   }
   const clausesText = p => `휴경 ${p.f * 100}% / 절수 ${p.save ? "켬" : "끔"} / 연계 이송 ${p.link ? "켬" : "끔"} / 펄스 ${p.pulse ? "켬" : "끔"} / 감량 ${ORDER_NAMES[p.order]}`;
   const planText = p => `농업 ${p.ag}, 도시 ${p.city}, 하천유지 ${p.env}백만 m³ · 펄스 추가 ${p.pulse ? 4 : 0}백만 m³`;
@@ -356,7 +368,7 @@
     ["도시 절수 캠페인", "끔/켬, 켜면 5억 원", "도시 필요량을 36에서 32.4백만 m³로 줄입니다. 공급률 100%여도 캠페인의 생활 부담은 사라지지 않습니다."],
     ["이웃 댐 연계 이송", "끔/켬, 켜면 25억 원", "세 전망 모두 저수지 유입에 10백만 m³를 더합니다. 이웃 댐의 물은 확보되어 있다고 가정하며 그 유역의 피해와 이송 전력은 계산하지 않습니다."],
     ["산란기 펄스 방류", "끔/켬, 돈 0, 물 4백만 m³", "하천유지 배분에 4를 더해 하류로 보냅니다. 온전히 이행하면 하구 유량 수용 기준을 4에서 3m³/s로 바꿉니다. 생물 효과를 물리적으로 계산한 결과가 아닌 게임의 협상 조건입니다."],
-    ["부족 시 감량 순서", "미지정(비례 감량), 농업→도시→하천, 도시→하천→농업, 하천→농업→도시. 비용 0", "사수위에 닿는 전망에서 앞의 용도부터 줄입니다. 재조정 기능을 이 조항에 포함합니다. 사전에 알 수 있는 순서지만 실제 공급량은 비에 따라 바뀝니다."]
+    ["부족 시 감량 순서", "미지정(비례 감량), 농업→도시→하천, 도시→하천→농업, 하천→농업→도시. 비용 0", "사수위에 닿는 전망에서 앞의 용도부터 줄입니다. 재조정 기능을 이 조항에 포함합니다. 사전에 알 수 있는 순서지만 실제 공급량은 비에 따라 바뀝니다. 실제 우리나라 다목적댐은 정부의 댐 용수공급 조정기준에 따라 가뭄 단계(관심→주의→경계→심각)가 오르면 하천유지용수(주의), 농업용수(경계), 생활·공업용수(심각) 순으로 감량 범위를 넓힙니다. 이 게임의 하천→농업→도시 순서와 같지만, 게임은 이 순서를 강제하지 않고 여러 선택지 가운데 하나로 둡니다."]
   ];
   const PULSE_NOTE = "90일 평균 모형은 방류의 시기·지속시간을 재현하지 않습니다. 하천 몫을 감량하면 추가한 펄스 물부터 줄이며, 4가 전부 남지 않으면 완화 기준을 적용하지 않습니다.";
   const MODEL_MATERIAL = `<p>같은 총 방류량도 취수 위치와 돌아오는 물의 비율에 따라 하구에 도달하는 양이 달라집니다. 이 게임에서는 농업의 25%, 도시의 30%가 해당 하류로 돌아옵니다. 도시의 30% 회귀 가정 때문에 도시 사용과 하구 사이에도 갈등이 생깁니다. 이 비율은 현장의 일반값이 아닙니다. C는 부하를 통과 부피로 나눈 비교 지표입니다. 실제 순간 농도를 구하려면 같은 시간 단위의 부하율과 유량을 사용해야 합니다.</p>
@@ -366,7 +378,7 @@
     <div id="rd-pane-basin" class="rd-material" role="tabpanel" aria-labelledby="rd-tab-basin" hidden>
       <p>물은 댐 → 농업 취수 → 도시 취수 → 하구 순으로 흐릅니다. 그림의 위치와 거리는 실제 지형을 나타내지 않습니다. 물 사용이 많은 여름 90일을 다룹니다. 숫자는 90일 총량 또는 그 총량에서 환산한 평균 유량입니다. 어느 날의 갈수량이나 홍수량을 뜻하지 않습니다.</p>
       <dl class="rd-data">${[
-        ["현재 저수량", "130백만 m³ · 90일의 출발점"], ["사용하지 못하는 저수량", "40백만 m³ · 게임의 사수위 저수량. 물 높이 단위가 아니다."], ["90일 증발", "6백만 m³ · 세 전망에 같은 값을 적용"], ["건조 유입", "15백만 m³, 35% · 적은 비가 이어지는 전망"], ["평년 유입", "55백만 m³, 45% · 협상의 기본 비교 전망"], ["습윤 유입", "100백만 m³, 20% · 비가 비교적 많이 오는 전망"], ["대책비", "60억 원 · 유역 밖 납세자도 부담하는 가상 예산"]
+        ["현재 저수량", "130백만 m³ · 90일의 출발점"], ["사용하지 못하는 저수량", "40백만 m³ · 게임의 사수위 저수량. 물 높이 단위가 아닙니다."], ["90일 증발", "6백만 m³ · 세 전망에 같은 값을 적용"], ["건조 유입", "15백만 m³, 35% · 적은 비가 이어지는 전망"], ["평년 유입", "55백만 m³, 45% · 협상의 기본 비교 전망"], ["습윤 유입", "100백만 m³, 20% · 비가 비교적 많이 오는 전망"], ["대책비", "60억 원 · 유역 밖 납세자도 부담하는 가상 예산"]
       ].map(([n, v]) => `<dt>${n}</dt><dd>${v}</dd>`).join("")}</dl><p>${RAIN}</p>
       <p>전망 확률은 이 게임에서 정한 정보입니다. 가중 평균, 기대 점수, 추첨에는 쓰지 않습니다. 세 전망을 나란히 비교하세요.</p>
     </div>
@@ -384,8 +396,8 @@
       <p><a href="https://pubs.usgs.gov/twri/twri9a6/twri9a62/twri9a6_6.2_ver3.pdf">USGS 담수 산소 용해도 표, 760mmHg 열</a> · <a href="https://water.usgs.gov/water-resources/memos/documents/WQ.2011.03.pdf">USGS 산소 용해도 산정의 기압·염분 조건</a>. 외부 자료는 물성 근거이며 가상 유역 자료의 출처가 아닙니다.</p>
       <p>저수지 물 수지: 130+유입+이송−6 = 기말 저수량+실제 방류량. 하류 물 수지: R = Ve+0.75a+0.70c. 회귀수를 새로운 저수지 유입으로 다시 더하지 않습니다.</p>
       <dl class="rd-data"><dt>공급량과 단위 환산</dt><dd>a·c·e는 감량 후 농업·도시·하천유지 공급량입니다. K = 10⁶/(90×86400). Qc = Vc×K, Qe = Ve×K.</dd><dt>회귀수·희석</dt><dd>Vc = c+e+0.25a, Ve = e+0.25a+0.30c, L = 0.5a+20, C = L/Vc.</dd><dt>수온·산소</dt><dd>T = 30−6min(1,Qe/6). DO = max(0,DO_sat−2.0×(L+0.15c)/Ve). 유량 0일 때 C·DO는 계산 불가입니다.</dd><dt>수확·소득</dt><dd>농업 필요량 = 55×(1−휴경률). Y = max(0,1−1.2×(1−min(1,a/필요량))). 소득 = (1−휴경률)×Y+휴경률×0.6.</dd><dt>낙차·발전</dt><dd>H = 20+0.15×((130+기말 저수량)/2−40). 발전량 = 1000×9.8×H×R×10⁶×0.85/(3.6×10⁹)MWh.</dd></dl>
-      <p>발전 물은 취수 전에 댐을 통과한 모든 실제 방류량 R입니다. 평균 낙차는 기초·기말 저수량의 산술평균에서 근사합니다. 기간 내 유입·방류의 시간 변화는 없습니다. 계산상 저수량 상한은 두지 않으며, 이 영역의 최대 기말 234까지 담을 수 있다고 가정합니다. 월류량은 0입니다.</p>
-      <p>재폭기·유기물 분해, 지하수와의 교환, 염분 침입, 작물 생육 단계별 물 요구, 펄스의 실제 시기와 지속시간, 발전 설비 용량, 이송 전력과 이웃 유역의 비용은 계산하지 않습니다. 이 담수 DO 식으로 갯벌의 상태를 계산하지 않습니다.</p>
+      <p>발전 물은 취수 전에 댐을 통과한 모든 실제 방류량 R입니다. 평균 낙차는 기초·기말 저수량의 산술평균에서 근사합니다. 기간 내 유입·방류의 시간 변화는 없습니다. 계산상 저수량 상한은 두지 않으며, 이 영역의 최대 기말 234까지 담을 수 있다고 가정합니다. 월류량은 0입니다. 실제 댐은 여름 홍수기에 홍수를 받아 낼 빈 공간을 남기려고 홍수기 제한수위 아래로 운영하므로, 습윤 전망의 큰 기말 저수량을 모두 남겨 둘 수 있다는 뜻이 아닙니다.</p>
+      <p>재폭기·유기물 분해, 지하수와의 교환, 염분 침입, 작물 생육 단계별 물 요구, 펄스의 실제 시기와 지속시간, 발전 설비 용량, 이송 전력과 이웃 유역의 비용은 계산하지 않습니다. 이 담수 DO 식으로 갯벌의 상태를 계산하지 않습니다. 실제 하구에서 가뭄의 큰 영향은 염분 침입입니다. 강물이 줄면 바닷물이 상류로 더 올라와 민물과 바닷물이 섞이는 기수역이 위로 옮겨 가고, 그 기수역에 기대는 산란장과 어린 물고기의 서식지가 줄어들 수 있습니다.</p>
       <p>참고용 모형 반응은 협상 동의도, 생태 안전 인증도 아닙니다. 역할극에서는 사람이 기준 미달을 감수하고 수용할 수 있습니다.</p>
     </div>`;
   }
@@ -402,7 +414,7 @@
       <text x="4" y="408" fill="var(--ink)">취수·회귀수 단위: 백만 m³</text>
     </svg>
     <dl class="rd-data">${points.map(([n, v]) => `<dt>${n}</dt><dd>${f(v)}m³/s${n === "농업 취수 직전" ? " · 수질 계산 없음" : n === "도시 취수 직전" ? ` · C ${f(r.C)}` : ""}</dd>`).join("")}<dt>농업 취수 / 회귀수</dt><dd>${f(r.v.ag, 2)} / ${f(.25 * r.v.ag, 2)}백만 m³</dd><dt>도시 취수 / 회귀수</dt><dd>${f(r.v.city, 2)} / ${f(.30 * r.v.city, 2)}백만 m³</dd></dl>
-    <p class="rd-notice">농업의 나머지 75%: 이 구간으로 돌아오지 않는 물</p><p class="rd-notice">도시의 나머지 70%: 하구 담수 지점을 우회하는 해양 방류관</p><p class="rd-notice">이 비율은 실제 농업·도시의 일반적 비율이 아닙니다. 하구는 염분이 섞이기 전 담수 지점이며 갯벌의 해수 DO를 계산하는 것이 아닙니다.</p>`;
+    <p class="rd-notice">농업의 나머지 75%: 이 구간으로 돌아오지 않는 물(주로 증발산으로 소비)</p><p class="rd-notice">도시의 나머지 70%: 하구 담수 지점을 우회하는 해양 방류관</p><p class="rd-notice">이 비율은 실제 농업·도시의 일반적 비율이 아닙니다. 하구는 염분이 섞이기 전 담수 지점이며 갯벌의 해수 DO를 계산하는 것이 아닙니다.</p>`;
   }
   const metricDefs = [
     ["end", "감량 뒤 기말 저수량", "end", 2, "백만 m³"], ["raw-end", "계획대로 방류할 때의 기말 계산값", "rawEnd", 2, "백만 m³"], ["shortage", "감량량", "shortage", 2, "백만 m³"], ["r", "실제 방류량", "R", 2, "백만 m³"],
@@ -419,11 +431,14 @@
     <section id="rd-scenarios" class="rd-scenarios"><h3>세 전망 비교</h3><p class="rd-notice">${RAIN}</p><div id="rd-scenario-cards" class="rd-scenario-cards"></div></section>`;
   }
   function checkText(c) {
-    const digits = ["end", "dry-cut"].includes(c.key) ? 2 : c.key === "supply" ? 1 : 3;
     const scale = c.key === "supply" ? 100 : 1, unit = c.key === "supply" ? "%" : "";
     const v = c.value === null ? null : c.value * scale, t = c.threshold * scale;
+    let digits = ["end", "dry-cut"].includes(c.key) ? 2 : c.key === "supply" ? 1 : 3;
+    // 판정은 반올림 전 값으로 한다. 미충족인데 반올림한 값이 기준과 같아 보이면 자릿수를 늘려 차이를 보인다.
+    while (!c.met && v !== null && digits < 6 && f(v, digits) === f(t, digits)) digits++;
+    const tie = !c.met && v !== null && f(v, digits) === f(t, digits);
     const delta = v === null ? "계산 불가(유량 0)" : c.upper ? `초과량 ${f(Math.max(0, v - t), digits)}${unit}` : `${v - t < -EPS ? "−" : "+"}${f(Math.abs(v - t), digits)}${unit}`;
-    return `${f(v, digits)}${unit} / ${f(t, digits)}${unit} (${c.upper ? "이하" : "이상"}) · ${delta} · ${c.met ? "충족" : "미충족"}`;
+    return `${f(v, digits)}${unit} / ${f(t, digits)}${unit} (${c.upper ? "이하" : "이상"}) · ${delta} · ${c.met ? "충족" : "미충족"}${tie ? " (반올림 전 미달)" : ""}`;
   }
   function checkListHTML(list) {
     return `<dl class="rd-data">${list.map(c => `<dt>${esc(c.label)}</dt><dd>${esc(checkText(c))}${c.key === "DO" ? `<p class="rd-notice">${DO_THRESHOLD}</p>` : ""}</dd>`).join("")}</dl>`;
@@ -454,10 +469,10 @@
       g.proposal = planCopy(g.counter.beforeP); g.counter = null; g.stage = "ready"; changed = true;
     } else if (action.type === "apply" && g.stage === "counter" && g.rounds.length < 4 && canDecide(g, g.counter.party) && lineOK(g.counter.reason) && costOf(g.proposal) <= 60 && improves(g.counter.beforeP, g.proposal, g.counter.party, g.counter.option)) {
       r.decision = {id: `rd-r${r.n}-decision`, action: "apply", party: g.counter.party, option: g.counter.option, beforeP: planCopy(r.proposal), afterP: planCopy(g.proposal), reason: g.counter.reason.trim(), beforeMask: r.mask};
-      g.final.hardDecisionId = r.decision.id; g.stage = "awaitSubmit"; g.counter = null; changed = true;
+      if (!g.rounds.some(x => x !== r && x.decision && x.decision.id === g.final.hardDecisionId)) g.final.hardDecisionId = r.decision.id; g.stage = "awaitSubmit"; g.counter = null; changed = true;
     } else if (action.type === "reject" && canDecide(g, g.counter ? g.counter.party : action.party) && lineOK(action.reason)) {
       r.decision = {id: `rd-r${r.n}-decision`, action: "reject", party: g.counter ? g.counter.party : action.party, option: null, beforeP: planCopy(r.proposal), afterP: planCopy(r.proposal), reason: action.reason.trim(), beforeMask: r.mask};
-      g.proposal = planCopy(r.proposal); g.final.hardDecisionId = r.decision.id; g.counter = null; g.stage = "ready"; changed = true;
+      g.proposal = planCopy(r.proposal); if (!g.rounds.some(x => x !== r && x.decision && x.decision.id === g.final.hardDecisionId)) g.final.hardDecisionId = r.decision.id; g.counter = null; g.stage = "ready"; changed = true;
     } else if (action.type === "lock" && canLock(g)) {
       g.locked = clone({version: VERSION, proposal: g.proposal, mode: g.mode, criterion: g.criterion, mask: g.mask, rounds: g.rounds, final: g.final});
       g.stage = "locked"; changed = true;
@@ -484,10 +499,10 @@
       <div class="field"><label for="rd-order">부족 시 감량 순서</label><select id="rd-order">${Object.entries(ORDER_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select></div>
       <p class="rd-notice">${PULSE_NOTE}</p><output id="rd-cost" aria-live="off"></output><p id="rd-budget" class="rd-error" hidden>${BUDGET}</p><p id="rd-next-threshold" class="rd-notice"></p>${button("submit", "제안하기", "primary")}</section>
       <section id="rd-results" class="panel rd-results rd-results-area">${resultsHTML()}</section>
-      <section class="panel rd-response-area"><div id="rd-responses" class="rd-responses"><h3 id="rd-responses-heading" tabindex="-1">현재 반응 · 평년</h3><p class="rd-notice">${MODEL_RULE}</p><p class="rd-notice">참고용 모형 반응입니다. 실제 사람의 태도를 예측하지 않습니다.</p>
+      <section class="panel rd-response-area"><div id="rd-responses" class="rd-responses"><h3 id="rd-responses-heading" tabindex="-1">현재 반응 · 평년</h3><p class="rd-notice">${MODEL_RULE}</p><p class="rd-notice">참고용 모형 반응입니다. 실제 사람의 태도를 예측하지 않습니다.</p><p class="rd-notice">판정은 반올림 전 값으로 합니다. 반올림한 값이 기준과 같아 보이면 소수 자릿수를 늘려 표시합니다.</p>
       ${P.map((k, i) => `<section id="rd-response-${k}" class="rd-party"><h4>${NAMES[i]}</h4><div id="rd-response-model-${k}"></div><div id="rd-human-${k}"><label for="rd-human-${k}-status">역할극 반응 · 필수</label><select id="rd-human-${k}-status" aria-required="true"><option value="">미입력</option>${Object.entries(STATUS).map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select><label for="rd-human-${k}-line" id="rd-human-${k}-label">역할극 발언 · 거부일 때 필수</label><input class="note" id="rd-human-${k}-line" maxlength="200"><p id="rd-human-${k}-record" class="rd-notice"></p></div></section>`).join("")}${button("record-human", "네 반응 기록")}</div>
       <div id="rd-counter"><h3>역제안과 연쇄</h3><label for="rd-counter-party">역제안을 논의할 당사자</label><select id="rd-counter-party">${P.map((k, i) => `<option value="${k}">${NAMES[i]}</option>`).join("")}</select><p id="rd-counter-note" class="rd-notice"></p><div class="rd-wants">${button("want-a", "", "rd-want")}${button("want-b", "", "rd-want")}</div><p id="rd-link-note" class="rd-notice" hidden>이미 이송 중입니다. 다른 요구를 선택하거나 거절 이유를 적으세요.</p>${button("counter-start", "역제안 편집 시작")}
-      <div id="rd-cascade" class="rd-cascade" hidden><h4 id="rd-cascade-heading" tabindex="-1">변경 전 / 변경 후</h4><div id="rd-cascade-body"></div></div>
+      <div id="rd-cascade" class="rd-cascade" hidden><h4 id="rd-cascade-heading" tabindex="-1">변경 전 / 변경 후</h4><p class="rd-notice">판정은 반올림 전 값으로 합니다.</p><div id="rd-cascade-body"></div></div>
       <label for="rd-decision-reason">반영 또는 거절 이유 한 문장 · 필수</label><input id="rd-decision-reason" class="note" maxlength="200" aria-required="true" aria-describedby="rd-reason-note"><p id="rd-reason-note" class="rd-notice">거절 이유 한 문장을 적으세요.</p><div class="row">${button("apply", "반영")}${button("reject", "거절하고 현재안 유지")}${button("counter-cancel", "편집 취소")}</div><p id="rd-fourth-note" class="rd-notice" hidden>네 번의 제안을 마쳤습니다. 남은 역제안을 거절한 이유를 적은 뒤 상정 방식을 고르세요.</p></div></section>
       <section class="panel rd-final-area"><h3>상정</h3><div class="field"><label for="rd-final-mode">상정 방식 · 필수</label><select id="rd-final-mode" aria-required="true"><option value="">미선택</option>${Object.entries(FINAL_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select></div>${field("gain", "얻는 것", 200, true)}${field("loss", "잃는 것", 200, true)}${field("final-text", "합의문 요지", 1000, true)}
       <div class="field"><label for="rd-hard-decision">가장 받아들이기 어려웠던 역제안 기록</label><select id="rd-hard-decision"></select></div><p id="rd-lock-note" class="rd-notice"></p><div class="row">${button("lock", "상정안 확정")}${button("unlock", "다시 계획하기")}</div><p class="rd-notice">확정을 풀고 새 4회 협상을 시작합니다. 기존 메모와 면접 메모는 남습니다.</p><p id="rd-previous-note" class="rd-notice" hidden>이전 협상의 면접 메모가 남아 있습니다. 새 질문에 맞춰 확인하세요.</p></section>
@@ -674,6 +689,8 @@
       ["save", "link", "pulse"].forEach(k => { p[k] = $("#rd-" + k).checked; });
       if (!invalid && planOK(p)) {
         if (g.stage === "ready" && !samePlan(p, g.proposal)) g.stage = "draft";
+        // 끝난 제출의 안으로 되돌리면 다시 상정할 수 있는 상태로 돌아간다(불필요한 추가 제출 방지).
+        else if (g.stage === "draft" && lastRound(g) && finished(lastRound(g), g.mode) && !(lastRound(g).decision && lastRound(g).decision.action === "apply") && samePlan(p, lastRound(g).proposal)) g.stage = "ready";
         g.proposal = p; persist();
       }
       $("#rd-error").textContent = invalid ? "0~80의 정수를 입력하세요." : "";
@@ -750,6 +767,14 @@
       <p><b>약점:</b> 농민과 도시는 거부, 하구는 조건부이고 공사만 수용합니다. 농업을 추가 감량의 맨 앞에 둔 까닭도 별도로 정당화해야 합니다. 주어진 건조 전망의 비축은 76.00백만 m³여서 실제 감량은 발생하지 않습니다. 감량 조항을 넣었다고 이 사례에서 위험을 줄인 효과가 계산된 것은 아닙니다.</p>
       <p><b>상정:</b> 결렬 후 행정 결정 요청을 선택합니다. 미래를 말하는 쪽도 지금 손실을 지는 사람의 목소리를 대신하지 못합니다.</p>
     </details>
+    <details class="reveal" id="rd-example-farm">
+      <summary>가상의 답 4 · 올해 농가 생계 우선</summary>
+      <p><b>기준과 무게:</b> 생육기에 물이 끊기면 되돌리기 어려운 올해 농가 생계를 가장 무겁게, 생활용수와 하구 조건을 그다음으로 두고, 다음 계절 비축과 유역 밖 비용을 감수했습니다.</p>
+      <p><b>선택:</b> 농업 55, 도시 33, 하천유지 12백만 m³를 배분합니다. 휴경 없이 도시 절수와 이웃 댐 연계 이송을 선택하고 펄스는 쓰지 않습니다. 부족 시에는 도시→하천→농업 순서로 줄여 농업을 맨 뒤에 둡니다. 대책비는 30억 원입니다.</p>
+      <p><b>얻는 것과 잃는 것:</b> 평년 농가 소득 지수 1.000, 도시 공급률 100.0%, 하구 유량 4.585m³/s, 모형 DO 5.299mg/L를 얻지만, 기말 비축은 89.00백만 m³로 공사 기준을 채우지 못합니다. 건조 전망의 기말 저수량은 49.00백만 m³입니다.</p>
+      <p><b>약점:</b> 비축 부족을 이웃 댐의 물 10백만 m³와 대책비 25억 원으로 메웠습니다. 그 유역의 피해와 이송 전력은 계산하지 않았으므로 부담이 사라진 것이 아니라 테이블 밖으로 옮겨 갔을 수 있습니다. 더 심한 가뭄이 오면 생활용수부터 줄이도록 적었으니 절수가 어려운 시민에게 먼저 부담이 갑니다. 생활·공업용수를 가장 나중에 줄이는 실제 댐의 가뭄 대응과도 다릅니다. 모형 DO도 기준 5mg/L에 가깝습니다.</p>
+      <p><b>상정:</b> 자동 반응에서는 공사만 조건부이므로 다수 합의안을 선택합니다. 습윤 전망에서는 네 곳이 모두 수용하지만, 비가 많이 오기를 기대는 근거로 쓰지 않습니다.</p>
+    </details>
   </div>
   <details class="reveal" id="rd-science-water">
     <summary>과학 해설 · 물 수지와 발전</summary>
@@ -764,15 +789,16 @@
   </details>
   <details class="reveal" id="rd-science-crop">
     <summary>과학 해설 · 작물과 물 부족</summary>
-    <p>작물의 물 부족 반응은 작물 종류와 생육 단계에 따라 다릅니다. 이 게임은 필요량 대비 공급량으로 수확 지수를 정하고 감수 계수 1.2를 썼습니다. 실제 수확 예측값이 아닙니다. Y는 경작한 면적의 수확 지수이며, 전체 농가 소득에는 휴경 면적과 보상도 함께 들어갑니다. 소득 지수 0.85를 모든 농가의 실제 소득이 똑같이 15% 줄었다는 통계로 읽지 않습니다.</p>
+    <p>작물의 물 부족 반응은 작물 종류와 생육 단계에 따라 다릅니다. 이 게임은 필요량 대비 공급량으로 수확 지수를 정하고 감수 계수 1.2를 썼습니다. 이 식은 FAO 관개·배수 보고서 33호(Doorenbos·Kassam, 1979)의 수확 반응 계수 Ky 관계, 곧 1−실제 수확/최대 수확 = Ky×(1−실제 증발산/최대 증발산)를 빌린 것입니다. 원래 식은 공급량이 아니라 증발산 부족에 대해 정의되었고, 대체로 증발산 부족이 50% 정도까지일 때만 직선으로 근사됩니다. 이 게임은 공급량을 증발산 대신 쓰고, 공급이 약 83% 부족할 때 수확 0이 되도록 직선을 끝까지 늘였으므로 실제 수확 예측값이 아닙니다. Y는 경작한 면적의 수확 지수이며, 전체 농가 소득에는 휴경 면적과 보상도 함께 들어갑니다. 소득 지수 0.85를 모든 농가의 실제 소득이 똑같이 15% 줄었다는 통계로 읽지 않습니다.</p>
   </details>
   <details class="reveal" id="rd-model-limits">
     <summary>모형이 단순화한 것과 빠진 것</summary>
     <p>하천의 거리와 시간에 따른 재폭기·유기물 분해를 계산하지 않고 한 담수 지점의 값으로 비교했습니다. 희석은 나타나지만 하천의 자정 과정을 재현하지 못합니다. 재폭기는 대기에서 산소가 다시 녹아드는 과정이고 분해는 산소를 소비할 수 있으므로 둘을 넣었을 때의 순효과는 조건에 따라 달라집니다.</p>
-    <p>댐 아래 지류와 강우 유출, 비가 작물의 물 요구를 줄이는 효과를 0으로 두었습니다. 실제로 비가 많이 오면 하류 유량과 희석 조건도 달라집니다. 지하수와의 교환, 강우 유출의 시간 변화, 염분 침입, 작물 생육 단계별 물 요구, 펄스의 실제 시기와 지속시간, 발전 설비 용량, 이송 전력과 이웃 유역의 비용을 뺐습니다. 갯벌 피해는 문제의 맥락에 있지만 이 담수 DO 식으로 갯벌의 상태를 계산하지 않습니다.</p>
+    <p>댐 아래 지류와 강우 유출, 비가 작물의 물 요구를 줄이는 효과를 0으로 두었습니다. 실제로 비가 많이 오면 하류 유량과 희석 조건도 달라집니다. 지하수와의 교환, 강우 유출의 시간 변화, 염분 침입, 작물 생육 단계별 물 요구, 펄스의 실제 시기와 지속시간, 발전 설비 용량, 이송 전력과 이웃 유역의 비용을 뺐습니다. 갯벌 피해는 문제의 맥락에 있지만 이 담수 DO 식으로 갯벌의 상태를 계산하지 않습니다. 실제 하구에서는 산소보다 염분 침입이 가뭄의 더 큰 영향일 수 있습니다. 강물이 줄면 바닷물이 상류로 올라와 기수역이 위로 옮겨 가고 산란장과 어린 물고기의 서식지가 줄어들 수 있으며, 강물이 늘면 반대로 기수역이 바다 쪽으로 밀려납니다. 이 게임의 하구 유량과 DO만으로는 이 변화를 읽을 수 없습니다.</p>
     <p>농업 회귀수 25%, 도시 회귀수 30%, 산소 소모 계수 2.0과 감수 계수 1.2는 게임의 값입니다. 특히 회귀수와 산소 소모 계수는 협상 결과를 크게 좌우합니다. 계수를 바꾸려면 모든 합의 가능성을 다시 확인해야 합니다.</p>
+    <p>부족 시 감량 순서는 게임이 강제하지 않는 선택지입니다. 실제 우리나라 다목적댐은 정부의 댐 용수공급 조정기준에 따라 가뭄 단계가 관심→주의→경계→심각으로 오를 때 하천유지용수(주의), 농업용수(경계), 생활·공업용수(심각) 순으로 감량을 넓힙니다. 게임의 하천→농업→도시 순서에 해당합니다. 법에서도 하천의 흐름을 지키는 몫은 하천법의 하천유지유량과 물환경보전법의 환경생태유량처럼 다른 이름과 목적으로 나뉩니다. 이 게임의 하천유지 배분은 둘 가운데 어느 법정 값도 아닙니다.</p>
     <p>자동 반응은 고정 수치 기준과 두 제출 연속 거절 뒤 다음 제출의 한 단계 상승으로 만들어졌습니다. 실제 협상의 신뢰·관계·정치적 힘과 집단 내부의 차이를 담지 못합니다. 연속 거절이 실제 사람의 기준을 반드시 올린다는 뜻은 아닙니다. 역할극에서 수치와 다르게 동의한 이유도 검토할 자료입니다.</p>
-    <p>이 게임은 허용한 입력 범위에서 평년의 모형 만장일치가 불가능하도록 수치를 정했습니다. 각 당사자만 빠지는 3자 합의안은 모두 있고 습윤에서는 모형 만장일치가 가능합니다. 기준이 오른 조합에서도 이 성질을 전수 탐색했습니다. 공사 비축을 줄이는 안이 다른 타협보다 훨씬 많지만, 가능한 안이 많다는 사실이 그 선택을 더 정당하게 만들지는 않습니다. 현실의 물 협상이 언제나 결렬된다는 결론도 아닙니다.</p>
+    <p>이 게임은 허용한 입력 범위에서 평년의 모형 만장일치가 불가능하도록 수치를 정했습니다. 각 당사자만 빠지는 3자 합의안은 모두 있고 습윤에서는 모형 만장일치가 가능합니다. 기준이 오른 조합에서도 이 성질을 전수 탐색했습니다. 기준 상승이 없을 때 평년 3자 합의안 11,602,477개 가운데 공사(미래 비축)만 빠지는 안이 94.2%이고, 농민만 빠지는 안은 5.0%, 도시만 빠지는 안은 0.7%, 하구만 빠지는 안은 0.003%입니다. 이 쏠림은 이 게임의 계수가 만든 것입니다. 가능한 안이 많다는 사실이 그 선택을 더 정당하게 만들지는 않으며, 직접 반대할 수 없는 미래 사용자에게 손실을 넘기기 가장 쉬운 구조라는 뜻일 수 있습니다. 현실의 물 협상이 언제나 결렬된다는 결론도 아닙니다.</p>
   </details>
 </section>`;
   KCP.games[id] = {
@@ -782,7 +808,7 @@
       K, EPS, doSat, simulate: (p, inflow = 55) => simulate(planOK(p) ? p : repairPlan(p), [15, 55, 100].includes(inflow) ? inflow : 55),
       compute: (p, mask = 0) => evaluate(planOK(p) ? p : repairPlan(p), Number.isInteger(mask) && mask >= 0 && mask <= 15 ? mask : 0),
       evaluate: (p, mask = 0) => evaluate(planOK(p) ? p : repairPlan(p), Number.isInteger(mask) && mask >= 0 && mask <= 15 ? mask : 0),
-      response, checks, severe, masksFromDecisions, improves, planOK, restore, fresh, transition, validateLocked,
+      response, checks, checkText, severe, masksFromDecisions, improves, planOK, restore, fresh, transition, validateLocked,
       questionKeys: state => questions(state).map(q => q.k)
     }
   };
