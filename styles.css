@@ -434,3 +434,50 @@ svg.hexmap .t-L + text, svg.hexmap .t-M + text, svg.hexmap .t-F + text { fill: #
 .supply .num { text-align: right; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* 확장 슬롯과 화면 도구 */
+[hidden] { display: none !important; }
+.ext-slot:empty { display: none; }
+#prep-top:not(:empty) { margin-bottom: 14px; }
+#room-tools:not(:empty) { margin-bottom: 10px; }
+.qx:not(:empty) { margin-top: 8px; }
+.stack > .ext-slot + .panel { margin-top: 14px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.speak { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+#printSheet { display: none; }
+@media print {
+  html.kcp-printing:root {
+    --paper: #ffffff;
+    --sheet: #ffffff;
+    --sheet-2: #ffffff;
+    --ink: #15222c;
+    --ink-2: #4b5b64;
+    --ink-3: #7a8a90;
+    --line: #cfd8d6;
+    --accent: #0b7a6f;
+    --accent-soft: #d7ece8;
+    --accent-ink: #ffffff;
+    --volt: #b97d0e;
+    --volt-soft: #f6ead0;
+    --ok: #2f7d4f;
+    --warn: #b7791f;
+    --bad: #c2412d;
+    --bad-soft: #f7dfda;
+    --sci: #d0336c;
+    --hap: #2c62d8;
+    --env: #1d2b25;
+    --sea: #bfe0ef;
+    --sea-2: #9ccbe2;
+    --land: #cfe3b4;
+    --lake: #8fd0dc;
+    --shadow: 0 1px 0 rgba(21, 34, 44, 0.06), 0 6px 18px -10px rgba(21, 34, 44, 0.25);
+    color-scheme: light;
+  }
+  html.kcp-printing body { background: var(--paper); }
+  html.kcp-printing body > *:not(#printSheet) { display: none !important; }
+  html.kcp-printing #printSheet { display: block !important; color: var(--ink); }
+  html.kcp-printing #printSheet table { border-collapse: collapse; width: 100%; page-break-inside: avoid; }
+  html.kcp-printing #printSheet th,
+  html.kcp-printing #printSheet td { border: 1px solid var(--ink-3); padding: 4px 6px; text-align: left; vertical-align: top; }
+}
