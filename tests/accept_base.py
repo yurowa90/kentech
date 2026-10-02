@@ -930,7 +930,8 @@ def t_T0a_17_files(c: Ctx):
     # 창작 games/*.js는 g2026.js와 ext 사이에 추가될 수 있다.
     c.eq([s for s in external if s in expected_scripts], expected_scripts, "T0a-17 기본 및 모듈 스크립트 로드 순서")
     c.expect(all(external.index("g2026.js") < i < external.index("ext/routine.js") for i, src in enumerate(external) if src.startswith("games/") and src.endswith(".js")), "T0a-17 창작 게임은 기출 다음과 모듈 앞에 로드")
-    c.expect(any("창작 게임: games/*.js (헤드가 통합 때 추가)" == text for text in structure["comments"]), "T0a-17 창작 게임 통합 위치 안내 주석")
+    # 통합 뒤에는 자리 표시 주석이 실제 연결 안내로 바뀐다. 창작 게임 구역 주석이 있는지만 본다.
+    c.expect(any(text.startswith("창작 게임") for text in structure["comments"]), "T0a-17 창작 게임 구역 안내 주석")
     boot_indices = [i for i, s in enumerate(structure["scripts"]) if not s["src"] and re.search(r"\bKCP\.boot\s*\(\s*\)", s["code"])]
     c.expect(len(boot_indices) == 1 and boot_indices[0] > max(i for i,s in enumerate(structure["scripts"]) if s["src"]), "T0a-17 모든 스크립트 뒤에 boot 한 번")
     files = ["routine.js", "routine.css", "probe.js", "probe.css", "peer.js", "peer.css", "drill-data.js", "drill.js", "drill.css"]

@@ -905,6 +905,8 @@
               : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."}</p>
             ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}
             <div id="room-tools" class="stack ext-slot"></div>
+            ${qs.length ? "" : `<div class="caution room-empty" id="room-empty">아직 질문이 없습니다. 준비실에서 계획을 확정하면 내 선택에 맞춘 질문이 만들어집니다.
+              <div class="row" style="margin-top:6px"><button class="btn small" type="button" id="room-to-prep">준비실로 돌아가기</button></div></div>`}
             <div class="qdeck">
               ${qs
                 .map(
@@ -994,6 +996,8 @@
       if (notes.length) notes[notes.length - 1].focus();
     };
     KCP.$("#toReflect", root).onclick = next;
+    // 계획을 확정해야 질문이 생기는 게임은 확정 전에 질문이 0개다. 빈 카드 묶음 대신 돌아갈 길을 보여 준다.
+    if (!qs.length) KCP.$("#room-to-prep", root).onclick = () => KCP.goPhase("prep");
     KCP.$$(".qdeck .qcard", root).forEach((card, i) => {
       const q = qs[i], slot = KCP.$(`.qx[data-qx="${i}"]`, card);
       KCP.emit("room:card", { card, slot, q, i, key: KCP.qkey(q), year, meta, state, save });
