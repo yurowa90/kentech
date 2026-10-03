@@ -482,7 +482,6 @@
     return out.sort((a, b) => b.score - a.score).slice(0, 3).map(o => o.text);
   }
 
-  const HINT_STYLE = ["기준 먼저", "자료 숫자", "얻고 잃는 것"];
   function questions(st, R, N) {
     const qs = [];
     const add = (score, q, hints) => qs.push({ score, q, hints });
@@ -516,7 +515,31 @@
   }
 
   /* ---------- 저장 ---------- */
-  function blank() { return { v: 1, seed: 2026, builds: [], lines: [], policies: [], missions: [] }; }
+  function blank() { return { v: 1, seed: 2026, builds: [], lines: [], policies: [], missions: [], runs: 0, jAuto: false, journal: [] }; }
+  /* ---------- 건설 일지 ---------- */
+  const J_MAX = 30, J_LEN = 2000;
+  const JQ = [
+    { k: "why", q: "왜 이 자리에, 이 발전원을 골랐나요?", s: "왜", h: ["일사·풍속·주민 숫자 하나를 근거로", "다른 자리와 비교하면?"] },
+    { k: "surprise", q: "결과에서 예상과 달랐던 점은?", s: "예상 밖", h: ["예상한 숫자 vs 실제 숫자", "왜 달랐는지 작동 원리로"] },
+    { k: "trade", q: "얻은 것과 잃은 것을 한 문장으로", s: "한 문장", h: ["○○을 얻는 대신 △△을 잃었다", "그 부담은 누가 지나?"] },
+    { k: "next", q: "다음에 바꿀 것, 더 알아봐야 할 것은?", s: "다음", h: ["바꿀 것 하나 + 이유", "더 확인할 자료나 실험 하나"] }
+  ];
+  const jstr = (x, max = J_LEN) => (typeof x === "string" ? x.slice(0, max) : "");
+  const jnum = (x, lo, hi) => (typeof x === "number" && isFinite(x) ? clamp(x, lo, hi) : 0);
+  function cleanEntry(e) {
+    if (!e || typeof e !== "object" || !Number.isInteger(e.id) || e.id < 1) return null;
+    const m = e.m && typeof e.m === "object" ? e.m : {};
+    const a = e.a && typeof e.a === "object" ? e.a : {};
+    return {
+      id: e.id, at: jstr(e.at, 10), days: [7, 30, 90].includes(e.days) ? e.days : 7, seed: Number.isInteger(e.seed) ? e.seed : 0,
+      wx: Array.isArray(e.wx) ? [0, 1, 2].map(k => Math.round(jnum(e.wx[k], 0, 90))) : [0, 0, 0],
+      m: { out: jnum(m.out, 0, 1e5), co2: jnum(m.co2, 0, 1e7), cost: jnum(m.cost, 0, 1e5), cp: jnum(m.cp, 0, 99), uns: jnum(m.uns, 0, 100), curt: jnum(m.curt, 0, 1e7) },
+      pol: (Array.isArray(e.pol) ? e.pol : []).filter(id => POLICIES.some(P => P.id === id)).slice(0, 2),
+      mis: (Array.isArray(e.mis) ? e.mis : []).filter(x => x && MISSIONS.some(P => P.id === x.id)).slice(0, 2).map(x => ({ id: x.id, ok: x.ok === true })),
+      q: jstr(e.q, 300),
+      a: { why: jstr(a.why), surprise: jstr(a.surprise), trade: jstr(a.trade), next: jstr(a.next), q: jstr(a.q) }
+    };
+  }
   function sanitize(o) {
     const st = blank();
     if (!o || typeof o !== "object") return st;
@@ -540,6 +563,9 @@
     });
     st.policies = (Array.isArray(o.policies) ? o.policies : []).filter((id, k, a) => POLICIES.some(P => P.id === id) && a.indexOf(id) === k).slice(0, 2);
     st.missions = (Array.isArray(o.missions) ? o.missions : []).filter((id, k, a) => MISSIONS.some(P => P.id === id) && a.indexOf(id) === k).slice(0, 2);
+    st.journal = (Array.isArray(o.journal) ? o.journal : []).map(cleanEntry).filter(Boolean).slice(-J_MAX);
+    st.runs = Math.max(Number.isInteger(o.runs) && o.runs > 0 ? Math.min(o.runs, 1e6) : 0, st.journal.reduce((a, e) => Math.max(a, e.id), 0));
+    st.jAuto = o.jAuto === true;
     while (capex(st) > M.budget + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
     return st;
   }
@@ -579,6 +605,8 @@
     cloud: '<path d="M7 18h10a4 4 0 0 0 .6-8 6 6 0 0 0-11.4 1.6A3.4 3.4 0 0 0 7 18z"/>',
     rain: '<path d="M7 14.5h10a3.6 3.6 0 0 0 .6-7.2 5.4 5.4 0 0 0-10.3 1.4A3 3 0 0 0 7 14.5z"/><path d="M8 17.5l-1 3M12 17.5l-1 3M16 17.5l-1 3"/>',
     news: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 12.5h6M7 15.5h4"/>',
+    pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2"/>',
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
     reroll: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
     skip: '<path d="M5 5v14l8-7zM13 5v14l8-7z" fill="currentColor"/>',
@@ -1477,6 +1505,7 @@
     html.classList.remove("bd-running");
     $("#bd-run").hidden = true;
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+    S.result.entry = addEntry(R.res);
     refreshHUD();
     placeBannerValues();
     S.drawerTab = "result";
@@ -1485,7 +1514,27 @@
     const head = $("#bd-res-title");
     if (head) head.focus({ preventScroll: true });
     announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
+    // 첫 운영 뒤 한 번만 일지를 저절로 연다.
+    if (!S.st.jAuto) { S.st.jAuto = true; saveState(S.st); openJournal(S.result.entry, head); }
     request();
+  }
+  // 운영마다 지표 한 줄을 남긴다(글을 안 써도 남는다).
+  function addEntry(res) {
+    const st = S.st;
+    st.runs = (st.runs || 0) + 1;
+    const wx = [0, 0, 0];
+    res.wx.forEach(w => { wx[w.w]++; });
+    const e = {
+      id: st.runs, at: new Date().toISOString().slice(0, 10), days: res.days, seed: res.seed, wx,
+      m: { out: res.outTotal, co2: Math.round(res.co2), cost: Math.round(res.cost.total * 10) / 10, cp: res.cp.issues,
+        uns: Math.round(1000 * res.unsTotal / Math.max(1, res.tot.dem)) / 10, curt: Math.round(res.tot.curt) },
+      pol: st.policies.slice(), mis: res.missions.filter(m => m.chosen).map(m => ({ id: m.id, ok: m.ok })),
+      q: res.questions[0] ? res.questions[0].q : "", a: { why: "", surprise: "", trade: "", next: "", q: "" }
+    };
+    st.journal.push(e);
+    while (st.journal.length > J_MAX) st.journal.shift();
+    saveState(st);
+    return e.id;
   }
 
   /* =====================================================================
@@ -1534,6 +1583,7 @@
             <button type="button" class="bd-tab" data-tab="policy" aria-pressed="true">${ico("cards")}<span>정책</span><b class="bd-count" data-count="policy"></b></button>
             <button type="button" class="bd-tab" data-tab="mission" aria-pressed="false">${ico("flag")}<span>미션</span><b class="bd-count" data-count="mission"></b></button>
             <button type="button" class="bd-tab" data-tab="result" aria-pressed="false">${ico("news")}<span>결과</span></button>
+            <button type="button" class="bd-tab" data-tab="journal" aria-pressed="false">${ico("pen")}<span>일지</span><b class="bd-count" data-count="journal"></b></button>
           </div>
           <button type="button" class="bd-x" id="bd-drawer-x" aria-label="서랍 닫기">${ico("x")}</button>
         </div>
@@ -1752,6 +1802,7 @@
     S.root.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.drawerTab)));
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
     S.root.querySelector('[data-count="mission"]').textContent = `${S.st.missions.length}/2`;
+    S.root.querySelector('[data-count="journal"]').textContent = S.st.journal.length ? String(S.st.journal.length) : "";
     const tab = S.drawerTab;
     if (tab === "policy") {
       const full = S.st.policies.length >= 2;
@@ -1773,10 +1824,11 @@
             <span class="bd-card-mark" aria-hidden="true">${onM ? ico("check") : ""}</span></button>`;
         }).join("")}</div>
         <p class="bd-note">고른 2개만 성공·실패를 따진다. 나머지는 '대신 잃은 것'으로 본다.</p>`;
-    } else body.innerHTML = renderResult();
+    } else if (tab === "journal") body.innerHTML = renderTimeline();
+    else body.innerHTML = renderResult();
     if (tab === "result" && S.result) {
-      const q = body.querySelector("#bd-q"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
-      if (q) q.onclick = () => openQuestions(q);
+      const q = body.querySelector("#bd-jopen"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
+      if (q) q.onclick = () => openJournal(S.result.entry, q);
       if (again) again.onclick = rebuild;
       if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; saveState(S.st); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
     }
@@ -1792,6 +1844,11 @@
     const chosen = R.missions.filter(m => m.chosen), others = R.missions.filter(m => !m.chosen);
     const lostElse = others.filter(m => !m.ok);
     return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">가상 모형 · 시드 ${R.seed}</span></h2>
+      <div class="bd-res-acts">
+        <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
+        <button type="button" class="v2-btn primary" id="bd-jopen">${ico("pen")}<span>일지 쓰기</span></button>
+        <button type="button" class="v2-btn bd-reroll" id="bd-reroll">${ico("reroll")}<span>다른 날씨</span></button>
+      </div>
       <ul class="bd-news">${R.news.map(t => `<li>${ico("news")}<span>${esc(t)}</span></li>`).join("")}</ul>
       <div class="bd-mis">${chosen.map(m => `<p class="bd-mis-row" data-ok="${m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "성공" : "실패"}">${ico(m.ok ? "check" : "x")}</span><b>${m.name}</b><span class="num">${esc(m.val)}</span></p>`).join("")}
         ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>
@@ -1802,11 +1859,7 @@
       </div>
       <table class="bd-towns"><thead><tr><th scope="col">마을</th><th scope="col">정전</th><th scope="col">못 받은 전력</th><th scope="col">만족</th></tr></thead>
         <tbody>${TOWNS.map((W, ti) => `<tr><th scope="row"><span class="bd-bn-code">${W.id}</span>${esc(W.name)}</th><td class="num${R.town[ti].outH ? " bad" : ""}">${R.town[ti].outH}h</td><td class="num">${fmt(R.town[ti].uns, 1)} MWh</td><td class="bd-sat-cell">${satBar(R.sat[ti])}</td></tr>`).join("")}</tbody></table>
-      <div class="bd-res-acts">
-        <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
-        <button type="button" class="v2-btn primary" id="bd-q">${ico("mic")}<span>면접관 질문 3개</span></button>
-        <button type="button" class="v2-btn bd-reroll" id="bd-reroll">${ico("reroll")}<span>다른 날씨</span></button>
-      </div>`;
+`;
   }
   function rebuild() {
     S.result = null;
@@ -1837,7 +1890,13 @@
           <li>${ico("line")}<b>잇기</b><span>발전소 ↔ 마을</span></li>
           <li>${ico("cards")}<b>고르기</b><span>정책 ≤2 · 미션 2</span></li>
           <li>${ico("play")}<b>돌리기</b><span>1주·1달·3달</span></li>
+          <li>${ico("pen")}<b>적기</b><span>일지 네 칸</span></li>
         </ol>
+        <h3 class="bd-h3">${ico("pen")}일지(교사용 안내)</h3>
+        <ul class="bd-tiplist">
+          <li>운영마다 지표 한 줄이 남고, 학생은 네 칸(이유·예상 밖·한 문장·다음)과 오늘의 질문에 답한다.</li>
+          <li>일지 탭에서 회차를 비교하고 [활동지로 복사]로 글을 모아 낸다. 이 브라우저에만 저장된다.</li>
+        </ul>
         <h3 class="bd-h3">${ico("help")}팁</h3>
         <ul class="bd-tiplist">${TIPS.slice(0, 6).map(t => `<li>${esc(t)}</li>`).join("")}</ul>
         <details class="bd-model"><summary>가상 모형 숫자</summary>
@@ -1854,24 +1913,145 @@
     }
     S.help.open(from);
   }
-  function openQuestions(from) {
-    const R = S.result;
-    if (!R) return;
-    if (!S.qdlg) S.qdlg = makeDialog("bd-q-dlg", "INTERVIEW", "면접관 질문 3개");
-    if (!S.qdlg) return;
-    S.qdlg.body.innerHTML = `<ol class="bd-qs">${R.questions.map((q, k) => `<li>
-        <p class="bd-q">${esc(q.q)}</p>
-        <button type="button" class="bd-hint-btn" aria-expanded="false" aria-controls="bd-hint-${k}">${ico("help")}<span>힌트</span></button>
-        <ul class="bd-hint" id="bd-hint-${k}" hidden>${q.hints.map((h, j) => `<li><b>${HINT_STYLE[j]}</b>${esc(h)}</li>`).join("")}</ul></li>`).join("")}</ol>
-      <p class="bd-note">답은 결론 한 줄 → 근거 숫자 두세 개 → 얻고 잃는 것 순서로.</p>`;
-    S.qdlg.body.querySelectorAll(".bd-hint-btn").forEach(b => {
+  /* ---------- 건설 일지 ---------- */
+  const lenName = d => (d === 7 ? "1주" : d === 30 ? "1달" : "3달");
+  const polName = id => (POLICIES.find(P => P.id === id) || {}).name || id;
+  const misName = id => (MISSIONS.find(P => P.id === id) || {}).name || id;
+  const findEntry = id => S.st.journal.find(e => e.id === id) || null;
+  const entryDate = e => `${e.id}번째 운영 · ${lenName(e.days)} · 맑음 ${e.wx[0]}일/흐림 ${e.wx[1]}일/비 ${e.wx[2]}일`;
+  const misTxt = e => (e.mis.length ? e.mis.map(m => `${misName(m.id)} ${m.ok ? "✓" : "✗"}`).join(" · ") : "없음");
+  const misHtml = e => (e.mis.length ? e.mis.map(m => `<span class="bd-mk" data-ok="${m.ok}">${esc(misName(m.id))} ${ico(m.ok ? "check" : "x", "v2-ico bd-mk-i")}<span class="bd-sr">${m.ok ? "성공" : "실패"}</span></span>`).join(" ") : "없음");
+  const metricLine = e => `정전 ${fmt(e.m.out)}h · CO₂ ${fmt(e.m.co2)} t · 비용 ${fmt(e.m.cost, 1)}억 · 민원 ${fmt(e.m.cp)}건 · 정책 ${e.pol.length ? e.pol.map(polName).join(", ") : "없음"} · 미션 ${misTxt(e)}`;
+  function jStrip(e) {
+    const it = (k, v) => `<span><span class="bd-js-k">${k}</span> <b class="num">${esc(v)}</b></span>`;
+    return `<p class="bd-jstrip">${it("정전", fmt(e.m.out) + "h")}${it("CO₂", fmt(e.m.co2) + " t")}${it("비용", fmt(e.m.cost, 1) + "억")}${it("민원", fmt(e.m.cp) + "건")}${it("정책", e.pol.length ? e.pol.map(polName).join("·") : "없음")}<span><span class="bd-js-k">미션</span> ${misHtml(e)}</span></p>`;
+  }
+  function openJournal(id, from) {
+    const e = findEntry(id);
+    if (!e) { toast("일지 기록이 없다"); return; }
+    if (!S.jdlg) {
+      S.jdlg = makeDialog("bd-j-dlg", "JOURNAL", "건설 일지");
+      if (!S.jdlg) return;
+      S.jdlg.el.classList.add("bd-jmodal");
+      S.jdlg.el.addEventListener("close", () => {
+        stopSpeak();
+        if (!S || S.drawerTab !== "journal" || !S.drawerOpen) return;
+        const paper = S.jdlg.body.querySelector("[data-entry]"), id = paper ? paper.dataset.entry : "";
+        renderDrawer();
+        const back = S.root.querySelector(`[data-jopen="${id}"]`);
+        if (back) back.focus({ preventScroll: true });
+      });
+    }
+    stopSpeak();
+    const area = (k, label, val) => `<textarea class="bd-jta" id="bd-j-${k}" data-j="${k}" rows="2" maxlength="${J_LEN}"${label ? ` aria-label="${esc(label)}"` : ""}>${esc(val)}</textarea>`;
+    S.jdlg.body.innerHTML = `<div class="bd-paper" data-entry="${e.id}">
+        <p class="bd-jdate">${esc(entryDate(e))}</p>
+        ${jStrip(e)}
+        <ol class="bd-jq">${JQ.map((P, k) => `<li>
+          <div class="bd-jq-h"><label for="bd-j-${P.k}"><span class="bd-jn num">${k + 1}</span>${esc(P.q)}</label>
+            <button type="button" class="bd-jhint" aria-expanded="false" aria-controls="bd-jh-${P.k}" aria-label="힌트: ${esc(P.q)}">?</button></div>
+          <p class="bd-jhint-t" id="bd-jh-${P.k}" hidden>${P.h.map(esc).join("<br>")}</p>
+          ${area(P.k, "", e.a[P.k])}</li>`).join("")}</ol>
+        ${e.q ? `<div class="bd-jtoday"><p class="bd-jtoday-k">${ico("help")}오늘의 질문</p><label for="bd-j-q">${esc(e.q)}</label>${area("q", "", e.a.q)}</div>` : ""}
+      </div>
+      <div class="bd-jfoot">
+        <button type="button" class="bd-speak" id="bd-speak" aria-pressed="false">${ico("mic")}<span>말로 해 보기</span><b class="num" id="bd-speak-t">0:00</b></button>
+        <span class="bd-jsaved" id="bd-jsaved">자동 저장</span>
+      </div>`;
+    const B = S.jdlg.body;
+    B.querySelectorAll("[data-j]").forEach(t => {
+      t.addEventListener("input", () => {
+        const cur = findEntry(e.id);
+        if (!cur) return;
+        cur.a[t.dataset.j] = t.value.slice(0, J_LEN);
+        saveState(S.st);
+        const sv = B.querySelector("#bd-jsaved");
+        if (sv) sv.textContent = "저장됨";
+      });
+    });
+    B.querySelectorAll(".bd-jhint").forEach(b => {
       b.onclick = () => {
         const open = b.getAttribute("aria-expanded") !== "true";
         b.setAttribute("aria-expanded", String(open));
-        S.qdlg.body.querySelector("#" + b.getAttribute("aria-controls")).hidden = !open;
+        B.querySelector("#" + b.getAttribute("aria-controls")).hidden = !open;
       };
     });
-    S.qdlg.open(from);
+    B.querySelector("#bd-speak").onclick = () => (S.speak ? stopSpeak() : startSpeak());
+    S.jdlg.open(from);
+  }
+  // 말로 해 보기: 녹음 없이 시간만 잰다.
+  function startSpeak() {
+    const b = $("#bd-speak"), t = $("#bd-speak-t");
+    if (!b) return;
+    const t0 = Date.now();
+    b.setAttribute("aria-pressed", "true");
+    S.speak = setInterval(() => {
+      if (!S || !t.isConnected) { stopSpeak(); return; }
+      const sec = Math.floor((Date.now() - t0) / 1000);
+      t.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    }, 500);
+  }
+  function stopSpeak() {
+    if (!S || !S.speak) return;
+    clearInterval(S.speak);
+    S.speak = 0;
+    const b = $("#bd-speak");
+    if (b) b.setAttribute("aria-pressed", "false");
+  }
+  function cmp(cur, prev, label, unit, d = 0) {
+    if (prev == null) return "";
+    const diff = cur - prev, eps = d ? 0.05 : 0.5;
+    const dir = diff < -eps ? "down" : diff > eps ? "up" : "same";
+    const ch = dir === "down" ? "↓" : dir === "up" ? "↑" : "→";
+    const sr = dir === "down" ? "이전보다 줄었음" : dir === "up" ? "이전보다 늘었음" : "이전과 같음";
+    return `<span class="bd-cmp" data-dir="${dir}">${label} ${ch}<span class="bd-sr"> ${sr}(${fmt(prev, d)}${unit} → ${fmt(cur, d)}${unit})</span></span>`;
+  }
+  function renderTimeline() {
+    const list = S.st.journal;
+    if (!list.length) return `<div class="bd-empty">${ico("pen", "v2-ico bd-empty-ico")}<p><b>아직 일지 없음</b></p><p>운영을 한 번 돌리면 여기 쌓인다.</p></div>`;
+    const cards = list.map((e, k) => {
+      const p = k ? list[k - 1] : null;
+      const answered = JQ.filter(P => e.a[P.k].trim()).length + (e.q && e.a.q.trim() ? 1 : 0);
+      return `<li class="bd-jcard">
+        <p class="bd-jc-h"><b>${e.id}번째 · ${lenName(e.days)}</b><span class="num">${esc(e.at)}</span></p>
+        <p class="bd-jc-m"><span>정전 <b class="num">${fmt(e.m.out)}h</b></span><span>CO₂ <b class="num">${fmt(e.m.co2)} t</b></span><span>비용 <b class="num">${fmt(e.m.cost, 1)}억</b></span><span>민원 <b class="num">${fmt(e.m.cp)}건</b></span></p>
+        ${p ? `<p class="bd-jc-cmp">${cmp(e.m.out, p.m.out, "정전", "h")}${cmp(e.m.co2, p.m.co2, "CO₂", " t")}${cmp(e.m.cost, p.m.cost, "비용", "억", 1)}</p>` : ""}
+        <p class="bd-jc-mis">${misHtml(e)}</p>
+        <dl class="bd-jc-a">${JQ.map(P => `<dt>${P.s}</dt><dd${e.a[P.k].trim() ? "" : ' class="empty"'}>${e.a[P.k].trim() ? esc(e.a[P.k]) : "아직 안 씀"}</dd>`).join("")}</dl>
+        <button type="button" class="bd-jc-btn" data-jopen="${e.id}">${ico("pen")}<span>${answered ? "고치기" : "쓰기"}</span></button>
+      </li>`;
+    }).reverse().join("");
+    return `<div class="bd-jtop"><p class="bd-sub">${ico("pen")}건설 일지 <b>${list.length}회</b></p>
+        <button type="button" class="v2-btn bd-copy" id="bd-copy">${ico("copy")}<span>활동지로 복사</span></button></div>
+      <textarea class="bd-copybox" id="bd-copybox" readonly hidden aria-label="활동지 글(복사용)"></textarea>
+      <ol class="bd-jlist">${cards}</ol>`;
+  }
+  function worksheetText() {
+    const out = ["섬 전력망 건설 · 건설 일지", "(가상 모형 연습)", ""];
+    S.st.journal.forEach(e => {
+      out.push(`[${entryDate(e)} · ${e.at}]`, metricLine(e));
+      JQ.forEach((P, k) => { out.push(`${k + 1}. ${P.q}`, `→ ${e.a[P.k].trim() || "(아직 안 씀)"}`); });
+      if (e.q) out.push(`오늘의 질문: ${e.q}`, `→ ${e.a.q.trim() || "(아직 안 씀)"}`);
+      out.push("");
+    });
+    return out.join("\n");
+  }
+  function copyWorksheet() {
+    const text = worksheetText();
+    const fallback = () => {
+      const box = $("#bd-copybox");
+      if (!box) return;
+      box.value = text;
+      box.hidden = false;
+      box.focus({ preventScroll: false });
+      box.select();
+      toast("선택됨 · Ctrl+C");
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => { if (S && S.alive) toast("활동지 글을 복사했다"); }, () => { if (S && S.alive) fallback(); });
+      } else fallback();
+    } catch (err) { fallback(); }
   }
 
   /* ---------- 배치 계산 ---------- */
@@ -1921,7 +2101,8 @@
     S.timers.forEach(t => clearTimeout(t));
     S.off.forEach(f => f());
     if (S.ro) S.ro.disconnect();
-    [S.help, S.qdlg].forEach(d => { if (d) d.close(); });
+    if (S.speak) clearInterval(S.speak);
+    [S.help, S.jdlg].forEach(d => { if (d) d.close(); });
     html.classList.remove("bd-on", "bd-running", "bd-drawer-open");
     html.style.removeProperty("--bd-top");
     html.style.removeProperty("--bd-dock");
@@ -1943,7 +2124,7 @@
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
       floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
-      tipSeq: 0, lastTick: "", help: null, qdlg: null, runNet: { dk: {} }
+      tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     buildBanners();
@@ -1964,7 +2145,9 @@
     on(root.querySelector("#bd-help"), "click", e => openHelp(e.currentTarget));
     on(root.querySelector("#bd-skip"), "click", () => { if (S.run) finishRun(); });
     on(root.querySelector("#bd-drawer-body"), "click", e => {
-      const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]");
+      const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
+      if (jo) { openJournal(+jo.dataset.jopen, jo); return; }
+      if (e.target.closest("#bd-copy")) { copyWorksheet(); return; }
       if (p && !p.disabled) {
         const id = p.dataset.pol, list = S.st.policies;
         if (list.includes(id)) list.splice(list.indexOf(id), 1); else if (list.length < 2) list.push(id);
