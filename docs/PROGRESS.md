@@ -19,7 +19,8 @@
 | #2 | claude/kentech-creative-review | 창작 게임 5종 검토 반영 | 초안, 열림 |
 | #3 | claude/kentech-ui-v2-prototype | 화면 시안 v2 + 오마주 스킨 | 초안, 열림(기준: #2 브랜치) |
 | #4 | claude/kentech-ui-v2-past-exams | 기출 5종 오마주 스킨 | 초안, 열림(기준: #3 브랜치) |
-| #5 | claude/kentech-ui-v2-sim-feel | 섬 장면 전력 흐름·턴 보고·재생 진행(D-47), 학생 매뉴얼 | 초안, 열림(기준: #4 브랜치) |
+| #5 | claude/kentech-ui-v2-sim-feel | 섬 장면 전력 흐름·턴 보고·재생 진행(D-47), 학생 매뉴얼, ? 힌트와 TIP(D-48·49) | 초안, 열림(기준: #4 브랜치) |
+| (새 PR) | claude/kentech-ui-v2-grid-tycoon | 건설·운영 시뮬레이션 시안 #build(D-50) | 초안(기준: #5 브랜치) |
 
 ## 현재 상태(브랜치 claude/kentech-ui-v2-prototype, 푸시 완료, PR #3)
 - 커밋: 68a8b66 공통 셸·홈·섬 3D 장면 / 5ac2e18 오마주 스킨 4종·셔틀 표 캡션 수정·README / 그다음 Claude 작업 문서.
@@ -35,6 +36,10 @@
 
 ## 섬 시뮬레이션 감각 개선(브랜치 claude/kentech-ui-v2-sim-feel, #4 위)
 - 사용자가 플레이 녹화를 보고 개선 요청. 전력 흐름 애니메이션, 구간 보고 카드, 재생 진행 막대(D-47). 플레이 녹화 스크립트는 스크래치패드 play/island.py(세션 종료 시 사라짐).
+
+## 건설 시뮬레이션 시안(브랜치 claude/kentech-ui-v2-grid-tycoon, #5 위)
+- 사용자 요청: 타이쿤·심시티처럼 위치를 조정하며 더 좋은 전력 수송 찾기, 정책 결정 후 며칠·몇 달 시뮬. `#build` 새 경로(D-50). 하위 에이전트가 /home/user/kentech-build 사본에서 만들고 리드가 합침.
+- 다음: 사용자 반응을 보고 창작 게임으로 정식 편입(준비실·면접실·성찰 흐름, 질문 키와 힌트 연결) 여부 결정.
 
 ## 다음 단계
 1. 사용자 검토 의견 반영(PR #3 이벤트를 구독 중).
