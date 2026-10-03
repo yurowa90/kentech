@@ -538,3 +538,43 @@ html.v2-prep body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .igs-root *, .igs-banner { transition: none !important; animation: none !important; }
 }
+
+/* ---------- 구간 보고(턴 보고)와 재생 진행 ---------- */
+.igs-timeline { position: relative; }
+.igs-prog {
+  position: absolute; left: 10px; right: 10px; top: 2px; height: 3px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--ui-gold) calc(var(--igs-prog, 0) * 100%), transparent 0);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+.igs-root[data-playing="true"] .igs-prog { opacity: 1; }
+.igs-report {
+  position: fixed; z-index: 6; left: 16px; top: var(--v2-top, 140px);
+  width: min(340px, calc(100vw - var(--igs-reserve, 560px) - 32px)); min-width: 220px;
+  padding: 10px 14px 11px; border: 1px solid var(--ui-border); border-left: 3px solid var(--ui-gold); border-radius: 12px;
+  background: rgba(10, 25, 42, 0.93); color: var(--ui-text); box-shadow: var(--ui-shadow);
+  pointer-events: none; opacity: 0; transform: translateY(-4px); transition: opacity 0.3s, transform 0.3s;
+}
+.igs-report[data-show="true"] { opacity: 1; transform: none; }
+.igs-rep-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; flex-wrap: wrap; }
+.igs-rep-t { font-family: var(--ui-mono, ui-monospace, monospace); font-weight: 700; font-size: 15px; color: var(--ui-gold); }
+.igs-rep-s { font-size: 12.5px; color: var(--ui-muted, #b8cad8); }
+.igs-report ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.igs-report li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.4; }
+.igs-report li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 7px; height: 7px; border-radius: 50%; background: var(--ui-mint); }
+.igs-report li[data-tone="danger"] { color: #ffc2cf; font-weight: 700; }
+.igs-report li[data-tone="danger"]::before { background: var(--ui-danger); }
+.igs-report li[data-tone="sun"]::before { background: #ffd36b; }
+.igs-report li[data-tone="cyan"]::before { background: var(--ui-cyan); }
+.igs-report li[data-tone="gold"]::before { background: #e0a46e; }
+html.v2-doc .igs-report { display: none; }
+@media (max-width: 760px), (max-width: 1100px) and (orientation: portrait) {
+  .igs-report { left: 6px; right: 6px; width: auto; min-width: 0; padding: 6px 10px 7px; top: auto; bottom: calc(var(--igs-nav-h, 66px) + var(--igs-sheet-h, 34vh) + 72px); }
+  .igs-root[data-panel="none"] .igs-report { bottom: calc(var(--igs-nav-h, 66px) + 72px); }
+  .igs-rep-h { margin-bottom: 2px; }
+  .igs-rep-s { display: none; }
+  .igs-report li { font-size: 12.5px; }
+  .igs-report li + li { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .igs-report { transition: none; }
+}
