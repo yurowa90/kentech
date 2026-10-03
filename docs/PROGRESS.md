@@ -2,7 +2,20 @@
 
 압축이나 새 세션 뒤에는 이 문서를 먼저 읽는다. 작업 단위를 끝낼 때마다 '현재 상태'와 '다음 단계'를 고친다(스킬 `kcp-handoff`).
 
-마지막 갱신: 2026-10-03(기출 오마주 스킨 PR 준비)
+마지막 갱신: 2026-10-03(맥 로컬 세션이 총괄 인수)
+
+
+## 로컬 세션 인수(2026-10-03, 맥)
+- 총괄이 클라우드 세션에서 맥 로컬 세션으로 넘어왔다. 분업: 로컬 총괄 → Codex Sol·Astra 작업 → Opus 독립 검토(스킬 `/codex-orchestrate`, 에이전트 opus-reviewer·test-runner).
+- 작업 브랜치: `claude/kentech-league-econ-balance`(PR #11 브랜치 `claude/kentech-league-econ` 위에 쌓음). 클라우드 세션이 #11 브랜치에 독립 검토 결과와 회귀 결과를 덧붙일 수 있어 충돌을 피하려고 분리했다. 로컬 worktree: `~/Projects/kentech-wt/econ`.
+- 사용자 결정 D-58: 지금은 실제 도시명으로 작업하고 나중에 가상 이름으로 한 번에 바꾼다. 도시 이름은 자료 파일에서만 읽는다.
+- 작업 설정 재구성: CLAUDE.md를 사실 위주로 줄이고, 경로별 규칙 `.claude/rules/`(화면·게임, 검사, 리그·경제), 서브에이전트 `.claude/agents/`(test-runner, opus-reviewer), 홈 스킬 `~/.claude/skills/codex-orchestrate`로 나눴다. 구조는 `.claude/README.md`.
+- 로컬에서 진행 중이던 것: PR #1(기출 원문 대조)·#2(창작 게임 검토 반영)의 전체 검사(worktree `~/Projects/kentech-wt/pr1`, `pr2`)와 Opus 독립 검토. 결과는 아직 PR에 반영하지 않았다.
+
+### 다음 단계(로컬)
+1. `git fetch origin` 뒤 `origin/claude/kentech-league-econ`의 최신(클라우드 세션의 마지막 push: 독립 검토 결과·회귀 결과)을 이 브랜치에 병합하고 `docs/HANDOFF-econ.md` 끝의 '독립 검토 결과'를 읽는다.
+2. HANDOFF-econ.md §4 '남은 일' 순서: ① 밸런스(정전 반응, 현금 점수, 순수입, 사건 빈도) → 전략 봇 36달 결과표 ② 팀 '도시' 서랍 ③ 진행자 순위표·이주 화살표·국제 지수 띠 ④ D-57, README, PROGRESS, 회귀 14종.
+3. PR #1·#2: 로컬 검사 결과와 Opus 독립 검토 결과를 확인해 PR에 코멘트하고, 확인된 결함은 Sol·Astra에게 고치게 한 뒤 다시 검토한다.
 
 ## 사용자가 정한 방향(원문 요지)
 1. 창작 게임을 '웹 문서와 카드 목록'에서 '실제로 조작하는 시뮬레이션 게임' 느낌으로. 게임 공간이 주인공, 상태창과 메뉴는 주변 보조.
