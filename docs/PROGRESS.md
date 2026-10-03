@@ -17,6 +17,16 @@
 3. PR #1·#2: 로컬 검사 결과와 Opus 독립 검토 결과를 확인해 PR에 코멘트하고, 확인된 결함은 Sol·Astra에게 고치게 한 뒤 다시 검토한다.
    - 로컬 결과(2026-10-03): 두 PR 모두 기본 검사 8종(regression·base·screens·routine·probe·peer·drill·integration) 문제 0, PR #2 모형 검산 5종 통과(시멘트 773·섬 92,805·은여울 1,482·셔틀 1,253·변이 3,837건). 단, 그때 tests/run.sh 기본 목록에 창작 게임 검사 6종(originals와 게임 5종)이 빠져 있어 돌지 않았다. 지금은 목록에 넣었다. PR #2는 `tests/run.sh originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal`을 다시 돌릴 것. Opus 독립 검토는 끝나기 전에 세션이 넘어갔으면 opus-reviewer로 다시 돌린다.
 
+
+## 이어받을 곳(2026-10-03 밤, 사용량 한도로 중단)
+- 사용자 목표(/goal): 싱글플레이(혼자 하기 vs 컴퓨터 도시, docs/ECON-UI.md U3)와 멀티플레이 모두 완성. 실제 자료·연구로 인과 모형(단순하게), 기후·에너지 레퍼런스, 켄텍 면접 문항 연결. 끝나면 다른 해 기출 재정비.
+- 밸런스 B1–B10(docs/ECON-BALANCE.md) 구현 끝(Codex gpt-6-astra) — 미커밋. node 검사: balance.js 234/0(Sol 독립 작성), test-econ 738,496/0, review 1번 2,484,102/0. startMix 0.2→0.9 수용(명세 v1.1로 고침). **브라우저 검사(rules·e2e·e2e2·e2e3·econint)·bots36·회귀 14종은 test-runner가 돌리던 중 — 결과 미확인, 다시 돌릴 것.** econint.py '예산=현금' 단언은 B7(지방채 포함)로 갱신 필요.
+- 조사 문서(미커밋): docs/ECON-EVIDENCE.md(실제 자료 — 제안: β 실제 0.02·eduSpeed 5, outRel 0.006, cbamRate 0.02~0.05, fxExport 0.1, logiPort 0.05, re100 하향, gpYear 0.01 등) → 다음 단계로 Astra에게 2차 보정 맡길 것. docs/ECON-INTERVIEW.md(면접 연결·질문 은행 22개, 사용자 확인 필요: 팀 기준 칩을 진행자에 보내도 되나). docs/ECON-GAMES.md(참고 게임 조사, 조사 에이전트 진행 중이었음 — 파일 확인).
+- 다음: ① 2차 보정(EVIDENCE) ② 화면 U1·U2·U3 + 면접 장치(Sol, 독립 검사 econui.py는 다른 Sol) ③ D-57·README·회귀.
+- PR #1: 결함 수정(Codex gpt-6.1-sol) 미커밋 in ~/Projects/kentech-wt/pr1(브랜치 체크아웃). 1차 수정 뒤 검사 9종 문제 0, Opus 재검토 minor 4 → 2차 수정 실행 끝(결과 미확인, 브라우저 재검사 필요). 그 뒤 커밋·push·PR 코멘트.
+- PR #2: 창작 게임 검사 11종 문제 0(수정 전). 결함 14건 수정을 Codex gpt-6-astra가 ~/Projects/kentech-wt/pr2에서 진행 중이었음 → 결과 확인·검사·재검토.
+- 검토 결과 원본: ~/.claude/codex-runs/kentech-plan/review-pr1-pr2.md. 지시서: 세션 스크래치패드 briefs/(사라짐 — codex-runs/*/prompt.md에 사본).
+
 ## 사용자가 정한 방향(원문 요지)
 1. 창작 게임을 '웹 문서와 카드 목록'에서 '실제로 조작하는 시뮬레이션 게임' 느낌으로. 게임 공간이 주인공, 상태창과 메뉴는 주변 보조.
 2. 밝은 로우폴리 섬 + 짙은 남색 UI(참고: 기후 생존 도시 ecocity 화면). "약간 문명 게임같은 인터페이스와 분위기".
