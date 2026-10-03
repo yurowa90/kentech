@@ -18,7 +18,7 @@
 | #1 | claude/kentech-original-fidelity | 기출 재현 충실도 | 초안, 열림 |
 | #2 | claude/kentech-creative-review | 창작 게임 5종 검토 반영 | 초안, 열림 |
 | #3 | claude/kentech-ui-v2-prototype | 화면 시안 v2 + 오마주 스킨 | 초안, 열림(기준: #2 브랜치) |
-| (새 PR) | claude/kentech-ui-v2-past-exams | 기출 5종 오마주 스킨 | 초안(기준: #3 브랜치) |
+| #4 | claude/kentech-ui-v2-past-exams | 기출 5종 오마주 스킨 | 초안, 열림(기준: #3 브랜치) |
 
 ## 현재 상태(브랜치 claude/kentech-ui-v2-prototype, 푸시 완료, PR #3)
 - 커밋: 68a8b66 공통 셸·홈·섬 3D 장면 / 5ac2e18 오마주 스킨 4종·셔틀 표 캡션 수정·README / 그다음 Claude 작업 문서.
