@@ -367,7 +367,9 @@ html.v2-home #home-originals h2::before {
   letter-spacing: 0.14em;
   color: var(--ui-cyan);
 }
-html.v2-home .opkg.v2-has-thumb { padding-top: 0; overflow: hidden; }
+html.v2-home .opkg.v2-has-thumb,
+html.v2-home .pkg.v2-has-thumb { padding-top: 0; overflow: hidden; }
+html.v2-home .pkg.v2-has-thumb .flap { display: none; }
 .v2-thumb {
   display: block;
   width: calc(100% + 36px);
