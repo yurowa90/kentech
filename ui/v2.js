@@ -222,7 +222,9 @@
       if (KCP.ORIGINAL_ORDER && KCP.ORIGINAL_ORDER.includes("s-island-grid") && KCP.YEARS["s-island-grid"]) {
         const cta = document.createElement("p");
         cta.className = "v2-hero-cta";
-        cta.innerHTML = '<a class="v2-cta" href="#ys-island-grid">섬 전력망 24시 시작하기 <span aria-hidden="true">▶</span></a><span class="v2-hero-note">새 화면 시안 · 창작 게임</span>';
+        cta.innerHTML = '<a class="v2-cta" href="#ys-island-grid">섬 전력망 24시 시작하기 <span aria-hidden="true">▶</span></a>' +
+          (KCP.routes && KCP.routes.build ? '<a class="bd-home-link" href="#build">섬 전력망 건설 <small>GRID TYCOON 시안</small></a>' : "") +
+          '<span class="v2-hero-note">새 화면 시안 · 창작 게임</span>';
         mast.append(cta);
       }
     }
