@@ -12,6 +12,8 @@
   const PHASES = ["lobby", "plan", "run", "review", "end"];
   const PRICE = { min: 0.005, max: 0.05, def: 0.015 };
   const TIE_LOSS = 0.02, LOG_MAX = 40, GROW = 0.25;
+  // 지난 라운드까지 운영한 설비·선을 철거하면 건설비의 30%만 돌려받는다(게임 가정 G). 이번 라운드에 놓은 것은 되돌리기라 전액.
+  const SALV = 0.3;
   const PLAN_MS = 8 * 60 * 1000, REVIEW_MS = 5 * 60 * 1000;
 
   const regionOf = id => (KCP.LEAGUE_REGIONS || {})[id] || null;
@@ -59,18 +61,90 @@
   function tieShare(S, R, id) { return S.ties.filter(T => T.st === "built" && (T.a === id || T.b === id)).reduce((a, T) => a + tieCost(R, T) / 2, 0); }
   function budget(S, id) {
     const R = regionOf(S.region);
-    return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + ((S.bonus && S.bonus[id]) || 0));
+    return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + bonusOf(S, R, id));
   }
 
+  /* ---------- 돈의 흐름: 철거 손실 · 사건 대응비 ---------- */
+  // 설비·선의 이름표. 같은 이름표면 같은 물건(지난 라운드부터 있던 것).
+  const itemKey = (kind, x) => kind === "b" ? `b:${x.t}:${x.i}` : `l:${x.p.join("-")}`;
+  const keysOf = plan => new Set([...((plan && plan.builds) || []).filter(b => b && b.t != null).map(b => itemKey("b", b)), ...((plan && plan.lines) || []).filter(L => L && Array.isArray(L.p)).map(L => itemKey("l", L))]);
+  // base = 지난 운영 때 있던 물건 [{k, c(건설비)}]. 지금 계획에서 빠진 것마다 70%를 잃는다.
+  function lossOf(base, plan) {
+    if (!Array.isArray(base) || !base.length) return 0;
+    const ks = keysOf(plan);
+    return r2(base.reduce((a, x) => a + (ks.has(x.k) ? 0 : x.c * (1 - SALV)), 0));
+  }
+  function itemCosts(bg, R, id, plan) {
+    return withPack(bg, R, id, () => {
+      const st = bg.sanitize(plan || {}, 1e9);
+      return [...st.builds.map(b => ({ k: itemKey("b", b), c: r2(bg.capex({ builds: [b], lines: [] })) })), ...st.lines.map(L => ({ k: itemKey("l", L), c: r2(bg.capex({ builds: [], lines: [L] })) }))];
+    });
+  }
+  // 사건 대응: T.resp["라운드:사건"] = 고른 대응 id
+  const respOpt = (R, S, id, ev) => { const T = S.teams && S.teams[id], o = T && T.resp && T.resp[ev.round + ":" + ev.id], E = eventDef(R, ev.id); return o && E && Array.isArray(E.opts) ? E.opts.find(x => x.id === o) || null : null; };
+  function respCost(S, R, id, round) {
+    return r2((S.events || []).filter(ev => round == null || ev.round === round).reduce((a, ev) => { const o = respOpt(R, S, id, ev); return a + (o ? o.cost || 0 : 0); }, 0));
+  }
+  // 사건 지원금(budgetAdd) — 조건부 유치·보류를 고르면 grant 배수만큼
+  function bonusOf(S, R, id) {
+    return r2((S.events || []).reduce((a, ev) => {
+      const E = eventDef(R, ev.id);
+      if (!E || !E.effect || typeof E.effect.budgetAdd !== "number" || !hits(R, E, id)) return a;
+      const o = respOpt(R, S, id, ev);
+      return a + E.effect.budgetAdd * (o && typeof o.grant === "number" ? o.grant : 1);
+    }, 0));
+  }
+  // 계획 밖에서 이미 나간 돈: 지난 철거 손실 + 사건 대응비(모든 라운드)
+  const fixedOf = (S, R, id) => r2(((S.teams[id] && S.teams[id].sunk) || 0) + ((S.teams[id] && S.teams[id].rfix) || 0) + respCost(S, R, id));
+
+  /* ---------- 연구(진행자 기준): 라운드마다 RS.roundSteps주치 진척, 실증 1라운드, 다음 라운드부터 도입 ---------- */
+  // 대학 인력은 지난 라운드부터 있던 대학(base)만 센다(준비 기간). 연구소는 지은 라운드부터 자리·기본 인력.
+  function advanceResearch(bg, R, S, id, now) {
+    const T = S.teams[id], plan = T.plan || { builds: [] }, RS = bg.RS, TECHS = bg.TECHS;
+    const rs = T.rs = T.rs || { prog: {}, stage: {}, adoptR: {} };
+    const n = t => (plan.builds || []).filter(b => b.t === t).length;
+    const oldUni = (T.base || []).filter(x => x.k.startsWith("b:uni:") && keysOf(plan).has(x.k)).length;
+    const staff = n("lab") * RS.labStaff + oldUni * RS.uniStaff, eff = Math.min(staff, n("lab") * RS.labSeats);
+    Object.keys(rs.stage).forEach(t => { if (rs.stage[t] === "demo") { rs.stage[t] = "done"; rs.adoptR[t] = S.round + 1; log(S, `${teamDef(R, id).name}: ${TECHS.find(x => x.id === t).name} 도입`, now); } });
+    const cur = (plan.rq || []).find(t => !rs.stage[t] && TECHS.some(x => x.id === t));
+    if (cur && eff > 0) {
+      const X = TECHS.find(x => x.id === cur);
+      rs.prog[cur] = Math.min(X.need, (rs.prog[cur] || 0) + RS.roundSteps * eff);
+      if (rs.prog[cur] >= X.need) {
+        rs.stage[cur] = "demo";
+        T.rfix = r2((T.rfix || 0) + X.demo + (cur === "bms" ? n("battery") * RS.retroBat : 0));
+        log(S, `${teamDef(R, id).name}: ${X.name} 실증 시작`, now);
+      }
+    }
+    rs.staff = staff; rs.eff = eff;
+  }
+  const techOf = (S, id) => { const rs = S.teams[id] && S.teams[id].rs; return rs ? Object.keys(rs.adoptR || {}).filter(t => rs.adoptR[t] <= S.round) : []; };
+  function spendOf(bg, S, R, id, plan) { return r2(capexOf(bg, R, id, plan) + fixedOf(S, R, id) + lossOf(S.teams[id].base, plan)); }
+
   const goalsOf = S => S.goals || regionOf(S.region).goals;
+  // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 절반 폭으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
+  function fcxOf(S, id) {
+    if (!techOf(S, id).includes("fcst")) return null;
+    const R = regionOf(S.region), out = {};
+    (S.events || []).filter(ev => ev.round === S.round && typeof ev.x === "number").forEach(ev => {
+      const E = eventDef(R, ev.id), fc = (E && E.fc) || 0;
+      if (!fc) return;
+      const u = (hashStr(S.room + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc / 2) * (u - 0.5);
+      out[ev.id] = [r3(Math.max(1 - fc, c - fc / 2)), r3(Math.min(1 + fc, c + fc / 2))];
+    });
+    return out;
+  }
   // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
   function publicView(S, now) {
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
-      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), hist: (T.hist || []).slice(-40) };
+      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };
     });
-    return { v: S.v, room: S.room, region: S.region, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results: S.results, events: S.events || [], log: S.log.slice(-12) };
+    // 사건의 실제 크기(x)는 그 라운드 운영이 끝난 뒤에 공개한다 — 계획 때는 예보 범위만.
+    const shown = ev => ev.round < S.round || S.phase === "review" || S.phase === "end";
+    const events = (S.events || []).map(ev => shown(ev) ? ev : { id: ev.id, round: ev.round });
+    return { v: S.v, room: S.room, region: S.region, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results: S.results, events, log: S.log.slice(-12) };
   }
 
   const canPlan = S => S.phase === "lobby" || S.phase === "plan";
@@ -100,7 +174,11 @@
       if (!canPlan(S)) return err("phase");
       if (!Number.isInteger(m.rev) || m.rev <= T.rev) return { ok: true, quiet: true };
       let plan = m.plan;
-      if (bg) plan = cleanPlan(bg, R, m.team, plan, budget(S, m.team));
+      if (bg) {
+        const room = budget(S, m.team) - fixedOf(S, R, m.team);
+        plan = cleanPlan(bg, R, m.team, plan, room - lossOf(T.base, plan));
+        if (capexOf(bg, R, m.team, plan) + lossOf(T.base, plan) > room + 1e-6) return err("budget:" + m.team);
+      }
       T.plan = plan; T.rev = m.rev; S.rev++;
       // 진행 기록(교사 화면의 '건설 속도'): 15초 안의 연속 변경은 한 점으로
       if (bg) {
@@ -111,6 +189,20 @@
         if (T.hist.length > 60) T.hist.splice(0, T.hist.length - 60);
       }
       return { ok: true };
+    }
+    if (m.type === "respond") {
+      if (S.phase !== "plan") return err("phase");
+      const ev = (S.events || []).find(x => x.round === S.round && x.id === m.ev), E = ev && eventDef(R, ev.id);
+      if (!E || !hits(R, E, m.team)) return err("noev");
+      const key = S.round + ":" + E.id, prev = T.resp ? T.resp[key] : undefined;
+      if (m.opt !== "none" && !(Array.isArray(E.opts) && E.opts.some(o => o.id === m.opt))) return err("noopt");
+      T.resp = T.resp || {};
+      if (m.opt === "none") delete T.resp[key]; else T.resp[key] = m.opt;
+      if (prev === T.resp[key]) return { ok: true, quiet: true };
+      const used = bg && T.plan ? spendOf(bg, S, R, m.team, T.plan) : fixedOf(S, R, m.team);
+      if (used > budget(S, m.team) + 1e-6) { if (prev) T.resp[key] = prev; else delete T.resp[key]; return err("budget:" + m.team); }
+      log(S, `${teamDef(R, m.team).name}: ${E.name} — ${m.opt === "none" ? "대응 안 함" : E.opts.find(o => o.id === m.opt).name}`, now);
+      S.rev++; return { ok: true };
     }
     if (m.type === "tie") {
       if (!canPlan(S)) return err("phase");
@@ -129,7 +221,7 @@
         if (!X || X.st !== "prop" || X.by === m.team) return err("noprop");
         const half = tieCost(R, X) / 2;
         for (const id of [X.a, X.b]) {
-          const used = bg && S.teams[id].plan ? capexOf(bg, R, id, S.teams[id].plan) : 0;
+          const used = bg && S.teams[id].plan ? spendOf(bg, S, R, id, S.teams[id].plan) : fixedOf(S, R, id);
           if (budget(S, id) - half < used - 1e-9) return err("budget:" + id);
         }
         X.st = "built"; X.round = S.round;
@@ -189,6 +281,7 @@
     if (sc.startsWith("kind:")) return packHas(R, id, sc.slice(5));
     return false;
   }
+  const MUL = ["demandMul", "solarMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"];
   const eventDef = (R, id) => (R.events || []).find(E => E.id === id) || null;
   function drawEvents(S, R) {
     const rd = R.rounds[S.round - 1], act = activeOf(S);
@@ -197,17 +290,24 @@
     const pick = () => { const list = pool.filter(E => !out.includes(E)), w = list.reduce((a, E) => a + (E.weight || 1), 0); let u = rnd() * w; for (const E of list) { u -= E.weight || 1; if (u <= 0) return E; } return list[list.length - 1]; };
     if (pool.length) out.push(pick());
     if (pool.length > 1 && rnd() < 0.4) out.push(pick());
-    S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round })));
-    S.bonus = S.bonus || {};
-    out.forEach(E => { if (E.effect && E.effect.budgetAdd) act.forEach(id => { if (hits(R, E, id)) S.bonus[id] = (S.bonus[id] || 0) + E.effect.budgetAdd; }); });
+    // 예보는 범위(fc)로만 알린다. 실제 크기 x(1 ± fc)는 지금 정해 두고 운영이 끝나야 공개한다(같은 방·라운드면 같은 값).
+    S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round, x: r3(1 + (E.fc || 0) * (2 * rnd() - 1)) })));
     return out;
   }
   // 이번 라운드에 팀 id에 걸리는 배수 모음
   function modsFor(S, R, id) {
-    const M = {};
-    (S.events || []).filter(x => x.round === S.round).map(x => eventDef(R, x.id)).filter(E => E && hits(R, E, id)).forEach(E => {
-      const f = E.effect || {};
-      ["demandMul", "solarMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"].forEach(k => { if (typeof f[k] === "number") M[k] = (M[k] == null ? 1 : M[k]) * f[k]; });
+    const M = {}, tech = techOf(S, id);
+    if (tech.length) M.tech = tech;
+    (S.events || []).filter(x => x.round === S.round).forEach(ev => {
+      const E = eventDef(R, ev.id);
+      if (!E || !hits(R, E, id)) return;
+      const f = E.effect || {}, o = respOpt(R, S, id, ev), x = typeof ev.x === "number" ? ev.x : 1;
+      // 크기 = 1 + (기본 배수 − 1) × 실제 크기 x × 대응 배수(dev, knobs가 있으면 그 손잡이만)
+      MUL.forEach(k => {
+        if (typeof f[k] !== "number") return;
+        const dv = o && typeof o.dev === "number" && (!o.knobs || o.knobs.includes(k)) ? o.dev : 1;
+        M[k] = (M[k] == null ? 1 : M[k]) * Math.max(0, 1 + (f[k] - 1) * x * dv);
+      });
       if (Array.isArray(f.hours)) M.demandHours = f.hours;
       if (f.carbonTaxOn) M.tax = true;
     });
@@ -215,10 +315,16 @@
   }
   function tieMods(S, R) {
     let mul = 1; const down = [];
-    (S.events || []).filter(x => x.round === S.round).map(x => eventDef(R, x.id)).filter(Boolean).forEach(E => {
+    (S.events || []).filter(x => x.round === S.round).forEach(ev => {
+      const E = eventDef(R, ev.id);
+      if (!E) return;
       const f = E.effect || {};
       if (typeof f.tieCapMul === "number") mul *= f.tieCapMul;
-      if (f.tieDown) down.push(typeof f.tieDown === "string" ? f.tieDown : "*");
+      if (!f.tieDown) return;
+      // 선 양 끝 도시(지정 없으면 사건이 걸린 아무 도시) 중 하나라도 '보강·협의'를 골랐으면 고장 나지 않는다.
+      const ends = typeof f.tieDown === "string" ? f.tieDown.split("~") : activeOf(S).filter(id => hits(R, E, id));
+      if (ends.some(id => { const o = respOpt(R, S, id, ev); return o && o.cancel; })) return;
+      down.push(typeof f.tieDown === "string" ? f.tieDown : "*");
     });
     return { mul, down };
   }
@@ -232,7 +338,7 @@
   function cleanPlan(bg, R, id, plan, cap) {
     return withPack(bg, R, id, () => {
       const st = bg.sanitize(plan, cap);
-      return { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, seed: st.seed, season: st.season, missions: st.missions };
+      return { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, seed: st.seed, season: st.season, missions: st.missions, rq: st.rq };
     });
   }
   function capexOf(bg, R, id, plan) { return withPack(bg, R, id, () => bg.capex(bg.sanitize(plan, 1e9))); }
@@ -347,9 +453,13 @@
         if (s.hosp && s.hosp[k] && rem > 1e-4) hospH++;
       }
       const uns = Math.max(0, K.uns - (o.imp - o.sub));
-      const tie = tieShare(S, R, t.id);
-      const cost = { capex: r2(K.capex), ties: r2(tie), fuel: r2(K.fuel + o.fuelX - o.saveFuel), policy: r2(K.policy), trade: r2(o.pay - o.earn) };
-      cost.total = r2(cost.capex + cost.ties + cost.fuel + cost.policy + cost.trade);
+      const tie = tieShare(S, R, t.id), Tm = S.teams[t.id], loss = r2((Tm.sunk || 0) + lossOf(Tm.base, Tm.plan));
+      // 현금 흐름: 이번 라운드 새 투자(누적 투자 − 지난 라운드까지) + 이번 라운드 운영비. 라운드를 더해도 건설비가 두 번 세지지 않는다.
+      const rfix = r2(Tm.rfix || 0), stock = r2(K.capex + tie + loss + rfix), resp = respCost(S, R, t.id, S.round);
+      const labs = ((Tm.plan && Tm.plan.builds) || []).filter(b => b.t === "lab").length, research = bg.RS ? labs * bg.RS.labOpexR : 0;
+      const cost = { capex: r2(K.capex), ties: r2(tie), loss, rfix, stock, inv: r2(stock - (Tm.stock || 0)), fuel: r2(K.fuel + o.fuelX - o.saveFuel), policy: r2(K.policy), resp, research, trade: r2(o.pay - o.earn) };
+      cost.opex = r2(cost.fuel + cost.policy + cost.resp + cost.research + cost.trade);
+      cost.total = r2(cost.inv + cost.opex);
       const co2Prod = K.co2 + o.co2X - o.saveCo2, co2Cons = co2Prod - o.co2X + o.co2In;
       team[t.id] = {
         dem: r2(K.dem), uns: r2(uns), unsPct: r2(100 * uns / Math.max(1e-9, K.dem)), outH, hospH,
@@ -372,6 +482,21 @@
     if (S.phase !== "plan") return null;
     S.phase = "run"; S.ends = null;
     const res = runRound(S, bg);
+    // 운영한 것은 이제 '지난 라운드 것' — 철거하면 손실. 누적 투자도 확정.
+    const R = regionOf(S.region);
+    Object.keys(res.team).forEach(id => {
+      const T = S.teams[id];
+      if (bg.TECHS) {
+        const before = T.rfix || 0;
+        advanceResearch(bg, R, S, id, now);
+        // 이번 라운드에 들어간 실증비는 이번 라운드 새 투자로 센다.
+        const add = r2((T.rfix || 0) - before), c = res.team[id].cost;
+        if (add) { c.rfix = r2(c.rfix + add); c.stock = r2(c.stock + add); c.inv = r2(c.inv + add); c.total = r2(c.inv + c.opex); }
+      }
+      T.sunk = r2((T.sunk || 0) + lossOf(T.base, T.plan));
+      T.base = T.plan ? itemCosts(bg, R, id, T.plan) : [];
+      T.stock = res.team[id].cost.stock;
+    });
     S.phase = "review"; S.ends = now + REVIEW_MS;
     log(S, `${S.round}라운드 운영 끝 · 지역 정전 ${res.region.unsPct}% · CO₂ ${res.region.co2} t`, now);
     S.rev++;
@@ -381,6 +506,7 @@
   KCP.leagueCore = {
     eventDef, modsFor, hits, drawEvents,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
-    budget, tieCost, tieShare, cleanPlan, capexOf
+    budget, tieCost, tieShare, cleanPlan, capexOf,
+    SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf
   };
 })();

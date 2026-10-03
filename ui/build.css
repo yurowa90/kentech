@@ -1005,3 +1005,7 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
 @media print {
   .bd-root { display: none !important; }
 }
+/* 서랍 탭 5개(연구 포함): 글자가 두 줄로 꺾이지 않게 */
+.bd-tab { gap: 3px; padding: 0 4px; flex: 1 1 auto; }
+.bd-tab span, .bd-tab .bd-count { white-space: nowrap; }
+.bd-card-txt small { display: block; margin-top: 2px; font-size: 12px; opacity: 0.85; }

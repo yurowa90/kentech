@@ -212,3 +212,11 @@
 .lg-mapnav { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
 .lg-mapnav a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1.5px solid var(--c); color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 700; }
 .lg-mapnav a:hover, .lg-mapnav a:focus-visible { background: var(--c); color: #fff; }
+.lg-evsize { font-size: 13px; font-weight: 700; color: var(--ink); }
+.lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: #d08a1c; color: #fff; }
+.lg-evnote { font-size: 12px; color: var(--ink-2); }
+.lg-ev abbr { text-decoration: none; border-bottom: 1px dotted currentColor; cursor: help; }
+.lg-evopts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.lg-evopt { min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--line, #b9b9b9); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.lg-evopt[aria-pressed="true"] { border-color: #d08a1c; background: color-mix(in srgb, #d08a1c 18%, var(--sheet)); font-weight: 700; }
+.lg-evopt:focus-visible { outline: 3px solid #d08a1c; outline-offset: 2px; }

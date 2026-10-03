@@ -284,7 +284,7 @@
     nx.hidden = !lab; nx.disabled = false; nx.textContent = lab;
     $("#lg-extend").hidden = !S.ends;
     tickTimer();
-    const ev = S.round ? evCards(S, S.round) : "";
+    const ev = S.round ? evCards(V, S.round) : "";
     $("#lg-evbox").innerHTML = ev ? `<h2>${S.round}라운드 사건</h2>${ev}` : "";
     if ($("#lg-mapc")) renderBoard($("#lg-mapc"), V, res, L.flash === S.round); else renderMap($("#lg-map"), V, res, L.flash === S.round);
     $("#lg-mapcap").textContent = (res ? `${res.round}라운드(${SEASON_NAME[res.season]} ${res.days}일) 도시 사이 전력 거래 · 선 굵기 = 용량` : "점선 = 제안된 연계선, 실선 = 연결된 연계선") + (R().board ? " · 도시를 누르면 그 도시 지도" : "");
@@ -318,26 +318,51 @@
       const r = res.team[t.id];
       return `<tr style="--c:${t.color}"><th scope="row">${esc(t.name)}</th>
         <td class="num" data-bad="${r.unsPct > g.unsPct}">${fmt(r.unsPct, 2)}%</td><td class="num" data-bad="${r.hospH > 0}">${r.hospH}</td>
-        <td class="num">${fmt(r.cost.total, 1)}</td><td class="num">${fmt(r.co2Prod)}</td><td class="num">${fmt(r.co2Cons)}</td>
+        <td class="num">${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} / ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}</td><td class="num">${fmt(r.co2Prod)}</td><td class="num">${fmt(r.co2Cons)}</td>
         <td class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)}</td><td class="num">${fmt(r.earn - r.pay, 2)}</td><td class="num">${r.sat}</td></tr>`;
     }).join("");
     const maxC = Math.max(1, ...act.map(t => Math.max(res.team[t.id].co2Prod, res.team[t.id].co2Cons)));
     const bars = act.map(t => { const r = res.team[t.id]; return `<li style="--c:${t.color}"><span>${esc(t.name)}</span><i style="width:${(100 * r.co2Prod / maxC).toFixed(1)}%" class="p"></i><i style="width:${(100 * r.co2Cons / maxC).toFixed(1)}%" class="c"></i></li>`; }).join("");
     return `<h2>${res.round}라운드 결과 · ${SEASON_NAME[res.season]} ${res.days}일</h2>
       <p class="lg-goals"><span data-ok="${res.region.ok.uns}">지역 정전 ${fmt(res.region.unsPct, 2)}% (목표 ≤ ${g.unsPct}%)</span><span data-ok="${res.region.ok.co2}">지역 CO₂ ${fmt(res.region.co2)} t (목표 ≤ ${fmt(g.co2)} t)</span></p>
-      <div class="lg-tablewrap"><table class="lg-table"><thead><tr><th scope="col">팀</th><th scope="col">정전</th><th scope="col">병원 정전(h)</th><th scope="col">비용(억)</th><th scope="col">CO₂ 생산(t)</th><th scope="col">CO₂ 소비(t)</th><th scope="col">수입/수출(MWh)</th><th scope="col">거래 수지(억)</th><th scope="col">최저 만족</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="lg-tablewrap"><table class="lg-table"><thead><tr><th scope="col">팀</th><th scope="col">정전</th><th scope="col">병원 정전(h)</th><th scope="col">새 투자 / 운영(억)</th><th scope="col">CO₂ 생산(t)</th><th scope="col">CO₂ 소비(t)</th><th scope="col">수입/수출(MWh)</th><th scope="col">거래 수지(억)</th><th scope="col">최저 만족</th></tr></thead><tbody>${rows}</tbody></table></div>
       <figure class="lg-co2"><figcaption>CO₂ — <b class="p">생산 기준</b>(발전소가 있는 곳) vs <b class="c">소비 기준</b>(전기를 쓴 곳)</figcaption><ul>${bars}</ul></figure>`;
   }
 
   /* ---------- 라운드 사건 카드 ---------- */
   const SCOPE = { region: "지역 전체", "kind:coastal": "바다에 닿은 도시", "kind:industrial": "대형 공장이 있는 도시", "kind:coal": "석탄 발전소가 있는 도시", "kind:metro_south": "경기 남부 도시", "kind:chungcheong": "충남 도시", "kind:inland": "내륙 도시" };
-  function evCards(X, round, me) {
-    const reg = R(), list = (X.events || []).filter(x => x.round === round).map(x => C.eventDef(reg, x.id)).filter(Boolean);
+  // 예보 범위(계획 때)와 실제 크기(운영 뒤). 배수 손잡이마다 "수요 +6~18%".
+  const KNOB = { demandMul: "수요", solarMul: "태양광", windMul: "육상풍력", offshoreMul: "해상풍력", tidalMul: "조력", coalCapMul: "석탄 출력", lngCapMul: "LNG 출력" };
+  const pct = v => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v))}`;
+  function evSize(E, ev, nx) {
+    const f = E.effect || {}, fc = E.fc || 0;
+    return C.MUL.filter(k => typeof f[k] === "number").map(k => {
+      const d = (f[k] - 1) * 100;
+      if (typeof ev.x === "number") return `${KNOB[k]} ${pct(d * ev.x)}%`;
+      if (nx) { const a = d * nx[0], b = d * nx[1]; return `${KNOB[k]} ${pct(Math.min(a, b))}~${pct(Math.max(a, b)).replace("+", "")}%`; }
+      if (!fc) return `${KNOB[k]} ${pct(d)}%`;
+      const a = d * (1 - fc), b = d * (1 + fc);
+      return `${KNOB[k]} ${pct(Math.min(a, b))}~${pct(Math.max(a, b)).replace("+", "")}%`;
+    }).join(" · ");
+  }
+  // resp = {plan 단계의 내 대응}이 있으면 대응 버튼을 단다.
+  function evCards(X, round, me, act) {
+    const reg = R(), list = (X.events || []).filter(x => x.round === round).map(ev => ({ ev, E: C.eventDef(reg, ev.id) })).filter(x => x.E);
     if (!list.length) return "";
-    return `<ul class="lg-evs">${list.map(E => {
+    const myT = me && X.teams && X.teams[me];
+    return `<ul class="lg-evs">${list.map(({ ev, E }) => {
       const sc = E.scope || "region", who = SCOPE[sc] || (sc.startsWith("team:") ? teamName(sc.slice(5)) : sc);
-      const mine = me ? C.hits(reg, E, me) : null;
-      return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(E.text || "")}</span><small>${esc(who)}${mine === true ? " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""}</small></li>`;
+      const mine = me ? C.hits(reg, E, me) : null, nx = mine && myT && myT.fcx ? myT.fcx[E.id] || null : null;
+      const size = evSize(E, ev, nx), known = typeof ev.x === "number";
+      const cur = myT && myT.resp ? myT.resp[round + ":" + E.id] || "none" : "none", opts = Array.isArray(E.opts) ? E.opts : [];
+      const choose = act && mine && opts.length ? `<div class="lg-evopts" role="group" aria-label="${esc(E.name)} 대응">${[{ id: "none", name: "대응 안 함", cost: 0 }, ...opts].map(o => `<button type="button" class="lg-evopt" data-resp="${o.id}" data-ev="${esc(E.id)}" aria-pressed="${cur === o.id}"${o.note ? ` title="${esc(o.note)}"` : ""}>${esc(o.name)}${o.cost ? ` <b class="num">${fmt(o.cost)}억</b>` : ""}</button>`).join("")}</div>${cur !== "none" ? `<small class="lg-evnote">${esc((opts.find(o => o.id === cur) || {}).note || "")}</small>` : ""}` : "";
+      const co = opts.find(o => o.id === cur), after = known && co && typeof co.dev === "number" && !co.knobs ? evSize(E, { x: ev.x * co.dev }) : "";
+      const picked = !act && mine && cur !== "none" ? `<small class="lg-evnote">우리 대응: ${esc((co || {}).name || "")}${after ? ` → ${esc(after)}` : ""}</small>`
+        : !me && X.teams && opts.length ? (() => { const who = Object.keys(X.teams).map(id => { const o = opts.find(q => q.id === (X.teams[id].resp || {})[round + ":" + E.id]); return o ? `${teamName(id)} ${o.name}` : ""; }).filter(Boolean); return `<small class="lg-evnote">대응: ${esc(who.join(" · ") || "아직 없음")}</small>`; })() : "";
+      return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(E.text || "")}</span>
+        ${size ? `<span class="lg-evsize"><i>${known ? "실제" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}
+        ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${choose}${picked}
+        <small>${esc(who)}${mine === true ? " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr title="현상은 실제 기록·보도(O), 크기와 대응 효과는 게임 가정(G)">근거 ${esc(E.grade || "G")}·크기 G</abbr></small></li>`;
     }).join("")}</ul>`;
   }
 
@@ -604,7 +629,7 @@
       if (L.app && L.app.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); const e = L.app.querySelector("#lg-err"); if (e) e.textContent = m.err === "taken" ? "다른 기기가 이미 그 팀을 맡았습니다." : "자리가 비워졌습니다. 다시 고르세요."; }
       return;
     }
-    const msg = { phase: "지금 단계에서는 바꿀 수 없습니다.", built: "이미 연결된 연계선입니다.", noprop: "제안이 없습니다.", notie: "이웃이 아닙니다." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자라 연결할 수 없습니다.` : "요청을 처리하지 못했습니다.");
+    const msg = { phase: "지금 단계에서는 바꿀 수 없습니다.", built: "이미 연결된 연계선입니다.", noprop: "제안이 없습니다.", notie: "이웃이 아닙니다.", noev: "이번 라운드 우리 도시 사건이 아닙니다.", noopt: "없는 대응입니다." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자랍니다.` : "요청을 처리하지 못했습니다.");
     BG.toast(msg);
   }
   function onSnap(V) {
@@ -659,7 +684,10 @@
       packs: [t.pack], league: true,
       load: () => L.doc,
       save: doc => { const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; store.set(dataKey(), z); },
-      budget: () => (L.snap && L.snap.teams[L.team] ? L.snap.teams[L.team].budget : C.budget({ round: 1, ties: [], region: REGION }, L.team)),
+      // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
+      budget: () => { const me = L.snap && L.snap.teams[L.team]; return me ? me.budget - (me.fixed || 0) - C.lossOf(me.base, BG.current()) : C.budget({ round: 1, ties: [], region: REGION }, L.team); },
+      research: () => { const me = L.snap && L.snap.teams[L.team]; return (me && me.rs) || { prog: {}, stage: {}, adoptR: {} }; },
+      salvage: key => { const me = L.snap && L.snap.teams[L.team]; return me && (me.base || []).some(x => x.k === key) ? C.SALV : 1; },
       locked: lockMsg,
       season: () => curRound().season,
       onChange: () => { L.rev++; const z = tdata(); z.rev = L.rev; store.set(dataKey(), z); clearTimeout(L.planT); L.planT = setTimeout(sendPlan, 400); },
@@ -671,7 +699,7 @@
   function sendPlan() {
     const st = BG.current();
     if (!st || !L.team) return;
-    send("plan", { rev: L.rev, plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, missions: st.missions, seed: st.seed, season: st.season } });
+    send("plan", { rev: L.rev, plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, missions: st.missions, seed: st.seed, season: st.season, rq: st.rq || [] } });
   }
   function addBar(root) {
     const bar = document.createElement("div");
@@ -736,9 +764,9 @@
     else if (tab === "deal") {
       const me = V.teams[L.team], open = V.phase === "lobby" || V.phase === "plan";
       const nbs = reg.ties.filter(D => (D.a === L.team || D.b === L.team) && V.teams[D.a] && V.teams[D.b]);
-      const st0 = BG.current(), spent = st0 ? BG.capex(st0) : 0, left = me.budget - spent;
-      const evh = V.round ? evCards(V, V.round, L.team) : "";
-      body = `${evh ? `<section class="lg-sec"><h3>이번 라운드 사건</h3>${evh}</section>` : ""}<p class="lg-left">남은 예산 <b class="num" data-bad="${left < 6}">${fmt(left, 1)}억</b> <small>(이번 라운드 예산 ${fmt(me.budget, 1)}억 − 건설 ${fmt(spent, 1)}억 · 연계선은 두 도시가 반씩)</small></p>
+      const st0 = BG.current(), spent = st0 ? BG.capex(st0) : 0, loss = (me.fixed || 0) + C.lossOf(me.base, st0), left = me.budget - spent - loss;
+      const evh = V.round ? evCards(V, V.round, L.team, V.phase === "plan") : "";
+      body = `${evh ? `<section class="lg-sec"><h3>이번 라운드 사건</h3>${evh}</section>` : ""}<p class="lg-left">남은 예산 <b class="num" data-bad="${left < 6}">${fmt(left, 1)}억</b> <small>(예산 ${fmt(me.budget, 1)}억 − 건설 ${fmt(spent, 1)}억${loss > 0.05 ? ` − 철거 손실·사건 대응 ${fmt(loss, 1)}억` : ""} · 연계선은 두 도시가 반씩 · 지난 라운드 것을 철거하면 ${Math.round(C.SALV * 100)}%만 회수)</small></p>
         <section class="lg-sec"><h3>내 전기 판매 단가</h3>
           <p class="lg-hint">이웃이 모자랄 때 남는 전기를 이 값에 팝니다(MWh당 억). 화력 여유분은 연료비보다 비쌀 때만 팝니다.</p>
           <label class="lg-price"><input type="range" id="lg-price" min="${C.PRICE.min}" max="${C.PRICE.max}" step="0.001" value="${me.price}" ${open ? "" : "disabled"} aria-label="판매 단가"><b class="num" id="lg-price-v">${me.price.toFixed(3)}</b></label></section>
@@ -765,7 +793,7 @@
             <div><dt>병원 정전</dt><dd class="num" data-bad="${r.hospH > 0}">${r.hospH}시간</dd></div>
             <div><dt>사 온 전기 / 판 전기</dt><dd class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)} MWh</dd><small>거래 수지 ${fmt(r.earn - r.pay, 2)}억</small></div>
             <div><dt>CO₂ 생산 / 소비 기준</dt><dd class="num">${fmt(r.co2Prod)} / ${fmt(r.co2Cons)} t</dd></div>
-            <div><dt>총비용</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>건설 ${fmt(r.cost.capex, 1)} · 연계선 ${fmt(r.cost.ties, 1)} · 연료 ${fmt(r.cost.fuel, 1)}</small></div>
+            <div><dt>이번 라운드 돈</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>새 투자 ${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} + 운영 ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}(연료·정책·대응${r.cost.research ? "·연구소" : ""}·거래) · 누적 투자 ${fmt(r.cost.stock != null ? r.cost.stock : r.cost.capex, 1)}</small></div>
             <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>
           </dl>
           ${res.events && res.events.length ? `<div class="lg-evres">${evCards(V, res.round, L.team)}</div>` : ""}${res.tieDown ? `<p class="lg-warn">고장 난 연계선: ${res.tieDown.split("~").map(teamName).map(esc).join("–")}</p>` : ""}
@@ -787,6 +815,8 @@
     if (x) { closePanel(); return; }
     if (t) { openPanel(t.dataset.ptab); return; }
     if (tie) { send("tie", { op: tie.dataset.tie, other: tie.dataset.other, cap: +tie.dataset.cap || 2 }); tie.disabled = true; return; }
+    const rs = e.target.closest("[data-resp]");
+    if (rs) { send("respond", { ev: rs.dataset.ev, opt: rs.dataset.resp }); rs.closest(".lg-evopts").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === rs))); return; }
     if (e.target.closest("#lg-jcopy")) {
       const V = L.snap, J = tdata().journal[V ? V.round : 0] || {}, res = V && V.results[V.results.length - 1];
       const r = res && res.team[L.team];

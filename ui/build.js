@@ -178,6 +178,7 @@
     const P = PACKS[id], lg = mode === "league", key = lg ? "_bL" : "_b";
     if (!P[key]) P[key] = buildPack(P, lg);
     const B = P[key];
+    if (P.groups && !P.groups.some(G => G.id === "rnd")) P.groups.push({ id: "rnd", name: "연구", icon: "flask", tools: ["uni", "lab"] });
     PK = P; LG = lg; COLS = B.cols; ROWS = B.rows; TILES = B.tiles; SITES = B.sites; TOWNS = B.towns; TNAME = B.tname; POPMAX = B.popMax;
     if (KCP.buildGame) Object.assign(KCP.buildGame, { TILES, TOWNS, SITES, PK });
     return P;
@@ -204,8 +205,40 @@
     hydro: { name: "소수력", spec: "0.8 MW", mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
     diesel: { name: "디젤", spec: "3 MW", mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
     biomass: { name: "바이오매스", spec: "2 MW", mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
-    battery: { name: "배터리", spec: "4 MW/16 MWh", mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" }
+    battery: { name: "배터리", spec: "4 MW/16 MWh", mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" },
+    // 연구 기관(cls inst): 발전하지 않는다. 가까운 마을 수요에 load MW를 더한다. 연구 규칙은 아래 RS·TECHS.
+    uni: { name: "에너지공학대학", spec: "연구인력 2 · 0.3 MW", mw: 0, cost: 40, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "uni", load: 0.3 },
+    lab: { name: "기후에너지데이터연구소", spec: "연구석 3 · 0.3억/주", mw: 0, cost: 25, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "lab", load: 0.15 }
   };
+  /* ---------- 연구 → 실증 → 도입 (설계안 v0.1 §5·§13, 숫자는 모두 게임 가정 G) ----------
+   * 유효 연구인력 = min(전문인력, 연구석). 전문인력 = 연구소마다 1 + 대학마다 2(지은 뒤 준비 기간이 지나야).
+   * 주마다 유효 인력만큼 진척. 기준(need)을 채우면 실증(1주, 실증비) → 다음 주부터 도입(효과).
+   * 연구소를 지었다고 효율이 저절로 오르지 않는다: 연구를 고르고, 인력·자리가 맞고, 실증을 거쳐야 한다. */
+  const RS = { uniStaff: 2, uniPrepW: 4, labStaff: 1, labSeats: 3, labOpexW: 0.3, labOpexR: 3, roundSteps: 3, retroBat: 1 };
+  const TECHS = [
+    { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, eff: "쓸 수 있는 범위 하한 10% → 5% · 변환 효율 95% → 95.5%", why: "잔량을 정확히 알면 안전 여유를 줄여 더 넓게 쓴다. 95%에 이미 변환 손실이 들어 있어 효율 상승은 작게 잡았다. 도입 때 배터리마다 개조비 1억", grade: "M·G" },
+    { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, eff: "송전 손실 1.5%/칸 → 1.0%/칸", why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
+    { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, eff: "배터리를 저녁 피크(17–22시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다", why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
+  ];
+  // 혼자 하기: 운영 기간(주) 안에서 연구가 어디까지 가는지. 시험 운전마다 처음부터(운영해도 연구가 쌓이지 않는다).
+  function researchRun(st, weeks) {
+    const unis = st.builds.filter(b => b.t === "uni").length, labs = st.builds.filter(b => b.t === "lab").length;
+    const nb = st.builds.filter(b => b.t === "battery").length, q = (st.rq || []).filter(id => TECHS.some(T => T.id === id));
+    const prog = {}, stage = {}, adoptW = {}, log = [], cost = { opex: 0, demo: 0 };
+    let demoLeft = {};
+    for (let w = 0; w < weeks; w++) {
+      Object.keys(demoLeft).forEach(id => { if (--demoLeft[id] <= 0) { stage[id] = "done"; adoptW[id] = w; delete demoLeft[id]; log.push({ w, id, ev: "adopt" }); } });
+      const staff = labs * RS.labStaff + (w >= RS.uniPrepW ? unis * RS.uniStaff : 0), seats = labs * RS.labSeats, eff = Math.min(staff, seats);
+      cost.opex += labs * RS.labOpexW;
+      const cur = q.find(id => !stage[id]);
+      if (cur && eff > 0) {
+        const T = TECHS.find(x => x.id === cur);
+        prog[cur] = (prog[cur] || 0) + eff;
+        if (prog[cur] >= T.need) { stage[cur] = "demo"; demoLeft[cur] = 1; cost.demo += T.demo + (cur === "bms" ? nb * RS.retroBat : 0); log.push({ w, id: cur, ev: "demo" }); }
+      }
+    }
+    return { unis, labs, staff: labs * RS.labStaff + unis * RS.uniStaff, seats: labs * RS.labSeats, prog, stage, adoptW, log, cost: { opex: Math.round(cost.opex * 100) / 100, demo: cost.demo, total: Math.round((cost.opex + cost.demo) * 100) / 100 } };
+  }
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
@@ -372,7 +405,7 @@
       else if (s.kind === "plant") nodes.push({ kind: s.fuel === "coal" ? "coal" : "lng", tile: s.tile, si, cap: s.cap || 9.5 });
       else if (s.kind === "gridpt") nodes.push({ kind: "import", tile: s.tile, si });
     });
-    st.builds.forEach((B, bi) => nodes.push({ kind: B.t, tile: B.i, bi }));
+    st.builds.forEach((B, bi) => { if (!BLD[B.t] || BLD[B.t].cls !== "inst") nodes.push({ kind: B.t, tile: B.i, bi }); });
     const per = new Map();
     nodes.forEach(n => per.set(n.tile, (per.get(n.tile) || 0) + 1));
     per.forEach((c, t) => { if (c > 1) touch(t); });
@@ -526,6 +559,21 @@
     const fab2 = !!(PK.climate && st.fab2);
     const gens = N.nodes.filter(n => n.kind !== "town");
     const E = N.edges.length;
+    // 연구: 혼자 하기는 이 운영 기간 안의 진척(주 단위), 리그는 진행자가 정한 도입 목록(opt.mods.tech)을 처음부터.
+    const RR = lgOut ? null : researchRun(st, Math.ceil(days / 7));
+    const techDay = {};
+    if (RR) Object.keys(RR.adoptW).forEach(id => { techDay[id] = RR.adoptW[id] * 7; });
+    else ((opt && opt.mods && opt.mods.tech) || []).forEach(id => { techDay[id] = 0; });
+    let bEff = M.batEff, fcst = false;
+    // 대학·연구소 전력 수요: 가장 가까운 마을에 더한다.
+    const instLoad = new Float32Array(TOWNS.length);
+    st.builds.forEach(B => {
+      const D = BLD[B.t];
+      if (!D || D.cls !== "inst" || !D.load) return;
+      let best = -1, bd = Infinity;
+      SITES.forEach(s0 => { if (!s0.dem) return; const d = (TILES[s0.tile].X - TILES[B.i].X) ** 2 + (TILES[s0.tile].Y - TILES[B.i].Y) ** 2; if (d < bd) { bd = d; best = s0.ti; } });
+      if (best >= 0) instLoad[best] += D.load;
+    });
     const flow = new Float32Array(Math.max(1, H * E));
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
@@ -569,6 +617,22 @@
     });
     for (let d = 0; d < days; d++) {
       const wx = W[d];
+      if (techDay.bms === d) { bEff = 0.955; gens.forEach(g => { if (g.kind === "battery") g.floor = M.batMWh * 0.05; }); }
+      if (techDay.fcst === d) fcst = true;
+      // 예측: 그날 아침에 오늘 저녁(17–22시) 부족분(수요 − 재생 − 화력 용량)을 미리 계산해 배터리마다 그만큼(여유 10%) 남길 몫을 정한다.
+      // 이 모형의 날씨·수요는 정해진 값이라 예측이 맞는다 — 실제 예측에는 오차가 있다(한계).
+      if (fcst) N.comps.forEach(C => {
+        C.keep = 0;
+        if (!C.bat.length || !C.towns.length) return;
+        const dcap = C.disp.reduce((a, u) => a + (u.D ? u.D.cap : 0), 0);
+        let short = 0;
+        for (let h = 17; h < 23; h++) {
+          const k = d * 24 + h, dm = C.towns.reduce((a, n) => a + demand(n.ti, h, wx, pol, fab2) + instLoad[n.ti], 0), rn = C.ren.reduce((a, g) => a + renOut(g, wx, h, k), 0);
+          short += Math.max(0, dm - rn - dcap);
+        }
+        C.keep = Math.min(M.batMWh, M.batMWh * M.socFloor + 1.1 * short / C.bat.length / bEff);
+      });
+      if (techDay.grid === d) N.comps.forEach(C => [C.RL, C.RB, C.BL, C.DL].forEach(L => (L || []).forEach(P => { P.eff = Math.max(0.4, 1 - (PK.lossPerHex || M.lossPerHex) * (2 / 3) * P.d); })));
       for (let h = 0; h < 24; h++) {
         const k = d * 24 + h;
         hrWind[k] = wx.mult * wx.noise[h];
@@ -579,7 +643,7 @@
           g.av = renOut(g, wx, h, k);
           if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
         });
-        const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2));
+        const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2) + instLoad[ti]);
         const rem = dem.slice();
         const dem0 = dem.reduce((a, b) => a + b, 0);
         let deliv = 0;
@@ -594,19 +658,21 @@
           for (const P of C.RB) {
             const g = P.g, b = P.l;
             if (g.av <= 1e-6) continue;
-            const room = Math.min(M.batMW - b.chg, (M.batMWh - b.soc) / M.batEff);
+            const room = Math.min(M.batMW - b.chg, (M.batMWh - b.soc) / bEff);
             if (room <= 1e-6) continue;
             const give = Math.min(g.av * P.eff, room), sent = give / P.eff;
-            g.av -= sent; b.chg += give; b.soc += give * M.batEff; tot.loss += sent - give; tot.ren += sent; addFlow(P, sent, k);
+            g.av -= sent; b.chg += give; b.soc += give * bEff; tot.loss += sent - give; tot.ren += sent; addFlow(P, sent, k);
           }
           C.ren.forEach(g => { tot.curt += Math.max(0, g.av); });
           for (const P of C.BL) {
             const b = P.g, ti = P.l.ti;
             if (rem[ti] <= 1e-6 || b.chg > 0) continue;
-            const can = Math.min(M.batMW - b.dis, (b.soc - b.floor) * M.batEff);
+            // 예측 도입 뒤: 낮(6–16시)에는 오늘 저녁 예상 부족분만큼 남겨 둔다.
+            const keep = fcst && h >= 6 && h < 17 && C.keep ? Math.max(b.floor, C.keep) : b.floor;
+            const can = Math.min(M.batMW - b.dis, (b.soc - keep) * bEff);
             if (can <= 1e-6) continue;
             const give = Math.min(can * P.eff, rem[ti]), sent = give / P.eff;
-            b.dis += sent; b.soc -= sent / M.batEff; rem[ti] -= give; deliv += give; tot.loss += sent - give; tot.batOut += sent; addFlow(P, sent, k);
+            b.dis += sent; b.soc -= sent / bEff; rem[ti] -= give; deliv += give; tot.loss += sent - give; tot.batOut += sent; addFlow(P, sent, k);
           }
           for (const P of C.DL) {
             const u = P.g, ti = P.l.ti;
@@ -655,6 +721,12 @@
       }
     }
     tot.diesel = tot.by.diesel;
+    // 배터리 시작·끝 잔량(MWh). 시작보다 덜 남았으면 그만큼은 이 기간 발전이 아니라 처음 채워 둔 전기로 쓴 것이다.
+    tot.batStart = 0; tot.batEnd = 0;
+    gens.forEach(g => { if (g.kind === "battery") { tot.batStart += M.batMWh * 0.5; tot.batEnd += g.soc; } });
+    // 배터리는 전기를 만들지 않는다: 끝 잔량이 시작보다 적으면 그 차이를 다시 채우는 값(디젤 연료비·CO₂, 충전 효율 반영)을 이 기간에 물린다.
+    tot.batDebt = Math.max(0, tot.batStart - tot.batEnd);
+    if (tot.batDebt > 1e-6) { const D = dispOf("diesel"), e = tot.batDebt / bEff; tot.fuel += e * D.fuel; tot.co2 += e * D.co2; }
     const runFrac = st.builds.map((B, bi) => { const g = gens.find(n => n.bi === bi); return g && SMOKY[B.t] ? g.runH / H : 0; });
     const cp = complaints(st, runFrac);
     const cost = {
@@ -662,7 +734,8 @@
       fuel: tot.fuel,
       policy: days * ((pol.dr ? M.drCost : 0) + (pol.share ? M.shareCost : 0))
     };
-    cost.total = cost.capex + cost.fuel + cost.policy;
+    cost.research = RR ? RR.cost.total : 0;
+    cost.total = cost.capex + cost.fuel + cost.policy + cost.research;
     const sat = TOWNS.map((W, ti) => {
       const Dt = town[ti], K = KIND[W.kind] || { w: 1 };
       const outPen = Math.min(80, (Dt.outH / H) * 300 * K.w + (K.old ? (Dt.hotH / H) * 300 : 0));
@@ -673,7 +746,7 @@
       days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
       town, tot, cost, co2: tot.co2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
-      hrHosp, hospH: hrHosp.reduce((a, x) => a + x, 0),
+      hrHosp, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
       gx: GX.map(G => ({ to: G.to, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i }))
     };
     res.missions = judge(st, res);
@@ -774,7 +847,7 @@
   }
 
   /* ---------- 저장(지도마다 칸 하나) ---------- */
-  function blankSlot(P) { return { seed: (P || PK).seed || 2026, builds: [], lines: [], policies: [], missions: [], shed: "home", season: "summer", fab2: false }; }
+  function blankSlot(P) { return { seed: (P || PK).seed || 2026, builds: [], lines: [], policies: [], missions: [], shed: "home", season: "summer", fab2: false, rq: [] }; }
   function blankDoc() {
     const maps = {};
     PACK_IDS.forEach(id => { maps[id] = blankSlot(PACKS[id]); });
@@ -831,6 +904,7 @@
     if (SHED_OPTS.some(x => x.id === o.shed)) st.shed = o.shed;
     if (SEASONS.some(x => x.id === o.season)) st.season = o.season;
     st.fab2 = o.fab2 === true;
+    st.rq = (Array.isArray(o.rq) ? o.rq : []).filter((id, k, a) => TECHS.some(T => T.id === id) && a.indexOf(id) === k);
     while (capex(st) > lim + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
     return st;
   }
@@ -860,7 +934,7 @@
   function saveState(doc) { try { window.localStorage.setItem(KEY, JSON.stringify(doc)); } catch (e) { /* 저장 없이도 동작한다 */ } }
 
   selectPack(PACK_IDS[0]);
-  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips };
+  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
 
   /* =====================================================================
    * 3. 아이콘
@@ -904,12 +978,14 @@
     tidal: '<path d="M2.5 9c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 7 0"/><path d="M2.5 14c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 7 0"/><path d="M12 17v4M9.5 21h5"/><circle cx="12" cy="4.5" r="1.8"/>',
     hydro: '<path d="M12 3c3 4 5 6.5 5 9a5 5 0 0 1-10 0c0-2.5 2-5 5-9z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 2.5 2.5"/>',
     cal: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    uni: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/><path d="M22 9v6"/>',
+    lab: '<path d="M4 20h16"/><rect x="5" y="10" width="14" height="10" rx="1"/><path d="M9 14h2M13 14h2M9 17h2M13 17h2"/><path d="M12 10V6"/><path d="M8.5 4.5a5 5 0 0 1 7 0"/><path d="M6.5 2.5a8 8 0 0 1 11 0"/>',
     flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>'
   };
   const ico = (k, cls = "v2-ico") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${IC[k] || ""}</svg>`;
   // 도구 이름·아이콘·비용 표시(지도마다 비용이 다를 수 있다)
   const toolMeta = id => (id === "line" ? { id, icon: "line", name: "송전선", cost: `${fmt(lineUnit(), 1)}억/칸` }
-    : id === "remove" ? { id, icon: "remove", name: "철거", cost: "환불" }
+    : id === "remove" ? { id, icon: "remove", name: "철거", cost: S && S.opts && S.opts.salvage ? "회수" : "환불" }
     : { id, icon: BLD[id].icon, name: BLD[id].name, cost: `${fmt(BLD[id].cost)}억` });
   const LAYERS = [
     { id: "map", icon: "map", name: "지도" },
@@ -1286,6 +1362,24 @@
       g.fillStyle = "#e8ecef"; g.fillRect(cx - s * 0.04, cy - s * 0.48, s * 0.08, s * 0.48);
       g.fillStyle = "#4f9a4a"; g.beginPath(); g.ellipse(x - s * 0.05, y - s * 0.12, s * 0.09, s * 0.05, -0.6, 0, Math.PI * 2); g.fill();
       if (rec) rec.stacks.push({ x: cx, y: cy - s * 0.5, bi, tile: T.i });
+    } else if (type === "uni") {
+      shadow(g, x, y + s * 0.05, s * 0.7, s * 0.2, 0.22);
+      box(g, x - s * 0.18, y + s * 0.05, s * 0.62, s * 0.28, s * 0.36, "#c9785a", "#b5634a", "#8e4b37");
+      box(g, x + s * 0.3, y + s * 0.12, s * 0.36, s * 0.24, s * 0.26, "#d9d2c3", "#c3baa8", "#9d9483");
+      box(g, x - s * 0.22, y - s * 0.3, s * 0.16, s * 0.12, s * 0.4, "#c9785a", "#b5634a", "#8e4b37");
+      g.beginPath(); g.arc(x - s * 0.22, y - s * 0.6, s * 0.06, 0, Math.PI * 2); g.fillStyle = "#f4efe6"; g.fill();
+      g.fillStyle = "rgba(255,240,200,0.85)";
+      for (let c = 0; c < 4; c++) g.fillRect(x - s * 0.44 + c * s * 0.15, y - s * 0.16, s * 0.08, s * 0.07);
+    } else if (type === "lab") {
+      shadow(g, x, y + s * 0.05, s * 0.55, s * 0.18, 0.22);
+      box(g, x, y + s * 0.06, s * 0.6, s * 0.3, s * 0.4, "#e8eef3", "#c9d4dd", "#9fb0be");
+      g.fillStyle = "#3f6fb0";
+      for (let c = 0; c < 3; c++) g.fillRect(x - s * 0.24 + c * s * 0.17, y - s * 0.2, s * 0.11, s * 0.08);
+      g.strokeStyle = "#5b6874"; g.lineWidth = Math.max(1, s * 0.03);
+      g.beginPath(); g.moveTo(x + s * 0.14, y - s * 0.34); g.lineTo(x + s * 0.14, y - s * 0.6); g.stroke();
+      g.beginPath(); g.ellipse(x + s * 0.14, y - s * 0.66, s * 0.16, s * 0.07, -0.4, 0, Math.PI * 2); g.fillStyle = "#f4f6f8"; g.fill(); g.stroke();
+      g.strokeStyle = "rgba(90,176,230,0.8)";
+      for (let r = 1; r < 3; r++) { g.beginPath(); g.arc(x + s * 0.14, y - s * 0.7, s * 0.1 * r, -2.4, -0.7); g.stroke(); }
     } else if (type === "battery") {
       shadow(g, x, y, s * 0.52, s * 0.18, 0.22);
       for (let k = 1; k >= 0; k--) {
@@ -1735,21 +1829,24 @@
     floater(i, `−${fmt(chk.cost)}억`, "#ecd083");
     changed(`${BLD[type].name} 설치 · ${fmt(chk.cost)}억${chk.clear ? " (숲 정리 포함)" : ""}`);
   }
+  // 철거 때 돌려받는 몫: 혼자 하기는 시험 운전이라 전액, 리그는 opts.salvage(이름표)가 정한다(지난 라운드 것 30%).
+  const salvageOf = key => (S.opts && S.opts.salvage ? S.opts.salvage(key) : 1);
   function removeAt(i) {
     const bi = S.st.builds.findIndex(b => b.i === i);
     if (bi >= 0) {
-      const b = S.st.builds[bi], c = buildCost(b.t, b.i);
+      const b = S.st.builds[bi], c = buildCost(b.t, b.i), back = c * salvageOf(`b:${b.t}:${b.i}`);
       S.st.builds.splice(bi, 1);
-      floater(i, `+${fmt(c)}억`, "#7be3b4");
-      changed(`${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`);
+      floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
+      changed(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`);
       return;
     }
     const keep = S.st.lines.filter(L => !L.p.includes(i));
     if (keep.length !== S.st.lines.length) {
-      const back = S.st.lines.filter(L => L.p.includes(i)).reduce((a, L) => a + lineCost(L.p), 0);
+      const gone = S.st.lines.filter(L => L.p.includes(i)), full = gone.reduce((a, L) => a + lineCost(L.p), 0);
+      const back = gone.reduce((a, L) => a + lineCost(L.p) * salvageOf(`l:${L.p.join("-")}`), 0);
       S.st.lines = keep;
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
-      changed(`송전선 철거 · ${fmt(back, 1)}억 환불`);
+      changed(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`);
       return;
     }
     toast("철거할 것이 없다");
@@ -2187,6 +2284,7 @@
           <div class="bd-tabs" role="group" aria-label="서랍">
             <button type="button" class="bd-tab" data-tab="policy" aria-pressed="true">${ico("cards")}<span>정책</span><b class="bd-count" data-count="policy"></b></button>
             <button type="button" class="bd-tab" data-tab="mission" aria-pressed="false">${ico("flag")}<span>미션</span><b class="bd-count" data-count="mission"></b></button>
+            ${PK.groups ? `<button type="button" class="bd-tab" data-tab="research" aria-pressed="false">${ico("flask")}<span>연구</span><b class="bd-count" data-count="research"></b></button>` : ""}
             <button type="button" class="bd-tab" data-tab="result" aria-pressed="false">${ico("news")}<span>결과</span></button>
             <button type="button" class="bd-tab" data-tab="journal" aria-pressed="false">${ico("pen")}<span>일지</span><b class="bd-count" data-count="journal"></b></button>
           </div>
@@ -2340,7 +2438,7 @@
       else if (P && P.end === i) verdict = `<p class="ok">${ico("line")}${P.p.length - 1}칸 · ${fmt(P.cost, 1)}억</p>`;
     } else if (S.tool === "remove") {
       const b = S.st.builds.find(x => x.i === i);
-      verdict = b ? `<p class="ok">${ico("remove")}${BLD[b.t].name} +${fmt(buildCost(b.t, i))}억</p>` : onLine(i) ? `<p class="ok">${ico("remove")}송전선 철거</p>` : "";
+      verdict = b ? `<p class="ok">${ico("remove")}${BLD[b.t].name} +${fmt(buildCost(b.t, i) * salvageOf(`b:${b.t}:${b.i}`), 1)}억</p>` : onLine(i) ? `<p class="ok">${ico("remove")}송전선 철거</p>` : "";
     }
     const W = T.site >= 0 ? SITES[T.site] : null;
     const name = W ? `${W.code || W.id} ${W.name}` : TNAME[T.t];
@@ -2429,6 +2527,8 @@
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
     S.root.querySelector('[data-count="mission"]').textContent = `${S.st.missions.length}/2`;
     S.root.querySelector('[data-count="journal"]').textContent = S.doc.journal.length ? String(S.doc.journal.length) : "";
+    const rc = S.root.querySelector('[data-count="research"]');
+    if (rc) rc.textContent = S.st.rq && S.st.rq.length ? String(S.st.rq.length) : "";
     const tab = S.drawerTab;
     if (tab === "policy") {
       const full = S.st.policies.length >= 2;
@@ -2458,7 +2558,8 @@
             <span class="bd-card-mark" aria-hidden="true">${onM ? ico("check") : ""}</span></button>`;
         }).join("")}</div>
         <p class="bd-note">고른 2개만 성공·실패를 따진다. 나머지는 '대신 잃은 것'으로 본다.</p>`;
-    } else if (tab === "journal") body.innerHTML = renderTimeline();
+    } else if (tab === "research") body.innerHTML = renderResearch();
+    else if (tab === "journal") body.innerHTML = renderTimeline();
     else body.innerHTML = renderResult();
     if (tab === "result" && S.result) {
       const q = body.querySelector("#bd-jopen"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
@@ -2466,6 +2567,22 @@
       if (again) again.onclick = rebuild;
       if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; persist(); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
     }
+  }
+  // 연구 서랍: 기관 → 인력·자리 → 고른 연구 순서 → 이 기간이면 어디까지 가나
+  function renderResearch() {
+    const R0 = researchRun(S.st, 13), eff = Math.min(R0.staff, R0.seats), host = S.opts.research ? S.opts.research() : null;
+    const wk = id => { const a = R0.adoptW[id], dm = R0.log.find(x => x.id === id && x.ev === "demo"); return a != null ? `${a + 1}주차 도입` : dm ? `${dm.w + 1}주차 실증 중` : "3달 안에 못 끝남"; };
+    const hostTxt = id => { if (!host) return ""; const st = (host.stage || {})[id]; return st === "done" ? `도입됨(${host.adoptR[id]}라운드부터)` : st === "demo" ? "실증 중 — 다음 라운드 도입" : `진척 ${host.prog && host.prog[id] || 0}/${TECHS.find(T => T.id === id).need}`; };
+    const q = S.st.rq || [];
+    return `<p class="bd-sub">${ico("flask")}연구 <b>지어야 시작</b></p>
+      <p class="bd-note">에너지공학대학 ${R0.unis} · 기후에너지데이터연구소 ${R0.labs} → 전문인력 ${R0.staff}명, 연구석 ${R0.seats}자리 → <b>유효 연구인력 ${eff}명</b>${R0.unis ? ` (대학 인력은 ${LG ? "지은 다음 라운드부터" : `${RS.uniPrepW}주 뒤부터`})` : ""}${!R0.labs ? " · 연구소가 없으면 연구석이 0" : ""}</p>
+      <div class="bd-cards">${TECHS.map(T => {
+        const k = q.indexOf(T.id), onR = k >= 0;
+        return `<button type="button" class="bd-card" data-rq="${T.id}" aria-pressed="${onR}">
+          <span class="bd-card-ico">${onR ? `<b class="num">${k + 1}</b>` : ico("flask")}</span>
+          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${T.grade}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
+      }).join("")}</div>
+      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 라운드마다 ${RS.roundSteps}주치 진척(한 계절 압축), 실증 1라운드, 그다음 라운드부터 효과. 연구소 운영비 ${RS.labOpexR}억/라운드.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 게임 가정(G).</p>`;
   }
   function satBar(v) {
     const tone = v >= 70 ? "ok" : v >= 40 ? "mid" : "bad";
@@ -2487,7 +2604,8 @@
       <div class="bd-mis">${chosen.map(m => `<p class="bd-mis-row" data-ok="${m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "성공" : "실패"}">${ico(m.ok ? "check" : "x")}</span><b>${m.name}</b><span class="num">${esc(m.val)}</span></p>`).join("")}
         ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>
       <div class="bd-kpis">
-        <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>건설 ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}</small></p>
+        <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>건설 ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
+        ${R.research && (R.research.unis || R.research.labs) ? `<p><span>연구</span><b class="num">${Object.keys(R.research.adoptW).length ? Object.keys(R.research.adoptW).map(id => `${TECHS.find(T => T.id === id).name.split(/[·\s]/)[0]} ${R.research.adoptW[id] + 1}주차`).join(", ") : "도입 없음"}</b><small>${(R.st && R.st.rq || []).length || (R.research.log.length) ? `실증 ${R.research.log.filter(x => x.ev === "demo").length}건 · ` : ""}연구비 ${fmt(R.research.cost.total, 1)}억</small></p>` : ""}
         <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
@@ -2770,7 +2888,7 @@
   KCP.buildGame.tileXY = (c, r) => (S ? tileTop(TILES[tix(c, r)]) : null);
   KCP.buildGame.active = () => !!S;
 
-  // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st)
+  // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
   //   league 리그 모드(외부 연결점) · season() 정해진 계절 · onMount(root) 화면이 생긴 뒤
   function mount(app, opts) {
     opts = opts || {};
@@ -2829,7 +2947,13 @@
       const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
       const sh = e.target.closest("[data-shed]"), fb = e.target.closest("[data-fab2]");
       if (jo) { openJournal(+jo.dataset.jopen, jo); return; }
-      if ((sh || fb || p) && lockedMsg()) { toast(lockedMsg()); return; }
+      const rq = e.target.closest("[data-rq]");
+      if ((sh || fb || p || rq) && lockedMsg()) { toast(lockedMsg()); return; }
+      if (rq) {
+        const id = rq.dataset.rq, list = S.st.rq = S.st.rq || [];
+        if (list.includes(id)) list.splice(list.indexOf(id), 1); else list.push(id);
+        changed(list.includes(id) ? `연구 순서 ${list.indexOf(id) + 1}: ${TECHS.find(T => T.id === id).name}` : "연구 뺌"); S.root.querySelector(`[data-rq="${id}"]`).focus({ preventScroll: true }); return;
+      }
       if (sh) { S.st.shed = sh.dataset.shed; changed(`차단 순서: ${SHED_OPTS.find(o => o.id === S.st.shed).name}`); S.root.querySelector(`[data-shed="${S.st.shed}"]`).focus({ preventScroll: true }); return; }
       if (fb) { S.st.fab2 = !S.st.fab2; changed(S.st.fab2 ? "반도체 2라인 증설 켬" : "증설 끔"); S.root.querySelector("[data-fab2]").focus({ preventScroll: true }); return; }
       if (e.target.closest("#bd-copy")) { copyWorksheet(); return; }
