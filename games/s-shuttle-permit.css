@@ -151,7 +151,9 @@
 #sp-rule-table,
 #sp-rule-costs,
 #sp-rule-table thead,
-#sp-rule-costs thead {
+#sp-rule-costs thead,
+#sp-rule-table caption,
+#sp-rule-costs caption {
   display: block;
 }
 #sp-rule-table tbody,
