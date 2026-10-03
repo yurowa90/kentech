@@ -1,0 +1,73 @@
+# GPT 교차 검토 통로: .github/gpt/ask.md 를 이 브랜치에 올리면 GitHub Models(OpenAI 모델)에 물어보고
+# 답을 작업 로그(===ANSWER=== 사이)와 실행 요약, 산출물(answer.md)로 남긴다.
+# OpenAI 키 없이 저장소의 GITHUB_TOKEN(models: read 권한)만 쓴다.
+name: gpt-bridge
+on:
+  push:
+    branches: [claude/gpt-bridge]
+    paths: [".github/gpt/ask.md"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  models: read
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask GPT
+        env:
+          GH_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 저장소 비밀값 OPENAI_API_KEY 가 있으면 OpenAI API를 먼저 쓴다(Settings → Secrets and variables → Actions).
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request, urllib.error
+          raw = open(".github/gpt/ask.md", encoding="utf-8").read()
+          # 첫 줄 "model: openai/gpt-4.1" 처럼 모델을 고를 수 있다(없으면 차례로 시도).
+          m = re.match(r"model:\s*(\S+)\s*\n", raw)
+          models = [m.group(1)] if m else ["openai/gpt-5", "openai/gpt-4.1", "openai/gpt-4o"]
+          prompt = raw[m.end():] if m else raw
+          sysmsg = "당신은 교육용 게임 설계와 경제 모형을 비판적으로 검토하는 검토자다. 한국어로, 근거를 들어, 구체적인 수정안을 번호로 제시하라."
+          ans, used, errs = None, None, []
+          okey = os.environ.get("OPENAI_API_KEY", "")
+          if okey:
+              for model in (["gpt-5", "gpt-4.1"] if not m else [m.group(1).split("/")[-1]]):
+                  body = json.dumps({"model": model, "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": prompt}]}).encode()
+                  req = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=body, method="POST", headers={"Authorization": "Bearer " + okey, "Content-Type": "application/json"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=300) as r:
+                          ans = json.load(r)["choices"][0]["message"]["content"]; used = model + " @ api.openai.com"; break
+                  except urllib.error.HTTPError as e:
+                      errs.append(f"{model} @ openai: HTTP {e.code} {e.read()[:300]!r}")
+                  except Exception as e:
+                      errs.append(f"{model} @ openai: {e}")
+          # 두 주소를 차례로: GitHub Models(새 주소, 모델 이름 openai/...) → Azure 추론 주소(옛 주소, 모델 이름 앞부분 없이)
+          ends = [("https://models.github.ai/inference/chat/completions", lambda x: x), ("https://models.inference.ai.azure.com/chat/completions", lambda x: x.split("/")[-1])]
+          for model in ([] if ans else models):
+              for url, nm in ends:
+                  body = json.dumps({"model": nm(model), "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": prompt}]}).encode()
+                  req = urllib.request.Request(url, data=body, method="POST", headers={"Authorization": "Bearer " + os.environ["GH_MODELS_TOKEN"], "Content-Type": "application/json", "Accept": "application/json", "X-GitHub-Api-Version": "2022-11-28"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=240) as r:
+                          raw_b = r.read()
+                      try:
+                          ans = json.loads(raw_b)["choices"][0]["message"]["content"]; used = f"{nm(model)} @ {url}"
+                      except Exception as e:
+                          errs.append(f"{model} @ {url}: status {r.status} body {raw_b[:300]!r}")
+                  except urllib.error.HTTPError as e:
+                      errs.append(f"{model} @ {url}: HTTP {e.code} {e.read()[:300]!r}")
+                  except Exception as e:
+                      errs.append(f"{model} @ {url}: {e}")
+                  if ans: break
+              if ans: break
+          out = f"model: {used}\n\n{ans}" if ans else "ERROR\n" + "\n".join(errs)
+          open("answer.md", "w", encoding="utf-8").write(out)
+          print("===ANSWER===\n" + out + "\n===END===")
+          open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8").write(out)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: answer
+          path: answer.md
