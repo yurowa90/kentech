@@ -224,7 +224,7 @@
         cta.className = "v2-hero-cta";
         cta.innerHTML = '<a class="v2-cta" href="#ys-island-grid">섬 전력망 24시 시작하기 <span aria-hidden="true">▶</span></a>' +
           (KCP.routes && KCP.routes.build ? '<a class="bd-home-link" href="#build">섬 전력망 건설 <small>GRID TYCOON 시안</small></a>' : "") +
-          (KCP.routes && KCP.routes.league ? '<a class="bd-home-link" href="#league">전력 리그 6팀 <small>멀티플레이 시안</small></a>' : "") +
+          (KCP.routes && KCP.routes.league ? '<a class="bd-home-link" href="#league">전력 리그 <small>2~6팀 멀티플레이 시안</small></a>' : "") +
           '<span class="v2-hero-note">새 화면 시안 · 창작 게임</span>';
         mast.append(cta);
       }
