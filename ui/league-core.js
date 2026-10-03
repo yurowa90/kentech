@@ -18,17 +18,36 @@
   const teamDef = (R, id) => R.teams.find(t => t.id === id) || null;
   const tieDef = (R, a, b) => R.ties.find(t => (t.a === a && t.b === b) || (t.a === b && t.b === a)) || null;
   const tieId = T => T.a + "~" + T.b;
-  const isTeam = (R, id) => !!teamDef(R, id);
+  const isTeam = (R, id, S) => !!teamDef(R, id) && (!S || Object.hasOwn(S.teams, id));
   const num = (x, lo, hi, d) => (typeof x === "number" && isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d);
   const r2 = x => Math.round(x * 100) / 100;
   const r3 = x => Math.round(x * 1000) / 1000;
 
-  function newState(room, regionId, now) {
+  // 참가 도시 고르기: 2~6곳, 꼭 들어갈 도시(R.must, 평택) 포함, 육상·만 횡단 연계선으로 서로 이어져야 한다(해저 연계선 후보는 이웃으로 치지 않음).
+  const ALL = R => R.teams.map(t => t.id);
+  function validTeams(R, list) {
+    const ids = ALL(R).filter(id => (list || []).includes(id));
+    if (ids.length < 2) return { ok: false, err: "2곳 이상 고르세요", ids };
+    if (ids.length > R.teams.length) return { ok: false, err: "너무 많습니다", ids };
+    const miss = (R.must || []).filter(id => !ids.includes(id));
+    if (miss.length) return { ok: false, err: `${miss.map(id => teamDef(R, id).name).join(", ")}은(는) 꼭 들어가야 합니다`, ids };
+    const seen = new Set([ids[0]]), q = [ids[0]];
+    while (q.length) { const u = q.shift(); R.ties.forEach(T => { if (T.kind === "sea") return; const v = T.a === u ? T.b : T.b === u ? T.a : null; if (v && ids.includes(v) && !seen.has(v)) { seen.add(v); q.push(v); } }); }
+    if (seen.size !== ids.length) return { ok: false, err: "고른 도시끼리 서로 이웃해야 합니다(육지·만으로 이어지게)", ids };
+    return { ok: true, ids };
+  }
+  const activeOf = S => (Array.isArray(S.active) && S.active.length ? S.active : Object.keys(S.teams));
+  function newState(room, regionId, now, list) {
     const R = regionOf(regionId);
     if (!R) throw new Error("region");
+    const V = validTeams(R, list || ALL(R));
+    if (!V.ok) throw new Error(V.err);
     const teams = {};
-    R.teams.forEach(t => { teams[t.id] = { token: null, online: 0, ready: false, plan: null, rev: 0, price: PRICE.def }; });
-    return { v: 1, room, region: R.id, created: now || 0, rev: 1, round: 0, phase: "lobby", ends: null, teams, ties: [], results: [], log: [] };
+    V.ids.forEach(id => { teams[id] = { token: null, online: 0, ready: false, plan: null, rev: 0, price: PRICE.def, hist: [] }; });
+    // 지역 CO₂ 목표는 고른 도시의 실제 사용량 몫만큼(6곳 = R.goals.co2)
+    const tw = id => (teamDef(R, id).real || { twh: 1 }).twh, share = V.ids.reduce((a, id) => a + tw(id), 0) / ALL(R).reduce((a, id) => a + tw(id), 0);
+    const goals = { unsPct: R.goals.unsPct, co2: Math.round(R.goals.co2 * share / 10) * 10 };
+    return { v: 2, room, region: R.id, created: now || 0, rev: 1, round: 0, phase: "lobby", ends: null, active: V.ids, goals, teams, ties: [], results: [], events: [], log: [] };
   }
 
   function log(S, text, now) { S.log.push({ at: now || 0, t: String(text).slice(0, 120) }); if (S.log.length > LOG_MAX) S.log.splice(0, S.log.length - LOG_MAX); }
@@ -40,17 +59,18 @@
   function tieShare(S, R, id) { return S.ties.filter(T => T.st === "built" && (T.a === id || T.b === id)).reduce((a, T) => a + tieCost(R, T) / 2, 0); }
   function budget(S, id) {
     const R = regionOf(S.region);
-    return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id));
+    return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + ((S.bonus && S.bonus[id]) || 0));
   }
 
+  const goalsOf = S => S.goals || regionOf(S.region).goals;
   // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
   function publicView(S, now) {
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
-      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id) };
+      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), hist: (T.hist || []).slice(-40) };
     });
-    return { v: S.v, room: S.room, region: S.region, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, teams, ties: S.ties, results: S.results, log: S.log.slice(-12) };
+    return { v: S.v, room: S.room, region: S.region, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results: S.results, events: S.events || [], log: S.log.slice(-12) };
   }
 
   const canPlan = S => S.phase === "lobby" || S.phase === "plan";
@@ -59,7 +79,7 @@
   // 팀 요청 하나를 반영한다. 반환: {ok, err?, quiet?}  quiet = 공개 상태가 안 바뀜(접속 표시만)
   function reduce(S, m, now, bg) {
     const R = regionOf(S.region);
-    if (!m || typeof m !== "object" || !isTeam(R, m.team) || typeof m.token !== "string" || m.token.length < 8 || m.token.length > 64) return err("bad");
+    if (!m || typeof m !== "object" || !isTeam(R, m.team, S) || typeof m.token !== "string" || m.token.length < 8 || m.token.length > 64) return err("bad");
     const T = S.teams[m.team];
     if (m.type === "claim") {
       if (T.token && T.token !== m.token) return err("taken");
@@ -82,12 +102,20 @@
       let plan = m.plan;
       if (bg) plan = cleanPlan(bg, R, m.team, plan, budget(S, m.team));
       T.plan = plan; T.rev = m.rev; S.rev++;
+      // 진행 기록(교사 화면의 '건설 속도'): 15초 안의 연속 변경은 한 점으로
+      if (bg) {
+        const pt = { t: now, r: S.round, cap: Math.round(capexOf(bg, R, m.team, plan)), n: plan.builds.length, l: plan.lines.length };
+        T.hist = Array.isArray(T.hist) ? T.hist : [];
+        const last = T.hist[T.hist.length - 1];
+        if (last && now - last.t < 15000 && last.r === pt.r) T.hist[T.hist.length - 1] = pt; else T.hist.push(pt);
+        if (T.hist.length > 60) T.hist.splice(0, T.hist.length - 60);
+      }
       return { ok: true };
     }
     if (m.type === "tie") {
       if (!canPlan(S)) return err("phase");
       const D = tieDef(R, m.team, m.other);
-      if (!D) return err("notie");
+      if (!D || !Object.hasOwn(S.teams, m.other)) return err("notie");
       let X = S.ties.find(x => x.a === D.a && x.b === D.b);
       if (m.op === "propose") {
         const cap = m.cap === 4 ? 4 : 2;
@@ -122,18 +150,77 @@
   // 진행자만 하는 일
   function host(S, op, now, arg) {
     const R = regionOf(S.region);
-    if (op === "kick" && isTeam(R, arg)) { S.teams[arg].token = null; S.teams[arg].ready = false; log(S, `${teamDef(R, arg).name} 자리 비움`, now); S.rev++; return true; }
+    if (op === "kick" && isTeam(R, arg, S)) { S.teams[arg].token = null; S.teams[arg].ready = false; log(S, `${teamDef(R, arg).name} 자리 비움`, now); S.rev++; return true; }
     if (op === "extend" && S.ends) { S.ends += 60000; S.rev++; return true; }
     if (op === "next") {
       if (S.phase === "lobby" || S.phase === "review") {
         if (S.round >= R.rounds.length) { S.phase = "end"; S.ends = null; log(S, "리그 끝", now); S.rev++; return true; }
         S.round++; S.phase = "plan"; S.ends = now + PLAN_MS;
         Object.values(S.teams).forEach(T => { T.ready = false; });
-        log(S, `${S.round}라운드 계획 시작`, now); S.rev++; return true;
+        log(S, `${S.round}라운드 계획 시작`, now);
+        drawEvents(S, R).forEach(E => log(S, `사건: ${E.name}`, now));
+        S.rev++; return true;
       }
       return false;
     }
     return false;
+  }
+
+  /* ---------- 라운드 이벤트(계절 사건) ---------- */
+  // R.events: {id, name, seasons, weight, scope: region | team:<id> | kind:coastal|industrial|coal, effect:{...}, text, why, sources}
+  // 라운드가 시작될 때 진행자가 1개(40%는 2개)를 뽑아 계획 단계부터 알린다 — 대비할 시간을 준다.
+  function hashStr(x) { let h = 2166136261; for (let i = 0; i < x.length; i++) { h ^= x.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function packHas(R, id, what) {
+    const P = packOf(R, id);
+    if (!P) return false;
+    if (what === "coastal") return !!P.fitSea;
+    if (what === "industrial") return P.sites.some(s => s.kind === "factory_big");
+    if (what === "coal") return P.sites.some(s => s.fuel === "coal");
+    return false;
+  }
+  function hits(R, E, id) {
+    const sc = E.scope || "region";
+    if (sc === "region") return true;
+    if (sc.startsWith("team:")) return sc.slice(5) === id;
+    if (sc === "kind:metro_south") return (teamDef(R, id) || {}).prov === "경기";
+    if (sc === "kind:chungcheong") return (teamDef(R, id) || {}).prov === "충남";
+    if (sc === "kind:inland") return !packHas(R, id, "coastal");
+    if (sc.startsWith("kind:")) return packHas(R, id, sc.slice(5));
+    return false;
+  }
+  const eventDef = (R, id) => (R.events || []).find(E => E.id === id) || null;
+  function drawEvents(S, R) {
+    const rd = R.rounds[S.round - 1], act = activeOf(S);
+    const pool = (R.events || []).filter(E => (E.seasons || []).includes(rd.season) && act.some(id => hits(R, E, id)) && !(E.effect && E.effect.tieDown && !S.ties.some(T => T.st === "built")));
+    const rnd = rng(hashStr(S.room + ":" + S.round)), out = [];
+    const pick = () => { const list = pool.filter(E => !out.includes(E)), w = list.reduce((a, E) => a + (E.weight || 1), 0); let u = rnd() * w; for (const E of list) { u -= E.weight || 1; if (u <= 0) return E; } return list[list.length - 1]; };
+    if (pool.length) out.push(pick());
+    if (pool.length > 1 && rnd() < 0.4) out.push(pick());
+    S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round })));
+    S.bonus = S.bonus || {};
+    out.forEach(E => { if (E.effect && E.effect.budgetAdd) act.forEach(id => { if (hits(R, E, id)) S.bonus[id] = (S.bonus[id] || 0) + E.effect.budgetAdd; }); });
+    return out;
+  }
+  // 이번 라운드에 팀 id에 걸리는 배수 모음
+  function modsFor(S, R, id) {
+    const M = {};
+    (S.events || []).filter(x => x.round === S.round).map(x => eventDef(R, x.id)).filter(E => E && hits(R, E, id)).forEach(E => {
+      const f = E.effect || {};
+      ["demandMul", "solarMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"].forEach(k => { if (typeof f[k] === "number") M[k] = (M[k] == null ? 1 : M[k]) * f[k]; });
+      if (Array.isArray(f.hours)) M.demandHours = f.hours;
+      if (f.carbonTaxOn) M.tax = true;
+    });
+    return M;
+  }
+  function tieMods(S, R) {
+    let mul = 1; const down = [];
+    (S.events || []).filter(x => x.round === S.round).map(x => eventDef(R, x.id)).filter(Boolean).forEach(E => {
+      const f = E.effect || {};
+      if (typeof f.tieCapMul === "number") mul *= f.tieCapMul;
+      if (f.tieDown) down.push(typeof f.tieDown === "string" ? f.tieDown : "*");
+    });
+    return { mul, down };
   }
 
   /* ---------- 도시 하나 돌리기와 정산 ---------- */
@@ -151,12 +238,13 @@
   function capexOf(bg, R, id, plan) { return withPack(bg, R, id, () => bg.capex(bg.sanitize(plan, 1e9))); }
 
   // 팀 도시 하나를 고립 운전한다. 반환: 정산에 쓸 시간별 자료와 자체 지표.
-  function simTeam(bg, R, id, plan, rnd, cap) {
+  function simTeam(bg, R, id, plan, rnd, cap, mods) {
     return withPack(bg, R, id, () => {
       const st = bg.sanitize(plan || {}, cap);
       st.season = rnd.season;
       st.seed = rnd.seed;
-      const res = bg.simulate(st, rnd.days, { league: true });
+      if (mods && mods.tax && !st.policies.includes("tax")) st.policies.push("tax");
+      const res = bg.simulate(st, rnd.days, { league: true, mods: mods && Object.keys(mods).length ? mods : null });
       const H = res.H, NT = res.NT, uns = new Float32Array(H);
       for (let k = 0; k < H; k++) { let s = 0; for (let ti = 0; ti < NT; ti++) s += res.hrUns[k * NT + ti]; uns[k] = s; }
       return {
@@ -231,17 +319,26 @@
     const R = regionOf(S.region), rd = R.rounds[S.round - 1];
     const rnd = { season: rd.season, days: rd.days, seed: 7000 + S.round * 13 };
     const sims = {}, price = {};
-    R.teams.forEach(t => {
+    const act = R.teams.filter(t => Object.hasOwn(S.teams, t.id));
+    act.forEach(t => {
       const T = S.teams[t.id];
-      sims[t.id] = simTeam(bg, R, t.id, T.plan, rnd, budget(S, t.id));
+      sims[t.id] = simTeam(bg, R, t.id, T.plan, rnd, budget(S, t.id), modsFor(S, R, t.id));
       price[t.id] = T.price;
     });
     const H = rnd.days * 24;
-    const built = S.ties.filter(T => T.st === "built").map(T => ({ id: tieId(T), a: T.a, b: T.b, cap: T.cap }));
+    // 이벤트: 연계선 용량 배수, 고장 난 선 하나(지정 없으면 지어진 선 중 하나를 같은 씨앗으로)
+    const TM = tieMods(S, R);
+    let built = S.ties.filter(T => T.st === "built").map(T => ({ id: tieId(T), a: T.a, b: T.b, cap: T.cap * TM.mul }));
+    if (TM.down.length && built.length) {
+      const named = TM.down.filter(x => x !== "*");
+      const victim = named.find(x => built.some(T => T.id === x || T.id === x.split("~").reverse().join("~"))) || built[hashStr(S.room + S.round) % built.length].id;
+      built = built.filter(T => T.id !== victim && T.id !== victim.split("~").reverse().join("~"));
+      rnd.tieDown = victim;
+    }
     const { out, flow } = settle(built, sims, price, H, rnd.days);
     const team = {};
     let rDem = 0, rUns = 0, rCo2 = 0;
-    R.teams.forEach(t => {
+    act.forEach(t => {
       const s = sims[t.id], o = out[t.id], K = s.k;
       let outH = 0, hospH = 0;
       for (let k = 0; k < H; k++) {
@@ -263,8 +360,9 @@
       rDem += K.dem; rUns += uns; rCo2 += co2Prod;
     });
     const region = { dem: r2(rDem), uns: r2(rUns), unsPct: r2(100 * rUns / Math.max(1e-9, rDem)), co2: Math.round(rCo2) };
-    region.ok = { uns: region.unsPct <= R.goals.unsPct, co2: region.co2 <= R.goals.co2 };
-    const result = { round: S.round, season: rd.season, days: rd.days, seed: rnd.seed, team, region, flow };
+    const G = goalsOf(S);
+    region.ok = { uns: region.unsPct <= G.unsPct, co2: region.co2 <= G.co2 };
+    const result = { round: S.round, season: rd.season, days: rd.days, seed: rnd.seed, team, region, flow, events: (S.events || []).filter(x => x.round === S.round).map(x => x.id), tieDown: rnd.tieDown || null };
     S.results = S.results.filter(x => x.round !== S.round).concat([result]);
     return result;
   }
@@ -281,7 +379,8 @@
   }
 
   KCP.leagueCore = {
-    PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, newState, publicView, reduce, host, run, runRound, settle, simTeam,
+    eventDef, modsFor, hits, drawEvents,
+    PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf
   };
 })();

@@ -66,6 +66,8 @@
   }
   const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
   const NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
+  // MODS: 리그 이벤트가 이번 운전에만 거는 배수(simulate의 opt.mods). 운전이 끝나면 null.
+  let MODS = null;
   let PK = null, LG = false, COLS = 0, ROWS = 0, TILES = [], SITES = [], TOWNS = [], TNAME = BASE_TNAME, POPMAX = 1;
   const tix = (c, r) => r * COLS + c;
   const cube = T => { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; };
@@ -74,8 +76,8 @@
     return Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
   }
   const PACKS = KCP.BUILD_MAPS || {};
-  // 혼자 하기 지도 목록(리그 전용 묶음 league: true는 멀티플레이에서만 쓴다)
-  const PACK_IDS = Object.keys(PACKS).filter(id => !PACKS[id].league);
+  // 혼자 하기에서도 모든 지도(연습 섬 + 리그 도시 6곳)를 고를 수 있다. 혼자 할 때 외부 연결점은 외부 전력망(수입)이다.
+  const PACK_IDS = Object.keys(PACKS);
   // lg: 리그 모드. P.gates가 있으면 그 칸만 외부 연결점(이웃 도시 쪽)이 되고 나머지 'g' 칸은 경계 밖이 된다.
   function buildPack(P, lg) {
     const cols = P.rows[0].length, rows = P.rows.length, tiles = [];
@@ -84,9 +86,11 @@
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const ch = P.rows[r][c];
       const dig = /[1-9]/.test(ch) ? +ch - 1 : -1;
-      let t = dig >= 0 ? "town" : P.legend[ch] || "out";
+      let t = dig >= 0 ? "town" : P.legend[ch] || "out", vt = null;
       if (gates) t = gateAt.has(r * cols + c) ? "grid" : t === "grid" ? "out" : t;
-      tiles.push({ i: r * cols + c, c, r, t, town: -1, site: -1, X: SQ3 * (c + 0.5 * (r & 1)), Y: 1.5 * r, dig });
+      // P.own: 광역 지도에서 잘라 온 창. '0' 칸은 이웃 도시 땅 — 모양은 보이되 짓거나 지나갈 수 없다.
+      if (P.own && P.own[r][c] === "0" && t !== "sea" && t !== "lake") { vt = t === "grid" ? "plain" : t; t = "out"; }
+      tiles.push({ i: r * cols + c, c, r, t, vt, town: -1, site: -1, X: SQ3 * (c + 0.5 * (r & 1)), Y: 1.5 * r, dig });
     }
     tiles.forEach(T => {
       T.nb = [];
@@ -105,9 +109,10 @@
       return Object.assign({}, s, { tile, pop: s.pop != null ? s.pop : KIND_POP[s.kind] || 100 });
     });
     if (gates) gates.forEach((g, k) => sites.push({ id: "G" + k, code: "망", kind: "gridpt", name: g.name, note: "이웃 도시 연결점", to: g.to.slice(), tile: g.r * cols + g.c, pop: 0 }));
-    else tiles.filter(T => T.t === "grid").forEach(T => {
-      const north = T.r < rows / 2;
-      sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: north ? "오산·수원" : "아산·천안", tile: T.i, pop: 0 });
+    else tiles.filter(T => T.t === "grid").forEach((T, k) => {
+      const north = T.r < rows / 2, g = (P.gates || []).find(x => x.r * cols + x.c === T.i);
+      if (g) sites.push({ id: "G" + k, code: "망", kind: "gridpt", name: g.name.replace(/ 방향/, " 쪽 외부 전력망"), note: "외부 전력망(수입)", to: g.to.slice(), tile: T.i, pop: 0 });
+      else sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: north ? "오산·수원" : "아산·천안", tile: T.i, pop: 0 });
     });
     const towns = [];
     sites.forEach((s, si) => {
@@ -170,7 +175,7 @@
   function cubeOf(T) { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; }
   function usePack(id, mode) {
     if (!Object.hasOwn(PACKS, id)) id = PACK_IDS[0];
-    const P = PACKS[id], lg = mode === "league" || !!P.league, key = lg ? "_bL" : "_b";
+    const P = PACKS[id], lg = mode === "league", key = lg ? "_bL" : "_b";
     if (!P[key]) P[key] = buildPack(P, lg);
     const B = P[key];
     PK = P; LG = lg; COLS = B.cols; ROWS = B.rows; TILES = B.tiles; SITES = B.sites; TOWNS = B.towns; TNAME = B.tname; POPMAX = B.popMax;
@@ -204,7 +209,7 @@
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
-  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.006, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : PK.gridCap || 4, min: 0, fuel: 0.012, co2: 0.46 }
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.006, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.46 }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0.1 });
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
@@ -301,6 +306,7 @@
       if (D.hotAdd && day.hot) v += D.hotAdd;
       if (D.heat && day.winter && inR(18, 22)) v *= 1.1;
     }
+    if (MODS && MODS.demandMul && (!MODS.demandHours || inR(MODS.demandHours[0], MODS.demandHours[1]))) v *= MODS.demandMul;
     if (D.dr && pol.dr && inR(18, 21)) v = Math.max(0.1 * v, v - (D.dr === true ? 1.5 : D.dr));
     if (pol.save) v *= 1 - M.save;
     return v;
@@ -483,6 +489,12 @@
 
   // 시간 h의 재생 출력(MW). 섬은 예전 식, 평택은 달마다 기후 자료를 쓴다.
   function renOut(g, day, h, k) {
+    const v0 = renOut0(g, day, h, k);
+    if (!MODS) return v0;
+    const m = g.kind === "solar" || g.kind === "roof" ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
+    return typeof m === "number" ? v0 * m : v0;
+  }
+  function renOut0(g, day, h, k) {
     const T = TILES[g.tile], B = BLD[g.kind], C = PK.climate, vMul = day.mult * day.noise[h];
     if (g.kind === "solar" || g.kind === "roof") {
       if (!C) { const sp = h >= 6 && h < 18 ? Math.max(0, Math.sin(Math.PI * (h + 0.5 - 6) / 12)) : 0; return B.mw * sp * M.wxSun[day.w] * T.sun; }
@@ -505,6 +517,10 @@
 
   // opt.league: 외부 연결점이 붙은 덩어리마다 시간별 부족·남는 재생·남는 화력 여유를 따로 적는다(도시 사이 정산용).
   function simulate(st, days, opt) {
+    MODS = opt && opt.mods ? opt.mods : null;
+    try { return simulate0(st, days, opt); } finally { MODS = null; }
+  }
+  function simulate0(st, days, opt) {
     const N = network(st), W = weather(st.seed, st.season), H = days * 24, pol = polOf(st), NT = TOWNS.length;
     const lgOut = !!(opt && opt.league);
     const fab2 = !!(PK.climate && st.fab2);
@@ -523,6 +539,8 @@
       if (D) {
         if (g.kind === "lng" || g.kind === "coal") D.cap = g.cap;
         if (g.kind === "coal") D.min = 0.3 * g.cap;
+        if (MODS && g.kind === "coal" && MODS.coalCapMul != null) { D.cap *= MODS.coalCapMul; D.min = Math.min(D.min, D.cap); }
+        if (MODS && g.kind === "lng" && MODS.lngCapMul != null) D.cap *= MODS.lngCapMul;
         if (g.kind === "biomass" && TILES[g.tile].livestock) D.fuel = 0.012;
         g.D = D;
         g.mc = D.fuel + (pol.tax ? D.co2 * M.taxPerT : 0);
@@ -1298,7 +1316,7 @@
   }
 
   function drawTile(g, T, layer) {
-    const h = HGT[T.t];
+    const vt = T.vt || T.t, h = HGT[vt];
     const top = topPoly(T, h), bot = topPoly(T, BASE);
     const [cu, cv] = uv(T.X, T.Y);
     if (T.t === "sea") {
@@ -1319,10 +1337,10 @@
       g.beginPath(); g.moveTo(cx - V.S * 0.3, cy); g.quadraticCurveTo(cx, cy - V.S * 0.08, cx + V.S * 0.3, cy); g.stroke();
       return;
     }
-    let base = PAL[T.t];
+    let base = PAL[vt] || PAL[T.t];
     if (layer !== "map" && !T.out) base = ramp(RAMPS[layer], layerVal(T, layer));
     const jit = layer === "map" ? 1 + (hash(T.c, T.r, 9) - 0.5) * 0.07 : 1;
-    const sideC = T.t === "beach" ? PAL.sand : T.t === "mount" ? PAL.rock : PAL.earth;
+    const sideC = vt === "beach" ? PAL.sand : vt === "mount" ? PAL.rock : PAL.earth;
     // 보이는 옆면(화면 아래쪽을 향하는 변)
     for (let k = 0; k < 6; k++) {
       const j = (k + 1) % 6;
@@ -1337,7 +1355,7 @@
     }
     polyPath(g, top);
     g.fillStyle = rgb(mul(base, jit)); g.fill();
-    if (T.out) { g.fillStyle = "rgba(190,205,215,0.28)"; g.fill(); return; }
+    if (T.out) { g.fillStyle = T.vt ? "rgba(70,84,96,0.5)" : "rgba(190,205,215,0.28)"; g.fill(); return; }
     g.strokeStyle = layer === "map" ? "rgba(20,40,30,0.18)" : "rgba(10,20,40,0.35)"; g.lineWidth = 1; g.stroke();
     // 위쪽 변 하이라이트
     g.strokeStyle = "rgba(255,255,255,0.16)";
@@ -1828,6 +1846,8 @@
     document.title = `${PK.title} · 켄텍 창의성 면접 연습실`;
     S.canvas.setAttribute("aria-roledescription", `${PK.name} 지도`);
     S.root.querySelectorAll("[data-map]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.map === PK.id)));
+    const cur = $("#bd-mapcur-t");
+    if (cur) cur.textContent = PK.name;
     const note = $("#bd-mapnote");
     note.hidden = !PK.note; note.textContent = PK.note || "";
     if (S.help) S.help.setTitle(PK.title);
@@ -2096,6 +2116,16 @@
    * ===================================================================== */
   function on(el, type, fn, opt) { el.addEventListener(type, fn, opt); S.off.push(() => el.removeEventListener(type, fn, opt)); }
   const cap = (k, icon, name, tone) => `<span class="v2-cap bd-cap${tone ? " tone-" + tone : ""}" data-cap="${k}">${ico(icon)}<span class="v2-cap-txt"><span class="v2-cap-k">${name}</span><span class="v2-cap-v" data-v></span></span></span>`;
+  // 지도가 많으면 [지도: 평택 ▾] 하나로 접는다. 연습 / 경기 남부·충청권 도시로 나눠 보여 준다.
+  function mapPicker(packs) {
+    const btn = id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`;
+    const prac = packs.filter(id => !PACKS[id].climate), city = packs.filter(id => PACKS[id].climate);
+    return `<button type="button" class="bd-mapbtn bd-mapcur" id="bd-mapcur" aria-expanded="false" aria-controls="bd-mappop"><span>지도</span> <b id="bd-mapcur-t"></b> <span aria-hidden="true">▾</span></button>
+      <div class="bd-mappop" id="bd-mappop" hidden>
+        ${prac.length ? `<p class="bd-mappop-h">연습</p><div class="bd-mappop-g">${prac.map(btn).join("")}</div>` : ""}
+        ${city.length ? `<p class="bd-mappop-h">경기 남부·충청권 도시</p><div class="bd-mappop-g">${city.map(btn).join("")}</div>` : ""}
+      </div>`;
+  }
   function shell(app, packs) {
     const root = document.createElement("div");
     root.className = "bd-root";
@@ -2122,7 +2152,7 @@
       </header>
       <div class="bd-mapbar" id="bd-mapbar">
         <div class="bd-maps" role="group" aria-label="지도 고르기">
-          ${packs.length > 1 ? packs.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("") : ""}
+          ${packs.length > 3 ? mapPicker(packs) : packs.length > 1 ? packs.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("") : ""}
         </div>
         <div class="bd-layers" role="group" aria-label="자료 지도">
           ${LAYERS.map(L => `<button type="button" class="bd-layer" data-layer="${L.id}" aria-pressed="false">${ico(L.icon)}<span>${L.name}</span></button>`).join("")}
@@ -2207,7 +2237,7 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : PK.gridCap || 4) : BLD[n.kind].mw), 0);
+      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw), 0);
       const peak = peakDemand(polOf(S.st), PK.climate && S.st.fab2);
       set("time", PK.climate ? (x => `${x.name} ${x.m + 1}월`)(SEASONS.find(q => q.id === S.st.season) || SEASONS[1]) : "건설 중");
       set("power", `${fmt(capMW, 0)}/${fmt(peak, 1)}`, capMW < peak ? "danger" : "");
@@ -2755,7 +2785,14 @@
       else if (e.target.closest("#bd-season") && S.opts.season) toast("계절은 진행자가 라운드마다 정합니다");
       else if (e.target.closest("#bd-season")) { S.seasonOpen = !S.seasonOpen; S.openGroup = null; renderTools(); renderSeasons(); if (S.seasonOpen) { const f = $("#bd-seasons [aria-pressed=true]"); if (f) f.focus({ preventScroll: true }); } }
     });
-    root.querySelectorAll("[data-map]").forEach(b => on(b, "click", () => switchMap(b.dataset.map)));
+    const mapPop = root.querySelector("#bd-mappop"), mapCur = root.querySelector("#bd-mapcur");
+    const mapPopShow = v => { if (!mapPop) return; mapPop.hidden = !v; mapCur.setAttribute("aria-expanded", String(v)); };
+    root.querySelectorAll("[data-map]").forEach(b => on(b, "click", () => { mapPopShow(false); switchMap(b.dataset.map); if (mapCur) mapCur.focus({ preventScroll: true }); }));
+    if (mapCur) {
+      on(mapCur, "click", () => { mapPopShow(mapPop.hidden); if (!mapPop.hidden) { const f = mapPop.querySelector("[aria-pressed=true]") || mapPop.querySelector("[data-map]"); f.focus({ preventScroll: true }); } });
+      on(document, "pointerdown", e => { if (!mapPop.hidden && !e.target.closest(".bd-maps")) mapPopShow(false); });
+      on(document, "keydown", e => { if (e.key === "Escape" && !mapPop.hidden) { mapPopShow(false); mapCur.focus({ preventScroll: true }); e.preventDefault(); } });
+    }
     on(document, "pointerdown", e => { if (S && (S.openGroup || S.seasonOpen) && !e.target.closest("#bd-dock")) closePops(); });
     root.querySelectorAll("[data-layer]").forEach(b => on(b, "click", () => setLayer(b.dataset.layer)));
     root.querySelectorAll("[data-zoom]").forEach(b => on(b, "click", () => {
