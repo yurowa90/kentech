@@ -38,8 +38,17 @@
     if (seen.size !== ids.length) return { ok: false, err: "고른 도시끼리 서로 이웃해야 합니다(육지·만으로 이어지게)", ids };
     return { ok: true, ids };
   }
+  // 턴 목록: 달 턴(경제 모드, S.rounds = [{month, year, season, days}]) 또는 지역 기본(계절 4라운드)
+  const SEASON_OF_MONTH = m => (m === 12 || m <= 2 ? "winter" : m <= 5 ? "spring" : m <= 8 ? "summer" : "autumn");
+  function monthRounds(turns, y0, m0) {
+    const out = [];
+    for (let k = 0; k < turns; k++) { const mm = ((m0 - 1 + k) % 12) + 1, yy = y0 + Math.floor((m0 - 1 + k) / 12); out.push({ month: mm, year: yy, season: SEASON_OF_MONTH(mm), days: 7, mdays: new Date(Date.UTC(yy, mm, 0)).getUTCDate() }); }
+    return out;
+  }
+  const roundsOf = S => (Array.isArray(S.rounds) && S.rounds.length ? S.rounds : regionOf(S.region).rounds);
   const activeOf = S => (Array.isArray(S.active) && S.active.length ? S.active : Object.keys(S.teams));
-  function newState(room, regionId, now, list) {
+  // opt.turns(12·24·36)를 주면 1턴 = 1달(경제 모드). 없으면 지역 기본 라운드.
+  function newState(room, regionId, now, list, opt) {
     const R = regionOf(regionId);
     if (!R) throw new Error("region");
     const V = validTeams(R, list || ALL(R));
@@ -49,7 +58,17 @@
     // 지역 CO₂ 목표는 고른 도시의 실제 사용량 몫만큼(6곳 = R.goals.co2)
     const tw = id => (teamDef(R, id).real || { twh: 1 }).twh, share = V.ids.reduce((a, id) => a + tw(id), 0) / ALL(R).reduce((a, id) => a + tw(id), 0);
     const goals = { unsPct: R.goals.unsPct, co2: Math.round(R.goals.co2 * share / 10) * 10 };
-    return { v: 2, room, region: R.id, created: now || 0, rev: 1, round: 0, phase: "lobby", ends: null, active: V.ids, goals, teams, ties: [], results: [], events: [], log: [] };
+    const S = { v: 2, room, region: R.id, created: now || 0, rev: 1, round: 0, phase: "lobby", ends: null, active: V.ids, goals, teams, ties: [], results: [], events: [], log: [] };
+    if (opt && [12, 24, 36].includes(opt.turns)) {
+      S.rounds = monthRounds(opt.turns, opt.year || 2027, 1);
+      // 경제 층(ui/econ.js): 주민·산업·현금·지지율. 시작 현금 = 도시 지도 예산.
+      if (KCP.econ && KCP.ECON_DATA) {
+        const cash = {}; V.ids.forEach(id => { cash[id] = baseBudget(R, id); });
+        S.econ = KCP.econ.initCities(V.ids, KCP.ECON_DATA, { seed: room, months: opt.turns, cash });
+        S.econRep = null; S.econCal = false;
+      }
+    }
+    return S;
   }
 
   function log(S, text, now) { S.log.push({ at: now || 0, t: String(text).slice(0, 120) }); if (S.log.length > LOG_MAX) S.log.splice(0, S.log.length - LOG_MAX); }
@@ -61,6 +80,11 @@
   function tieShare(S, R, id) { return S.ties.filter(T => T.st === "built" && (T.a === id || T.b === id)).reduce((a, T) => a + tieCost(R, T) / 2, 0); }
   function budget(S, id) {
     const R = regionOf(S.region);
+    // 경제 모드(달 턴): 쓸 수 있는 돈 = 이번 달 시작 현금 + 이미 확정된 투자(계획 안에 들어 있는 몫) − 이번 달 새 연계선 몫 + 아직 안 받은 이번 달 사건 지원금
+    if (S.econ && S.econ.cities[id]) {
+      const T = S.teams[id] || {}, unpaid = S.phase === "lobby" || S.phase === "plan" ? bonusOf(S, R, id, S.round) : 0;
+      return r2(S.econ.cities[id].cash + (T.committed || 0) + (T.tieAt || 0) - tieShare(S, R, id) + unpaid);
+    }
     return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + bonusOf(S, R, id));
   }
 
@@ -86,8 +110,8 @@
     return r2((S.events || []).filter(ev => round == null || ev.round === round).reduce((a, ev) => { const o = respOpt(R, S, id, ev); return a + (o ? o.cost || 0 : 0); }, 0));
   }
   // 사건 지원금(budgetAdd) — 조건부 유치·보류를 고르면 grant 배수만큼
-  function bonusOf(S, R, id) {
-    return r2((S.events || []).reduce((a, ev) => {
+  function bonusOf(S, R, id, round) {
+    return r2((S.events || []).filter(ev => round == null || ev.round === round).reduce((a, ev) => {
       const E = eventDef(R, ev.id);
       if (!E || !E.effect || typeof E.effect.budgetAdd !== "number" || !hits(R, E, id)) return a;
       const o = respOpt(R, S, id, ev);
@@ -134,6 +158,17 @@
     });
     return out;
   }
+  // 경제 요약(도시마다 주민·산업·현금·지지율·정책·집단 만족 + 국제 지수 + 진행 중 기업 제안 + 시간 기록)
+  function econView(S) {
+    const E = S.econ;
+    if (!E) return null;
+    const cities = {};
+    E.order.forEach(id => {
+      const c = E.cities[id];
+      cities[id] = { name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, approval: Math.round(c.approval), L: Math.round(c.L), A: Math.round(c.A), policy: c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, Math.round(c.groups[g].sat)])), hist: (c.hist || []).slice(-36) };
+    });
+    return { year: E.year, month: E.month, t: E.t, cities, totals: E.totals, intl: E.intl.cur, offers: E.offers.map(o => ({ id: o.id, name: o.name, sector: o.sector, workers: o.workers, mw: o.mw, rePct: o.rePct, unsMax: o.unsMax, until: o.until })), score: KCP.econ ? KCP.econ.score(E) : null };
+  }
   // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
   function publicView(S, now) {
     const teams = {};
@@ -144,7 +179,9 @@
     // 사건의 실제 크기(x)는 그 라운드 운영이 끝난 뒤에 공개한다 — 계획 때는 예보 범위만.
     const shown = ev => ev.round < S.round || S.phase === "review" || S.phase === "end";
     const events = (S.events || []).map(ev => shown(ev) ? ev : { id: ev.id, round: ev.round });
-    return { v: S.v, room: S.room, region: S.region, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results: S.results, events, log: S.log.slice(-12) };
+    // 결과의 경제 보고서는 마지막 것만 싣는다(달 턴이 길어져도 상태가 커지지 않게).
+    const results = S.results.map((x, i) => (x.econ && i < S.results.length - 1 ? Object.assign({}, x, { econ: null }) : x));
+    return { v: S.v, room: S.room, region: S.region, rounds: S.rounds || null, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results, events, econ: econView(S), log: S.log.slice(-12) };
   }
 
   const canPlan = S => S.phase === "lobby" || S.phase === "plan";
@@ -189,6 +226,13 @@
         if (T.hist.length > 60) T.hist.splice(0, T.hist.length - 60);
       }
       return { ok: true };
+    }
+    if (m.type === "econ") {
+      if (!S.econ || !canPlan(S)) return err("phase");
+      const st = x => Math.max(-2, Math.min(2, Math.round(num(x, -2, 2, 0))));
+      const P0 = T.econPol || {}, P1 = { taxRes: st(m.taxRes), taxInd: st(m.taxInd), service: st(m.service), incentive: r2(num(m.incentive, 0, 20, 0)) };
+      if (JSON.stringify(P0) === JSON.stringify(P1)) return { ok: true, quiet: true };
+      T.econPol = P1; S.rev++; return { ok: true };
     }
     if (m.type === "respond") {
       if (S.phase !== "plan") return err("phase");
@@ -246,7 +290,7 @@
     if (op === "extend" && S.ends) { S.ends += 60000; S.rev++; return true; }
     if (op === "next") {
       if (S.phase === "lobby" || S.phase === "review") {
-        if (S.round >= R.rounds.length) { S.phase = "end"; S.ends = null; log(S, "리그 끝", now); S.rev++; return true; }
+        if (S.round >= roundsOf(S).length) { S.phase = "end"; S.ends = null; log(S, "리그 끝", now); S.rev++; return true; }
         S.round++; S.phase = "plan"; S.ends = now + PLAN_MS;
         Object.values(S.teams).forEach(T => { T.ready = false; });
         log(S, `${S.round}라운드 계획 시작`, now);
@@ -284,7 +328,7 @@
   const MUL = ["demandMul", "solarMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"];
   const eventDef = (R, id) => (R.events || []).find(E => E.id === id) || null;
   function drawEvents(S, R) {
-    const rd = R.rounds[S.round - 1], act = activeOf(S);
+    const rd = roundsOf(S)[S.round - 1], act = activeOf(S);
     const pool = (R.events || []).filter(E => (E.seasons || []).includes(rd.season) && act.some(id => hits(R, E, id)) && !(E.effect && E.effect.tieDown && !S.ties.some(T => T.st === "built")));
     const rnd = rng(hashStr(S.room + ":" + S.round)), out = [];
     const pick = () => { const list = pool.filter(E => !out.includes(E)), w = list.reduce((a, E) => a + (E.weight || 1), 0); let u = rnd() * w; for (const E of list) { u -= E.weight || 1; if (u <= 0) return E; } return list[list.length - 1]; };
@@ -298,6 +342,13 @@
   function modsFor(S, R, id) {
     const M = {}, tech = techOf(S, id);
     if (tech.length) M.tech = tech;
+    // 경제 모드: 주민·산업 규모만큼 수요, 국제 연료 가격만큼 연료비
+    if (S.econ && S.econ.cities[id] && KCP.econ) {
+      const dm = KCP.econ.demandMul(S.econ.cities[id]), I = S.econ.intl && S.econ.intl.cur;
+      if (Math.abs(dm.res - 1) > 1e-3) M.demandRes = dm.res;
+      if (Math.abs(dm.ind - 1) > 1e-3) M.demandInd = dm.ind;
+      if (I && Math.abs(I.fuelMul - 1) > 1e-3) M.fuelMul = { lng: I.fuelMul, diesel: I.fuelMul, coal: r3(Math.sqrt(I.fuelMul)) };
+    }
     (S.events || []).filter(x => x.round === S.round).forEach(ev => {
       const E = eventDef(R, ev.id);
       if (!E || !hits(R, E, id)) return;
@@ -422,7 +473,7 @@
 
   // 라운드 하나를 돌려 결과를 state.results에 붙인다.
   function runRound(S, bg) {
-    const R = regionOf(S.region), rd = R.rounds[S.round - 1];
+    const R = regionOf(S.region), rd = roundsOf(S)[S.round - 1];
     const rnd = { season: rd.season, days: rd.days, seed: 7000 + S.round * 13 };
     const sims = {}, price = {};
     const act = R.teams.filter(t => Object.hasOwn(S.teams, t.id));
@@ -472,7 +523,7 @@
     const region = { dem: r2(rDem), uns: r2(rUns), unsPct: r2(100 * rUns / Math.max(1e-9, rDem)), co2: Math.round(rCo2) };
     const G = goalsOf(S);
     region.ok = { uns: region.unsPct <= G.unsPct, co2: region.co2 <= G.co2 };
-    const result = { round: S.round, season: rd.season, days: rd.days, seed: rnd.seed, team, region, flow, events: (S.events || []).filter(x => x.round === S.round).map(x => x.id), tieDown: rnd.tieDown || null };
+    const result = { round: S.round, month: rd.month || null, year: rd.year || null, season: rd.season, days: rd.days, seed: rnd.seed, team, region, flow, events: (S.events || []).filter(x => x.round === S.round).map(x => x.id), tieDown: rnd.tieDown || null };
     S.results = S.results.filter(x => x.round !== S.round).concat([result]);
     return result;
   }
@@ -497,16 +548,66 @@
       T.base = T.plan ? itemCosts(bg, R, id, T.plan) : [];
       T.stock = res.team[id].cost.stock;
     });
+    if (S.econ && KCP.econ) econMonth(S, R, bg, res);
     S.phase = "review"; S.ends = now + REVIEW_MS;
     log(S, `${S.round}라운드 운영 끝 · 지역 정전 ${res.region.unsPct}% · CO₂ ${res.region.co2} t`, now);
     S.rev++;
     return res;
   }
 
+  /* ---------- 경제 한 달(ui/econ.js) ---------- */
+  // 대표 7일 결과를 그 달 일수로 늘려 econ 입력으로 넘긴다. 첫 달에는 '새 건설 없는 시작 지도'로 기준을 잡는다(지도마다 원래 있던 차이로 이주가 생기지 않게).
+  function econInput(S, R, id, r, wk, extra) {
+    const c = r.cost, dem = Math.max(1e-9, r.dem), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
+    return {
+      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: r3((c.fuel + c.policy + c.trade) / dem), co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+        tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk },
+      policy: S.teams[id].econPol || {},
+      assets: Object.assign({ uni: n("uni"), lab: n("lab") }, extra || {})
+    };
+  }
+  function econMonth(S, R, bg, res) {
+    const rd = roundsOf(S)[S.round - 1], wk = (rd && rd.mdays ? rd.mdays : 30) / 7, ids = Object.keys(res.team);
+    if (!S.econCal) {
+      // 기준 = '전기가 정상으로 들어오는 보통 도시'(정전 0, 지역 평균 수준의 값). 게임은 빈 지도에서 시작하지만
+      // 실제 도시는 이미 전기를 쓰고 있으므로, 빈 지도의 정전을 '평상시'로 삼지 않는다. 이후 달라진 만큼 사람이 움직인다.
+      const base = {};
+      ids.forEach(id => {
+        const r = res.team[id], dem = Math.max(1e-9, r.dem);
+        base[id] = { energy: { unsPct: 0, hospH: 0, costPerMWh: 0.012, co2Local: 0.4 * dem * wk, co2: 0.4 * dem * wk, renPct: 10, demMWh: dem * wk }, policy: {}, assets: {} };
+      });
+      S.econ = KCP.econ.calibrate(S.econ, base);
+      S.econCal = true;
+    }
+    const inputs = {};
+    ids.forEach(id => { inputs[id] = econInput(S, R, id, res.team[id], wk); });
+    const out = KCP.econ.monthStep(S.econ, inputs);
+    S.econ = out.E;
+    // 이번 달 사건 지원금은 현금으로, 철거 회수(새 투자가 음수)도 현금으로
+    ids.forEach(id => {
+      const C = S.econ.cities[id], inv = res.team[id].cost.inv || 0, T = S.teams[id];
+      C.cash = r2(C.cash + bonusOf(S, R, id, S.round) + Math.max(0, -inv));
+      T.committed = r2(capexOf(bg, R, id, T.plan || {}) + fixedOf(S, R, id));
+      T.tieAt = tieShare(S, R, id);
+    });
+    const rep = out.report;
+    // 기업 이전 희망: 마지막 달까지 조건(재생 %·정전·구직 인력)을 맞춘 도시 가운데 산업 매력이 가장 큰 곳으로 정한다.
+    (rep.offers || []).forEach(o => {
+      if (rep.t < o.until - 1 || !o.eval) return;
+      const best = o.eval.rank.find(id => o.eval.by[id] && o.eval.by[id].ok);
+      if (!best) { rep.news.push(`${o.name}: 조건을 맞춘 도시가 없어 이전 무산`); return; }
+      const r = KCP.econ.acceptOffer(S.econ, o.id, best);
+      if (r.ok) { S.econ = r.E; rep.news.push(r.news); }
+    });
+    res.econ = rep;
+    S.econRep = rep;
+    rep.news.slice(0, 3).forEach(t => log(S, t, 0));
+  }
+
   KCP.leagueCore = {
-    eventDef, modsFor, hits, drawEvents,
+    eventDef, modsFor, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf,
-    SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf
+    SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf, econInput
   };
 })();

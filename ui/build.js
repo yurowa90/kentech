@@ -324,6 +324,7 @@
     return out;
   }
   // 시간별 수요(MW). ctx: 그날 날씨 하루치와 정책, 증설 여부
+  const IND_KIND = { factory_big: 1, industry: 1, port: 1 };
   function demand(ti, h, day, pol, fab2) {
     const W = TOWNS[ti], D = W.dem, inR = (a, b) => h >= a && h < b;
     let v = D.base;
@@ -340,6 +341,8 @@
       if (D.heat && day.winter && inR(18, 22)) v *= 1.1;
     }
     if (MODS && MODS.demandMul && (!MODS.demandHours || inR(MODS.demandHours[0], MODS.demandHours[1]))) v *= MODS.demandMul;
+    // 경제(리그 달 턴): 주민 수·산업 규모가 바뀐 만큼 마을·산업 수요가 따라 바뀐다.
+    if (MODS && (MODS.demandRes || MODS.demandInd)) v *= IND_KIND[W.kind] ? MODS.demandInd || 1 : MODS.demandRes || 1;
     if (D.dr && pol.dr && inR(18, 21)) v = Math.max(0.1 * v, v - (D.dr === true ? 1.5 : D.dr));
     if (pol.save) v *= 1 - M.save;
     return v;
@@ -591,7 +594,8 @@
         if (MODS && g.kind === "lng" && MODS.lngCapMul != null) D.cap *= MODS.lngCapMul;
         if (g.kind === "biomass" && TILES[g.tile].livestock) D.fuel = 0.012;
         g.D = D;
-        g.mc = D.fuel + (pol.tax ? D.co2 * M.taxPerT : 0);
+        // 국제 연료 가격 지수(경제 모드): MODS.fuelMul = {lng, diesel, coal}
+        g.mc = D.fuel * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
       }
     });
     const shed = st.shed === "industry" ? SHED.industry : SHED.home, equal = st.shed === "equal";

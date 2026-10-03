@@ -90,6 +90,11 @@
               <div class="lg-pickc">${reg.teams.map(t => { const must = (reg.must || []).includes(t.id); return `<label class="lg-pickcity" style="--c:${t.color}"><input type="checkbox" value="${t.id}" checked ${must ? "disabled" : ""}><span>${esc(t.name)}${must ? " <small>필수</small>" : ""}</span></label>`; }).join("")}</div>
               <p class="lg-hint" id="lg-pickmsg">평택은 꼭 들어가고, 고른 도시끼리 이웃해야 합니다.</p>
             </fieldset>
+            <fieldset class="lg-pick">
+              <legend>게임 길이</legend>
+              <div class="lg-presets" role="group" aria-label="게임 길이">${[[0, "계절 4라운드"], [12, "12달(1년)"], [24, "24달"], [36, "36달"]].map(([n, t]) => `<button type="button" class="lg-preset" data-turns="${n}" aria-pressed="${n === 12}">${t}</button>`).join("")}</div>
+              <p class="lg-hint" id="lg-turnmsg">1턴 = 1달. 해마다 1월에 국가 재정지원금, 달마다 세금. 주민·기업은 살기 좋은 도시로 옮겨 갑니다.</p>
+            </fieldset>
             <button type="button" class="v2-btn primary lg-big" id="lg-host">새 방 만들기</button>
             ${hostSave && validRoom(hostSave.room) ? `<button type="button" class="v2-btn lg-big" id="lg-rehost">이어서 진행: 방 ${esc(hostSave.room)}</button>` : ""}
           </article>
@@ -144,9 +149,14 @@
       const V = C.validTeams(reg, picked());
       if (!V.ok) { errEl.textContent = V.err; return; }
       const room = code(5);
-      store.set(K_HOST, { room, net: n, state: C.newState(room, REGION, Date.now(), V.ids) });
+      const tb = app.querySelector("[data-turns][aria-pressed=true]"), turns = tb ? +tb.dataset.turns : 0;
+      store.set(K_HOST, { room, net: n, state: C.newState(room, REGION, Date.now(), V.ids, turns ? { turns } : null) });
       location.hash = "#league/host";
     });
+    app.querySelectorAll("[data-turns]").forEach(b => b.addEventListener("click", () => {
+      app.querySelectorAll("[data-turns]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      const m = $("#lg-turnmsg"); if (m) m.textContent = +b.dataset.turns ? "1턴 = 1달. 해마다 1월에 국가 재정지원금, 달마다 세금. 주민·기업은 살기 좋은 도시로 옮겨 갑니다." : "봄·여름·가을·겨울 4라운드(라운드마다 예산이 25%씩 늘어남). 경제(주민·세금)는 없습니다.";
+    }));
     // 참가 도시 고르기
     const boxes = [...app.querySelectorAll(".lg-pickc input")];
     const picked = () => boxes.filter(b => b.checked).map(b => b.value);
@@ -213,7 +223,7 @@
     el.dataset.low = String(!!(S && S.ends && S.ends - now < 60000));
   }
   function nextLabel(S) {
-    const n = R().rounds.length;
+    const n = C.roundsOf(L.S).length;
     if (S.phase === "lobby") return "1라운드 시작";
     if (S.phase === "plan") return `${S.round}라운드 운영`;
     if (S.phase === "review") return S.round >= n ? "최종 결과" : `${S.round + 1}라운드 시작`;
@@ -237,7 +247,7 @@
     if (!L || L.role !== "host" || !L.app || !L.app.isConnected || L.viewing) return;
     const S = L.S, reg = R(), now = Date.now(), V = C.publicView(S, now);
     const res = S.results[S.results.length - 1] || null;
-    const rd = S.round ? reg.rounds[S.round - 1] : reg.rounds[0];
+    const RS0 = C.roundsOf(S), rd = S.round ? RS0[S.round - 1] : RS0[0];
     if (full || !L.app.querySelector(".lg-host")) {
       L.app.innerHTML = `
         <main class="lg-host">
@@ -279,7 +289,7 @@
       });
     }
     const $ = s => L.app.querySelector(s);
-    $("#lg-h1").textContent = S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${S.round} / ${reg.rounds.length}라운드 · ${SEASON_NAME[rd.season]} · ${PHASE_NAME[S.phase]}`;
+    $("#lg-h1").textContent = S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${turnLabel(rd, S.round, C.roundsOf(S).length)} · ${PHASE_NAME[S.phase]}`;
     const nx = $("#lg-next"), lab = nextLabel(S);
     nx.hidden = !lab; nx.disabled = false; nx.textContent = lab;
     $("#lg-extend").hidden = !S.ends;
@@ -287,7 +297,7 @@
     const ev = S.round ? evCards(V, S.round) : "";
     $("#lg-evbox").innerHTML = ev ? `<h2>${S.round}라운드 사건</h2>${ev}` : "";
     if ($("#lg-mapc")) renderBoard($("#lg-mapc"), V, res, L.flash === S.round); else renderMap($("#lg-map"), V, res, L.flash === S.round);
-    $("#lg-mapcap").textContent = (res ? `${res.round}라운드(${SEASON_NAME[res.season]} ${res.days}일) 도시 사이 전력 거래 · 선 굵기 = 용량` : "점선 = 제안된 연계선, 실선 = 연결된 연계선") + (R().board ? " · 도시를 누르면 그 도시 지도" : "");
+    $("#lg-mapcap").textContent = (res ? `${resLabel(res)} 도시 사이 전력 거래 · 선 굵기 = 용량` : "점선 = 제안된 연계선, 실선 = 연결된 연계선") + (R().board ? " · 도시를 누르면 그 도시 지도" : "");
     $("#lg-teams").innerHTML = actT(S).map(t => teamCard(t, V.teams[t.id], res && res.team[t.id], S)).join("");
     $("#lg-teams").querySelectorAll("canvas[data-thumb]").forEach(cv => thumb(cv, cv.dataset.thumb, V.teams[cv.dataset.thumb].plan));
     $("#lg-results").innerHTML = res ? resultsTable(S, res) : `<p class="lg-hint">라운드를 운영하면 여기에 도시별 결과가 나옵니다. 팀은 <b>방 코드 ${esc(L.room)}</b>로 들어옵니다.</p>`;
@@ -323,7 +333,7 @@
     }).join("");
     const maxC = Math.max(1, ...act.map(t => Math.max(res.team[t.id].co2Prod, res.team[t.id].co2Cons)));
     const bars = act.map(t => { const r = res.team[t.id]; return `<li style="--c:${t.color}"><span>${esc(t.name)}</span><i style="width:${(100 * r.co2Prod / maxC).toFixed(1)}%" class="p"></i><i style="width:${(100 * r.co2Cons / maxC).toFixed(1)}%" class="c"></i></li>`; }).join("");
-    return `<h2>${res.round}라운드 결과 · ${SEASON_NAME[res.season]} ${res.days}일</h2>
+    return `<h2>${resLabel(res)} 결과</h2>
       <p class="lg-goals"><span data-ok="${res.region.ok.uns}">지역 정전 ${fmt(res.region.unsPct, 2)}% (목표 ≤ ${g.unsPct}%)</span><span data-ok="${res.region.ok.co2}">지역 CO₂ ${fmt(res.region.co2)} t (목표 ≤ ${fmt(g.co2)} t)</span></p>
       <div class="lg-tablewrap"><table class="lg-table"><thead><tr><th scope="col">팀</th><th scope="col">정전</th><th scope="col">병원 정전(h)</th><th scope="col">새 투자 / 운영(억)</th><th scope="col">CO₂ 생산(t)</th><th scope="col">CO₂ 소비(t)</th><th scope="col">수입/수출(MWh)</th><th scope="col">거래 수지(억)</th><th scope="col">최저 만족</th></tr></thead><tbody>${rows}</tbody></table></div>
       <figure class="lg-co2"><figcaption>CO₂ — <b class="p">생산 기준</b>(발전소가 있는 곳) vs <b class="c">소비 기준</b>(전기를 쓴 곳)</figcaption><ul>${bars}</ul></figure>`;
@@ -409,7 +419,7 @@
     const t = C.teamDef(R(), id);
     if (!t || !Object.hasOwn(L.S.teams, id)) { location.hash = "#league/host"; return; }
     L.app = app; L.viewing = id;
-    const S = L.S, rd = R().rounds[Math.max(0, S.round - 1)] || R().rounds[0];
+    const S = L.S, RS0 = C.roundsOf(S), rd = RS0[Math.max(0, S.round - 1)] || RS0[0];
     BG.selectPack(t.pack, "league");
     const st = BG.sanitize(S.teams[id].plan || {}, 1e9);
     st.season = rd.season;
@@ -649,7 +659,13 @@
     renderBar();
     if (L.panel) renderPanel();
   }
-  function curRound() { const reg = R(), V = L.snap; return reg.rounds[Math.max(0, (V ? V.round : 1) - 1)] || reg.rounds[0]; }
+  // 턴 이름: 달 턴이면 "2027년 3월 (3/12)", 계절 라운드면 "2 / 4라운드 · 여름"
+  function turnLabel(rd, n, tot, short) {
+    if (rd && rd.month) return short ? `${String(rd.year).slice(2)}.${rd.month}월 ${n}/${tot}` : `${rd.year}년 ${rd.month}월 (${n}/${tot}턴) · ${SEASON_NAME[rd.season]}`;
+    return short ? `${n}/${tot}R · ${SEASON_NAME[rd.season]}` : `${n} / ${tot}라운드 · ${SEASON_NAME[rd.season]}`;
+  }
+  const resLabel = res => (res.month ? `${res.year}년 ${res.month}월(대표 ${res.days}일 운영)` : `${res.round}라운드 · ${SEASON_NAME[res.season]} ${res.days}일`);
+  function curRound() { const V = L.snap, RS0 = V ? C.roundsOf(V) : R().rounds; return RS0[Math.max(0, (V ? V.round : 1) - 1)] || RS0[0]; }
   function isEmptyDoc() { const d = L.doc, st = d && d.maps[d.map]; return !st || (!st.builds.length && !st.lines.length); }
   function adoptPlan(me) {
     const st = L.doc.maps[L.doc.map];
@@ -737,7 +753,8 @@
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     if (!V) { set("lg-bround", "진행자 연결 대기"); set("lg-bphase", ""); return; }
     const rd = curRound();
-    set("lg-bround", V.round ? `${V.round}/${reg.rounds.length}R · ${SEASON_NAME[rd.season]}` : `준비 · 1R ${SEASON_NAME[reg.rounds[0].season]}`);
+    const RS0 = C.roundsOf(V);
+    set("lg-bround", V.round ? turnLabel(rd, V.round, RS0.length, true) : `준비 · ${turnLabel(RS0[0], 1, RS0.length, true)}`);
     set("lg-bphase", PHASE_NAME[V.phase]);
     const me = V.teams[L.team], rb = document.getElementById("lg-ready");
     if (rb) { rb.setAttribute("aria-pressed", String(!!me.ready)); rb.textContent = me.ready ? "준비 ✓" : "준비"; }
@@ -787,7 +804,7 @@
       else {
         const r = res.team[L.team], g = V.goals || reg.goals;
         const rank = actT(V).filter(t => res.team[t.id]).map(t => ({ t, r: res.team[t.id] }));
-        body = `<section class="lg-sec"><h3>${res.round}라운드 · ${SEASON_NAME[res.season]} ${res.days}일 — ${esc(teamName(L.team))}</h3>
+        body = `<section class="lg-sec"><h3>${resLabel(res)} — ${esc(teamName(L.team))}</h3>
           <dl class="lg-kpi">
             <div><dt>정전</dt><dd class="num" data-bad="${r.unsPct > g.unsPct}">${fmt(r.unsPct, 2)}%</dd><small>혼자였다면 ${fmt(100 * r.isolated.uns / Math.max(1e-9, r.dem), 2)}%</small></div>
             <div><dt>병원 정전</dt><dd class="num" data-bad="${r.hospH > 0}">${r.hospH}시간</dd></div>
