@@ -66,7 +66,7 @@
   }
   const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
   const NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
-  let PK = null, COLS = 0, ROWS = 0, TILES = [], SITES = [], TOWNS = [], TNAME = BASE_TNAME, POPMAX = 1;
+  let PK = null, LG = false, COLS = 0, ROWS = 0, TILES = [], SITES = [], TOWNS = [], TNAME = BASE_TNAME, POPMAX = 1;
   const tix = (c, r) => r * COLS + c;
   const cube = T => { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; };
   function hexDist(a, b) {
@@ -74,13 +74,18 @@
     return Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
   }
   const PACKS = KCP.BUILD_MAPS || {};
-  const PACK_IDS = Object.keys(PACKS);
-  function buildPack(P) {
+  // 혼자 하기 지도 목록(리그 전용 묶음 league: true는 멀티플레이에서만 쓴다)
+  const PACK_IDS = Object.keys(PACKS).filter(id => !PACKS[id].league);
+  // lg: 리그 모드. P.gates가 있으면 그 칸만 외부 연결점(이웃 도시 쪽)이 되고 나머지 'g' 칸은 경계 밖이 된다.
+  function buildPack(P, lg) {
     const cols = P.rows[0].length, rows = P.rows.length, tiles = [];
+    const gates = lg && P.gates ? P.gates : null, gateAt = new Map();
+    if (gates) gates.forEach(g => gateAt.set(g.r * cols + g.c, g));
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const ch = P.rows[r][c];
       const dig = /[1-9]/.test(ch) ? +ch - 1 : -1;
-      const t = dig >= 0 ? "town" : P.legend[ch] || "out";
+      let t = dig >= 0 ? "town" : P.legend[ch] || "out";
+      if (gates) t = gateAt.has(r * cols + c) ? "grid" : t === "grid" ? "out" : t;
       tiles.push({ i: r * cols + c, c, r, t, town: -1, site: -1, X: SQ3 * (c + 0.5 * (r & 1)), Y: 1.5 * r, dig });
     }
     tiles.forEach(T => {
@@ -99,7 +104,8 @@
       else { const T = tiles.find(x => x.dig === k); tile = T ? T.i : -1; }
       return Object.assign({}, s, { tile, pop: s.pop != null ? s.pop : KIND_POP[s.kind] || 100 });
     });
-    tiles.filter(T => T.t === "grid").forEach(T => {
+    if (gates) gates.forEach((g, k) => sites.push({ id: "G" + k, code: "망", kind: "gridpt", name: g.name, note: "이웃 도시 연결점", to: g.to.slice(), tile: g.r * cols + g.c, pop: 0 }));
+    else tiles.filter(T => T.t === "grid").forEach(T => {
       const north = T.r < rows / 2;
       sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: north ? "오산·수원" : "아산·천안", tile: T.i, pop: 0 });
     });
@@ -162,11 +168,12 @@
     return { cols, rows, tiles, sites, towns, popMax: pm, tname: Object.assign({}, BASE_TNAME, P.tname || {}) };
   }
   function cubeOf(T) { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; }
-  function usePack(id) {
+  function usePack(id, mode) {
     if (!Object.hasOwn(PACKS, id)) id = PACK_IDS[0];
-    const P = PACKS[id];
-    if (!P._b) P._b = buildPack(P);
-    PK = P; COLS = P._b.cols; ROWS = P._b.rows; TILES = P._b.tiles; SITES = P._b.sites; TOWNS = P._b.towns; TNAME = P._b.tname; POPMAX = P._b.popMax;
+    const P = PACKS[id], lg = mode === "league" || !!P.league, key = lg ? "_bL" : "_b";
+    if (!P[key]) P[key] = buildPack(P, lg);
+    const B = P[key];
+    PK = P; LG = lg; COLS = B.cols; ROWS = B.rows; TILES = B.tiles; SITES = B.sites; TOWNS = B.towns; TNAME = B.tname; POPMAX = B.popMax;
     if (KCP.buildGame) Object.assign(KCP.buildGame, { TILES, TOWNS, SITES, PK });
     return P;
   }
@@ -196,7 +203,8 @@
   };
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
-  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "import" ? { cap: PK.gridCap || 4, min: 0, fuel: 0.012, co2: 0.46 }
+  // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.006, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : PK.gridCap || 4, min: 0, fuel: 0.012, co2: 0.46 }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0.1 });
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
@@ -355,7 +363,7 @@
     const nodes = [];
     SITES.forEach((s, si) => {
       if (s.dem) nodes.push({ kind: "town", tile: s.tile, ti: s.ti, si, skind: s.kind });
-      else if (s.kind === "plant") nodes.push({ kind: "lng", tile: s.tile, si, cap: s.cap || 9.5 });
+      else if (s.kind === "plant") nodes.push({ kind: s.fuel === "coal" ? "coal" : "lng", tile: s.tile, si, cap: s.cap || 9.5 });
       else if (s.kind === "gridpt") nodes.push({ kind: "import", tile: s.tile, si });
     });
     st.builds.forEach((B, bi) => nodes.push({ kind: B.t, tile: B.i, bi }));
@@ -394,7 +402,7 @@
       const C = comps.get(n.comp);
       if (n.kind === "town") C.towns.push(n);
       else if (n.kind === "battery") C.bat.push(n);
-      else if (n.kind === "lng" || n.kind === "import" || BLD[n.kind] && BLD[n.kind].cls === "disp") C.disp.push(n);
+      else if (n.kind === "lng" || n.kind === "coal" || n.kind === "import" || BLD[n.kind] && BLD[n.kind].cls === "disp") C.disp.push(n);
       else C.ren.push(n);
     });
     function bfs(n) {
@@ -495,23 +503,26 @@
     return 0;
   }
 
-  function simulate(st, days) {
+  // opt.league: 외부 연결점이 붙은 덩어리마다 시간별 부족·남는 재생·남는 화력 여유를 따로 적는다(도시 사이 정산용).
+  function simulate(st, days, opt) {
     const N = network(st), W = weather(st.seed, st.season), H = days * 24, pol = polOf(st), NT = TOWNS.length;
+    const lgOut = !!(opt && opt.league);
     const fab2 = !!(PK.climate && st.fab2);
     const gens = N.nodes.filter(n => n.kind !== "town");
     const E = N.edges.length;
     const flow = new Float32Array(Math.max(1, H * E));
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
-    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0 };
+    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0 };
     let dk = 0;
     gens.forEach(g => {
       g.runH = 0;
       if (g.kind === "battery") { g.soc = M.batMWh * 0.5; g.floor = M.batMWh * M.socFloor; }
       if (SMOKY[g.kind]) g.dk = dk++;
-      const D = g.kind === "lng" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
+      const D = g.kind === "lng" || g.kind === "coal" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
       if (D) {
-        if (g.kind === "lng") D.cap = g.cap;
+        if (g.kind === "lng" || g.kind === "coal") D.cap = g.cap;
+        if (g.kind === "coal") D.min = 0.3 * g.cap;
         if (g.kind === "biomass" && TILES[g.tile].livestock) D.fuel = 0.012;
         g.D = D;
         g.mc = D.fuel + (pol.tax ? D.co2 * M.taxPerT : 0);
@@ -526,6 +537,18 @@
       C.DL.sort((a, b) => (a.g.mc - b.g.mc) || byPrio(a, b));
     });
     const addFlow = (P, sent, k) => { const o = k * E; for (const [e, s] of P.path) flow[o + e] += s * sent; };
+    const hrHosp = new Uint8Array(H), hospTi = TOWNS.map(W => W.kind === "hospital");
+    const GX = !lgOut ? [] : N.comps.filter(C => C.disp.some(u => u.kind === "import")).map(C => {
+      const own = C.disp.filter(u => u.kind !== "import"), capT = own.reduce((a, u) => a + u.D.cap, 0);
+      const to = [];
+      C.disp.forEach(u => { if (u.kind === "import") (SITES[u.si].to || []).forEach(x => { if (!to.includes(x)) to.push(x); }); });
+      return {
+        C, own, to, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
+        disp: new Float32Array(H), dmc: new Float32Array(H), dco2: new Float32Array(H),
+        mc: capT > 0 ? own.reduce((a, u) => a + u.mc * u.D.cap, 0) / capT : Infinity,
+        co2i: capT > 0 ? own.reduce((a, u) => a + u.D.co2 * u.D.cap, 0) / capT : 0
+      };
+    });
     for (let d = 0; d < days; d++) {
       const wx = W[d];
       for (let h = 0; h < 24; h++) {
@@ -534,7 +557,7 @@
         gens.forEach(g => {
           g.av = 0;
           if (g.kind === "battery") { g.chg = 0; g.dis = 0; return; }
-          if (g.D) { g.out = 0; return; }
+          if (g.D) { g.out = 0; g.w = 0; return; }
           g.av = renOut(g, wx, h, k);
           if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
         });
@@ -577,7 +600,7 @@
           }
           C.disp.forEach(u => {
             if (u.out <= 1e-6) return;
-            if (u.out < u.D.min) { tot.waste += u.D.min - u.out; u.out = u.D.min; }
+            if (u.out < u.D.min) { u.w = u.D.min - u.out; tot.waste += u.w; u.out = u.D.min; }
             tot.by[u.kind] += u.out; tot.fuel += u.out * u.mc; tot.co2 += u.out * u.D.co2; u.runH++;
             if (u.dk !== undefined && u.dk < 32) hrDiesel[k] |= 1 << u.dk;
           });
@@ -588,8 +611,19 @@
             if (U > 0.01 && D > 0) C.towns.forEach(n => { rem[n.ti] = dem[n.ti] * U / D; });
           }
         }
+        GX.forEach(G => {
+          G.def[k] = G.C.towns.reduce((a, n) => a + Math.max(0, rem[n.ti]), 0);
+          // 남는 재생 + 최소 출력 때문에 이미 만든(버릴) 화력 = 공짜 잉여. 화력 여유 = 더 돌릴 수 있는 양.
+          G.ren[k] = G.C.ren.reduce((a, g) => a + Math.max(0, g.av), 0) + G.own.reduce((a, u) => a + (u.w || 0), 0);
+          G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
+          // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
+          let dq = 0, dm = 0, dc = 0;
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2; });
+          G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0;
+        });
         rem.forEach((r, ti) => {
           const Dt = town[ti];
+          if (hospTi[ti] && r > 1e-4) hrHosp[k] = 1;
           Dt.dem += dem[ti];
           hrUns[k * NT + ti] = Math.max(0, r);
           if (r > (PK.climate ? Math.max(0.005, 0.02 * dem[ti]) : 0.05)) {
@@ -620,7 +654,9 @@
     const res = {
       days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
       town, tot, cost, co2: tot.co2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
-      unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0)
+      unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
+      hrHosp, hospH: hrHosp.reduce((a, x) => a + x, 0),
+      gx: GX.map(G => ({ to: G.to, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i }))
     };
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);
@@ -703,7 +739,7 @@
     if (R.co2 / R.days > (PK.climate ? PK.goals.co2Day : 30) && !R.pol.tax) add(75, `CO₂가 ${fmt(R.co2)} t 나왔는데 탄소세를 고르지 않았습니다. 왜였나요?`,
       ["지역 부담 vs 지구 부담", `하루 ${fmt(R.co2 / R.days, 1)} t`, "탄소세를 걸면 누가 더 내나?"]);
     const spent = capex(st);
-    if (spent >= PK.budget - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
+    if (spent >= budgetOf() - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
       ["무엇을 가장 중요하게 봤나", `연료비 ${fmt(R.cost.fuel, 1)}억 · 건설비 ${fmt(R.cost.capex, 1)}억`, "기간이 길어지면 답이 바뀌나?"]);
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(65, `남아서 버린 전력이 ${fmt(R.tot.curt)} MWh입니다. 어떻게 쓸 수 있었을까요?`,
       ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, "배터리 1대 12억의 값어치는?"]);
@@ -752,8 +788,8 @@
     };
   }
   // 현재 지도(usePack)로 한 칸을 검사한다.
-  function sanitize(o) {
-    const st = blankSlot();
+  function sanitize(o, cap) {
+    const st = blankSlot(), lim = typeof cap === "number" && isFinite(cap) ? cap : budgetOf();
     if (!o || typeof o !== "object") return st;
     if (Number.isInteger(o.seed) && o.seed > 0) st.seed = o.seed >>> 0;
     const used = new Set();
@@ -777,7 +813,7 @@
     if (SHED_OPTS.some(x => x.id === o.shed)) st.shed = o.shed;
     if (SEASONS.some(x => x.id === o.season)) st.season = o.season;
     st.fab2 = o.fab2 === true;
-    while (capex(st) > PK.budget + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
+    while (capex(st) > lim + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
     return st;
   }
   function sanitizeDoc(o) {
@@ -799,7 +835,7 @@
     Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); });
     return out;
   }
-  function selectPack(id) { const P = usePack(id); BLD = bldFor(P); if (KCP.buildGame) KCP.buildGame.BLD = BLD; return P; }
+  function selectPack(id, mode) { const P = usePack(id, mode); BLD = bldFor(P); if (KCP.buildGame) KCP.buildGame.BLD = BLD; return P; }
   function loadState() {
     try { const raw = window.localStorage.getItem(KEY); return raw ? sanitizeDoc(JSON.parse(raw)) : blankDoc(); } catch (e) { return blankDoc(); }
   }
@@ -868,6 +904,10 @@
    * 4. 화면 상태
    * ===================================================================== */
   let S = null; // 라우트가 살아 있는 동안의 화면 상태
+  // 다른 화면(멀티플레이 팀)이 빌려 쓸 때의 갈래: opts.save · opts.budget · opts.locked · opts.onChange
+  const budgetOf = () => (S && S.opts.budget ? S.opts.budget() : PK.budget);
+  const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
+  const lockedMsg = () => (S && S.opts.locked ? S.opts.locked() : "");
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
   const dprOf = () => Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   const $ = sel => (S ? S.root.querySelector(sel) : null);
@@ -1625,7 +1665,7 @@
    * ===================================================================== */
   const avgDem = ti => { let a = 0; for (let h = 0; h < 24; h++) a += demand(ti, h, PLAIN_DAY, {}, PK.climate && S && S.st.fab2); return a / 24; };
   const OUT_EPS = () => (PK.climate ? 0.004 : 0.05);
-  const budgetLeft = () => PK.budget - capex(S.st);
+  const budgetLeft = () => budgetOf() - capex(S.st);
   function canPlace(type, i) {
     const T = TILES[i];
     if (S.st.builds.some(b => b.i === i)) return { ok: false, why: "이미 있음" };
@@ -1636,7 +1676,8 @@
     return { ok: true, cost, clear: T.t === "forest" };
   }
   function changed(msg) {
-    saveState(S.doc);
+    persist();
+    if (S.opts.onChange) S.opts.onChange(S.st);
     S.net = network(S.st);
     S.result = null;
     S.dirtyStatic = true;
@@ -1722,6 +1763,8 @@
   function act(i) {
     const tool = S.tool;
     if (!tool) { showTip(i); return; }
+    const lk = lockedMsg();
+    if (lk) { toast(lk); return; }
     if (tool === "remove") removeAt(i);
     else if (tool === "line") lineClick(i);
     else place(tool, i);
@@ -1801,7 +1844,7 @@
     S.root.dataset.mode = "";
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     hideTip(); showConfirm();
-    saveState(S.doc);
+    persist();
     applyPack();
     if (S.drawerTab === "result") S.drawerTab = "policy";
     renderDrawer(); refreshHUD(); placeBannerValues(); updateAria();
@@ -1921,7 +1964,7 @@
     cancelLine();
     hideTip();
     S.hover = null;
-    const res = simulate(S.st, days);
+    const res = simulate(S.st, days, S.opts.league ? { league: true } : undefined);
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
     let n = 0;
@@ -2026,7 +2069,7 @@
     if (head) head.focus({ preventScroll: true });
     announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
     // 첫 운영 뒤 한 번만 일지를 저절로 연다.
-    if (!S.doc.jAuto) { S.doc.jAuto = true; saveState(S.doc); openJournal(S.result.entry, head); }
+    if (!S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
     request();
   }
   // 운영마다 지표 한 줄을 남긴다(글을 안 써도 남는다).
@@ -2044,7 +2087,7 @@
     };
     doc.journal.push(e);
     while (doc.journal.length > J_MAX) doc.journal.shift();
-    saveState(doc);
+    persist();
     return e.id;
   }
 
@@ -2053,7 +2096,7 @@
    * ===================================================================== */
   function on(el, type, fn, opt) { el.addEventListener(type, fn, opt); S.off.push(() => el.removeEventListener(type, fn, opt)); }
   const cap = (k, icon, name, tone) => `<span class="v2-cap bd-cap${tone ? " tone-" + tone : ""}" data-cap="${k}">${ico(icon)}<span class="v2-cap-txt"><span class="v2-cap-k">${name}</span><span class="v2-cap-v" data-v></span></span></span>`;
-  function shell(app) {
+  function shell(app, packs) {
     const root = document.createElement("div");
     root.className = "bd-root";
     root.id = "bd-root";
@@ -2079,7 +2122,7 @@
       </header>
       <div class="bd-mapbar" id="bd-mapbar">
         <div class="bd-maps" role="group" aria-label="지도 고르기">
-          ${PACK_IDS.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("")}
+          ${packs.length > 1 ? packs.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("") : ""}
         </div>
         <div class="bd-layers" role="group" aria-label="자료 지도">
           ${LAYERS.map(L => `<button type="button" class="bd-layer" data-layer="${L.id}" aria-pressed="false">${ico(L.icon)}<span>${L.name}</span></button>`).join("")}
@@ -2164,7 +2207,7 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" ? n.cap : n.kind === "import" ? PK.gridCap || 4 : BLD[n.kind].mw), 0);
+      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : PK.gridCap || 4) : BLD[n.kind].mw), 0);
       const peak = peakDemand(polOf(S.st), PK.climate && S.st.fab2);
       set("time", PK.climate ? (x => `${x.name} ${x.m + 1}월`)(SEASONS.find(q => q.id === S.st.season) || SEASONS[1]) : "건설 중");
       set("power", `${fmt(capMW, 0)}/${fmt(peak, 1)}`, capMW < peak ? "danger" : "");
@@ -2374,7 +2417,7 @@
       const q = body.querySelector("#bd-jopen"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
       if (q) q.onclick = () => openJournal(S.result.entry, q);
       if (again) again.onclick = rebuild;
-      if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; saveState(S.doc); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
+      if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; persist(); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
     }
   }
   function satBar(v) {
@@ -2398,7 +2441,7 @@
         ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>
       <div class="bd-kpis">
         <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>건설 ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}</small></p>
-        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `LNG ${fmt(R.tot.by.lng)} · 수입 ${fmt(R.tot.by.import)} · 디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
+        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
       <table class="bd-towns"><thead><tr><th scope="col">수요지</th><th scope="col">정전 h</th><th scope="col">부족 MWh</th><th scope="col">만족</th></tr></thead>
@@ -2527,7 +2570,7 @@
         const cur = findEntry(e.id);
         if (!cur) return;
         cur.a[t.dataset.j] = t.value.slice(0, J_LEN);
-        saveState(S.doc);
+        persist();
         const sv = B.querySelector("#bd-jsaved");
         if (sv) sv.textContent = "저장됨";
       });
@@ -2628,11 +2671,14 @@
     const bar = $("#bd-mapbar").getBoundingClientRect();
     const dock = $("#bd-dock").getBoundingClientRect();
     const mob = isMobile();
-    html.style.setProperty("--bd-top", `${Math.round(hud.bottom + 8)}px`);
+    // 멀티플레이 팀 띠(.lg-bar)가 HUD 아래에 붙으면 그 아래부터 지도·서랍을 둔다.
+    html.style.setProperty("--bd-hudb", `${Math.round(hud.bottom)}px`);
+    const lgb = S.root.querySelector(".lg-bar"), top = lgb ? Math.max(hud.bottom, lgb.getBoundingClientRect().bottom) : hud.bottom;
+    html.style.setProperty("--bd-top", `${Math.round(top + 8)}px`);
     html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
-    V.area = { l: 8, t: Math.max(hud.bottom, bar.bottom) + 6, r, b: (dock.height ? dock.top : H) - 6 };
+    V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b: (dock.height ? dock.top : H) - 6 };
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -2677,15 +2723,22 @@
   KCP.buildGame.tileXY = (c, r) => (S ? tileTop(TILES[tix(c, r)]) : null);
   KCP.buildGame.active = () => !!S;
 
-  KCP.route("build", app => {
+  // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st)
+  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · onMount(root) 화면이 생긴 뒤
+  function mount(app, opts) {
+    opts = opts || {};
     teardown();
     html.classList.add("bd-on");
-    const doc = loadState();
-    selectPack(doc.map);
+    const doc = opts.load ? opts.load() : loadState();
+    const packs = opts.packs || PACK_IDS;
+    if (!packs.includes(doc.map)) doc.map = packs[0];
+    selectPack(doc.map, opts.league ? "league" : undefined);
     const st = doc.maps[doc.map];
-    const root = shell(app);
+    if (opts.season) st.season = opts.season();
+    const root = shell(app, packs);
+    root.classList.toggle("bd-league", !!opts.league);
     S = {
-      alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
+      opts, alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
       floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
@@ -2699,6 +2752,7 @@
       if (t) setTool(t.dataset.tool);
       else if (gr) openGroup(gr.dataset.group);
       else if (se) { S.st.season = se.dataset.season; S.seasonOpen = false; changed(`시작 계절 ${seasonName(S.st.season)}`); renderSeasons(); $("#bd-season").focus({ preventScroll: true }); }
+      else if (e.target.closest("#bd-season") && S.opts.season) toast("계절은 진행자가 라운드마다 정합니다");
       else if (e.target.closest("#bd-season")) { S.seasonOpen = !S.seasonOpen; S.openGroup = null; renderTools(); renderSeasons(); if (S.seasonOpen) { const f = $("#bd-seasons [aria-pressed=true]"); if (f) f.focus({ preventScroll: true }); } }
     });
     root.querySelectorAll("[data-map]").forEach(b => on(b, "click", () => switchMap(b.dataset.map)));
@@ -2721,6 +2775,7 @@
       const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
       const sh = e.target.closest("[data-shed]"), fb = e.target.closest("[data-fab2]");
       if (jo) { openJournal(+jo.dataset.jopen, jo); return; }
+      if ((sh || fb || p) && lockedMsg()) { toast(lockedMsg()); return; }
       if (sh) { S.st.shed = sh.dataset.shed; changed(`차단 순서: ${SHED_OPTS.find(o => o.id === S.st.shed).name}`); S.root.querySelector(`[data-shed="${S.st.shed}"]`).focus({ preventScroll: true }); return; }
       if (fb) { S.st.fab2 = !S.st.fab2; changed(S.st.fab2 ? "반도체 2라인 증설 켬" : "증설 끔"); S.root.querySelector("[data-fab2]").focus({ preventScroll: true }); return; }
       if (e.target.closest("#bd-copy")) { copyWorksheet(); return; }
@@ -2750,5 +2805,15 @@
     setLayer("map");
     layout();
     request();
+    if (opts.onMount) opts.onMount(root);
+  }
+  KCP.route("build", app => mount(app, {}));
+  // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
+  Object.assign(KCP.buildGame, {
+    mount,
+    current: () => (S ? S.st : null),
+    refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
+    setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
+    toast: msg => { if (S) toast(msg); }
   });
 })();
