@@ -59,7 +59,7 @@
 - 인계 문서: **docs/HANDOFF-econ.md**(요구·설계·진행·알려진 문제·독립 검토 결과·검사 방법). 설계 docs/ECON-SPEC.md, 실제 통계·게임 메커니즘 조사 docs/ECON-DATA.md.
 - 끝남: 달 턴(12·24·36), 경제 엔진 ui/econ.js·econ-data.js(재정지원금·세금·전기요금 수입·이주·기업 이전·집단 지지율·국제 지수·기업 제안), 리그 연결(현금 기준 예산, 운영 뒤 econMonth, 수요·연료 배수, 정책 요청 econ), 2025 공식 통계 시작값(검색 요약 확인 O*).
 - 이 세션에서 실제로 돌린 검사: tests/league/test-econ.js 697,020개 통과 / tests/league/econint.py 71개 통과 / tests/league/review/1-invariants.js 2,330,048개 실패 0 / rules 41개·e2e·e2e2·e2e3 문제 0.
-- 회귀 14종(리그 3차 커밋 94e9610 기준, 스크래치패드 run6 — 세션 종료 시 사라짐): 13종 끝남, 모두 기준선과 같음(s-shuttle-permit real=4는 원래 있던 것). probe는 세션을 멈출 때 아직 실행 중이라 결과 미확인 — 맥에서 다시 돌릴 것. 경제 층 커밋(b0f515d 이후)으로는 회귀 14종을 돌리지 않았다.
+- 회귀 14종(리그 3차 커밋 94e9610 기준, 스크래치패드 run6 — 세션 종료 시 사라짐): 14종 모두 기준선과 같음(probe 포함, s-shuttle-permit real=4는 원래 있던 것). 경제 층 커밋(b0f515d 이후)으로는 회귀 14종을 돌리지 않았다.
 - 알려진 문제(독립 검토, HANDOFF §7): 세율 −2·서비스 +2 지배 전략, 기업 유치가 늘 화성, 지지율 평가가 사실상 꺼짐, 전기 판매 이중 이득, fiscalNorm 배수, 정전 뒤 회복 없음, 지방채 한도 출렁임과 미작동, yearStart 중복 지급 가드 없음, E.len 무시.
 - 아직 없는 화면: 팀 '도시' 서랍, 진행자 순위표·이주 화살표·국제 지수 띠.
 - 로컬 중간 브랜치 claude/kentech-league-next(8256015)·claude/kentech-league-v3(94e9610)의 커밋은 모두 claude/kentech-league-econ에 들어 있다(따로 푸시하지 않음).
