@@ -124,7 +124,7 @@
   function kick(ms = 5000) {
     const st = stage;
     if (!st || st.broken) return;
-    st.until = performance.now() + ms;
+    st.until = Math.max(st.until, performance.now() + ms);
     if (!st.raf) st.raf = requestAnimationFrame(paintStage);
   }
   V2.kickStage = kick;
@@ -227,7 +227,7 @@
       }
     }
     const thumbs = [];
-    KCP.$$("#home-originals .opkg", app).forEach(card => {
+    KCP.$$("#home-originals .opkg, .home-grid .pkg", app).forEach(card => {
       const id = (card.getAttribute("href") || "").replace(/^#y/, "");
       if (!(id === "s-island-grid" || Object.hasOwn(SKINS, id)) || KCP.$(".v2-thumb", card)) return;
       card.classList.add("v2-has-thumb");
