@@ -1315,6 +1315,22 @@
     g.quadraticCurveTo((A[0] + B[0]) / 2, (A[1] + B[1]) / 2 + sag, B[0], B[1]);
   }
 
+  // 하천은 '물 칸'이 아니라 땅 위를 지나는 물줄기로 그린다: 이웃한 하천·호수·바다 쪽 변으로 띠를 잇는다(끊김이 눈에 보이게).
+  const WATERY = t => t === "river" || t === "lake" || t === "sea";
+  function drawRiver(g, T, top, dim) {
+    polyPath(g, top);
+    g.fillStyle = rgb(mul(PAL.plain, dim ? 0.8 : 0.96)); g.fill();
+    if (dim) { g.fillStyle = "rgba(70,84,96,0.5)"; g.fill(); }
+    g.strokeStyle = "rgba(20,40,30,0.18)"; g.lineWidth = 1; g.stroke();
+    const h = HGT[T.vt || T.t], [cx, cy] = scr(T.X, T.Y, h);
+    const ends = T.nb.map(j => TILES[j]).filter(N => WATERY(N.vt || N.t)).map(N => scr((T.X + N.X) / 2, (T.Y + N.Y) / 2, h));
+    g.lineCap = "round"; g.lineJoin = "round";
+    [[V.S * 0.42, "rgba(230,245,255,0.55)"], [V.S * 0.3, dim ? "rgba(70,130,175,0.75)" : rgb(PAL.river)]].forEach(([w, col]) => {
+      g.strokeStyle = col; g.lineWidth = w;
+      if (!ends.length) { g.beginPath(); g.arc(cx, cy, w / 2, 0, Math.PI * 2); g.fillStyle = col; g.fill(); return; }
+      ends.forEach(([x, y]) => { g.beginPath(); g.moveTo(cx, cy); g.lineTo(x, y); g.stroke(); });
+    });
+  }
   function drawTile(g, T, layer) {
     const vt = T.vt || T.t, h = HGT[vt];
     const top = topPoly(T, h), bot = topPoly(T, BASE);
@@ -1329,7 +1345,8 @@
       g.strokeStyle = "rgba(255,255,255,0.06)"; g.lineWidth = 1; g.stroke();
       return;
     }
-    if (T.t === "river" || T.t === "lake") {
+    if (T.t === "river") { drawRiver(g, T, top, false); return; }
+    if (T.t === "lake") {
       polyPath(g, top);
       g.fillStyle = rgb(PAL[T.t]); g.fill();
       g.strokeStyle = "rgba(200,240,255,0.35)"; g.lineWidth = 1;
@@ -1355,7 +1372,7 @@
     }
     polyPath(g, top);
     g.fillStyle = rgb(mul(base, jit)); g.fill();
-    if (T.out) { g.fillStyle = T.vt ? "rgba(70,84,96,0.5)" : "rgba(190,205,215,0.28)"; g.fill(); return; }
+    if (T.out) { g.fillStyle = T.vt ? "rgba(70,84,96,0.5)" : "rgba(190,205,215,0.28)"; g.fill(); if (T.vt === "river") drawRiver(g, T, top, true); return; }
     g.strokeStyle = layer === "map" ? "rgba(20,40,30,0.18)" : "rgba(10,20,40,0.35)"; g.lineWidth = 1; g.stroke();
     // 위쪽 변 하이라이트
     g.strokeStyle = "rgba(255,255,255,0.16)";

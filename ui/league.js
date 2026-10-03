@@ -348,7 +348,7 @@
     const pts = H.map(p => `${(4 + 112 * (p.t - t0) / (t1 - t0)).toFixed(1)},${(27 - 24 * p.cap / max).toFixed(1)}`).join(" ");
     return `<svg class="lg-spark" viewBox="0 0 120 30" role="img" aria-label="투자 누적 변화"><line x1="4" x2="116" y1="3" y2="3" class="lg-spark-b"/><polyline points="${pts}"/></svg>`;
   }
-  const TCOL = { sea: "#3d7fb3", beach: "#d8cf9c", plain: "#9cc86a", forest: "#3f8a4f", hill: "#a9a07a", mount: "#7d6c55", urban: "#babac2", river: "#5aa0d6", lake: "#4f8fc8", out: "#59625e", grid: "#f0c83c", town: "#babac2" };
+  const TCOL = { sea: "#3d7fb3", beach: "#d8cf9c", plain: "#9cc86a", forest: "#3f8a4f", hill: "#a9a07a", mount: "#7d6c55", urban: "#babac2", river: "#2f8fe0", lake: "#5ab0e6", out: "#59625e", grid: "#f0c83c", town: "#babac2" };
   const BCOL = { solar: "#ffd23f", roof: "#ff9f1c", wind: "#ffffff", offshore: "#cfe8ff", tidal: "#62d2c4", hydro: "#38b6ff", diesel: "#4a3b2c", biomass: "#8a6a2a", battery: "#9b6bff" };
   function thumb(cv, id, plan) {
     const t = C.teamDef(R(), id);
@@ -365,8 +365,12 @@
       const [cx, cy] = P(tile.X, tile.Y);
       g.beginPath();
       for (let a = 0; a < 6; a++) { const ang = Math.PI / 180 * (60 * a - 90); const px = cx + k * 0.98 * Math.cos(ang), py = cy + k * 0.98 * Math.sin(ang); if (a) g.lineTo(px, py); else g.moveTo(px, py); }
-      g.closePath(); g.fillStyle = TCOL[tile.t] || "#888"; g.fill();
+      g.closePath(); g.fillStyle = tile.t === "river" ? TCOL.plain : tile.t === "out" && tile.vt === "river" ? TCOL.out : TCOL[tile.t] || "#888"; g.fill();
     });
+    // 강은 물줄기 띠로(호수는 물 면 그대로)
+    const wet = x => ["river", "lake", "sea"].includes(x.vt || x.t);
+    g.strokeStyle = TCOL.river; g.lineWidth = Math.max(1, k * 0.55); g.lineCap = "round";
+    T.forEach(tile => { if ((tile.vt || tile.t) !== "river") return; const [cx, cy] = P(tile.X, tile.Y); g.beginPath(); g.arc(cx, cy, g.lineWidth / 2, 0, Math.PI * 2); (tile.nb || []).map(j => T[j]).filter(o => o && wet(o)).forEach(o => { const [ox2, oy2] = P((tile.X + o.X) / 2, (tile.Y + o.Y) / 2); g.moveTo(cx, cy); g.lineTo(ox2, oy2); }); g.stroke(); });
     const pl = plan || { builds: [], lines: [] };
     g.strokeStyle = "#1b2430"; g.lineWidth = Math.max(1.2, k * 0.28); g.lineJoin = "round";
     (pl.lines || []).forEach(L0 => { if (!Array.isArray(L0.p)) return; g.beginPath(); L0.p.forEach((i, n) => { const tt = T[i]; if (!tt) return; const [x, y] = P(tt.X, tt.Y); if (n) g.lineTo(x, y); else g.moveTo(x, y); }); g.stroke(); });
@@ -430,7 +434,7 @@
   const LAKES = [{ n: "삽교호", at: [126.83, 36.88], r: [16, 7] }, { n: "아산호", at: [126.98, 36.9], r: [20, 6] }, { n: "화성호", at: [126.75, 37.12], r: [12, 6] }, { n: "예당호", at: [126.8, 36.63], r: [12, 6] }];
   // 광역 지도: R().board = 여섯 도시 지도를 합친 한 장. 팀마다 도시 창(BUILD_MAPS[pack].win)에서 지은 선·설비를 제자리에 그린다.
   const SQ3 = Math.sqrt(3);
-  const TER = { "~": "#2f6f9f", b: "#d9cc95", p: "#93c26a", f: "#4e8e4f", h: "#a3a26e", m: "#857563", u: "#b4b6bc", r: "#4f97cf", l: "#3f84bf", g: "#f0c83c", ".": "#c3c8bf" };
+  const TER = { "~": "#2f6f9f", b: "#d9cc95", p: "#93c26a", f: "#4e8e4f", h: "#a3a26e", m: "#857563", u: "#b4b6bc", r: "#2f8fe0", l: "#5ab0e6", g: "#f0c83c", ".": "#c3c8bf" };
   let boardCache = null;
   function boardInfo() {
     const B = R().board;
@@ -466,10 +470,19 @@
     const g = cv.getContext("2d");
     g.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
     g.clearRect(0, 0, G.W, G.H);
+    const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
     const hex = (x, y, rr) => { g.beginPath(); for (let a = 0; a < 6; a++) { const t = Math.PI / 180 * (60 * a - 90); const px = x + rr * Math.cos(t), py = y + rr * Math.sin(t); if (a) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); };
-    G.cells.forEach(cl => { hex(cl.x, cl.y, 1.03); g.fillStyle = TER[cl.ch] || TER.p; g.fill(); if (cl.team && !on.has(cl.team)) { g.fillStyle = "rgba(200,204,196,0.72)"; g.fill(); } });
+    // 강 칸은 땅 위에 물줄기(이웃 강·호수·바다 칸까지 잇는 띠)로 그려 호수(물 면 전체)와 구별한다.
+    const WET = ch => ch === "r" || ch === "l" || ch === "~", nbOf = cl => (cl.r & 1 ? NB_O : NB_E).map(([dc, dr]) => { const o = G.at(cl.c + dc, cl.r + dr); return o && o.c === cl.c + dc ? o : null; }).filter(Boolean);
+    G.cells.forEach(cl => { hex(cl.x, cl.y, 1.03); g.fillStyle = cl.ch === "r" ? TER.p : TER[cl.ch] || TER.p; g.fill(); });
+    g.lineCap = "round"; g.lineJoin = "round";
+    [["rgba(230,244,255,0.9)", 0.95], [TER.r, 0.62]].forEach(([col, w]) => {
+      g.strokeStyle = col; g.lineWidth = w;
+      G.cells.forEach(cl => { if (cl.ch !== "r") return; const ns = nbOf(cl).filter(o => WET(o.ch)); g.beginPath(); if (!ns.length) g.arc(cl.x, cl.y, w / 2, 0, Math.PI * 2); ns.forEach(o => { g.moveTo(cl.x, cl.y); g.lineTo((cl.x + o.x) / 2, (cl.y + o.y) / 2); }); g.stroke(); });
+    });
+    G.cells.forEach(cl => { if (cl.team && !on.has(cl.team)) { hex(cl.x, cl.y, 1.03); g.fillStyle = "rgba(200,204,196,0.72)"; g.fill(); } });
     // 도시 경계(팀 색 굵은 선)
-    const B = G.B, NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
+    const B = G.B;
     g.lineCap = "round";
     G.cells.forEach(cl => {
       if (!cl.team) return;
@@ -490,6 +503,7 @@
       (plan.builds || []).forEach(b0 => { const [x, y] = winXY(id, b0.i); g.beginPath(); g.arc(x, y, 0.62, 0, Math.PI * 2); g.fillStyle = BCOL[b0.t] || "#f0f"; g.fill(); g.lineWidth = 0.15; g.strokeStyle = "#111"; g.stroke(); });
     });
     // 연계선: 실제 연결점(노란 칸)끼리
+    let flows = 0;
     reg.ties.filter(D => on.has(D.a) && on.has(D.b)).forEach(D => {
       const A = gateXY(D.a, D.b), Bq = gateXY(D.b, D.a);
       if (!A || !Bq) return;
@@ -502,7 +516,7 @@
         g.beginPath(); if (net >= 0) { g.moveTo(...A); g.lineTo(...Bq); } else { g.moveTo(...Bq); g.lineTo(...A); } g.stroke(); g.setLineDash([]);
         g.font = "700 1.35px sans-serif"; g.textAlign = "center"; g.lineWidth = 0.35; g.strokeStyle = "#fff"; g.fillStyle = "#1d2430";
         const mx = (A[0] + Bq[0]) / 2, my = (A[1] + Bq[1]) / 2 - 0.9, tx = `${fmt(Math.abs(net), 0)} MWh`;
-        g.strokeText(tx, mx, my); g.fillText(tx, mx, my);
+        g.strokeText(tx, mx, my); g.fillText(tx, mx, my); flows++;
       }
     });
     // 이름표(도시·호수)
@@ -516,7 +530,7 @@
       const sub = !act ? "" : r0 ? `정전 ${fmt(r0.unsPct, 1)}%` : v && !v.seated ? "빈 자리" : "";
       if (sub) { g.font = "700 1.5px sans-serif"; g.lineWidth = 0.45; g.strokeText(sub, c0[0], c0[1] + 2.2); g.fillStyle = r0 && r0.unsPct > goals.unsPct ? "#ffb3a8" : "#fff"; g.fillText(sub, c0[0], c0[1] + 2.2); }
     });
-    cv.dataset.k = String(k);
+    cv.dataset.k = String(k); cv.dataset.flows = String(flows);
   }
   function boardHit(cv, ev) {
     const G = boardInfo(), rect = cv.getBoundingClientRect(), k = rect.width / G.W, x = (ev.clientX - rect.left) / k, y = (ev.clientY - rect.top) / k;
