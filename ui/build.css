@@ -257,6 +257,47 @@ html.bd-running .bd-canvas { cursor: progress; }
 .bd-lg-k { color: var(--ui-muted); font-weight: 600; }
 .bd-lg-bar { width: 90px; height: 10px; border-radius: 99px; }
 
+/* 지도 고르기 · 지도 안내 */
+.bd-maps {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: 14px;
+  background: var(--ui-panel);
+  box-shadow: var(--ui-shadow);
+}
+.bd-mapbtn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: #c3d2df;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bd-mapbtn:hover { color: var(--ui-text); background: rgba(150, 190, 215, 0.08); }
+.bd-mapbtn[aria-pressed="true"] { border-color: var(--ui-gold); background: rgba(236, 208, 131, 0.14); color: var(--ui-gold); }
+.bd-mapnote {
+  flex-basis: 100%;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px dashed rgba(236, 208, 131, 0.55);
+  border-radius: 999px;
+  background: var(--ui-panel);
+  color: #d8cfb4;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.bd-mapnote[hidden] { display: none; }
+.bd-banner[hidden] { display: none; }
+
 /* ---------- 오른쪽 서랍 ---------- */
 .bd-drawer {
   position: fixed;
@@ -489,6 +530,68 @@ html.bd-running .bd-dock { visibility: hidden; }
 }
 .bd-go:hover { filter: brightness(1.07); }
 .bd-go[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* 도구 묶음 · 계절 고르기(펼침 막대) */
+.bd-subtools, .bd-seasons {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  max-width: calc(100vw - 20px);
+  padding: 6px;
+  border: 1px solid var(--ui-gold);
+  border-radius: 16px;
+  background: #0d1f33;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.bd-subtools[hidden], .bd-seasons[hidden] { display: none; }
+.bd-group[data-active="true"] { border-color: var(--ui-gold); color: var(--ui-gold); background: rgba(236, 208, 131, 0.14); }
+.bd-group[aria-expanded="true"] { background: rgba(150, 190, 215, 0.14); color: var(--ui-text); }
+.bd-season {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 64px;
+  min-height: 52px;
+  padding: 2px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: rgba(6, 18, 32, 0.6);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.bd-season[hidden] { display: none; }
+.bd-season .v2-ico { width: 18px; height: 18px; color: var(--ui-gold); }
+.bd-season[aria-expanded="true"] { border-color: var(--ui-gold); }
+.bd-seasonbtn[aria-pressed="true"] { border-color: var(--ui-gold); color: var(--ui-gold); background: rgba(236, 208, 131, 0.14); }
+/* 차단 순서 */
+.bd-sub2 { margin-top: 14px !important; }
+.bd-shed { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border: 1px solid var(--ui-border); border-radius: 12px; background: #0d1f33; }
+.bd-shedbtn {
+  min-height: 44px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #c3d2df;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.bd-shedbtn[aria-pressed="true"] { border-color: var(--ui-cyan); background: rgba(113, 220, 235, 0.16); color: var(--ui-text); }
+.bd-jc-map { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; color: #c3d2df; font-size: 12px; }
+.bd-mapchip { padding: 1px 8px; border-radius: 999px; background: #ecd083; color: #1a1405; font-weight: 700; }
 
 /* 송전선 확인 막대 */
 .bd-confirm {
@@ -839,6 +942,18 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
   .bd-tool .v2-ico { width: 22px; height: 22px; }
   .bd-tool-c { font-size: 10px; }
   .bd-runs { display: grid; grid-template-columns: 1.5fr repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; }
+  .bd-root.bd-grouped .bd-runs { grid-template-columns: 1.3fr 1.2fr repeat(3, minmax(0, 1fr)); }
+  .bd-root.bd-grouped .bd-tools { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .bd-season { min-width: 0; min-height: 46px; padding: 2px 4px; font-size: 11px; }
+  .bd-subtools, .bd-seasons { left: 0; right: 0; transform: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; }
+  .bd-mapbtn { padding: 0 9px; font-size: 12px; }
+  .bd-layers, .bd-zoom { order: 1; }
+  .bd-maps { order: 2; }
+  .bd-windchip { order: 3; }
+  .bd-legend { order: 4; }
+  .bd-mapnote { order: 5; }
+  .bd-root.bd-grouped .bd-banner { display: none; }
+  .bd-mapnote { font-size: 11px; }
   .bd-run-lbl { display: none; }
   .bd-pm { justify-content: center; min-height: 46px; padding: 0 8px; }
   .bd-go { min-width: 0; min-height: 46px; }

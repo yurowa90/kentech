@@ -20,113 +20,207 @@
   const hh = h => String(h).padStart(2, "0") + ":00";
 
   /* =====================================================================
-   * 1. 섬 지도(손으로 그린 15×11 육각, 뾰족한 위, 홀수 행이 반 칸 오른쪽)
+   * 1. 지도 묶음(ui/build-maps.js) → 타일·수요지
+   *    뾰족한 위 육각, 홀수 행이 반 칸 오른쪽. 한 번에 한 지도만 쓴다(usePack).
    * ===================================================================== */
-  const COLS = 15, ROWS = 11, SQ3 = Math.sqrt(3);
-  const MAP = [
-    "~~~~~~~~~~~~~~~",
-    "~~~~~bbhpb~~~~~",
-    "~~~bppp1mhbb~~~",
-    "~~bpfffpmmhfbb~",
-    "~bpffphmmhppp3b",
-    "~2ppfphmhpfffpb",
-    "~bpppfhmhppfpb~",
-    "~~bpfphhppppb~~",
-    "~~~bppfppppb~~~",
-    "~~~~bbp4pbb~~~~",
-    "~~~~~~~~~~~~~~~"
-  ];
-  const TER = { "~": "sea", b: "beach", p: "plain", f: "forest", h: "hill", m: "mount" };
-  const TNAME = { sea: "바다", beach: "해안", plain: "평지", forest: "숲", hill: "언덕", mount: "산 능선", town: "마을" };
-  const HGT = { sea: 0, beach: 0.14, plain: 0.3, forest: 0.34, hill: 0.72, mount: 1.2, town: 0.3 };
-  const TOWNS = [
-    { id: "F1", name: "병원", note: "필수시설", c: 7, r: 2, prio: 0, pop: 300, kind: "hospital" },
-    { id: "F2", name: "서부 마을", note: "고령층 많음", c: 1, r: 5, prio: 1, pop: 1400, kind: "village" },
-    { id: "F3", name: "동부 신도시", note: "", c: 13, r: 4, prio: 2, pop: 4200, kind: "city" },
-    { id: "F4", name: "항구 산업", note: "", c: 7, r: 9, prio: 3, pop: 600, kind: "port" }
-  ];
+  const SQ3 = Math.sqrt(3);
+  const BASE_TNAME = { sea: "바다", beach: "해안", plain: "평지", forest: "숲", hill: "언덕", mount: "산 능선", town: "마을", urban: "도시", river: "하천", lake: "호수", out: "인접 지역", grid: "외부 전력망" };
+  const HGT = { sea: 0, beach: 0.14, plain: 0.3, forest: 0.34, hill: 0.72, mount: 1.2, town: 0.3, urban: 0.3, river: 0.04, lake: 0.04, out: 0.2, grid: 0.3 };
+  const WATER = { sea: 1, river: 1, lake: 1 };
+  // 수요지 종류: 이름, 묶음(차단 순서), 정전 만족 가중치
+  const KIND = {
+    hospital: { label: "병원", w: 2 }, fire: { label: "소방서", w: 1.6 }, gov: { label: "관공서", w: 1.2 }, water: { label: "정수·하수", w: 1.6 },
+    rail: { label: "철도역", w: 1.5 }, rail_s: { label: "전철역", w: 1.3 },
+    village: { label: "마을", w: 1.3, old: true }, town_s: { label: "소도시", w: 1.3, old: true },
+    city: { label: "도시", w: 1 }, city_m: { label: "도시", w: 1 }, city_l: { label: "도심", w: 1 },
+    school: { label: "대학", w: 0.8 }, farm: { label: "농업", w: 0.8 }, livestock: { label: "축산", w: 1 },
+    port: { label: "항구", w: 1.2 }, industry: { label: "산업단지", w: 1.2 }, factory_big: { label: "반도체", w: 2.5 },
+    plant: { label: "기존 발전소" }, gridpt: { label: "외부 전력망" }
+  };
+  const CRIT = { hospital: 1, fire: 1, gov: 1, water: 1, rail: 1, rail_s: 1 };
+  // 차단 순서(작을수록 마지막까지 받는다). 필수시설은 균등이 아니면 늘 집·산업 뒤에 끊긴다.
+  const SHED = {
+    home: { hospital: 0, fire: 1, water: 1, rail: 2, rail_s: 2, gov: 2, village: 3, town_s: 3, livestock: 4, city: 4, city_m: 4, city_l: 4, school: 5, farm: 6, port: 7, industry: 7, factory_big: 8 },
+    industry: { hospital: 0, fire: 1, water: 1, rail: 2, rail_s: 2, gov: 2, factory_big: 3, industry: 4, port: 4, livestock: 5, farm: 6, village: 7, town_s: 7, city: 7, city_m: 7, city_l: 7, school: 8 }
+  };
+  const SHED_OPTS = [{ id: "home", name: "주거·병원 보호" }, { id: "industry", name: "산업 보호" }, { id: "equal", name: "균등" }];
+  const SEASONS = [{ id: "spring", name: "봄", m: 3 }, { id: "summer", name: "여름", m: 6 }, { id: "autumn", name: "가을", m: 9 }, { id: "winter", name: "겨울", m: 0 }];
+  const MSTART = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  const monthOf = doy => { let m = 11; while (m > 0 && MSTART[m] > doy) m--; return m; };
+  const monthName = m => `${m + 1}월${m === 6 ? " 장마" : ""}`;
+  const seasonName = id => { const x = SEASONS.find(q => q.id === id) || SEASONS[1]; return `${x.name} · ${monthName(x.m)}`; };
+  const seasonLabel = res => (res && res.season ? seasonName(res.season) : "");
+  const KIND_POP = { city_l: 5000, city_m: 3500, town_s: 900, hospital: 600, fire: 100, gov: 300, rail: 800, rail_s: 300, school: 1500, farm: 100, livestock: 150, water: 100, port: 1000, industry: 1500, factory_big: 2500, plant: 50, gridpt: 0 };
+
   function hash(a, b, k) {
     let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(k | 0, 1274126177)) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     h ^= h >>> 16;
     return (h >>> 0) / 4294967296;
   }
-  const tix = (c, r) => r * COLS + c;
+  // 부드러운 값 잡음(0~1): 격자 꼭짓점 해시를 이중선형으로 잇는다.
+  function vnoise(x, y, k) {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sm = t => t * t * (3 - 2 * t);
+    const a = hash(xi, yi, k), b = hash(xi + 1, yi, k), c = hash(xi, yi + 1, k), d = hash(xi + 1, yi + 1, k);
+    return lerp(lerp(a, b, sm(fx)), lerp(c, d, sm(fx)), sm(fy));
+  }
   const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
   const NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
-  const TILES = [];
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-    const ch = MAP[r][c];
-    const town = /[1-4]/.test(ch) ? +ch - 1 : -1;
-    TILES.push({ i: tix(c, r), c, r, t: town >= 0 ? "town" : TER[ch], town, X: SQ3 * (c + 0.5 * (r & 1)), Y: 1.5 * r });
-  }
-  TILES.forEach(T => {
-    T.nb = [];
-    for (const [dc, dr] of (T.r & 1 ? NB_O : NB_E)) {
-      const c = T.c + dc, r = T.r + dr;
-      if (c >= 0 && c < COLS && r >= 0 && r < ROWS) T.nb.push(tix(c, r));
-    }
-    T.land = T.t !== "sea";
-    T.coast = T.land && T.nb.some(j => TILES[j].t === "sea");
-  });
-  TOWNS.forEach(W => { W.tile = tix(W.c, W.r); });
+  let PK = null, COLS = 0, ROWS = 0, TILES = [], SITES = [], TOWNS = [], TNAME = BASE_TNAME, POPMAX = 1;
+  const tix = (c, r) => r * COLS + c;
   const cube = T => { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; };
   function hexDist(a, b) {
     const A = cube(TILES[a]), B = cube(TILES[b]);
     return Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
   }
-  // 타일 자료: 평균 풍속(서풍이 우세해 서쪽 해안·능선이 세다), 일사 계수, 주민 밀도
-  const WBASE = { beach: 6.4, plain: 5.0, forest: 4.2, hill: 6.3, mount: 8.3, town: 4.8 };
-  const SBASE = { beach: 0.96, plain: 0.92, forest: 0.8, hill: 0.9, mount: 0.7, town: 0.9 };
-  TILES.forEach(T => {
-    if (!T.land) { T.wind = 0; T.sun = 0; T.pop = 0; T.near = 0; return; }
-    const w = WBASE[T.t] + Math.max(0, 6 - T.X) * 0.22 + (T.coast && T.t !== "beach" ? 0.5 : 0) + (hash(T.c, T.r, 3) - 0.5) * 0.6;
-    T.wind = Math.round(clamp(w, 4, 9) * 10) / 10;
-    const nearMount = T.t !== "mount" && T.nb.some(j => TILES[j].t === "mount");
-    const s = SBASE[T.t] + (hash(T.c, T.r, 5) - 0.5) * 0.06 - (nearMount ? 0.06 : 0) + (T.r - 5) * 0.006;
-    T.sun = Math.round(clamp(s, 0.6, 1) * 100) / 100;
-    T.pop = TOWNS.reduce((a, W) => a + W.pop * Math.exp(-hexDist(T.i, W.tile) / 1.2), 0);
-    T.near = TOWNS.reduce((a, W) => a + (hexDist(T.i, W.tile) <= 2 ? W.pop : 0), 0);
-  });
+  const PACKS = KCP.BUILD_MAPS || {};
+  const PACK_IDS = Object.keys(PACKS);
+  function buildPack(P) {
+    const cols = P.rows[0].length, rows = P.rows.length, tiles = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const ch = P.rows[r][c];
+      const dig = /[1-9]/.test(ch) ? +ch - 1 : -1;
+      const t = dig >= 0 ? "town" : P.legend[ch] || "out";
+      tiles.push({ i: r * cols + c, c, r, t, town: -1, site: -1, X: SQ3 * (c + 0.5 * (r & 1)), Y: 1.5 * r, dig });
+    }
+    tiles.forEach(T => {
+      T.nb = [];
+      for (const [dc, dr] of (T.r & 1 ? NB_O : NB_E)) {
+        const c = T.c + dc, r = T.r + dr;
+        if (c >= 0 && c < cols && r >= 0 && r < rows) T.nb.push(r * cols + c);
+      }
+      T.water = !!WATER[T.t]; T.land = !T.water; T.out = T.t === "out";
+    });
+    tiles.forEach(T => { T.coast = T.land && !T.out && T.nb.some(j => tiles[j].t === "sea"); });
+    // 수요지·기존 발전소·외부 연결점
+    const sites = P.sites.map((s, k) => {
+      let tile = -1;
+      if (Number.isInteger(s.c)) tile = s.r * cols + s.c;
+      else { const T = tiles.find(x => x.dig === k); tile = T ? T.i : -1; }
+      return Object.assign({}, s, { tile, pop: s.pop != null ? s.pop : KIND_POP[s.kind] || 100 });
+    });
+    tiles.filter(T => T.t === "grid").forEach(T => {
+      const north = T.r < rows / 2;
+      sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: north ? "오산·수원" : "아산·천안", tile: T.i, pop: 0 });
+    });
+    const towns = [];
+    sites.forEach((s, si) => {
+      tiles[s.tile].site = si;
+      if (s.dem) { s.ti = towns.length; tiles[s.tile].town = s.ti; towns.push(s); }
+    });
+    // 바다에서 놀 수 있는 땅까지 거리(해상풍력·조력 후보)
+    const play = T => T.land && !T.out;
+    const dsh = tiles.map(T => (play(T) ? 0 : Infinity));
+    const q = tiles.filter(play).map(T => T.i);
+    while (q.length) { const u = q.shift(); tiles[u].nb.forEach(v => { if (!play(tiles[v]) && !tiles[v].out && dsh[v] > dsh[u] + 1) { dsh[v] = dsh[u] + 1; q.push(v); } }); }
+    tiles.forEach(T => {
+      T.dshore = dsh[T.i];
+      T.offshore = T.t === "sea" && T.dshore <= 2;
+      T.tidal = false;
+    });
+    // 기후 값
+    const C = P.climate;
+    const meanArr = a => a.reduce((x, y) => x + y, 0) / a.length;
+    tiles.forEach(T => {
+      T.wind = 0; T.sun = 0; T.woff = 0; T.seaF = 1;
+      if (!C) {
+        if (!T.land) return;
+        const WB = { beach: 6.4, plain: 5.0, forest: 4.2, hill: 6.3, mount: 8.3, town: 4.8 }, SB = { beach: 0.96, plain: 0.92, forest: 0.8, hill: 0.9, mount: 0.7, town: 0.9 };
+        const w = WB[T.t] + Math.max(0, 6 - T.X) * 0.22 + (T.coast && T.t !== "beach" ? 0.5 : 0) + (hash(T.c, T.r, 3) - 0.5) * 0.6;
+        T.wind = Math.round(clamp(w, 4, 9) * 10) / 10;
+        const nearMount = T.t !== "mount" && T.nb.some(j => tiles[j].t === "mount");
+        T.sun = Math.round(clamp(SB[T.t] + (hash(T.c, T.r, 5) - 0.5) * 0.06 - (nearMount ? 0.06 : 0) + (T.r - 5) * 0.006, 0.6, 1) * 100) / 100;
+        return;
+      }
+      if (T.out) return;
+      const n = vnoise(T.X / 3.2, T.Y / 3.2, P.seed), n2 = vnoise(T.X / 2.4 + 9, T.Y / 2.4 + 4, P.seed + 7);
+      if (T.t === "sea") {
+        T.seaF = 0.9 + 0.05 * Math.min(4, T.dshore) + (n - 0.5) * 0.04;
+        T.wind = Math.round(meanArr(C.wind100_sea) * T.seaF * 10) / 10;
+        T.sun = 0;
+        return;
+      }
+      const off = T.t === "beach" || T.coast ? 1.0 + 0.5 * n2 : T.t === "hill" ? 0.8 : T.t === "urban" ? -0.5 : T.t === "forest" ? -0.3 : T.water ? 0.4 : 0;
+      T.woff = Math.round((off + (n - 0.5) * 0.3) * 100) / 100;
+      T.wind = Math.round(Math.max(0.5, meanArr(C.wind10_land) * C.hub_factor_land + T.woff) * 10) / 10;
+      const sr = { plain: [0.92, 0.08], beach: [0.92, 0.08], grid: [0.92, 0.08], urban: [0.85, 0.07], forest: [0.78, 0.07], hill: [0.86, 0.09], river: [0.9, 0.05], lake: [0.9, 0.05] }[T.t] || [0.9, 0.05];
+      T.sun = Math.round((sr[0] + sr[1] * n2) * 100) / 100;
+    });
+    const base = { urban: 400, plain: 40, beach: 10, forest: 10, hill: 15, town: 0 };
+    let pm = 1;
+    tiles.forEach(T => {
+      T.pop = 0; T.near = 0;
+      if (T.out || !T.land) return;
+      T.pop = sites.reduce((a, s) => { const A = cubeOf(tiles[s.tile]), B = cubeOf(T); const d = Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2])); return a + s.pop * Math.exp(-d / 1.2); }, 0) + (C ? base[T.t] || 0 : 0);
+      T.near = sites.reduce((a, s) => { const A = cubeOf(tiles[s.tile]), B = cubeOf(T); return a + (Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2])) <= 2 ? s.pop : 0); }, 0);
+      pm = Math.max(pm, T.pop);
+    });
+    sites.forEach(s => { if (s.kind === "livestock") tiles[s.tile].nb.forEach(j => { tiles[j].livestock = true; }); });
+    // 조력 후보: 항구 가까운 아산만 연안 바다(항구에서 2칸 안, 육지와 맞닿은 칸)
+    const port = sites.find(s => s.kind === "port");
+    if (P.climate && port) tiles.forEach(T => { if (T.t === "sea" && T.dshore === 1) { const A = cubeOf(T), B = cubeOf(tiles[port.tile]); T.tidal = Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2])) <= 2; } });
+    return { cols, rows, tiles, sites, towns, popMax: pm, tname: Object.assign({}, BASE_TNAME, P.tname || {}) };
+  }
+  function cubeOf(T) { const x = T.c - (T.r - (T.r & 1)) / 2; return [x, -x - T.r, T.r]; }
+  function usePack(id) {
+    if (!Object.hasOwn(PACKS, id)) id = PACK_IDS[0];
+    const P = PACKS[id];
+    if (!P._b) P._b = buildPack(P);
+    PK = P; COLS = P._b.cols; ROWS = P._b.rows; TILES = P._b.tiles; SITES = P._b.sites; TOWNS = P._b.towns; TNAME = P._b.tname; POPMAX = P._b.popMax;
+    if (KCP.buildGame) Object.assign(KCP.buildGame, { TILES, TOWNS, SITES, PK });
+    return P;
+  }
 
   /* =====================================================================
    * 2. 가상 모형
    * ===================================================================== */
   const M = {
-    budget: 100,
-    solarMW: 2, windMW: 2, rated: 12, cutout: 25,
-    dieselMW: 3, dieselMin: 1, batMW: 4, batMWh: 16, batEff: 0.95, socFloor: 0.1,
-    lossPerHex: 0.015, co2: 0.75, fuel: 0.01, taxMul: 1.5,
-    drMW: 1.5, drCost: 0.05, shareCost: 0.1, save: 0.05,
-    wxSun: [1, 0.45, 0.2]
+    solarMW: 2, rated: 12, cutout: 25, cutin: 3,
+    batMW: 4, batMWh: 16, batEff: 0.95, socFloor: 0.1,
+    lossPerHex: 0.015, taxPerT: 0.005 / 0.75,
+    drCost: 0.05, shareCost: 0.1, save: 0.05,
+    wxSun: [1, 0.45, 0.2], tidalPeriod: 12.42, pr: 0.8
   };
-  const BLD = {
-    solar: { name: "태양광", spec: "2 MW", cost: 8, ok: { beach: 1, plain: 1, hill: 1, forest: 1 } },
-    wind: { name: "풍력", spec: "2 MW", cost: 10, ok: { beach: 1, plain: 1, hill: 1, forest: 1, mount: 1 } },
-    diesel: { name: "디젤", spec: "3 MW", cost: 6, ok: { beach: 1, plain: 1, hill: 1, forest: 1 } },
-    battery: { name: "배터리", spec: "4 MW/16 MWh", cost: 12, ok: { beach: 1, plain: 1, hill: 1, forest: 1 } }
+  // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
+  const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
+  const BLD0 = {
+    solar: { name: "태양광", spec: "2 MW", mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
+    roof: { name: "지붕 태양광", spec: "0.6 MW", mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
+    wind: { name: "풍력", spec: "2 MW", mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
+    offshore: { name: "해상풍력", spec: "4 MW", mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
+    tidal: { name: "조력", spec: "2 MW", mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
+    hydro: { name: "소수력", spec: "0.8 MW", mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
+    diesel: { name: "디젤", spec: "3 MW", mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
+    biomass: { name: "바이오매스", spec: "2 MW", mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
+    battery: { name: "배터리", spec: "4 MW/16 MWh", mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" }
   };
-  const LINE_COST = 0.5, CLEAR_COST = 2;
+  let BLD = BLD0;
+  // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "import" ? { cap: PK.gridCap || 4, min: 0, fuel: 0.012, co2: 0.46 }
+    : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0.1 });
+  const CLEAR_COST = 2;
+  const lineUnit = () => PK.lineCost || 0.5;
   const WX = [{ k: "sun", name: "맑음" }, { k: "cloud", name: "흐림" }, { k: "rain", name: "비" }];
   const TR = [[0.62, 0.28, 0.10], [0.35, 0.42, 0.23], [0.30, 0.42, 0.28]];
+  // 평택 계절 날씨: 달마다 맑음·흐림·비 비율(7월 장마)
+  const PW = [[.55, .35, .10], [.55, .33, .12], [.50, .35, .15], [.55, .30, .15], [.55, .30, .15], [.40, .35, .25], [.20, .35, .45], [.35, .35, .30], [.50, .30, .20], [.65, .25, .10], [.50, .35, .15], [.50, .38, .12]];
   const POLICIES = [
-    { id: "tax", name: "탄소세", icon: "co2", eff: "디젤 연료비 ×1.5", cost: "0억/일" },
-    { id: "dr", name: "수요반응 계약", icon: "clock", eff: "F4 −1.5 MW (18–21시)", cost: "0.05억/일" },
-    { id: "share", name: "주민 이익공유", icon: "people", eff: "풍력·태양광 민원 ½", cost: "0.1억/일" },
-    { id: "save", name: "절전 캠페인", icon: "bolt", eff: "수요 −5% · 만족 −5", cost: "0억/일" }
+    { id: "tax", name: "탄소세", icon: "co2", eff: () => "CO₂ 값 매김 (디젤 ×1.5)", cost: "0억/일" },
+    { id: "dr", name: "수요반응 계약", icon: "clock", eff: () => PK.drText || "−1.5 MW (18–21시)", cost: "0.05억/일" },
+    { id: "share", name: "주민 이익공유", icon: "people", eff: () => "풍력·태양광 민원 ½", cost: "0.1억/일" },
+    { id: "save", name: "절전 캠페인", icon: "bolt", eff: () => "수요 −5% · 만족 −5", cost: "0억/일" }
   ];
-  const costTarget = days => Math.round(50 + 0.5 * days);
+  const costTarget = days => Math.round(PK.goals.costBase + PK.goals.costPerDay * days);
   const MISSIONS = [
     { id: "outage", name: "정전 최소", icon: "bolt", goal: () => "못 보낸 전력 ≤ 0.5% · 병원 0시간" },
-    { id: "cost", name: "비용 최소", icon: "coin", goal: () => "총비용 ≤ 50억 + 0.5억×일수" },
-    { id: "co2", name: "CO₂ 최소", icon: "co2", goal: () => "하루 평균 ≤ 45 t" },
+    { id: "cost", name: "비용 최소", icon: "coin", goal: () => `총비용 ≤ ${PK.goals.costBase}억 + ${PK.goals.costPerDay}억×일수` },
+    { id: "co2", name: "CO₂ 최소", icon: "co2", goal: () => `하루 평균 ≤ ${PK.goals.co2Day} t` },
     { id: "complaint", name: "주민 민원 최소", icon: "alert", goal: () => "민원 ≤ 1건 · 최저 만족 ≥ 60" }
   ];
-  const TIPS = [
+  const TIPS0 = [
     "송전 손실은 거리에 비례해 쌓인다 — 발전소를 수요지 가까이?",
     "풍속이 2배면 풍력 출력은 약 8배(v³).",
     "태양광은 저녁 피크 전에 끝난다 — 배터리가 시간을 옮긴다.",
-    "디젤 연기는 바람을 따라 동쪽으로 간다.",
     "전력량(MWh) = 전력(MW) × 시간(h).",
     "한 전원에만 기대면 그 조건이 무너질 때 다 멈춘다.",
     "평균에 강한 계획 ≠ 최악의 날에 강한 계획.",
@@ -136,10 +230,10 @@
     "충전·방전마다 조금씩 잃는다(여기서는 각 95%).",
     "흐린 날 태양광은 맑은 날의 절반도 안 된다.",
     "버린 전력도 비용이다 — 건설비는 이미 냈다.",
-    "능선과 서쪽 해안은 바람이 세다 — 풍속 지도를 켜 보라.",
     "짧게 보면 연료가 싸고, 길게 보면 연료 없는 발전이 싸질 수 있다.",
     "전기가 모자라면 병원은 마지막까지 받는다 — 우선순위가 있다."
   ];
+  const tips = () => (PK.tips || []).concat(TIPS0);
 
   function mulberry32(a) {
     return function () {
@@ -149,44 +243,83 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  // 90일치를 항상 같은 순서로 뽑는다. 그래서 1주는 1달의 앞부분과 같다.
-  function weather(seed) {
-    const rnd = mulberry32(seed >>> 0), out = [];
-    let w = 0;
+  // 90일치를 항상 같은 순서로 뽑는다(1주는 1달의 앞부분과 같다).
+  function weather(seed, season) {
+    const rnd = mulberry32(seed >>> 0), out = [], C = PK.climate;
+    const s = SEASONS.find(x => x.id === season) || SEASONS[1];
+    let w = 0, sunny = 0;
     for (let d = 0; d < 90; d++) {
-      const u = rnd();
-      if (d > 0) { const p = TR[w]; w = u < p[0] ? 0 : u < p[0] + p[1] ? 1 : 2; }
+      const u = rnd(), u2 = C ? rnd() : 1;
+      const doy = C ? (MSTART[s.m] + d) % 365 : 0, m = C ? monthOf(doy) : -1;
+      if (C) {
+        const p = PW[m];
+        if (d === 0 || u2 > 0.45) w = u < p[0] ? 0 : u < p[0] + p[1] ? 1 : 2;
+      } else if (d > 0) { const p = TR[w]; w = u < p[0] ? 0 : u < p[0] + p[1] ? 1 : 2; }
       let mult = 0.5 + rnd();
       if (w === 2) mult = Math.min(1.5, mult + 0.15);
-      const hot = rnd() < (w === 0 ? 0.5 : w === 1 ? 0.15 : 0);
-      const noise = [];
-      for (let h = 0; h < 24; h++) noise.push(1 + (rnd() * 2 - 1) * 0.15);
-      out.push({ w, mult, hot, noise });
+      const r3 = rnd();
+      const day = { w, mult, noise: [], m, doy };
+      if (C) {
+        day.tmax = C.temp_c[m] + 5 + (r3 - 0.5) * 6 + (w === 0 ? 1.5 : w === 2 ? -2.5 : 0);
+        day.hot = day.tmax > 28;
+        day.coolF = 0.15 + clamp((day.tmax - 28) * 0.025, 0, 0.1);
+        day.winter = m === 11 || m <= 1;
+        sunny = w === 0 ? sunny + 1 : 0;
+        day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= 3 ? 0.7 : 0.85;
+        // 일사: 그 달 GHI × 성능비 0.8을 날씨 비율로 나눠 월평균을 맞춘다. 낮 길이는 위도·적위로.
+        const dec = 23.44 * Math.sin(2 * Math.PI * (284 + doy + 1) / 365) * Math.PI / 180, lat = C.lat * Math.PI / 180;
+        day.dayLen = (2 / 15) * Math.acos(clamp(-Math.tan(lat) * Math.tan(dec), -1, 1)) * 180 / Math.PI;
+        const ew = PW[m][0] * M.wxSun[0] + PW[m][1] * M.wxSun[1] + PW[m][2] * M.wxSun[2];
+        day.eDay = C.ghi_kwh_m2_day[m] * M.pr * M.wxSun[w] / ew;
+      } else day.hot = r3 < (w === 0 ? 0.5 : w === 1 ? 0.15 : 0);
+      for (let h = 0; h < 24; h++) day.noise.push(1 + (rnd() * 2 - 1) * 0.15);
+      out.push(day);
     }
     return out;
   }
-  function demand(ti, h, hot, pol) {
-    let v;
-    if (ti === 0) v = 1.0;
-    else if (ti === 1) v = 1.2 + (h >= 18 && h < 22 ? 0.8 : 0);
-    else if (ti === 2) v = 1.5 + (h >= 7 && h < 9 ? 0.5 : 0) + (h >= 18 && h < 22 ? 1.0 : 0);
+  // 시간별 수요(MW). ctx: 그날 날씨 하루치와 정책, 증설 여부
+  function demand(ti, h, day, pol, fab2) {
+    const W = TOWNS[ti], D = W.dem, inR = (a, b) => h >= a && h < b;
+    let v = D.base;
+    if (fab2 && D.fab2) v = D.fab2;
+    if (D.day && inR(D.day.from, D.day.to)) v = D.day.v;
+    if (D.add) D.add.forEach(a => { if (inR(a.from, a.to) && (!a.months || a.months.includes(day.m))) v += a.v; });
+    if (D.morn && inR(7, 9)) v += D.morn;
+    if (D.eve && inR(18, 22)) v += D.eve;
+    if (D.off && inR(D.off.from, D.off.to)) v = 0;
+    if (PK.hotAll) { if (day.hot && inR(13, 18)) v *= 1.15; }
     else {
-      v = h >= 8 && h < 21 ? 2.0 : 0.8;
-      if (pol.dr && h >= 18 && h < 21) v -= M.drMW;
+      if (D.cool && day.hot && inR(13, 18)) v *= 1 + day.coolF;
+      if (D.hotAdd && day.hot) v += D.hotAdd;
+      if (D.heat && day.winter && inR(18, 22)) v *= 1.1;
     }
-    if (hot && h >= 13 && h < 18) v *= 1.15;
+    if (D.dr && pol.dr && inR(18, 21)) v = Math.max(0.1 * v, v - (D.dr === true ? 1.5 : D.dr));
     if (pol.save) v *= 1 - M.save;
     return v;
   }
-  const peakDemand = pol => { let p = 0; for (let h = 0; h < 24; h++) p = Math.max(p, TOWNS.reduce((a, W, ti) => a + demand(ti, h, false, pol), 0)); return p; };
+  const PLAIN_DAY = { w: 0, hot: false, m: 6, coolF: 0, winter: false };
+  const peakDemand = (pol, fab2) => { let p = 0; for (let h = 0; h < 24; h++) p = Math.max(p, TOWNS.reduce((a, W, ti) => a + demand(ti, h, PLAIN_DAY, pol, fab2), 0)); return p; };
   const polOf = st => ({ tax: st.policies.includes("tax"), dr: st.policies.includes("dr"), share: st.policies.includes("share"), save: st.policies.includes("save") });
 
-  const stepMul = T => (T.t === "sea" ? 3 : T.t === "mount" ? 2 : 1);
+  const stepMul = T => (T.out ? Infinity : T.t === "sea" || T.t === "lake" ? 3 : T.t === "mount" || T.t === "river" ? 2 : 1);
   const buildCost = (t, i) => BLD[t].cost + (TILES[i].t === "forest" ? CLEAR_COST : 0);
-  function lineCost(p) { let s = 0; for (let k = 1; k < p.length; k++) s += LINE_COST * stepMul(TILES[p[k]]); return s; }
+  function lineCost(p) { let s = 0; for (let k = 1; k < p.length; k++) s += lineUnit() * stepMul(TILES[p[k]]); return s; }
   const capex = st => st.builds.reduce((a, b) => a + buildCost(b.t, b.i), 0) + st.lines.reduce((a, L) => a + lineCost(L.p), 0);
+  const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools);
+  // 이 타일에 이 발전원을 지을 수 있나(예산 제외)
+  function siteRule(type, T) {
+    const B = BLD[type];
+    if (!B || !toolsOf().includes(type)) return "못 지음";
+    if (T.out) return "평택 밖";
+    if (B.sea) return (B.sea === "offshore" ? T.offshore : T.tidal) ? "" : B.sea === "tidal" ? "조력: 아산만 연안 바다만" : "해상풍력: 연안 2칸 바다만";
+    if (T.t === "sea") return "바다에는 못 지음";
+    if (T.site >= 0) { const k = SITES[T.site].kind; return B.roof && k !== "plant" && k !== "gridpt" && T.t === "urban" ? "" : "시설 자리"; }
+    if (T.t === "town") return "마을 자리";
+    if (!B.ok[T.t]) return T.t === "mount" ? "산 능선: 풍력만" : B.roof ? "지붕 태양광: 도시만" : type === "hydro" ? "소수력: 하천만" : T.water ? "물 위에는 못 지음" : "못 지음";
+    return "";
+  }
 
-  // 가장 싼 육각 경로(육지 1, 산 2, 바다 3배)
+  // 가장 싼 육각 경로(육지 1, 산·하천 2, 바다·호수 3, 인접 지역 불가)
   function routePath(a, b) {
     const N = TILES.length, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), done = new Uint8Array(N);
     dist[a] = 0;
@@ -206,18 +339,29 @@
     return p;
   }
 
-  // 송전망: 선이 지나는 타일이 연결 그래프, 건물·마을은 선 위에 있거나 선 끝과 이웃하면 붙는다.
+  // 송전망: 선이 지나는 타일이 연결 그래프. 건물·시설은 선 위에 있거나 선 끝과 이웃하면 붙는다.
+  // 같은 타일의 건물과 시설(지붕 태양광)은 선 없이 바로 이어진다.
   function network(st) {
     const adj = new Map(), edges = [], eKey = new Map(), ends = new Set();
+    const touch = a => { if (!adj.has(a)) adj.set(a, new Set()); };
     const link = (a, b) => {
-      if (!adj.has(a)) adj.set(a, new Set());
-      if (!adj.has(b)) adj.set(b, new Set());
+      touch(a); touch(b);
       adj.get(a).add(b); adj.get(b).add(a);
       const k = a < b ? a + "-" + b : b + "-" + a;
       if (!eKey.has(k)) { eKey.set(k, edges.length); edges.push([Math.min(a, b), Math.max(a, b)]); }
     };
     st.lines.forEach(L => { for (let k = 1; k < L.p.length; k++) link(L.p[k - 1], L.p[k]); ends.add(L.p[0]); ends.add(L.p[L.p.length - 1]); });
-    // 선 타일 덩어리 번호
+    const lineT = new Set(adj.keys());
+    const nodes = [];
+    SITES.forEach((s, si) => {
+      if (s.dem) nodes.push({ kind: "town", tile: s.tile, ti: s.ti, si, skind: s.kind });
+      else if (s.kind === "plant") nodes.push({ kind: "lng", tile: s.tile, si, cap: s.cap || 9.5 });
+      else if (s.kind === "gridpt") nodes.push({ kind: "import", tile: s.tile, si });
+    });
+    st.builds.forEach((B, bi) => nodes.push({ kind: B.t, tile: B.i, bi }));
+    const per = new Map();
+    nodes.forEach(n => per.set(n.tile, (per.get(n.tile) || 0) + 1));
+    per.forEach((c, t) => { if (c > 1) touch(t); });
     const lab = new Map();
     let nc = 0;
     adj.forEach((_, s) => {
@@ -228,28 +372,31 @@
     });
     const par = Array.from({ length: nc }, (_, i) => i);
     const find = x => (par[x] === x ? x : (par[x] = find(par[x])));
-    const nodes = [];
-    TOWNS.forEach((W, ti) => nodes.push({ kind: "town", tile: W.tile, ti, prio: W.prio }));
-    st.builds.forEach((B, bi) => nodes.push({ kind: B.t, tile: B.i, bi }));
     nodes.forEach(n => {
       n.att = [];
       if (adj.has(n.tile)) n.att.push([n.tile, 0]);
-      TILES[n.tile].nb.forEach(j => { if (ends.has(j)) n.att.push([j, 1]); });
+      TILES[n.tile].nb.forEach(j => { if (ends.has(j) || PK.attachAny && lineT.has(j)) n.att.push([j, 1]); });
       const cs = n.att.map(a => lab.get(a[0]));
       for (let k = 1; k < cs.length; k++) { const A = find(cs[0]), B = find(cs[k]); if (A !== B) par[A] = B; }
+    });
+    // 두 선에 함께 붙은 시설·건물은 그 사이를 이어 준다(전기가 시설을 거쳐 흐를 수 있다).
+    nodes.forEach(n => {
+      for (let x = 0; x < n.att.length; x++) for (let y = x + 1; y < n.att.length; y++) {
+        const A = n.att[x][0], B = n.att[y][0];
+        if (A !== B) { adj.get(A).add(B); adj.get(B).add(A); }
+      }
     });
     const comps = new Map();
     nodes.forEach(n => {
       n.comp = n.att.length ? find(lab.get(n.att[0][0])) : -1;
       if (n.comp < 0) return;
-      if (!comps.has(n.comp)) comps.set(n.comp, { towns: [], ren: [], bat: [], dsl: [] });
+      if (!comps.has(n.comp)) comps.set(n.comp, { towns: [], ren: [], bat: [], disp: [] });
       const C = comps.get(n.comp);
       if (n.kind === "town") C.towns.push(n);
       else if (n.kind === "battery") C.bat.push(n);
-      else if (n.kind === "diesel") C.dsl.push(n);
+      else if (n.kind === "lng" || n.kind === "import" || BLD[n.kind] && BLD[n.kind].cls === "disp") C.disp.push(n);
       else C.ren.push(n);
     });
-    // 노드마다 선 위 거리(0-1 시작점이 섞인 다익스트라)
     function bfs(n) {
       const dist = new Map(), from = new Map(), q = [];
       n.att.forEach(([t, d]) => { if (!dist.has(t) || dist.get(t) > d) { dist.set(t, d); from.set(t, -1); q.push(t); } });
@@ -269,28 +416,27 @@
       let u = bt;
       while (g.bf.from.get(u) !== -1) {
         const p = g.bf.from.get(u);
-        path.push([eKey.get(p < u ? p + "-" + u : u + "-" + p), p < u ? 1 : -1]);
+        const e = eKey.get(p < u ? p + "-" + u : u + "-" + p);
+        if (e !== undefined) path.push([e, p < u ? 1 : -1]);
         u = p;
       }
-      const d = best;
-      return { g, l, d, eff: Math.max(0.4, 1 - M.lossPerHex * d), path };
+      return { g, l, d: best, eff: Math.max(0.4, 1 - (PK.lossPerHex || M.lossPerHex) * best), path };
     }
-    const byPrio = (a, b) => (a.l.prio - b.l.prio) || (a.d - b.d);
     comps.forEach(C => {
       const mk = (gs, ls) => { const out = []; gs.forEach(g => ls.forEach(l => { const P = pair(g, l); if (P) out.push(P); })); return out; };
-      C.RL = mk(C.ren, C.towns).sort(byPrio);
+      C.RL = mk(C.ren, C.towns);
       C.RB = mk(C.ren, C.bat).sort((a, b) => a.d - b.d);
-      C.BL = mk(C.bat, C.towns).sort(byPrio);
-      C.DL = mk(C.dsl, C.towns).sort(byPrio);
+      C.BL = mk(C.bat, C.towns);
+      C.DL = mk(C.disp, C.towns);
     });
-    // 쓸모 있는 연결: 같은 덩어리에 마을과 발전원이 함께 있어야 한다.
     nodes.forEach(n => {
       const C = n.comp >= 0 ? comps.get(n.comp) : null;
-      n.live = !!C && (n.kind === "town" ? C.ren.length + C.bat.length + C.dsl.length > 0 : C.towns.length > 0);
+      n.live = !!C && (n.kind === "town" ? C.ren.length + C.bat.length + C.disp.length > 0 : C.towns.length > 0);
     });
     return { adj, edges, nodes, comps: Array.from(comps.values()), ends };
   }
 
+  const SMOKY = { diesel: 1, biomass: 1 };
   function complaints(st, runFrac) {
     const share = st.policies.includes("share"), items = [];
     TOWNS.forEach((W, ti) => {
@@ -301,14 +447,18 @@
           const f = runFrac ? runFrac[bi] || 0 : 0.6;
           if (d <= 2 && TT.X - BT.X >= -0.01) items.push({ ti, kind: "smoke", bi, pts: (d <= 1 ? 30 : 18) * f });
           else if (d <= 1) items.push({ ti, kind: "noise", bi, pts: 6 * f });
+        } else if (B.t === "biomass") {
+          const f = runFrac ? runFrac[bi] || 0 : 0.6;
+          if (d <= 1) items.push({ ti, kind: "smoke", bi, pts: 12 * f });
         } else if (B.t === "wind") {
           if (d <= 1) items.push({ ti, kind: "noise", bi, pts: share ? 7 : 14 });
           else if (d === 2) items.push({ ti, kind: "view", bi, pts: share ? 2.5 : 5 });
+        } else if (B.t === "offshore") {
+          if (d <= 1) items.push({ ti, kind: "view", bi, pts: share ? 2 : 4 });
         } else if (B.t === "solar" && d <= 1) items.push({ ti, kind: "view", bi, pts: share ? 2 : 4 });
         if (BT.t === "forest" && d <= 3) items.push({ ti, kind: "green", bi, pts: 3 });
       });
     });
-    // 민원 건수: 마을×종류별 합이 5점 이상이면 1건
     const groups = new Map();
     items.forEach(it => {
       const k = it.ti + ":" + it.kind, G = groups.get(k) || { pts: 0, top: null };
@@ -323,37 +473,74 @@
     return { items, issues, list };
   }
 
+  // 시간 h의 재생 출력(MW). 섬은 예전 식, 평택은 달마다 기후 자료를 쓴다.
+  function renOut(g, day, h, k) {
+    const T = TILES[g.tile], B = BLD[g.kind], C = PK.climate, vMul = day.mult * day.noise[h];
+    if (g.kind === "solar" || g.kind === "roof") {
+      if (!C) { const sp = h >= 6 && h < 18 ? Math.max(0, Math.sin(Math.PI * (h + 0.5 - 6) / 12)) : 0; return B.mw * sp * M.wxSun[day.w] * T.sun; }
+      const N = day.dayLen, rise = 12 - N / 2, x = (h + 0.5 - rise) / N;
+      if (x <= 0 || x >= 1) return 0;
+      return B.mw * Math.min(1, day.eDay * Math.PI / (2 * N) * Math.sin(Math.PI * x) * T.sun);
+    }
+    if (g.kind === "wind" || g.kind === "offshore") {
+      let v;
+      if (!C) v = T.wind * vMul;
+      else v = (T.t === "sea" ? C.wind100_sea[day.m] * T.seaF : C.wind10_land[day.m] * C.hub_factor_land + T.woff) * vMul;
+      if (v > M.cutout) return 0;
+      if (!C) return B.mw * Math.min(1, (v / M.rated) ** 3);
+      return v < M.cutin ? 0 : B.mw * Math.min(1, (v ** 3 - M.cutin ** 3) / (M.rated ** 3 - M.cutin ** 3));
+    }
+    if (g.kind === "tidal") return B.mw * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
+    if (g.kind === "hydro") return B.mw * (day.flow || 1);
+    return 0;
+  }
+
   function simulate(st, days) {
-    const N = network(st), W = weather(st.seed), H = days * 24, pol = polOf(st);
+    const N = network(st), W = weather(st.seed, st.season), H = days * 24, pol = polOf(st), NT = TOWNS.length;
+    const fab2 = !!(PK.climate && st.fab2);
     const gens = N.nodes.filter(n => n.kind !== "town");
     const E = N.edges.length;
     const flow = new Float32Array(Math.max(1, H * E));
-    const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * 4), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
-    const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, dayOut: new Float32Array(days) }));
-    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0 };
+    const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
+    const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
+    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0 };
     let dk = 0;
     gens.forEach(g => {
       g.runH = 0;
       if (g.kind === "battery") { g.soc = M.batMWh * 0.5; g.floor = M.batMWh * M.socFloor; }
-      if (g.kind === "diesel") g.dk = dk++;
+      if (SMOKY[g.kind]) g.dk = dk++;
+      const D = g.kind === "lng" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
+      if (D) {
+        if (g.kind === "lng") D.cap = g.cap;
+        if (g.kind === "biomass" && TILES[g.tile].livestock) D.fuel = 0.012;
+        g.D = D;
+        g.mc = D.fuel + (pol.tax ? D.co2 * M.taxPerT : 0);
+      }
+    });
+    const shed = st.shed === "industry" ? SHED.industry : SHED.home, equal = st.shed === "equal";
+    const prio = n => (equal ? 0 : shed[n.skind] != null ? shed[n.skind] : 5);
+    N.comps.forEach(C => {
+      C.towns.forEach(n => { n.prio = prio(n); });
+      const byPrio = (a, b) => (a.l.prio - b.l.prio) || (a.d - b.d);
+      C.RL.sort(byPrio); C.BL.sort(byPrio);
+      C.DL.sort((a, b) => (a.g.mc - b.g.mc) || byPrio(a, b));
     });
     const addFlow = (P, sent, k) => { const o = k * E; for (const [e, s] of P.path) flow[o + e] += s * sent; };
     for (let d = 0; d < days; d++) {
       const wx = W[d];
       for (let h = 0; h < 24; h++) {
-        const k = d * 24 + h, vMul = wx.mult * wx.noise[h];
-        hrWind[k] = vMul;
-        const sunP = h >= 6 && h < 18 ? Math.max(0, Math.sin(Math.PI * (h + 0.5 - 6) / 12)) : 0;
+        const k = d * 24 + h;
+        hrWind[k] = wx.mult * wx.noise[h];
         gens.forEach(g => {
           g.av = 0;
-          if (g.kind === "solar") g.av = M.solarMW * sunP * M.wxSun[wx.w] * TILES[g.tile].sun;
-          else if (g.kind === "wind") { const v = TILES[g.tile].wind * vMul; g.av = v > M.cutout ? 0 : M.windMW * Math.min(1, (v / M.rated) ** 3); }
-          else if (g.kind === "diesel") g.out = 0;
-          else if (g.kind === "battery") { g.chg = 0; g.dis = 0; }
-          if (g.kind === "solar" || g.kind === "wind") { if (g.live) tot.renAvail += g.av; else tot.idle += g.av; }
+          if (g.kind === "battery") { g.chg = 0; g.dis = 0; return; }
+          if (g.D) { g.out = 0; return; }
+          g.av = renOut(g, wx, h, k);
+          if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
         });
-        const rem = TOWNS.map((_, ti) => demand(ti, h, wx.hot, pol));
-        const dem0 = rem.reduce((a, b) => a + b, 0);
+        const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2));
+        const rem = dem.slice();
+        const dem0 = dem.reduce((a, b) => a + b, 0);
         let deliv = 0;
         for (const C of N.comps) {
           if (!C.towns.length) continue;
@@ -383,50 +570,57 @@
           for (const P of C.DL) {
             const u = P.g, ti = P.l.ti;
             if (rem[ti] <= 1e-6) continue;
-            const can = M.dieselMW - u.out;
+            const can = u.D.cap - u.out;
             if (can <= 1e-6) continue;
             const give = Math.min(can * P.eff, rem[ti]), sent = give / P.eff;
             u.out += sent; rem[ti] -= give; deliv += give; tot.loss += sent - give; addFlow(P, sent, k);
           }
-          C.dsl.forEach(u => {
+          C.disp.forEach(u => {
             if (u.out <= 1e-6) return;
-            if (u.out < M.dieselMin) { tot.waste += M.dieselMin - u.out; u.out = M.dieselMin; }
-            tot.diesel += u.out; u.runH++;
-            if (u.dk < 32) hrDiesel[k] |= 1 << u.dk;
+            if (u.out < u.D.min) { tot.waste += u.D.min - u.out; u.out = u.D.min; }
+            tot.by[u.kind] += u.out; tot.fuel += u.out * u.mc; tot.co2 += u.out * u.D.co2; u.runH++;
+            if (u.dk !== undefined && u.dk < 32) hrDiesel[k] |= 1 << u.dk;
           });
+          // 균등: 덩어리 안의 부족분을 수요 비율대로 나눈다(병원도 같은 비율).
+          if (equal) {
+            let U = 0, D = 0;
+            C.towns.forEach(n => { U += Math.max(0, rem[n.ti]); D += dem[n.ti]; });
+            if (U > 0.01 && D > 0) C.towns.forEach(n => { rem[n.ti] = dem[n.ti] * U / D; });
+          }
         }
         rem.forEach((r, ti) => {
-          const D = town[ti], dm = demand(ti, h, wx.hot, pol);
-          D.dem += dm;
-          hrUns[k * 4 + ti] = Math.max(0, r);
-          if (r > 0.05) {
-            D.uns += r; D.outH++; D.dayOut[d]++;
-            if (h >= 17 && h < 23) D.eveH++;
-            if (wx.w > 0) D.cloudH++;
-          } else if (r > 0) D.uns += r;
+          const Dt = town[ti];
+          Dt.dem += dem[ti];
+          hrUns[k * NT + ti] = Math.max(0, r);
+          if (r > (PK.climate ? Math.max(0.005, 0.02 * dem[ti]) : 0.05)) {
+            Dt.uns += r; Dt.outH++; Dt.dayOut[d]++;
+            if (h >= 17 && h < 23) Dt.eveH++;
+            if (wx.w > 0) Dt.cloudH++;
+            if (wx.hot) Dt.hotH++;
+          } else if (r > 0) Dt.uns += r;
         });
         hrDem[k] = dem0; hrSup[k] = deliv; tot.dem += dem0; tot.sup += deliv;
       }
     }
-    const runFrac = st.builds.map((B, bi) => { const g = gens.find(n => n.bi === bi); return g && B.t === "diesel" ? g.runH / H : 0; });
+    tot.diesel = tot.by.diesel;
+    const runFrac = st.builds.map((B, bi) => { const g = gens.find(n => n.bi === bi); return g && SMOKY[B.t] ? g.runH / H : 0; });
     const cp = complaints(st, runFrac);
-    const fuelMul = pol.tax ? M.taxMul : 1;
     const cost = {
       capex: capex(st),
-      fuel: tot.diesel * M.fuel * fuelMul,
+      fuel: tot.fuel,
       policy: days * ((pol.dr ? M.drCost : 0) + (pol.share ? M.shareCost : 0))
     };
     cost.total = cost.capex + cost.fuel + cost.policy;
     const sat = TOWNS.map((W, ti) => {
-      const D = town[ti];
-      const outPen = Math.min(80, (D.outH / H) * 300 * (ti === 0 ? 2 : ti === 1 ? 1.3 : 1));
+      const Dt = town[ti], K = KIND[W.kind] || { w: 1 };
+      const outPen = Math.min(80, (Dt.outH / H) * 300 * K.w + (K.old ? (Dt.hotH / H) * 300 : 0));
       const cpPen = cp.items.filter(it => it.ti === ti).reduce((a, it) => a + it.pts, 0);
       return Math.round(clamp(100 - outPen - cpPen - (pol.save ? 5 : 0), 0, 100));
     });
     const res = {
-      days, H, E, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
-      town, tot, cost, co2: tot.diesel * M.co2, cp, sat, pol, seed: st.seed,
-      unsTotal: town.reduce((a, D) => a + D.uns, 0), outTotal: town.reduce((a, D) => a + D.outH, 0)
+      days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
+      town, tot, cost, co2: tot.co2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
+      unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0)
     };
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);
@@ -434,12 +628,13 @@
     return res;
   }
 
+  const hospitals = () => TOWNS.filter(W => W.kind === "hospital").map(W => W.ti);
   function judge(st, R) {
-    const target = costTarget(R.days);
+    const target = costTarget(R.days), hosp = hospitals().reduce((a, ti) => a + R.town[ti].outH, 0);
     const all = {
-      outage: { ok: R.unsTotal <= 0.005 * R.tot.dem && R.town[0].outH === 0, val: `못 보낸 전력 ${fmt(100 * R.unsTotal / Math.max(1, R.tot.dem), 1)}% · 병원 ${R.town[0].outH}시간` },
+      outage: { ok: R.unsTotal <= 0.005 * R.tot.dem && hosp === 0, val: `못 보낸 전력 ${fmt(100 * R.unsTotal / Math.max(1, R.tot.dem), 1)}% · 병원 ${hosp}시간` },
       cost: { ok: R.cost.total <= target, val: `총비용 ${fmt(R.cost.total, 1)}억 / 목표 ${target}억` },
-      co2: { ok: R.co2 / R.days <= 45, val: `하루 ${fmt(R.co2 / R.days, 1)} t / 목표 45 t` },
+      co2: { ok: R.co2 / R.days <= PK.goals.co2Day, val: `하루 ${fmt(R.co2 / R.days, 1)} t / 목표 ${PK.goals.co2Day} t` },
       complaint: { ok: R.cp.issues <= 1 && Math.min(...R.sat) >= 60, val: `민원 ${R.cp.issues}건 · 최저 만족 ${Math.min(...R.sat)}` }
     };
     return MISSIONS.map(m => ({ id: m.id, name: m.name, icon: m.icon, chosen: st.missions.includes(m.id), ...all[m.id] }));
@@ -448,11 +643,16 @@
   function headlines(st, R, N) {
     const out = [];
     const add = (score, text) => out.push({ score, text });
-    const worst = R.town.map((D, ti) => ({ ti, ...D })).sort((a, b) => b.outH - a.outH)[0];
-    if (R.town[0].outH > 0) add(100, `병원 ${R.town[0].outH}시간 정전… "비상발전기 또 돌렸다"`);
-    if (worst.outH > 0) {
+    const place = PK.place;
+    const byKind = k => TOWNS.filter(W => W.kind === k);
+    byKind("hospital").forEach(W => { const h = R.town[W.ti].outH; if (h > 0) add(100 + h / 100, `${W.name} ${h}시간 정전… "비상발전기 또 돌렸다"`); });
+    byKind("factory_big").forEach(W => { const h = R.town[W.ti].outH; if (h > 0) add(97 + h / 100, `${W.name} 정전 ${h}시간… 생산 차질`); });
+    byKind("fire").forEach(W => { if (R.town[W.ti].outH > 0) add(96, `${W.name} 정전 — 비상발전기 가동`); });
+    byKind("water").forEach(W => { if (R.town[W.ti].outH > 0) add(95, `${W.name} 정전 — 단수 우려`); });
+    TOWNS.filter(W => W.kind === "rail" || W.kind === "rail_s").forEach(W => { if (R.town[W.ti].outH > 0) add(94, `${W.name.replace(/\(.*\)/, "")} 열차 지연 — 정전 ${R.town[W.ti].outH}시간`); });
+    const worst = R.town.map((Dt, ti) => ({ ti, ...Dt })).filter(x => !CRIT[TOWNS[x.ti].kind] && TOWNS[x.ti].kind !== "factory_big").sort((a, b) => b.outH - a.outH)[0];
+    if (worst && worst.outH > 0) {
       const W = TOWNS[worst.ti];
-      // 흐린 날이 사흘 이상 이어지며 정전이 난 구간
       let streak = 0, bestStreak = 0, hit = false, bestHit = false;
       R.wx.forEach((w, d) => {
         if (w.w > 0) { streak++; hit = hit || worst.dayOut[d] > 0; } else { streak = 0; hit = false; }
@@ -465,57 +665,67 @@
     }
     R.cp.list.forEach(c => {
       const W = TOWNS[c.ti];
-      if (c.kind === "smoke") add(60 + c.pts, `${W.name}, 디젤 매연 민원 이어져`);
+      if (c.kind === "smoke") add(60 + c.pts, `${W.name}, ${c.src === "biomass" ? "바이오매스" : "디젤"} 매연 민원 이어져`);
       else if (c.kind === "noise") add(50 + c.pts, c.src === "wind" ? `${W.name} "풍차 소리에 잠 못 자"… 소음 민원` : `${W.name} "디젤 엔진 소리 밤새 울려"`);
       else if (c.kind === "view") add(30 + c.pts, `${W.name} "창밖이 발전소"… 경관 민원`);
       else if (c.kind === "green") add(28 + c.pts, `${W.name} 뒷숲 깎여… 녹지 훼손 논란`);
     });
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(55, `남는 전기 ${fmt(R.tot.curt)} MWh 버려져… "담아 둘 곳이 없다"`);
-    if (R.co2 / R.days > 30) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 디젤 ${fmt(R.cost.fuel, 1)}억` : `섬 하늘에 CO₂ ${fmt(R.co2)} t… 탄소세 도입 논의`);
+    const hiCO2 = PK.climate ? PK.goals.co2Day * 1.3 : 30;
+    if (R.co2 / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(R.co2)} t… 탄소세 도입 논의`);
+    if (R.tot.by.import > 0 && R.tot.by.import / Math.max(1, R.tot.sup) > 0.3) add(48, `전기 ${fmt(100 * R.tot.by.import / R.tot.sup)}%를 밖에서 사 왔다… "자립은 멀다"`);
     const lossShare = R.tot.loss / Math.max(1, R.tot.sup + R.tot.loss);
     if (lossShare > 0.06) add(45, `먼 송전선에서 전기 ${fmt(100 * lossShare, 1)}% 새어 나가`);
     if (R.outTotal === 0 && R.tot.dem > 0) add(75, `${R.days}일 무정전 운영… "불 한 번 안 꺼졌다"`);
-    if (R.co2 / R.days <= 5 && R.outTotal < R.H * 0.02) add(52, `디젤 거의 안 쓰고 섬을 밝혔다`);
-    const idleG = N.nodes.filter(n => n.kind !== "town" && !n.live).length;
+    if (R.co2 / R.days <= (PK.climate ? PK.goals.co2Day * 0.5 : 5) && R.outTotal < R.H * 0.02) add(52, `화석 연료 거의 안 쓰고 ${place}을 밝혔다`);
+    const idleG = N.nodes.filter(n => n.kind !== "town" && !n.live && n.bi !== undefined).length;
     if (idleG) add(57, `선 없는 발전소 ${idleG}곳… "지어 놓고 못 쓴다"`);
-    if (!out.length) add(1, `${R.days}일 운영 끝… 섬 전력망 첫 성적표`);
+    if (!out.length) add(1, `${R.days}일 운영 끝… ${place} 전력망 첫 성적표`);
     return out.sort((a, b) => b.score - a.score).slice(0, 3).map(o => o.text);
   }
 
   function questions(st, R, N) {
     const qs = [];
     const add = (score, q, hints) => qs.push({ score, q, hints });
-    const worst = R.town.map((D, ti) => ({ ti, ...D })).sort((a, b) => b.outH - a.outH)[0];
-    if (worst.outH > 0) {
+    const ga = (w, a, b) => (/[가-힣]$/.test(w) && (w.charCodeAt(w.length - 1) - 0xac00) % 28 ? a : b);
+    const worst = R.town.map((Dt, ti) => ({ ti, ...Dt })).sort((a, b) => (b.outH * ((KIND[TOWNS[b.ti].kind] || {}).w || 1)) - (a.outH * ((KIND[TOWNS[a.ti].kind] || {}).w || 1)))[0];
+    if (worst && worst.outH > 0) {
       const W = TOWNS[worst.ti];
-      add(90, `${W.name}이 ${worst.outH}시간 정전됐습니다. 다시 짓는다면 무엇을 먼저 바꾸겠습니까?`,
+      add(90, `${W.name}${ga(W.name, "이", "가")} ${worst.outH}시간 정전됐습니다. 다시 짓는다면 무엇을 먼저 바꾸겠습니까?`,
         [`정전이 주로 언제였나(저녁 ${worst.eveH}시간)`, `못 보낸 전력 ${fmt(worst.uns, 1)} MWh`, "고치면 늘어나는 비용·민원은?"]);
     }
     const nearTown = R.cp.list.find(c => c.kind === "noise" || c.kind === "smoke");
     if (nearTown) {
-      const W = TOWNS[nearTown.ti], what = nearTown.src === "wind" ? "풍력 발전기를" : "디젤 발전기를";
+      const W = TOWNS[nearTown.ti], what = nearTown.src === "wind" ? "풍력 발전기를" : nearTown.src === "biomass" ? "바이오매스 발전소를" : "디젤 발전기를";
       add(80, `${what} ${W.name} 가까이 지었습니다. 주민이 반대하면 어떻게 하겠습니까?`,
         ["누구의 불편을 먼저 볼지 정하기", `${W.name} 만족도 ${R.sat[nearTown.ti]}점`, "옮기면 송전 손실·비용은?"]);
     }
-    if (R.co2 / R.days > 30 && !R.pol.tax) add(75, `CO₂가 ${fmt(R.co2)} t 나왔는데 탄소세를 고르지 않았습니다. 왜였나요?`,
-      ["섬 안 부담 vs 지구 부담", `하루 ${fmt(R.co2 / R.days, 1)} t`, "탄소세를 걸면 누가 더 내나?"]);
+    if (R.co2 / R.days > (PK.climate ? PK.goals.co2Day : 30) && !R.pol.tax) add(75, `CO₂가 ${fmt(R.co2)} t 나왔는데 탄소세를 고르지 않았습니다. 왜였나요?`,
+      ["지역 부담 vs 지구 부담", `하루 ${fmt(R.co2 / R.days, 1)} t`, "탄소세를 걸면 누가 더 내나?"]);
     const spent = capex(st);
-    if (spent >= M.budget - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
+    if (spent >= PK.budget - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
       ["무엇을 가장 중요하게 봤나", `연료비 ${fmt(R.cost.fuel, 1)}억 · 건설비 ${fmt(R.cost.capex, 1)}억`, "기간이 길어지면 답이 바뀌나?"]);
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(65, `남아서 버린 전력이 ${fmt(R.tot.curt)} MWh입니다. 어떻게 쓸 수 있었을까요?`,
       ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, "배터리 1대 12억의 값어치는?"]);
+    if (R.fab2 && R.town.some((Dt, ti) => TOWNS[ti].kind === "factory_big" && Dt.outH > 0)) add(85, "반도체 2라인 증설로 전기가 모자랐습니다. 공장과 주민 중 누구를 먼저 지켜야 합니까?",
+      ["차단 순서를 무엇으로 정했나", "부족한 MW와 시간", "송전선을 새로 놓을 때의 갈등"]);
     const lost = R.missions.filter(m => m.chosen && !m.ok);
     if (lost.length) add(60, `'${lost[0].name}' 미션을 놓쳤습니다. 무엇과 바꾼 결과입니까?`,
       ["두 미션 중 무엇을 먼저 봤나", lost[0].val, "다른 미션에서 얻은 것"]);
     add(40, `가장 힘들었던 날은 언제였고, 그날을 버티려면 무엇이 필요합니까?`,
       ["평균 말고 최악의 날로 보기", `흐림·비 ${R.wx.filter(w => w.w > 0).length}일 / ${R.days}일`, "대비하는 데 드는 돈"]);
-    add(35, `이 섬에 전원을 하나만 더 짓는다면 무엇을 어디에 짓겠습니까?`,
+    add(35, `${PK.place === "섬" ? "이 섬" : PK.place}에 전원을 하나만 더 짓는다면 무엇을 어디에 짓겠습니까?`,
       ["판단 기준 한 줄", "그 타일의 일사·풍속 숫자", "그 선택의 대가"]);
     return qs.sort((a, b) => b.score - a.score).slice(0, 3);
   }
 
-  /* ---------- 저장 ---------- */
-  function blank() { return { v: 1, seed: 2026, builds: [], lines: [], policies: [], missions: [], runs: 0, jAuto: false, journal: [] }; }
+  /* ---------- 저장(지도마다 칸 하나) ---------- */
+  function blankSlot(P) { return { seed: (P || PK).seed || 2026, builds: [], lines: [], policies: [], missions: [], shed: "home", season: "summer", fab2: false }; }
+  function blankDoc() {
+    const maps = {};
+    PACK_IDS.forEach(id => { maps[id] = blankSlot(PACKS[id]); });
+    return { v: 2, map: PACK_IDS[0], maps, runs: 0, jAuto: false, journal: [] };
+  }
   /* ---------- 건설 일지 ---------- */
   const J_MAX = 30, J_LEN = 2000;
   const JQ = [
@@ -532,6 +742,7 @@
     const a = e.a && typeof e.a === "object" ? e.a : {};
     return {
       id: e.id, at: jstr(e.at, 10), days: [7, 30, 90].includes(e.days) ? e.days : 7, seed: Number.isInteger(e.seed) ? e.seed : 0,
+      map: Object.hasOwn(PACKS, e.map) ? e.map : PACK_IDS[0], season: jstr(e.season, 30),
       wx: Array.isArray(e.wx) ? [0, 1, 2].map(k => Math.round(jnum(e.wx[k], 0, 90))) : [0, 0, 0],
       m: { out: jnum(m.out, 0, 1e5), co2: jnum(m.co2, 0, 1e7), cost: jnum(m.cost, 0, 1e5), cp: jnum(m.cp, 0, 99), uns: jnum(m.uns, 0, 100), curt: jnum(m.curt, 0, 1e7) },
       pol: (Array.isArray(e.pol) ? e.pol : []).filter(id => POLICIES.some(P => P.id === id)).slice(0, 2),
@@ -540,15 +751,15 @@
       a: { why: jstr(a.why), surprise: jstr(a.surprise), trade: jstr(a.trade), next: jstr(a.next), q: jstr(a.q) }
     };
   }
+  // 현재 지도(usePack)로 한 칸을 검사한다.
   function sanitize(o) {
-    const st = blank();
+    const st = blankSlot();
     if (!o || typeof o !== "object") return st;
     if (Number.isInteger(o.seed) && o.seed > 0) st.seed = o.seed >>> 0;
     const used = new Set();
     (Array.isArray(o.builds) ? o.builds : []).forEach(b => {
       if (!b || !Object.hasOwn(BLD, b.t) || !Number.isInteger(b.i) || !TILES[b.i]) return;
-      const T = TILES[b.i];
-      if (used.has(b.i) || !BLD[b.t].ok[T.t]) return;
+      if (used.has(b.i) || siteRule(b.t, TILES[b.i])) return;
       used.add(b.i);
       st.builds.push({ t: b.t, i: b.i });
     });
@@ -556,25 +767,46 @@
       const p = L && Array.isArray(L.p) ? L.p : null;
       if (!p || p.length < 2 || p.length > 80) return;
       for (let k = 0; k < p.length; k++) {
-        if (!Number.isInteger(p[k]) || !TILES[p[k]]) return;
+        if (!Number.isInteger(p[k]) || !TILES[p[k]] || TILES[p[k]].out) return;
         if (k && !TILES[p[k - 1]].nb.includes(p[k])) return;
       }
       st.lines.push({ p: p.slice() });
     });
     st.policies = (Array.isArray(o.policies) ? o.policies : []).filter((id, k, a) => POLICIES.some(P => P.id === id) && a.indexOf(id) === k).slice(0, 2);
     st.missions = (Array.isArray(o.missions) ? o.missions : []).filter((id, k, a) => MISSIONS.some(P => P.id === id) && a.indexOf(id) === k).slice(0, 2);
-    st.journal = (Array.isArray(o.journal) ? o.journal : []).map(cleanEntry).filter(Boolean).slice(-J_MAX);
-    st.runs = Math.max(Number.isInteger(o.runs) && o.runs > 0 ? Math.min(o.runs, 1e6) : 0, st.journal.reduce((a, e) => Math.max(a, e.id), 0));
-    st.jAuto = o.jAuto === true;
-    while (capex(st) > M.budget + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
+    if (SHED_OPTS.some(x => x.id === o.shed)) st.shed = o.shed;
+    if (SEASONS.some(x => x.id === o.season)) st.season = o.season;
+    st.fab2 = o.fab2 === true;
+    while (capex(st) > PK.budget + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
     return st;
   }
-  function loadState() {
-    try { const raw = window.localStorage.getItem(KEY); return raw ? sanitize(JSON.parse(raw)) : blank(); } catch (e) { return blank(); }
+  function sanitizeDoc(o) {
+    const doc = blankDoc();
+    if (!o || typeof o !== "object") return doc;
+    // v1(한 지도) → 연습 섬 칸으로 옮긴다.
+    const raw = o.maps && typeof o.maps === "object" ? o.maps : { [PACK_IDS[0]]: o };
+    const cur = PK ? PK.id : PACK_IDS[0];
+    PACK_IDS.forEach(id => { usePack(id); BLD = bldFor(PACKS[id]); doc.maps[id] = sanitize(raw[id]); });
+    usePack(cur); BLD = bldFor(PK);
+    if (Object.hasOwn(PACKS, o.map)) doc.map = o.map;
+    doc.journal = (Array.isArray(o.journal) ? o.journal : []).map(cleanEntry).filter(Boolean).slice(-J_MAX);
+    doc.runs = Math.max(Number.isInteger(o.runs) && o.runs > 0 ? Math.min(o.runs, 1e6) : 0, doc.journal.reduce((a, e) => Math.max(a, e.id), 0));
+    doc.jAuto = o.jAuto === true;
+    return doc;
   }
-  function saveState(st) { try { window.localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* 저장 없이도 동작한다 */ } }
+  function bldFor(P) {
+    const out = {};
+    Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); });
+    return out;
+  }
+  function selectPack(id) { const P = usePack(id); BLD = bldFor(P); if (KCP.buildGame) KCP.buildGame.BLD = BLD; return P; }
+  function loadState() {
+    try { const raw = window.localStorage.getItem(KEY); return raw ? sanitizeDoc(JSON.parse(raw)) : blankDoc(); } catch (e) { return blankDoc(); }
+  }
+  function saveState(doc) { try { window.localStorage.setItem(KEY, JSON.stringify(doc)); } catch (e) { /* 저장 없이도 동작한다 */ } }
 
-  KCP.buildGame = { simulate, sanitize, network, complaints, weather, demand, routePath, capex, TILES, TOWNS, M, BLD, MAP, TIPS };
+  selectPack(PACK_IDS[0]);
+  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips };
 
   /* =====================================================================
    * 3. 아이콘
@@ -611,17 +843,20 @@
     reroll: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
     skip: '<path d="M5 5v14l8-7zM13 5v14l8-7z" fill="currentColor"/>',
     hammer: '<path d="M14 6l4 4M3 21l9-9M11 7l3-3 6 6-3 3z"/>',
-    target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'
+    target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+    leaf: '<path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14z"/><path d="M5 19l8-8"/>',
+    roof: '<path d="M3 12l9-7 9 7"/><path d="M6 10.5V20h12v-9.5"/><path d="M8.5 13.5h7l-1 3h-7z"/>',
+    offshore: '<path d="M12 10v8M9.5 18h5"/><circle cx="12" cy="8" r="1.4"/><path d="M12 6.6V2.5M13.2 8.7l3.6 2M10.8 8.7l-3.6 2"/><path d="M2.5 21c1.6-1.2 3.2-1.2 4.8 0s3.2 1.2 4.8 0 3.2-1.2 4.8 0 3.2 1.2 4.6 0"/>',
+    tidal: '<path d="M2.5 9c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 7 0"/><path d="M2.5 14c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 7 0"/><path d="M12 17v4M9.5 21h5"/><circle cx="12" cy="4.5" r="1.8"/>',
+    hydro: '<path d="M12 3c3 4 5 6.5 5 9a5 5 0 0 1-10 0c0-2.5 2-5 5-9z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 2.5 2.5"/>',
+    cal: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>'
   };
   const ico = (k, cls = "v2-ico") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${IC[k] || ""}</svg>`;
-  const TOOLS = [
-    { id: "solar", icon: "sun", name: "태양광", cost: "8억" },
-    { id: "wind", icon: "wind", name: "풍력", cost: "10억" },
-    { id: "diesel", icon: "diesel", name: "디젤", cost: "6억" },
-    { id: "battery", icon: "battery", name: "배터리", cost: "12억" },
-    { id: "line", icon: "line", name: "송전선", cost: "0.5억/칸" },
-    { id: "remove", icon: "remove", name: "철거", cost: "환불" }
-  ];
+  // 도구 이름·아이콘·비용 표시(지도마다 비용이 다를 수 있다)
+  const toolMeta = id => (id === "line" ? { id, icon: "line", name: "송전선", cost: `${fmt(lineUnit(), 1)}억/칸` }
+    : id === "remove" ? { id, icon: "remove", name: "철거", cost: "환불" }
+    : { id, icon: BLD[id].icon, name: BLD[id].name, cost: `${fmt(BLD[id].cost)}억` });
   const LAYERS = [
     { id: "map", icon: "map", name: "지도" },
     { id: "sun", icon: "sun", name: "일사" },
@@ -651,12 +886,14 @@
   function computeOrder() {
     ORDER = TILES.slice().sort((a, b) => { const A = uv(a.X, a.Y), B = uv(b.X, b.Y); return (A[1] - B[1]) || (A[0] - B[0]); });
   }
+  // 화면 맞춤 대상: 섬은 땅, 평택은 시 경계 안(물 포함)과 그 연안 바다 한 칸
+  const fitTile = T => (PK.fitSea ? !T.out && (T.t !== "sea" || T.dshore <= 1) : T.land);
   function fitView() {
     const a = V.area;
     const aw = Math.max(50, a.r - a.l), ah = Math.max(50, a.b - a.t);
-    V.rot = ah > aw * 1.15 ? 1 : 0;
+    V.rot = ah > aw * 1.02 ? 1 : 0;
     let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
-    TILES.forEach(T => { if (!T.land) return; const [u, v] = uv(T.X, T.Y); u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); });
+    TILES.forEach(T => { if (!fitTile(T)) return; const [u, v] = uv(T.X, T.Y); u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); });
     const pad = 1.25;
     V.bw = u1 - u0 + 2 * pad;
     V.bh = (v1 - v0 + 2 * pad) * SQ + 1.3 * HZ + 0.5;
@@ -676,7 +913,8 @@
   const mix = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
   const PAL = {
     beach: hex2("#e6d39e"), plain: hex2("#84c060"), forest: hex2("#5b9c4b"), hill: hex2("#a8bd6c"), mount: hex2("#9b9a8f"), town: hex2("#a3c886"),
-    earth: hex2("#8b6a45"), sand: hex2("#c7ab74"), rock: hex2("#77756c")
+    earth: hex2("#8b6a45"), sand: hex2("#c7ab74"), rock: hex2("#77756c"),
+    urban: hex2("#aeb4b6"), river: hex2("#3f8fc4"), lake: hex2("#3a7fb8"), out: hex2("#6d7a72"), grid: hex2("#9cc27a")
   };
   function ramp(stops, t) {
     t = clamp(t, 0, 1) * (stops.length - 1);
@@ -688,8 +926,9 @@
     wind: ["#27395c", "#2f6f8f", "#4fc0d6", "#d9fbff"].map(hex2),
     pop: ["#2b3a4e", "#6b4a6b", "#d9706a", "#ffc49a"].map(hex2)
   };
-  const layerVal = (T, L) => (L === "sun" ? (T.sun - 0.6) / 0.4 : L === "wind" ? (T.wind - 4) / 5 : Math.sqrt(T.pop / 4200));
-  const layerTxt = (T, L) => (L === "sun" ? T.sun.toFixed(2).replace(/^0/, "") : L === "wind" ? T.wind.toFixed(1) : T.t === "town" ? fmt(TOWNS[T.town].pop / 1000, 1) + "k" : T.pop >= 50 ? fmt(T.pop / 1000, 1) + "k" : "");
+  const WRANGE = () => (PK.climate ? [1.5, 8.5] : [4, 9]), SRANGE = () => (PK.climate ? [0.75, 1] : [0.6, 1]);
+  const layerVal = (T, L) => (L === "sun" ? (T.sun - SRANGE()[0]) / (SRANGE()[1] - SRANGE()[0]) : L === "wind" ? (T.wind - WRANGE()[0]) / (WRANGE()[1] - WRANGE()[0]) : Math.sqrt(T.pop / POPMAX));
+  const layerTxt = (T, L) => (L === "sun" ? (T.sun ? T.sun.toFixed(2).replace(/^0/, "") : "") : L === "wind" ? (T.wind ? T.wind.toFixed(1) : "") : T.site >= 0 ? fmt(SITES[T.site].pop / 1000, 1) + "k" : T.pop >= 50 ? fmt(T.pop / 1000, 1) + "k" : "");
 
   /* =====================================================================
    * 5. 그리기
@@ -737,12 +976,14 @@
     return [x - w * 0.22, y - h * 0.72, w * 0.18, h * 0.32];
   }
 
-  // 마을: 정적 그림 + 밤 창문 자리 기록
+  // 수요지·시설: 정적 그림 + 밤 창문 자리 기록
   function drawTown(g, T, rec) {
-    const W = TOWNS[T.town], [x, y] = tileTop(T), s = V.S;
+    const W = SITES[T.site], [x, y] = tileTop(T), s = V.S;
     const wins = [];
-    const at = (dx, dy) => scr(T.X + dx, T.Y + dy, HGT.town);
-    if (W.kind === "hospital") {
+    const at = (dx, dy) => scr(T.X + dx, T.Y + dy, HGT[T.t]);
+    const K = W.kind;
+    if (K !== "hospital" && K !== "village" && K !== "town_s" && K !== "city" && K !== "port") { drawFacility(g, T, W, at, wins); }
+    else if (K === "hospital") {
       const [px, py] = at(-0.45, 0.25);
       g.beginPath(); g.ellipse(px, py, s * 0.24, s * 0.24 * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#4b5966"; g.fill();
       g.fillStyle = "#f4f6f8"; g.font = `700 ${Math.max(7, s * 0.24)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("H", px, py + 0.5);
@@ -754,7 +995,7 @@
       const cx = bx - s * 0.05, cy = by - s * 0.52, a = s * 0.07;
       g.fillRect(cx - a * 1.5, cy - a / 2, a * 3, a); g.fillRect(cx - a / 2, cy - a * 1.5, a, a * 3);
       for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) wins.push([bx - s * 0.3 + c * s * 0.17, by - s * 0.34 + r * s * 0.15, s * 0.09, s * 0.08]);
-    } else if (W.kind === "village") {
+    } else if (K === "village" || K === "town_s") {
       const spots = [[-0.42, -0.3, "#c8553d"], [0.32, -0.38, "#d7843d"], [-0.05, 0.05, "#b5483a"], [0.45, 0.25, "#d7843d"], [-0.45, 0.38, "#c8553d"]];
       spots.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, rc], k) => {
         const [hx, hy] = at(dx, dy);
@@ -762,7 +1003,7 @@
         wins.push(w, [w[0] + s * 0.17, w[1], w[2], w[3]]);
         if (k === 1) roundTree(g, hx + s * 0.32, hy + s * 0.08, s * 0.5);
       });
-    } else if (W.kind === "city") {
+    } else if (K === "city") {
       const towers = [[-0.35, -0.25, 1.2], [0.3, -0.35, 1.55], [0.42, 0.28, 0.95], [-0.25, 0.32, 0.8], [0.0, 0.0, 1.9]];
       towers.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, hgt]) => {
         const [tx, ty] = at(dx, dy), w = s * 0.32, h = s * 0.62 * hgt;
@@ -791,7 +1032,132 @@
       g.beginPath(); g.moveTo(kx, ky); g.lineTo(kx, ky - s * 0.9); g.lineTo(kx - s * 0.55, ky - s * 0.8); g.moveTo(kx, ky - s * 0.9); g.lineTo(kx + s * 0.2, ky - s * 0.82); g.stroke();
       g.lineWidth = 1; g.strokeStyle = "#3a3f46"; g.beginPath(); g.moveTo(kx - s * 0.45, ky - s * 0.81); g.lineTo(kx - s * 0.45, ky - s * 0.5); g.stroke();
     }
-    if (rec) rec.wins.push({ ti: T.town, list: wins, x, y });
+    if (rec && T.town >= 0) rec.wins.push({ ti: T.town, list: wins, x, y });
+  }
+  // 평택 시설 그림
+  function drawFacility(g, T, W, at, wins) {
+    const s = V.S, K = W.kind;
+    const tower = (dx, dy, hgt, w, cols) => {
+      const [tx, ty] = at(dx, dy), h = s * 0.62 * hgt;
+      shadow(g, tx, ty, w * 0.9, s * 0.13, 0.22);
+      box(g, tx, ty, w, s * 0.26, h, cols[0], cols[1], cols[2]);
+      g.fillStyle = "rgba(60,96,130,0.55)";
+      const rows = Math.max(2, Math.floor(h / (s * 0.14)));
+      for (let r = 0; r < rows; r++) for (let c = 0; c < 2; c++) {
+        const wx = tx - w * 0.32 + c * w * 0.38, wy = ty - h + s * 0.06 + r * (h - s * 0.1) / rows;
+        g.fillRect(wx, wy, w * 0.24, s * 0.06); wins.push([wx, wy, w * 0.24, s * 0.06]);
+      }
+    };
+    const order = list => list.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]);
+    if (K === "city_l" || K === "city_m") {
+      const big = K === "city_l";
+      order(big ? [[-0.4, -0.25, 1.5], [0.3, -0.38, 2.1], [0.45, 0.25, 1.2], [-0.25, 0.32, 1.0], [0.02, 0.0, 2.4]] : [[-0.32, -0.22, 1.1], [0.32, -0.3, 1.4], [0.35, 0.28, 0.9], [-0.1, 0.12, 1.7]])
+        .forEach(([dx, dy, hgt]) => tower(dx, dy, hgt, s * (big ? 0.3 : 0.28), big ? ["#dbe3ec", "#bfcedc", "#93a7ba"] : ["#e6e0d6", "#cfc6b6", "#a89c88"]));
+    } else if (K === "industry") {
+      order([[-0.3, -0.2], [0.3, 0.15]]).forEach(([dx, dy]) => {
+        const [bx, by] = at(dx, dy), w = s * 0.62, h = s * 0.26;
+        shadow(g, bx, by, w * 0.7, s * 0.14, 0.2);
+        box(g, bx, by, w, s * 0.34, h, "#b9c3cb", "#9aa6b0", "#76838e");
+        g.fillStyle = "#7d8a95";
+        for (let k = 0; k < 4; k++) fillPoly(g, [[bx - w / 2 + k * w / 4, by - h], [bx - w / 2 + (k + 0.5) * w / 4, by - h - s * 0.1], [bx - w / 2 + (k + 1) * w / 4, by - h]], "#8c99a4");
+        wins.push([bx - w * 0.35, by - h * 0.6, w * 0.7, s * 0.05]);
+      });
+      const [cx, cy] = at(0.45, -0.35);
+      g.fillStyle = "#d9dde1"; g.fillRect(cx - s * 0.04, cy - s * 0.7, s * 0.08, s * 0.7);
+    } else if (K === "factory_big") {
+      const [bx, by] = at(-0.05, 0.05);
+      shadow(g, bx, by, s * 0.75, s * 0.2, 0.22);
+      box(g, bx, by, s * 1.0, s * 0.55, s * 0.36, "#f1f4f7", "#e3e9ef", "#b9c6d2");
+      g.fillStyle = "#2f63b5"; g.fillRect(bx - s * 0.5, by - s * 0.2, s * 1.0, s * 0.05);
+      box(g, bx + s * 0.25, by - s * 0.36, s * 0.3, s * 0.2, s * 0.1, "#cfd8e0", "#bac6d1", "#97a6b4");
+      box(g, bx - s * 0.2, by - s * 0.36, s * 0.3, s * 0.2, s * 0.1, "#cfd8e0", "#bac6d1", "#97a6b4");
+      for (let c = 0; c < 5; c++) wins.push([bx - s * 0.44 + c * s * 0.19, by - s * 0.3, s * 0.12, s * 0.06]);
+    } else if (K === "plant") {
+      order([[-0.38, 0.05], [-0.05, -0.3]]).forEach(([dx, dy]) => {
+        const [tx, ty] = at(dx, dy), r = s * 0.2, h = s * 0.32;
+        shadow(g, tx, ty, r * 1.2, s * 0.1, 0.22);
+        g.fillStyle = "#dfe4e8"; g.fillRect(tx - r, ty - h, 2 * r, h);
+        g.beginPath(); g.ellipse(tx, ty, r, r * SQ, 0, 0, Math.PI); g.fill();
+        g.beginPath(); g.ellipse(tx, ty - h, r, r * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#f4f6f8"; g.fill();
+        g.fillStyle = "rgba(0,0,0,0.12)"; g.fillRect(tx + r * 0.3, ty - h, r * 0.7, h);
+      });
+      const [hx, hy] = at(0.35, 0.2);
+      box(g, hx, hy, s * 0.5, s * 0.3, s * 0.3, "#c7ced4", "#aab4bd", "#87929c");
+      g.fillStyle = "#e8ecef"; g.fillRect(hx + s * 0.1, hy - s * 1.0, s * 0.09, s * 0.7);
+      g.fillStyle = "#3f6fb0"; g.fillRect(hx + s * 0.1, hy - s * 1.0, s * 0.09, s * 0.08);
+    } else if (K === "school") {
+      const [bx, by] = at(0, 0.05);
+      shadow(g, bx, by, s * 0.6, s * 0.16, 0.2);
+      box(g, bx, by, s * 0.8, s * 0.34, s * 0.32, "#c9785a", "#b5634a", "#8e4b37");
+      box(g, bx - s * 0.05, by - s * 0.32, s * 0.16, s * 0.12, s * 0.34, "#c9785a", "#b5634a", "#8e4b37");
+      g.beginPath(); g.arc(bx - s * 0.05, by - s * 0.56, s * 0.05, 0, Math.PI * 2); g.fillStyle = "#f4efe6"; g.fill();
+      for (let c = 0; c < 4; c++) wins.push([bx - s * 0.34 + c * s * 0.19, by - s * 0.22, s * 0.1, s * 0.08]);
+    } else if (K === "fire") {
+      const [bx, by] = at(0, 0.05);
+      shadow(g, bx, by, s * 0.45, s * 0.14, 0.2);
+      box(g, bx, by, s * 0.6, s * 0.32, s * 0.34, "#e36a5c", "#cf4a3d", "#a3362c");
+      g.fillStyle = "#f5e9d6"; g.fillRect(bx - s * 0.22, by - s * 0.2, s * 0.18, s * 0.2); g.fillRect(bx + s * 0.04, by - s * 0.2, s * 0.18, s * 0.2);
+      box(g, bx + s * 0.22, by - s * 0.34, s * 0.12, s * 0.1, s * 0.22, "#e36a5c", "#cf4a3d", "#a3362c");
+      wins.push([bx - s * 0.2, by - s * 0.3, s * 0.4, s * 0.05]);
+    } else if (K === "gov") {
+      const [bx, by] = at(0, 0.05);
+      shadow(g, bx, by, s * 0.55, s * 0.16, 0.2);
+      box(g, bx, by, s * 0.74, s * 0.36, s * 0.5, "#eef1f4", "#dfe5ea", "#b6c1cb");
+      g.strokeStyle = "#5c6670"; g.lineWidth = 1.2; g.beginPath(); g.moveTo(bx + s * 0.3, by - s * 0.5); g.lineTo(bx + s * 0.3, by - s * 0.95); g.stroke();
+      g.fillStyle = "#2f63b5"; g.fillRect(bx + s * 0.3, by - s * 0.95, s * 0.2, s * 0.12);
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) wins.push([bx - s * 0.3 + c * s * 0.16, by - s * 0.42 + r * s * 0.18, s * 0.09, s * 0.09]);
+    } else if (K === "rail" || K === "rail_s") {
+      const big = K === "rail";
+      const [a0, b0] = at(-0.7, 0.32), [a1, b1] = at(0.7, -0.32);
+      g.strokeStyle = "#5a524a"; g.lineWidth = Math.max(2, s * 0.08);
+      g.beginPath(); g.moveTo(a0, b0); g.lineTo(a1, b1); g.stroke();
+      g.strokeStyle = "#c9ccd0"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(a0, b0 - 2); g.lineTo(a1, b1 - 2); g.moveTo(a0, b0 + 2); g.lineTo(a1, b1 + 2); g.stroke();
+      const [bx, by] = at(-0.05, -0.12);
+      shadow(g, bx, by, s * 0.5, s * 0.14, 0.2);
+      box(g, bx, by, s * (big ? 0.8 : 0.5), s * 0.3, s * (big ? 0.34 : 0.24), "#7fa9c9", "#5f8fb4", "#476f8f");
+      g.fillStyle = "#e8f1f8"; g.fillRect(bx - s * (big ? 0.36 : 0.22), by - s * (big ? 0.26 : 0.18), s * (big ? 0.72 : 0.44), s * 0.06);
+      wins.push([bx - s * 0.3, by - s * 0.14, s * 0.6, s * 0.05]);
+    } else if (K === "farm") {
+      const p = [[-0.55, 0.0], [0.05, -0.45], [0.6, 0.0], [0.0, 0.45]].map(([dx, dy]) => at(dx, dy));
+      polyPath(g, p); g.fillStyle = "rgba(120,190,90,0.7)"; g.fill();
+      g.strokeStyle = "#5fb0e0"; g.lineWidth = Math.max(1.5, s * 0.05);
+      g.beginPath(); const [c0, d0] = at(-0.5, 0.05), [c1, d1] = at(0.55, -0.05); g.moveTo(c0, d0); g.lineTo(c1, d1); g.stroke();
+      const [bx, by] = at(0.2, 0.15);
+      box(g, bx, by, s * 0.3, s * 0.2, s * 0.22, "#d8d2c4", "#c3bba9", "#9e957f");
+      wins.push([bx - s * 0.08, by - s * 0.15, s * 0.1, s * 0.07]);
+    } else if (K === "livestock") {
+      order([[-0.3, -0.15], [0.3, 0.2]]).forEach(([dx, dy]) => {
+        const [bx, by] = at(dx, dy);
+        shadow(g, bx, by, s * 0.38, s * 0.12, 0.2);
+        box(g, bx, by, s * 0.5, s * 0.24, s * 0.2, "#b85a45", "#e9e1d2", "#c6bba6");
+        fillPoly(g, [[bx - s * 0.27, by - s * 0.2], [bx, by - s * 0.34], [bx + s * 0.27, by - s * 0.2]], "#a5503d");
+        wins.push([bx - s * 0.15, by - s * 0.12, s * 0.3, s * 0.04]);
+      });
+      const [cx, cy] = at(0.45, -0.3);
+      g.fillStyle = "#c9d0d6"; g.fillRect(cx - s * 0.08, cy - s * 0.5, s * 0.16, s * 0.5);
+      g.beginPath(); g.ellipse(cx, cy - s * 0.5, s * 0.08, s * 0.05, 0, 0, Math.PI * 2); g.fillStyle = "#e4e9ed"; g.fill();
+    } else if (K === "water") {
+      order([[-0.3, -0.1], [0.3, 0.15], [0.25, -0.35]]).forEach(([dx, dy]) => {
+        const [tx, ty] = at(dx, dy), r = s * 0.22;
+        g.beginPath(); g.ellipse(tx, ty, r, r * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#b8c1c8"; g.fill();
+        g.beginPath(); g.ellipse(tx, ty - 1, r * 0.82, r * 0.82 * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#4f9fc8"; g.fill();
+      });
+      const [bx, by] = at(-0.35, 0.3);
+      box(g, bx, by, s * 0.28, s * 0.18, s * 0.2, "#e2e6e9", "#cfd5da", "#a9b2ba");
+      wins.push([bx - s * 0.08, by - s * 0.14, s * 0.1, s * 0.07]);
+    } else if (K === "gridpt") {
+      const [bx, by] = at(-0.1, 0.1);
+      g.strokeStyle = "#5e6872"; g.lineWidth = 1;
+      polyPath(g, [[-0.45, -0.1], [0.15, -0.4], [0.55, 0.0], [0.0, 0.35]].map(([dx, dy]) => at(dx, dy))); g.fillStyle = "rgba(170,175,180,0.6)"; g.fill(); g.stroke();
+      box(g, bx, by, s * 0.24, s * 0.18, s * 0.2, "#9aa3ab", "#7f8992", "#646d75");
+      box(g, bx + s * 0.26, by - s * 0.05, s * 0.2, s * 0.16, s * 0.16, "#9aa3ab", "#7f8992", "#646d75");
+      const [px, py] = at(0.25, -0.25);
+      g.strokeStyle = "#2f3a44"; g.lineWidth = Math.max(1.2, s * 0.045);
+      g.beginPath(); g.moveTo(px - s * 0.14, py); g.lineTo(px, py - s * 0.95); g.lineTo(px + s * 0.14, py); g.moveTo(px - s * 0.24, py - s * 0.75); g.lineTo(px + s * 0.24, py - s * 0.75); g.moveTo(px - s * 0.18, py - s * 0.5); g.lineTo(px + s * 0.18, py - s * 0.5); g.stroke();
+      g.fillStyle = "#ffd25a";
+      fillPoly(g, [[bx + s * 0.02, by - s * 0.18], [bx - s * 0.05, by - s * 0.08], [bx, by - s * 0.08], [bx - s * 0.03, by - s * 0.01], [bx + s * 0.06, by - s * 0.12], [bx + s * 0.01, by - s * 0.12]], "#ffd25a");
+    }
   }
 
   // 플레이어 건물(정적 부분). rec가 있으면 움직이는 부분의 위치를 기록한다.
@@ -827,6 +1193,41 @@
       g.fillStyle = "#e8ecef"; g.fillRect(cx - s * 0.05, cy - s * 0.62, s * 0.1, s * 0.62);
       g.fillStyle = "#c9473b"; g.fillRect(cx - s * 0.05, cy - s * 0.62, s * 0.1, s * 0.1); g.fillRect(cx - s * 0.05, cy - s * 0.4, s * 0.1, s * 0.08);
       if (rec) rec.stacks.push({ x: cx, y: cy - s * 0.64, bi, tile: T.i });
+    } else if (type === "roof") {
+      const [bx, by] = [x + s * 0.28, y + s * 0.28];
+      fillPoly(g, [[bx - s * 0.28, by], [bx + s * 0.22, by], [bx + s * 0.3, by - s * 0.16], [bx - s * 0.2, by - s * 0.16]], "#1d3f78");
+      g.strokeStyle = "#d6e1ea"; g.lineWidth = 1; g.stroke();
+      g.strokeStyle = "rgba(160,200,255,0.5)"; g.beginPath(); g.moveTo(bx - s * 0.03, by); g.lineTo(bx + s * 0.05, by - s * 0.16); g.stroke();
+      g.beginPath(); g.arc(bx + s * 0.32, by - s * 0.22, Math.max(4, s * 0.12), 0, Math.PI * 2); g.fillStyle = "#ffd25a"; g.fill();
+      g.strokeStyle = "#5a4600"; g.lineWidth = 1; g.stroke();
+    } else if (type === "offshore") {
+      const H = s * 1.55;
+      g.beginPath(); g.ellipse(x, y, s * 0.2, s * 0.08, 0, 0, Math.PI * 2); g.fillStyle = "#e3b23c"; g.fill();
+      g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 1; g.beginPath(); g.ellipse(x, y + 2, s * 0.32, s * 0.12, 0, 0, Math.PI * 2); g.stroke();
+      fillPoly(g, [[x - s * 0.06, y], [x + s * 0.06, y], [x + s * 0.028, y - H], [x - s * 0.028, y - H]], "#eef3f7");
+      fillPoly(g, [[x + s * 0.005, y], [x + s * 0.06, y], [x + s * 0.028, y - H], [x + s * 0.005, y - H]], "#bcc7d1");
+      g.fillStyle = "#dfe6ec"; g.fillRect(x - s * 0.11, y - H - s * 0.06, s * 0.22, s * 0.1);
+      if (rec) rec.hubs.push({ x, y: y - H - s * 0.02, len: s * 0.8, tile: T.i, bi, sea: true });
+    } else if (type === "tidal") {
+      g.strokeStyle = "rgba(255,255,255,0.55)"; g.lineWidth = 1.2;
+      for (let k = 0; k < 2; k++) { g.beginPath(); g.ellipse(x, y + 2, s * (0.3 + k * 0.14), s * (0.11 + k * 0.05), 0, 0, Math.PI * 2); g.stroke(); }
+      box(g, x, y + s * 0.04, s * 0.5, s * 0.16, s * 0.14, "#d7dde2", "#b9c2c9", "#909ba4");
+      g.fillStyle = "#e3b23c"; g.fillRect(x - s * 0.25, y - s * 0.16, s * 0.5, s * 0.05);
+      g.beginPath(); g.arc(x + s * 0.32, y - s * 0.12, s * 0.07, 0, Math.PI * 2); g.fillStyle = "#e05a3c"; g.fill();
+    } else if (type === "hydro") {
+      box(g, x, y + s * 0.05, s * 0.6, s * 0.14, s * 0.16, "#d2d6da", "#b8bec4", "#949ba2");
+      g.fillStyle = "rgba(255,255,255,0.75)";
+      for (let k = 0; k < 3; k++) g.fillRect(x - s * 0.22 + k * s * 0.18, y + s * 0.05, s * 0.08, s * 0.12);
+      box(g, x + s * 0.2, y - s * 0.11, s * 0.2, s * 0.14, s * 0.16, "#9fb3c4", "#8397a9", "#6b7f90");
+    } else if (type === "biomass") {
+      shadow(g, x, y, s * 0.5, s * 0.17, 0.22);
+      box(g, x - s * 0.12, y + s * 0.04, s * 0.48, s * 0.34, s * 0.3, "#c3b48c", "#a8986e", "#857654");
+      g.fillStyle = "#9db08a"; g.fillRect(x + s * 0.18, y - s * 0.42, s * 0.18, s * 0.44);
+      g.beginPath(); g.ellipse(x + s * 0.27, y - s * 0.42, s * 0.09, s * 0.05, 0, 0, Math.PI * 2); g.fillStyle = "#b8c9a6"; g.fill();
+      const cx = x - s * 0.22, cy = y - s * 0.26;
+      g.fillStyle = "#e8ecef"; g.fillRect(cx - s * 0.04, cy - s * 0.48, s * 0.08, s * 0.48);
+      g.fillStyle = "#4f9a4a"; g.beginPath(); g.ellipse(x - s * 0.05, y - s * 0.12, s * 0.09, s * 0.05, -0.6, 0, Math.PI * 2); g.fill();
+      if (rec) rec.stacks.push({ x: cx, y: cy - s * 0.5, bi, tile: T.i });
     } else if (type === "battery") {
       shadow(g, x, y, s * 0.52, s * 0.18, 0.22);
       for (let k = 1; k >= 0; k--) {
@@ -843,7 +1244,7 @@
   function pylonTop(T) { const [x, y] = tileTop(T); return [x, y - V.S * 0.55]; }
   function drawPylon(g, T) {
     const [x, y] = tileTop(T), s = V.S, h = s * 0.55;
-    if (T.t === "sea") { g.beginPath(); g.ellipse(x, y, s * 0.16, s * 0.07, 0, 0, Math.PI * 2); g.fillStyle = "#6c7680"; g.fill(); }
+    if (T.water) { g.beginPath(); g.ellipse(x, y, s * 0.16, s * 0.07, 0, 0, Math.PI * 2); g.fillStyle = "#6c7680"; g.fill(); }
     g.strokeStyle = "#39434e"; g.lineWidth = Math.max(1, s * 0.04);
     g.beginPath();
     g.moveTo(x - s * 0.09, y); g.lineTo(x, y - h); g.lineTo(x + s * 0.09, y);
@@ -861,15 +1262,25 @@
     const top = topPoly(T, h), bot = topPoly(T, BASE);
     const [cu, cv] = uv(T.X, T.Y);
     if (T.t === "sea") {
-      const shallow = T.nb.some(j => TILES[j].land);
+      const shallow = T.nb.some(j => TILES[j].land && !TILES[j].out);
       polyPath(g, topPoly(T, 0, 1.0));
       g.fillStyle = shallow ? "rgba(140,225,235,0.32)" : "rgba(255,255,255,0.025)";
       g.fill();
+      if (layer === "wind" && T.wind > 0 && T.dshore <= 3) { g.fillStyle = rgb(ramp(RAMPS.wind, layerVal(T, "wind")), 0.6); g.fill(); }
+      if (layer === "map" && (T.tidal || T.offshore) && PK.climate) { g.strokeStyle = T.tidal ? "rgba(255,226,140,0.35)" : "rgba(255,255,255,0.12)"; g.lineWidth = 1.2; g.stroke(); }
       g.strokeStyle = "rgba(255,255,255,0.06)"; g.lineWidth = 1; g.stroke();
       return;
     }
+    if (T.t === "river" || T.t === "lake") {
+      polyPath(g, top);
+      g.fillStyle = rgb(PAL[T.t]); g.fill();
+      g.strokeStyle = "rgba(200,240,255,0.35)"; g.lineWidth = 1;
+      const [cx, cy] = tileTop(T);
+      g.beginPath(); g.moveTo(cx - V.S * 0.3, cy); g.quadraticCurveTo(cx, cy - V.S * 0.08, cx + V.S * 0.3, cy); g.stroke();
+      return;
+    }
     let base = PAL[T.t];
-    if (layer !== "map") base = ramp(RAMPS[layer], layerVal(T, layer));
+    if (layer !== "map" && !T.out) base = ramp(RAMPS[layer], layerVal(T, layer));
     const jit = layer === "map" ? 1 + (hash(T.c, T.r, 9) - 0.5) * 0.07 : 1;
     const sideC = T.t === "beach" ? PAL.sand : T.t === "mount" ? PAL.rock : PAL.earth;
     // 보이는 옆면(화면 아래쪽을 향하는 변)
@@ -886,6 +1297,7 @@
     }
     polyPath(g, top);
     g.fillStyle = rgb(mul(base, jit)); g.fill();
+    if (T.out) { g.fillStyle = "rgba(190,205,215,0.28)"; g.fill(); return; }
     g.strokeStyle = layer === "map" ? "rgba(20,40,30,0.18)" : "rgba(10,20,40,0.35)"; g.lineWidth = 1; g.stroke();
     // 위쪽 변 하이라이트
     g.strokeStyle = "rgba(255,255,255,0.16)";
@@ -919,6 +1331,14 @@
         g.strokeStyle = "rgba(80,110,40,0.35)"; g.lineWidth = 1;
         for (let k = 1; k < 4; k++) { const a = mixP(p[0], p[3], k / 4), b = mixP(p[1], p[2], k / 4); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
       } else if (hash(T.c, T.r, 7) > 0.4) { const [x, y] = at(0.3, 0.2); roundTree(g, x, y, s * 0.45); }
+    } else if (T.t === "urban" && T.site < 0) {
+      [[-0.35, -0.2, 0.9], [0.3, -0.3, 1.2], [0.05, 0.25, 0.7], [-0.35, 0.3, 0.6]].sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, hg], k) => {
+        const [bx, by] = at(dx, dy), h = s * 0.28 * hg * (0.8 + hash(T.c, T.r, k) * 0.5);
+        box(g, bx, by, s * 0.26, s * 0.2, h, "#d9dde0", "#c4cacf", "#9ba3aa");
+      });
+    } else if (T.t === "beach" && PK.climate && !soft) {
+      g.strokeStyle = "rgba(120,100,70,0.45)"; g.lineWidth = 1;
+      for (let k = 0; k < 3; k++) { const [a0, b0] = at(-0.5, -0.2 + k * 0.2), [a1, b1] = at(0.5, -0.1 + k * 0.2); g.beginPath(); g.moveTo(a0, b0); g.quadraticCurveTo((a0 + a1) / 2, b0 - 3, a1, b1); g.stroke(); }
     } else if (T.t === "beach" && !soft && hash(T.c, T.r, 2) > 0.62) {
       const [x, y] = at(0.2, 0);
       g.strokeStyle = "#8a6a44"; g.lineWidth = Math.max(1, s * 0.05);
@@ -929,6 +1349,8 @@
     if (soft) g.globalAlpha = 1;
   }
   const mixP = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+  // 시설 표지 색: 필수(빨강) · 주거(주황) · 산업(파랑) · 농축산(초록) · 공급(회색)
+  const badgeCol = k => (CRIT[k] ? "#c0392b" : k === "plant" || k === "gridpt" ? "#4a5560" : k === "port" || k === "industry" || k === "factory_big" ? "#2c5f9e" : k === "farm" || k === "livestock" ? "#2e7d4a" : "#a35a12");
 
   // 정적 층: 지형·마을·건물·전선. 바뀔 때만 다시 그린다.
   function paintStatic() {
@@ -948,9 +1370,9 @@
     st.lines.forEach(L => L.p.forEach(i => lineTiles.add(i)));
     for (const T of ORDER) {
       drawTile(g, T, layer);
-      if (T.t === "town") drawTown(g, T, rec);
+      if (T.site >= 0) { drawTown(g, T, rec); if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); } }
       else if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); }
-      else drawDeco(g, T, layer);
+      else if (!T.out) drawDeco(g, T, layer);
       if (lineTiles.has(T.i)) { drawPylon(g, T); rec.pylons.set(T.i, pylonTop(T)); }
     }
     // 전선(모든 타일 위)
@@ -963,12 +1385,25 @@
       g.font = `600 ${Math.round(clamp(V.S * 0.36, 9, 13))}px "IBM Plex Mono", ui-monospace, monospace`;
       g.textAlign = "center"; g.textBaseline = "middle";
       TILES.forEach(T => {
-        if (!T.land) return;
+        if (T.out || (!T.land && !(layer === "wind" && T.t === "sea" && T.wind > 0 && T.dshore <= 3))) return;
         const t = layerTxt(T, layer);
         if (!t) return;
         const [x, y] = tileTop(T);
         g.lineWidth = 3; g.strokeStyle = "rgba(6,16,30,0.85)"; g.strokeText(t, x, y + V.S * 0.32);
         g.fillStyle = "#f4f8fc"; g.fillText(t, x, y + V.S * 0.32);
+      });
+    }
+    // 시설 표지(평택): 종류별 색 동그라미 + 한 글자
+    if (PK.climate) {
+      const fs = Math.round(clamp(V.S * 0.34, 9, 14));
+      g.font = `700 ${fs}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      SITES.forEach(W => {
+        const T = TILES[W.tile], [x, y] = tileTop(T), r = Math.max(8, fs * 0.85);
+        const bx = x - V.S * 0.5, by = y - V.S * 0.42;
+        g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2);
+        g.fillStyle = badgeCol(W.kind); g.fill();
+        g.lineWidth = 1.5; g.strokeStyle = "#ffffff"; g.stroke();
+        g.fillStyle = "#ffffff"; g.fillText(W.code, bx, by + 0.5);
       });
     }
     // 표시: 숲 정리, 연결 안 됨
@@ -1104,7 +1539,7 @@
     // 창문·정전 표시
     const blink = rm ? 1 : (Math.sin(t * 9) > 0 ? 1 : 0.25);
     S.rec.wins.forEach(W => {
-      const uns = res.hrUns[ch.k * 4 + W.ti] > 0.05;
+      const uns = res.hrUns[ch.k * res.NT + W.ti] > OUT_EPS();
       if (dark > 0.12) {
         if (!uns) {
           const gl = g.createRadialGradient(W.x, W.y - s * 0.3, 2, W.x, W.y - s * 0.3, s * 1.3);
@@ -1188,19 +1623,20 @@
   /* =====================================================================
    * 6. 조작
    * ===================================================================== */
-  const budgetLeft = () => M.budget - capex(S.st);
+  const avgDem = ti => { let a = 0; for (let h = 0; h < 24; h++) a += demand(ti, h, PLAIN_DAY, {}, PK.climate && S && S.st.fab2); return a / 24; };
+  const OUT_EPS = () => (PK.climate ? 0.004 : 0.05);
+  const budgetLeft = () => PK.budget - capex(S.st);
   function canPlace(type, i) {
     const T = TILES[i];
-    if (!T.land) return { ok: false, why: "바다에는 못 지음" };
-    if (T.t === "town") return { ok: false, why: "마을 자리" };
     if (S.st.builds.some(b => b.i === i)) return { ok: false, why: "이미 있음" };
-    if (!BLD[type].ok[T.t]) return { ok: false, why: T.t === "mount" ? "산 능선: 풍력만" : "못 지음" };
+    const why = siteRule(type, T);
+    if (why) return { ok: false, why };
     const cost = buildCost(type, i);
     if (cost > budgetLeft() + 1e-9) return { ok: false, why: `예산 부족(${fmt(cost)}억)`, cost };
     return { ok: true, cost, clear: T.t === "forest" };
   }
   function changed(msg) {
-    saveState(S.st);
+    saveState(S.doc);
     S.net = network(S.st);
     S.result = null;
     S.dirtyStatic = true;
@@ -1243,7 +1679,8 @@
     toast("철거할 것이 없다");
   }
   const onLine = i => S.st.lines.some(L => L.p.includes(i));
-  const validStart = i => TILES[i].t === "town" || S.st.builds.some(b => b.i === i) || onLine(i);
+  const validStart = i => TILES[i].site >= 0 || S.st.builds.some(b => b.i === i) || onLine(i);
+  const validEnd = i => !TILES[i].out && (TILES[i].land || S.st.builds.some(b => b.i === i) || onLine(i));
   function lineClick(i) {
     if (S.pending) {
       if (i === S.pending.end) { confirmLine(); return; }
@@ -1257,9 +1694,10 @@
       return;
     }
     if (i === S.lineStart) { cancelLine(); return; }
-    if (!TILES[i].land) { toast("끝점은 육지"); return; }
+    if (TILES[i].out) { toast(`${PK.name} 밖은 지날 수 없다`); return; }
+    if (!validEnd(i)) { toast("끝점은 육지나 발전소"); return; }
     const p = routePath(S.lineStart, i);
-    if (!p) { toast("길이 없다"); return; }
+    if (!p) { toast(`길이 없다(${PK.name} 밖은 못 지남)`); return; }
     S.pending = { p, end: i, cost: lineCost(p) };
     S.preview = null;
     showConfirm();
@@ -1293,9 +1731,82 @@
     S.tool = S.tool === id ? null : id;
     cancelLine();
     S.sel = null;
-    S.root.querySelectorAll("[data-tool]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tool === S.tool)));
+    closePops();
+    renderTools();
     S.root.dataset.mode = S.tool || "";
     if (S.hover != null) showTip(S.hover);
+    request();
+  }
+  /* ---------- 도구 막대: 섬은 6개 그대로, 평택은 묶음(재생·화력·저장·송전·철거) ---------- */
+  const toolBtn = (id, extra = "") => { const T = toolMeta(id); return `<button type="button" class="bd-tool" data-tool="${id}" aria-pressed="${S.tool === id}"${extra}>${ico(T.icon)}<span class="bd-tool-n">${T.name}</span><span class="bd-tool-c num">${T.cost}</span></button>`; };
+  function renderTools() {
+    const box = $("#bd-tools"), sub = $("#bd-subtools");
+    if (!box) return;
+    S.root.classList.toggle("bd-grouped", !!PK.groups);
+    if (!PK.groups) { box.innerHTML = PK.tools.map(id => toolBtn(id)).join(""); sub.hidden = true; return; }
+    box.innerHTML = PK.groups.map(G => {
+      if (G.tools.length === 1) {
+        const T = toolMeta(G.tools[0]);
+        return `<button type="button" class="bd-tool" data-tool="${G.tools[0]}" aria-pressed="${S.tool === G.tools[0]}">${ico(T.icon)}<span class="bd-tool-n">${G.name}</span><span class="bd-tool-c num">${T.cost}</span></button>`;
+      }
+      const cur = G.tools.includes(S.tool) ? toolMeta(S.tool) : null;
+      return `<button type="button" class="bd-tool bd-group" data-group="${G.id}" aria-expanded="${S.openGroup === G.id}" aria-controls="bd-subtools"${cur ? ' data-active="true"' : ""}>${ico(cur ? cur.icon : G.icon)}<span class="bd-tool-n">${G.name}</span><span class="bd-tool-c num">${cur ? esc(cur.name) : G.tools.length + "종"}</span></button>`;
+    }).join("");
+    const G = PK.groups.find(g => g.id === S.openGroup);
+    sub.hidden = !G;
+    if (G) { sub.setAttribute("aria-label", G.name); sub.innerHTML = G.tools.map(id => toolBtn(id)).join(""); }
+  }
+  function openGroup(id) {
+    S.openGroup = S.openGroup === id ? null : id;
+    S.seasonOpen = false; renderSeasons();
+    renderTools();
+    if (S.openGroup) { const f = $("#bd-subtools .bd-tool"); if (f) f.focus({ preventScroll: true }); }
+  }
+  function renderSeasons() {
+    const btn = $("#bd-season"), pop = $("#bd-seasons");
+    if (!btn) return;
+    btn.hidden = !PK.climate;
+    $("#bd-season-t").textContent = PK.climate ? seasonName(S.st.season) : "";
+    btn.setAttribute("aria-expanded", String(!!S.seasonOpen));
+    pop.hidden = !(PK.climate && S.seasonOpen);
+    if (!pop.hidden) pop.innerHTML = SEASONS.map(x => `<button type="button" class="bd-tool bd-seasonbtn" data-season="${x.id}" aria-pressed="${S.st.season === x.id}">${ico(x.id === "summer" ? "sun" : x.id === "winter" ? "wind" : x.id === "spring" ? "leaf" : "cloud")}<span class="bd-tool-n">${x.name}</span><span class="bd-tool-c num">${monthName(x.m)}</span></button>`).join("");
+  }
+  function closePops() {
+    if (!S) return;
+    const had = S.openGroup || S.seasonOpen;
+    S.openGroup = null; S.seasonOpen = false;
+    if (had) { renderTools(); renderSeasons(); }
+  }
+  // 지도 바꾸기: 지도마다 건설 칸이 따로 있다.
+  function applyPack() {
+    $("#bd-kicker").textContent = PK.kicker;
+    $("#bd-h1").textContent = PK.title;
+    $("#bd-virtual").textContent = PK.virtual || "가상 모형";
+    document.title = `${PK.title} · 켄텍 창의성 면접 연습실`;
+    S.canvas.setAttribute("aria-roledescription", `${PK.name} 지도`);
+    S.root.querySelectorAll("[data-map]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.map === PK.id)));
+    const note = $("#bd-mapnote");
+    note.hidden = !PK.note; note.textContent = PK.note || "";
+    if (S.help) S.help.setTitle(PK.title);
+    S.net = network(S.st);
+    renderTools(); renderSeasons(); buildBanners();
+  }
+  function switchMap(id) {
+    if (!S || S.run || id === PK.id || !Object.hasOwn(PACKS, id)) return;
+    S.doc.map = id;
+    selectPack(id);
+    S.st = S.doc.maps[id];
+    S.tool = null; S.hover = null; S.sel = null; S.lineStart = null; S.pending = null; S.preview = null; S.result = null;
+    S.openGroup = null; S.seasonOpen = false;
+    S.root.dataset.mode = "";
+    V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
+    hideTip(); showConfirm();
+    saveState(S.doc);
+    applyPack();
+    if (S.drawerTab === "result") S.drawerTab = "policy";
+    renderDrawer(); refreshHUD(); placeBannerValues(); updateAria();
+    setLayer(S.layer);
+    announce(`${PK.name} 지도`);
     request();
   }
   function hit(x, y) {
@@ -1312,7 +1823,7 @@
   function setHover(i, kbd) {
     if (S.hover === i && !!kbd === !!S.kbd) return;
     S.hover = i; S.kbd = !!kbd;
-    if (i != null && S.tool === "line" && S.lineStart != null && !S.pending && TILES[i].land && i !== S.lineStart) {
+    if (i != null && S.tool === "line" && S.lineStart != null && !S.pending && validEnd(i) && i !== S.lineStart) {
       const p = routePath(S.lineStart, i);
       S.preview = p ? { p, end: i, cost: lineCost(p) } : null;
       showConfirm();
@@ -1368,7 +1879,7 @@
         const nx = S.hover == null ? cur : stepFrom(cur, dirs[e.key]);
         setHover(nx, true);
         const T = TILES[nx];
-        announce(`${T.town >= 0 ? TOWNS[T.town].name : TNAME[T.t]}${T.land ? `, 일사 ${T.sun}, 풍속 ${T.wind} m/s` : ""}`);
+        announce(`${T.site >= 0 ? SITES[T.site].name : TNAME[T.t]}${T.wind ? `, 일사 ${T.sun}, 풍속 ${T.wind} m/s` : ""}`);
         return;
       }
       if (e.key === "Enter" || e.key === " ") {
@@ -1414,7 +1925,7 @@
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
     let n = 0;
-    S.st.builds.forEach((b, bi) => { if (b.t === "diesel") dk[bi] = n++; });
+    S.st.builds.forEach((b, bi) => { if (SMOKY[b.t]) dk[bi] = n++; });
     S.runNet = { dk };
     S.run = { res, days, t0: performance.now(), k: 0, done: false, tip: -1, tipBase: S.tipSeq++ };
     S.result = null;
@@ -1454,7 +1965,7 @@
     if (S.lastTick !== tick) {
       S.lastTick = tick;
       $("#bd-run-day").textContent = tick;
-      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${WX[wx.w].name}${wx.hot ? " · 폭염" : ""}</span>`;
+      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${PK.climate ? monthName(wx.m) + " · " : ""}${WX[wx.w].name}${wx.hot ? " · 폭염" : ""}</span>`;
       const bar = $("#bd-run-bar");
       bar.style.width = `${Math.round(p * 100)}%`;
       $("#bd-run-prog").setAttribute("aria-valuenow", String(Math.round(p * 100)));
@@ -1466,7 +1977,7 @@
     if (tipK !== R.tip) {
       R.tip = tipK;
       const el = $("#bd-run-tip");
-      el.textContent = TIPS[(R.tipBase * 3 + tipK) % TIPS.length];
+      el.textContent = (T => T[(R.tipBase * 3 + tipK) % T.length])(tips());
     }
   }
   function paintSpark() {
@@ -1515,25 +2026,25 @@
     if (head) head.focus({ preventScroll: true });
     announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
     // 첫 운영 뒤 한 번만 일지를 저절로 연다.
-    if (!S.st.jAuto) { S.st.jAuto = true; saveState(S.st); openJournal(S.result.entry, head); }
+    if (!S.doc.jAuto) { S.doc.jAuto = true; saveState(S.doc); openJournal(S.result.entry, head); }
     request();
   }
   // 운영마다 지표 한 줄을 남긴다(글을 안 써도 남는다).
   function addEntry(res) {
-    const st = S.st;
-    st.runs = (st.runs || 0) + 1;
+    const st = S.st, doc = S.doc;
+    doc.runs = (doc.runs || 0) + 1;
     const wx = [0, 0, 0];
     res.wx.forEach(w => { wx[w.w]++; });
     const e = {
-      id: st.runs, at: new Date().toISOString().slice(0, 10), days: res.days, seed: res.seed, wx,
+      id: doc.runs, at: new Date().toISOString().slice(0, 10), days: res.days, seed: res.seed, wx, map: PK.id, season: seasonLabel(res),
       m: { out: res.outTotal, co2: Math.round(res.co2), cost: Math.round(res.cost.total * 10) / 10, cp: res.cp.issues,
         uns: Math.round(1000 * res.unsTotal / Math.max(1, res.tot.dem)) / 10, curt: Math.round(res.tot.curt) },
       pol: st.policies.slice(), mis: res.missions.filter(m => m.chosen).map(m => ({ id: m.id, ok: m.ok })),
       q: res.questions[0] ? res.questions[0].q : "", a: { why: "", surprise: "", trade: "", next: "", q: "" }
     };
-    st.journal.push(e);
-    while (st.journal.length > J_MAX) st.journal.shift();
-    saveState(st);
+    doc.journal.push(e);
+    while (doc.journal.length > J_MAX) doc.journal.shift();
+    saveState(doc);
     return e.id;
   }
 
@@ -1555,7 +2066,7 @@
       <p id="bd-keys" class="bd-sr">화살표로 타일 이동, Enter로 설치, Esc로 취소.</p>
       <header class="bd-hud" id="bd-hud">
         <a class="bd-back" href="#home" aria-label="연습실 홈으로">${ico("back")}</a>
-        <div class="bd-title"><p class="v2-kicker">GRID TYCOON</p><h1>섬 전력망 건설</h1></div>
+        <div class="bd-title"><p class="v2-kicker" id="bd-kicker"></p><h1 id="bd-h1"></h1></div>
         <div class="bd-caps">
           ${cap("budget", "coin", "예산", "gold")}
           ${cap("time", "clock", "시간", "sky")}
@@ -1563,10 +2074,13 @@
           ${cap("co2", "co2", "CO₂")}
           ${cap("cp", "alert", "민원")}
         </div>
-        <span class="bd-virtual">가상 모형</span>
+        <span class="bd-virtual" id="bd-virtual"></span>
         <button type="button" class="bd-help" id="bd-help" aria-label="도움말과 팁">${ico("help")}</button>
       </header>
       <div class="bd-mapbar" id="bd-mapbar">
+        <div class="bd-maps" role="group" aria-label="지도 고르기">
+          ${PACK_IDS.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("")}
+        </div>
         <div class="bd-layers" role="group" aria-label="자료 지도">
           ${LAYERS.map(L => `<button type="button" class="bd-layer" data-layer="${L.id}" aria-pressed="false">${ico(L.icon)}<span>${L.name}</span></button>`).join("")}
         </div>
@@ -1576,6 +2090,7 @@
         </div>
         <span class="bd-windchip" id="bd-windchip" role="img" aria-label="우세풍: 서풍, 서쪽에서 동쪽으로"><svg class="v2-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h15M14 7l5 5-5 5"/></svg><span>서풍</span></span>
         <div class="bd-legend" id="bd-legend" hidden></div>
+        <p class="bd-mapnote" id="bd-mapnote" hidden></p>
       </div>
       <aside class="bd-drawer" id="bd-drawer" aria-label="정책·미션·결과">
         <div class="bd-drawer-head">
@@ -1605,11 +2120,12 @@
         <p class="bd-run-tip"><span class="bd-tip-b">TIP</span><span id="bd-run-tip"></span></p>
       </section>
       <nav class="bd-dock" id="bd-dock" aria-label="건설 도구">
-        <div class="bd-tools">
-          ${TOOLS.map(T => `<button type="button" class="bd-tool" data-tool="${T.id}" aria-pressed="false">${ico(T.icon)}<span class="bd-tool-n">${T.name}</span><span class="bd-tool-c num">${T.cost}</span></button>`).join("")}
-        </div>
+        <div class="bd-subtools" id="bd-subtools" role="group" hidden></div>
+        <div class="bd-seasons" id="bd-seasons" role="group" aria-label="시작 계절" hidden></div>
+        <div class="bd-tools" id="bd-tools"></div>
         <div class="bd-runs">
           <button type="button" class="bd-pm" id="bd-pm" aria-expanded="false" aria-controls="bd-drawer">${ico("cards")}<span>정책·미션</span></button>
+          <button type="button" class="bd-season" id="bd-season" aria-expanded="false" aria-controls="bd-seasons" hidden>${ico("cal")}<span id="bd-season-t"></span></button>
           <span class="bd-run-lbl" aria-hidden="true">${ico("play")}</span>
           <button type="button" class="bd-go" data-run="7">1주</button>
           <button type="button" class="bd-go" data-run="30">1달</button>
@@ -1648,9 +2164,9 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "diesel" ? M.dieselMW : n.kind === "battery" ? M.batMW : M.solarMW), 0);
-      const peak = peakDemand(polOf(S.st));
-      set("time", "건설 중");
+      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" ? n.cap : n.kind === "import" ? PK.gridCap || 4 : BLD[n.kind].mw), 0);
+      const peak = peakDemand(polOf(S.st), PK.climate && S.st.fab2);
+      set("time", PK.climate ? (x => `${x.name} ${x.m + 1}월`)(SEASONS.find(q => q.id === S.st.season) || SEASONS[1]) : "건설 중");
       set("power", `${fmt(capMW, 0)}/${fmt(peak, 1)}`, capMW < peak ? "danger" : "");
       set("co2", "—");
       const cp = complaints(S.st, null);
@@ -1660,42 +2176,57 @@
     if (pk.dataset.mode !== mode) { pk.dataset.mode = mode; pk.innerHTML = R ? '공급/수요<span class="bd-unit"> MW</span>' : res ? "결과" : '설비/피크<span class="bd-unit"> MW</span>'; }
   }
 
-  /* ---------- 배너(마을 이름) ---------- */
+  /* ---------- 배너(시설 이름) ---------- */
+  // 평택은 큰 시설만 이름표를 단다(작은 시설은 지도 위 동그라미 표지와 말풍선).
+  const MAJOR = { city: 1, city_l: 1, city_m: 1, town_s: 1, village: 1, port: 1, factory_big: 1, plant: 1, gridpt: 1, hospital: 1 };
   function buildBanners() {
     const box = $("#bd-banners");
-    box.innerHTML = TOWNS.map((W, ti) => `<div class="bd-banner" data-ti="${ti}"><span class="bd-bn-code">${W.id}</span><span class="bd-bn-name">${esc(W.name)}</span>${W.note ? `<span class="bd-bn-note">${esc(W.note)}</span>` : ""}<span class="bd-bn-val num" data-bv></span></div>`).join("");
+    const list = SITES.map((W, si) => ({ W, si })).filter(({ W }) => !PK.climate || MAJOR[W.kind] && !(W.kind === "hospital" && PK.climate));
+    box.innerHTML = list.map(({ W, si }) => `<div class="bd-banner" data-si="${si}" data-kind="${W.kind}"><span class="bd-bn-code">${esc(W.code || W.id)}</span><span class="bd-bn-name">${esc(W.name)}</span>${W.note ? `<span class="bd-bn-note">${esc(W.note)}</span>` : ""}<span class="bd-bn-val num" data-bv></span></div>`).join("");
     S.banners = Array.from(box.children);
+    S.bannerKey = "";
   }
   function placeBanners() {
     if (!S.banners) return;
     const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot}`;
     if (S.bannerKey === key) return;
     S.bannerKey = key;
-    S.banners.forEach((el, ti) => {
-      const T = TILES[TOWNS[ti].tile];
-      const lift = TOWNS[ti].kind === "city" ? 1.45 : TOWNS[ti].kind === "port" ? 1.05 : 0.95;
+    const placed = [];
+    const hit = (a, b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
+    S.banners.forEach(el => {
+      const W = SITES[+el.dataset.si], T = TILES[W.tile];
+      const lift = W.kind === "city" || W.kind === "city_l" ? 1.45 : W.kind === "city_m" ? 1.2 : W.kind === "port" ? 1.05 : 0.95;
       const [x, y] = tileTop(T, 0);
+      el.hidden = false;
       const w = el.offsetWidth, h = el.offsetHeight;
-      const bx = clamp(x - w / 2, 4, V.W - w - 4), by = clamp(y - V.S * lift - h - 8, 4, V.H - h - 4);
-      el.style.transform = `translate(${Math.round(bx)}px, ${Math.round(by)}px)`;
+      const bx = clamp(x - w / 2, 4, V.W - w - 4);
+      let r = null;
+      for (const dy of [0, -(h + 4), h + 4 + V.S * 0.6, -2 * (h + 4)]) {
+        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.H - h - 4), w, h };
+        if (!placed.some(p => hit(p, c))) { r = c; break; }
+      }
+      if (!r) { el.hidden = true; return; }
+      placed.push(r);
+      el.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
     });
   }
   function placeBannerValues() {
     if (!S.banners) return;
     const R = S.run, ch = curHour();
-    S.banners.forEach((el, ti) => {
+    S.banners.forEach(el => {
+      const si = +el.dataset.si, ti = SITES[si].dem ? SITES[si].ti : -1;
       const v = el.querySelector("[data-bv]");
       let txt = "", state = "";
-      if (R) {
-        const uns = R.res.hrUns[ch.k * 4 + ti];
-        const dm = demand(ti, ch.h, R.res.wx[ch.d].hot, R.res.pol);
-        txt = `${fmt(dm, 1)} MW`;
-        state = uns > 0.05 ? "out" : "ok";
-      } else if (S.result) {
+      if (R && ti >= 0) {
+        const uns = R.res.hrUns[ch.k * R.res.NT + ti];
+        const dm = demand(ti, ch.h, R.res.wx[ch.d], R.res.pol, R.res.fab2);
+        txt = `${fmt(dm, dm < 1 ? 2 : 1)} MW`;
+        state = uns > OUT_EPS() ? "out" : "ok";
+      } else if (S.result && ti >= 0) {
         txt = `${S.result.town[ti].outH}h`;
         state = S.result.town[ti].outH > 0 ? "out" : "ok";
       } else {
-        const n = S.net.nodes.find(nd => nd.kind === "town" && nd.ti === ti);
+        const n = S.net.nodes.find(nd => nd.si === si);
         state = n && n.live ? "ok" : "off";
         txt = n && n.live ? "" : "선 없음";
       }
@@ -1721,10 +2252,15 @@
       const b = S.st.builds.find(x => x.i === i);
       verdict = b ? `<p class="ok">${ico("remove")}${BLD[b.t].name} +${fmt(buildCost(b.t, i))}억</p>` : onLine(i) ? `<p class="ok">${ico("remove")}송전선 철거</p>` : "";
     }
-    const name = T.town >= 0 ? `${TOWNS[T.town].id} ${TOWNS[T.town].name}` : TNAME[T.t];
+    const W = T.site >= 0 ? SITES[T.site] : null;
+    const name = W ? `${W.code || W.id} ${W.name}` : TNAME[T.t];
     const b = S.st.builds.find(x => x.i === i);
-    el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${T.t === "mount" ? "<span>선 ×2</span>" : !T.land ? "<span>선 ×3</span>" : ""}</p>` +
-      (T.land ? `<p class="bd-tip-row"><span>${ico("sun")}×${T.sun.toFixed(2)}</span><span>${ico("wind")}${T.wind.toFixed(1)} m/s</span><span>${ico("people")}${fmt(T.near)}</span></p>` : "") + verdict;
+    const mulTxt = T.out ? "선 못 지남" : stepMul(T) > 1 ? `선 ×${stepMul(T)}` : "";
+    let siteRow = "";
+    if (W && W.dem) siteRow = `<p class="bd-tip-row"><span>${esc((KIND[W.kind] || {}).label || "")}</span><span>평균 ${fmt(avgDem(W.ti), avgDem(W.ti) < 1 ? 2 : 1)} MW</span>${CRIT[W.kind] ? "<span>필수</span>" : ""}</p>`;
+    else if (W) siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `LNG ${fmt(W.cap || 9.5, 1)} MW` : `수입 ${fmt(PK.gridCap || 4, 1)} MW`}</span><span>CO₂ ${W.kind === "plant" ? "0.37" : "0.46"} t/MWh</span></p>`;
+    el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${mulTxt ? `<span>${mulTxt}</span>` : ""}${T.tidal ? "<span>조력 후보</span>" : ""}</p>` + siteRow +
+      (T.wind > 0 ? `<p class="bd-tip-row">${T.sun ? `<span>${ico("sun")}×${T.sun.toFixed(2)}</span>` : ""}<span>${ico("wind")}${T.wind.toFixed(1)} m/s</span>${T.land ? `<span>${ico("people")}${fmt(T.near)}</span>` : ""}</p>` : "") + verdict;
     el.hidden = false;
     const [x, y] = tileTop(T);
     const w = el.offsetWidth, h = el.offsetHeight;
@@ -1772,7 +2308,7 @@
     const counts = {};
     S.st.builds.forEach(b => { counts[b.t] = (counts[b.t] || 0) + 1; });
     const parts = Object.keys(counts).map(k => `${BLD[k].name} ${counts[k]}`);
-    const lbl = `섬 지도. ${parts.length ? parts.join(", ") : "건물 없음"}, 송전선 ${S.st.lines.length}개. 전기가 닿는 마을 ${live}/4. 예산 잔액 ${fmt(budgetLeft(), 1)}억.` +
+    const lbl = `${PK.name} 지도. ${parts.length ? parts.join(", ") : "건물 없음"}, 송전선 ${S.st.lines.length}개. 전기가 닿는 수요지 ${live}/${TOWNS.length}. 예산 잔액 ${fmt(budgetLeft(), 1)}억.` +
       (S.result ? ` 최근 운영: 정전 ${S.result.outTotal}시간, CO₂ ${fmt(S.result.co2)} t.` : "");
     S.canvas.setAttribute("aria-label", lbl);
   }
@@ -1802,7 +2338,7 @@
     S.root.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.drawerTab)));
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
     S.root.querySelector('[data-count="mission"]').textContent = `${S.st.missions.length}/2`;
-    S.root.querySelector('[data-count="journal"]').textContent = S.st.journal.length ? String(S.st.journal.length) : "";
+    S.root.querySelector('[data-count="journal"]').textContent = S.doc.journal.length ? String(S.doc.journal.length) : "";
     const tab = S.drawerTab;
     if (tab === "policy") {
       const full = S.st.policies.length >= 2;
@@ -1811,9 +2347,17 @@
           const onP = S.st.policies.includes(P.id);
           return `<button type="button" class="bd-card" data-pol="${P.id}" aria-pressed="${onP}"${!onP && full ? " disabled" : ""}>
             <span class="bd-card-ico">${ico(P.icon)}</span>
-            <span class="bd-card-txt"><b>${P.name}</b><span>${P.eff}</span></span>
+            <span class="bd-card-txt"><b>${P.name}</b><span>${P.eff()}</span></span>
             <span class="bd-card-cost num">${P.cost}</span></button>`;
-        }).join("")}</div>`;
+        }).join("")}</div>
+        <p class="bd-sub bd-sub2">${ico("alert")}차단 순서 <b>모자랄 때</b></p>
+        <div class="bd-shed" role="group" aria-label="차단 순서">${SHED_OPTS.map(o => `<button type="button" class="bd-shedbtn" data-shed="${o.id}" aria-pressed="${(S.st.shed || "home") === o.id}">${o.name}</button>`).join("")}</div>
+        <p class="bd-note">${S.st.shed === "equal" ? "모두 같은 비율로 줄인다(병원 포함)." : S.st.shed === "industry" ? "필수시설 다음으로 공장·산단을 지킨다." : "병원·필수시설 다음으로 집을 지킨다."}</p>
+        ${PK.climate ? `<p class="bd-sub bd-sub2">${ico("flask")}시나리오</p>
+        <button type="button" class="bd-card" data-fab2="1" aria-pressed="${!!S.st.fab2}">
+          <span class="bd-card-ico">${ico("diesel")}</span>
+          <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>공장 5 → 10 MW</span></span>
+          <span class="bd-card-mark" aria-hidden="true">${S.st.fab2 ? ico("check") : ""}</span></button>` : ""}`;
     } else if (tab === "mission") {
       body.innerHTML = `<p class="bd-sub">${ico("flag")}이번 운영 미션 <b>2개</b></p>
         <div class="bd-cards">${MISSIONS.map(m => {
@@ -1830,7 +2374,7 @@
       const q = body.querySelector("#bd-jopen"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
       if (q) q.onclick = () => openJournal(S.result.entry, q);
       if (again) again.onclick = rebuild;
-      if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; saveState(S.st); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
+      if (rr) rr.onclick = () => { S.st.seed = (S.st.seed % 99991) + 1; saveState(S.doc); toast(`다른 날씨(시드 ${S.st.seed})`); rebuild(); };
     }
   }
   function satBar(v) {
@@ -1843,7 +2387,7 @@
     const len = R.days === 7 ? "1주" : R.days === 30 ? "1달" : "3달";
     const chosen = R.missions.filter(m => m.chosen), others = R.missions.filter(m => !m.chosen);
     const lostElse = others.filter(m => !m.ok);
-    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">가상 모형 · 시드 ${R.seed}</span></h2>
+    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(seasonName(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
       <div class="bd-res-acts">
         <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
         <button type="button" class="v2-btn primary" id="bd-jopen">${ico("pen")}<span>일지 쓰기</span></button>
@@ -1854,11 +2398,11 @@
         ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>
       <div class="bd-kpis">
         <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>건설 ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}</small></p>
-        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>디젤 ${fmt(R.tot.diesel)} MWh</small></p>
+        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `LNG ${fmt(R.tot.by.lng)} · 수입 ${fmt(R.tot.by.import)} · 디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
-      <table class="bd-towns"><thead><tr><th scope="col">마을</th><th scope="col">정전</th><th scope="col">못 받은 전력</th><th scope="col">만족</th></tr></thead>
-        <tbody>${TOWNS.map((W, ti) => `<tr><th scope="row"><span class="bd-bn-code">${W.id}</span>${esc(W.name)}</th><td class="num${R.town[ti].outH ? " bad" : ""}">${R.town[ti].outH}h</td><td class="num">${fmt(R.town[ti].uns, 1)} MWh</td><td class="bd-sat-cell">${satBar(R.sat[ti])}</td></tr>`).join("")}</tbody></table>
+      <table class="bd-towns"><thead><tr><th scope="col">수요지</th><th scope="col">정전 h</th><th scope="col">부족 MWh</th><th scope="col">만족</th></tr></thead>
+        <tbody>${TOWNS.map((W, ti) => `<tr><th scope="row"><span class="bd-bn-code">${esc(W.code || W.id)}</span>${esc(W.name)}</th><td class="num${R.town[ti].outH ? " bad" : ""}">${R.town[ti].outH}</td><td class="num">${fmt(R.town[ti].uns, 1)}</td><td class="bd-sat-cell">${satBar(R.sat[ti])}</td></tr>`).join("")}</tbody></table>
 `;
   }
   function rebuild() {
@@ -1882,12 +2426,29 @@
     return null;
   }
   function openHelp(from) {
-    if (!S.help) {
-      S.help = makeDialog("bd-help-dlg", "HOW TO PLAY", "섬 전력망 건설");
-      if (!S.help) return;
-      S.help.body.innerHTML = `<ol class="bd-steps">
+    if (!S.help) S.help = makeDialog("bd-help-dlg", "HOW TO PLAY", PK.title);
+    if (!S.help) return;
+    S.help.setTitle(PK.title);
+    const C = PK.climate, li = t => `<li>${esc(t)}</li>`;
+    const model = C ? [
+      `태양광: 월별 일사량(GHI) × 성능비 0.8, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 1 · 흐림 0.45 · 비 0.2`,
+      `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, 3 m/s 아래 0 · 12 m/s 정격 · 25 m/s 넘으면 정지`,
+      "해상풍력 4 MW(100 m 풍속) · 조력 2 MW × |sin(2πt/12.42h)| · 소수력은 비 오면 ×1.3, 맑은 날 사흘 넘으면 ×0.7",
+      `기존 LNG 9.5 MW(CO₂ 0.37 t/MWh) · 외부 전력망 연결점마다 ${fmt(PK.gridCap || 4, 1)} MW(CO₂ 0.46 t/MWh)`,
+      "디젤 3 MW(최소 1 MW, CO₂ 0.75) · 바이오매스 2 MW(CO₂ 0.1로 셈 — 바이오 탄소는 회계상 일부만 셈, 축산 단지 옆은 연료비 싸짐)",
+      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천 ×2 · 바다·호수 ×3) · 평택 밖은 못 지남`,
+      "급전 순서: 재생 → 배터리 → 싼 연료부터(LNG → 수입 → 디젤·바이오매스, 탄소세 포함)",
+      `${PK.scale || ""} · 수요는 실제 규모의 축소판`
+    ] : [
+      "태양광 2 MW × 일사(맑음 1 · 흐림 0.45 · 비 0.2) × 타일 계수",
+      "풍력 2 MW × (풍속/12)³, 25 m/s 넘으면 정지",
+      "디젤 3 MW(켜면 최소 1 MW) · CO₂ 0.75 t/MWh · 연료 0.01억/MWh",
+      "배터리 4 MW/16 MWh · 충전·방전 각 95% · 바닥 10%",
+      "송전 손실 1.5%/칸 · 선 0.5억/칸(산 ×2 · 바다 ×3)"
+    ];
+    S.help.body.innerHTML = `<ol class="bd-steps">
           <li>${ico("hammer")}<b>짓기</b><span>도구 → 타일</span></li>
-          <li>${ico("line")}<b>잇기</b><span>발전소 ↔ 마을</span></li>
+          <li>${ico("line")}<b>잇기</b><span>발전소 ↔ 수요지</span></li>
           <li>${ico("cards")}<b>고르기</b><span>정책 ≤2 · 미션 2</span></li>
           <li>${ico("play")}<b>돌리기</b><span>1주·1달·3달</span></li>
           <li>${ico("pen")}<b>적기</b><span>일지 네 칸</span></li>
@@ -1896,29 +2457,31 @@
         <ul class="bd-tiplist">
           <li>운영마다 지표 한 줄이 남고, 학생은 네 칸(이유·예상 밖·한 문장·다음)과 오늘의 질문에 답한다.</li>
           <li>일지 탭에서 회차를 비교하고 [활동지로 복사]로 글을 모아 낸다. 이 브라우저에만 저장된다.</li>
+          <li>지도는 [연습 섬](쉬운 첫 단계)과 [평택](실제 지명·계절 기후) 두 가지. 지도마다 따로 저장된다.</li>
         </ul>
         <h3 class="bd-h3">${ico("help")}팁</h3>
-        <ul class="bd-tiplist">${TIPS.slice(0, 6).map(t => `<li>${esc(t)}</li>`).join("")}</ul>
+        <ul class="bd-tiplist">${tips().slice(0, 6).map(li).join("")}</ul>
         <details class="bd-model"><summary>가상 모형 숫자</summary>
+          <ul>${model.map(li).join("")}<li>모자라면 차단 순서(정책 탭)대로 끊는다. 균등이 아니면 병원·필수시설이 가장 늦게 끊긴다.</li></ul>
+          <p>연습용으로 단순하게 만든 수치다.</p>
+        </details>
+        ${C ? `<details class="bd-model"><summary>자료와 가정</summary>
           <ul>
-            <li>태양광 2 MW × 일사(맑음 1 · 흐림 0.45 · 비 0.2) × 타일 계수</li>
-            <li>풍력 2 MW × (풍속/12)³, 25 m/s 넘으면 정지</li>
-            <li>디젤 3 MW(켜면 최소 1 MW) · CO₂ 0.75 t/MWh · 연료 0.01억/MWh</li>
-            <li>배터리 4 MW/16 MWh · 충전·방전 각 95% · 바닥 10%</li>
-            <li>송전 손실 1.5%/칸 · 선 0.5억/칸(산 ×2 · 바다 ×3)</li>
-            <li>모자라면 F4 → F3 → F2 → F1 순으로 끊는다</li>
+            <li>위치: 북위 ${C.lat}°, 동경 ${C.lon}°(평택)</li>
+            ${[C.ghi_note, C.wind10_note, C.hub_note, C.wind100_sea_note, C.temp_note].map(li).join("")}
+            ${(PK.sources || []).map(li).join("")}
+            <li>${esc(PK.note || "")}</li>
           </ul>
-          <p>연습용으로 단순하게 만든 수치다. 실제 섬 전력망 자료가 아니다.</p>
-        </details>`;
-    }
+        </details>` : ""}`;
     S.help.open(from);
   }
   /* ---------- 건설 일지 ---------- */
   const lenName = d => (d === 7 ? "1주" : d === 30 ? "1달" : "3달");
   const polName = id => (POLICIES.find(P => P.id === id) || {}).name || id;
   const misName = id => (MISSIONS.find(P => P.id === id) || {}).name || id;
-  const findEntry = id => S.st.journal.find(e => e.id === id) || null;
-  const entryDate = e => `${e.id}번째 운영 · ${lenName(e.days)} · 맑음 ${e.wx[0]}일/흐림 ${e.wx[1]}일/비 ${e.wx[2]}일`;
+  const findEntry = id => S.doc.journal.find(e => e.id === id) || null;
+  const mapName = id => (PACKS[id] || PACKS[PACK_IDS[0]]).name;
+  const entryDate = e => `${e.id}번째 운영 · ${mapName(e.map)}${e.season ? " · " + e.season : ""} · ${lenName(e.days)} · 맑음 ${e.wx[0]}일/흐림 ${e.wx[1]}일/비 ${e.wx[2]}일`;
   const misTxt = e => (e.mis.length ? e.mis.map(m => `${misName(m.id)} ${m.ok ? "✓" : "✗"}`).join(" · ") : "없음");
   const misHtml = e => (e.mis.length ? e.mis.map(m => `<span class="bd-mk" data-ok="${m.ok}">${esc(misName(m.id))} ${ico(m.ok ? "check" : "x", "v2-ico bd-mk-i")}<span class="bd-sr">${m.ok ? "성공" : "실패"}</span></span>`).join(" ") : "없음");
   const metricLine = e => `정전 ${fmt(e.m.out)}h · CO₂ ${fmt(e.m.co2)} t · 비용 ${fmt(e.m.cost, 1)}억 · 민원 ${fmt(e.m.cp)}건 · 정책 ${e.pol.length ? e.pol.map(polName).join(", ") : "없음"} · 미션 ${misTxt(e)}`;
@@ -1964,7 +2527,7 @@
         const cur = findEntry(e.id);
         if (!cur) return;
         cur.a[t.dataset.j] = t.value.slice(0, J_LEN);
-        saveState(S.st);
+        saveState(S.doc);
         const sv = B.querySelector("#bd-jsaved");
         if (sv) sv.textContent = "저장됨";
       });
@@ -2007,13 +2570,14 @@
     return `<span class="bd-cmp" data-dir="${dir}">${label} ${ch}<span class="bd-sr"> ${sr}(${fmt(prev, d)}${unit} → ${fmt(cur, d)}${unit})</span></span>`;
   }
   function renderTimeline() {
-    const list = S.st.journal;
+    const list = S.doc.journal;
     if (!list.length) return `<div class="bd-empty">${ico("pen", "v2-ico bd-empty-ico")}<p><b>아직 일지 없음</b></p><p>운영을 한 번 돌리면 여기 쌓인다.</p></div>`;
     const cards = list.map((e, k) => {
       const p = k ? list[k - 1] : null;
       const answered = JQ.filter(P => e.a[P.k].trim()).length + (e.q && e.a.q.trim() ? 1 : 0);
       return `<li class="bd-jcard">
         <p class="bd-jc-h"><b>${e.id}번째 · ${lenName(e.days)}</b><span class="num">${esc(e.at)}</span></p>
+        <p class="bd-jc-map"><span class="bd-mapchip">${esc(mapName(e.map))}</span>${e.season ? `<span>${esc(e.season)}</span>` : ""}</p>
         <p class="bd-jc-m"><span>정전 <b class="num">${fmt(e.m.out)}h</b></span><span>CO₂ <b class="num">${fmt(e.m.co2)} t</b></span><span>비용 <b class="num">${fmt(e.m.cost, 1)}억</b></span><span>민원 <b class="num">${fmt(e.m.cp)}건</b></span></p>
         ${p ? `<p class="bd-jc-cmp">${cmp(e.m.out, p.m.out, "정전", "h")}${cmp(e.m.co2, p.m.co2, "CO₂", " t")}${cmp(e.m.cost, p.m.cost, "비용", "억", 1)}</p>` : ""}
         <p class="bd-jc-mis">${misHtml(e)}</p>
@@ -2027,8 +2591,8 @@
       <ol class="bd-jlist">${cards}</ol>`;
   }
   function worksheetText() {
-    const out = ["섬 전력망 건설 · 건설 일지", "(가상 모형 연습)", ""];
-    S.st.journal.forEach(e => {
+    const out = ["전력망 건설 · 건설 일지", "(가상 모형 연습)", ""];
+    S.doc.journal.forEach(e => {
       out.push(`[${entryDate(e)} · ${e.at}]`, metricLine(e));
       JQ.forEach((P, k) => { out.push(`${k + 1}. ${P.q}`, `→ ${e.a[P.k].trim() || "(아직 안 씀)"}`); });
       if (e.q) out.push(`오늘의 질문: ${e.q}`, `→ ${e.a.q.trim() || "(아직 안 씀)"}`);
@@ -2082,7 +2646,7 @@
     const lg = $("#bd-legend");
     if (id === "map") { lg.hidden = true; }
     else {
-      const R = RAMPS[id], lab = id === "sun" ? ["×0.6", "×1.0", "일사 계수"] : id === "wind" ? ["4", "9 m/s", "평균 풍속"] : ["적음", "많음", "주민"];
+      const R = RAMPS[id], lab = id === "sun" ? [`×${SRANGE()[0]}`, "×1.0", "일사 계수"] : id === "wind" ? [String(WRANGE()[0]), `${WRANGE()[1]} m/s`, PK.climate ? "연평균 풍속(허브·해상 100 m)" : "평균 풍속"] : ["적음", "많음", "주민"];
       lg.innerHTML = `<span class="bd-lg-k">${lab[2]}</span><span class="num">${lab[0]}</span><span class="bd-lg-bar" style="background:linear-gradient(90deg,${R.map(c => rgb(c)).join(",")})"></span><span class="num">${lab[1]}</span>`;
       lg.hidden = false;
     }
@@ -2115,21 +2679,30 @@
 
   KCP.route("build", app => {
     teardown();
-    document.title = "섬 전력망 건설 · 켄텍 창의성 면접 연습실";
     html.classList.add("bd-on");
-    const st = loadState();
+    const doc = loadState();
+    selectPack(doc.map);
+    const st = doc.maps[doc.map];
     const root = shell(app);
     S = {
-      alive: true, root, st, net: network(st), canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
+      alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
       floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
-    buildBanners();
+    applyPack();
     bindCanvas(S.canvas);
-    root.querySelectorAll("[data-tool]").forEach(b => on(b, "click", () => setTool(b.dataset.tool)));
+    on(root.querySelector("#bd-dock"), "click", e => {
+      const t = e.target.closest("[data-tool]"), gr = e.target.closest("[data-group]"), se = e.target.closest("[data-season]");
+      if (t) setTool(t.dataset.tool);
+      else if (gr) openGroup(gr.dataset.group);
+      else if (se) { S.st.season = se.dataset.season; S.seasonOpen = false; changed(`시작 계절 ${seasonName(S.st.season)}`); renderSeasons(); $("#bd-season").focus({ preventScroll: true }); }
+      else if (e.target.closest("#bd-season")) { S.seasonOpen = !S.seasonOpen; S.openGroup = null; renderTools(); renderSeasons(); if (S.seasonOpen) { const f = $("#bd-seasons [aria-pressed=true]"); if (f) f.focus({ preventScroll: true }); } }
+    });
+    root.querySelectorAll("[data-map]").forEach(b => on(b, "click", () => switchMap(b.dataset.map)));
+    on(document, "pointerdown", e => { if (S && (S.openGroup || S.seasonOpen) && !e.target.closest("#bd-dock")) closePops(); });
     root.querySelectorAll("[data-layer]").forEach(b => on(b, "click", () => setLayer(b.dataset.layer)));
     root.querySelectorAll("[data-zoom]").forEach(b => on(b, "click", () => {
       const steps = [1, 1.5, 2.2], k = steps.indexOf(V.zoom);
@@ -2146,7 +2719,10 @@
     on(root.querySelector("#bd-skip"), "click", () => { if (S.run) finishRun(); });
     on(root.querySelector("#bd-drawer-body"), "click", e => {
       const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
+      const sh = e.target.closest("[data-shed]"), fb = e.target.closest("[data-fab2]");
       if (jo) { openJournal(+jo.dataset.jopen, jo); return; }
+      if (sh) { S.st.shed = sh.dataset.shed; changed(`차단 순서: ${SHED_OPTS.find(o => o.id === S.st.shed).name}`); S.root.querySelector(`[data-shed="${S.st.shed}"]`).focus({ preventScroll: true }); return; }
+      if (fb) { S.st.fab2 = !S.st.fab2; changed(S.st.fab2 ? "반도체 2라인 증설 켬" : "증설 끔"); S.root.querySelector("[data-fab2]").focus({ preventScroll: true }); return; }
       if (e.target.closest("#bd-copy")) { copyWorksheet(); return; }
       if (p && !p.disabled) {
         const id = p.dataset.pol, list = S.st.policies;
@@ -2161,6 +2737,7 @@
     on(document, "keydown", e => {
       if (e.key !== "Escape" || !S || e.defaultPrevented) return;
       if (document.querySelector("dialog[open]")) return;
+      if (S.openGroup || S.seasonOpen) { const back = S.openGroup ? `[data-group="${S.openGroup}"]` : "#bd-season"; closePops(); const b = $(back); if (b) b.focus({ preventScroll: true }); e.preventDefault(); return; }
       if (S.drawerOpen && isMobile()) { closeDrawer(); e.preventDefault(); }
     });
     on(window, "resize", () => { S.dirtyLayout = true; request(); });
