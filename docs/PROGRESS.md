@@ -15,6 +15,7 @@
 1. 클라우드 세션의 마지막 push(9d72b0a: 독립 검토 결과 §7, 회귀 결과 §8, D-57)는 이 브랜치에 병합해 두었다. `docs/HANDOFF-econ.md` §7·§8부터 읽는다.
 2. HANDOFF-econ.md §4 '남은 일' 순서: ① 밸런스(정전 반응, 현금 점수, 순수입, 사건 빈도) → 전략 봇 36달 결과표 ② 팀 '도시' 서랍 ③ 진행자 순위표·이주 화살표·국제 지수 띠 ④ D-57, README, PROGRESS, 회귀 14종.
 3. PR #1·#2: 로컬 검사 결과와 Opus 독립 검토 결과를 확인해 PR에 코멘트하고, 확인된 결함은 Sol·Astra에게 고치게 한 뒤 다시 검토한다.
+   - 로컬 결과(2026-10-03): 두 PR 모두 기본 검사 8종(regression·base·screens·routine·probe·peer·drill·integration) 문제 0, PR #2 모형 검산 5종 통과(시멘트 773·섬 92,805·은여울 1,482·셔틀 1,253·변이 3,837건). 단, 그때 tests/run.sh 기본 목록에 창작 게임 검사 6종(originals와 게임 5종)이 빠져 있어 돌지 않았다. 지금은 목록에 넣었다. PR #2는 `tests/run.sh originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal`을 다시 돌릴 것. Opus 독립 검토는 끝나기 전에 세션이 넘어갔으면 opus-reviewer로 다시 돌린다.
 
 ## 사용자가 정한 방향(원문 요지)
 1. 창작 게임을 '웹 문서와 카드 목록'에서 '실제로 조작하는 시뮬레이션 게임' 느낌으로. 게임 공간이 주인공, 상태창과 메뉴는 주변 보조.
