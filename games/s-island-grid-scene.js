@@ -793,7 +793,7 @@
   const stepDone = (st, k) => k === "locked" ? st.locked && st.oneLine : !!st[k];
 
   const S = {
-    on: false, phase: null, root: null, view: null, api: null, prefs: { daylock: false, motion: !reducedMotion(), labels: true },
+    on: false, phase: null, root: null, view: null, api: null, prefs: { daylock: false, motion: !reducedMotion(), labels: true, flows: true },
     vb: 4, s: "S1", sel: null, playing: false, speed: 1, t0: performance.now(), raf: 0, animUntil: 0, last: 0, lastActive: null,
     off: [], dialogs: {}, layoutRaf: 0, panel: "plan", playTimer: 0, uiTimer: 0, data: null
   };
@@ -862,6 +862,7 @@
             <button type="button" class="v2-tile" id="igs-set-day" aria-pressed="false">${ico("sun")}항상 낮</button>
             <button type="button" class="v2-tile" id="igs-set-motion" aria-pressed="true">${ico("wave")}움직임</button>
             <button type="button" class="v2-tile" id="igs-set-labels" aria-pressed="true">${ico("tag")}이름표</button>
+            <button type="button" class="v2-tile" id="igs-set-flows" aria-pressed="true">${ico("bolt")}전력 흐름</button>
           </div>
         </div>
       </section>
@@ -882,6 +883,7 @@
           <button type="button" class="v2-iconbtn igs-wide" data-igs-cam="tilt" aria-pressed="false" aria-label="낮은 시점">${ico("tilt")}</button>
         </div>
         <div class="igs-timeline" role="group" aria-label="장면 시간 구간">
+          <span class="igs-prog" id="igs-prog" aria-hidden="true"></span>
           <button type="button" class="igs-prev" id="igs-prev" aria-label="이전 구간">${ico("prev")}</button>
           <span class="igs-mtime" id="igs-mtime"></span>
           <div class="igs-segs">${(L ? L.times : Array.from({ length: 8 }, (_, b) => String(b * 3))).map((t, b) => `<button type="button" class="igs-seg" data-igs-b="${b}" aria-pressed="false" aria-label="${esc(t)} 보기"><span>${String(b * 3).padStart(2, "0")}</span><span class="igs-seg-i" aria-hidden="true"></span><span class="igs-seg-bar" aria-hidden="true"></span></button>`).join("")}</div>
@@ -891,6 +893,7 @@
       <div class="igs-stage">
         <canvas id="igs-canvas" class="igs-canvas" role="img" aria-label="섬 전력망 3D 장면"></canvas>
         <div class="igs-vignette" aria-hidden="true"></div>
+        <div class="igs-report" id="igs-report" role="status" aria-live="polite" aria-atomic="true" hidden></div>
         <div class="igs-banners" id="igs-banners">${Object.keys(OBJ).map(k => MINOR.has(k)
           ? `<button type="button" class="igs-banner igs-marker" data-igs-pick="${k}" aria-pressed="false" style="--bn:${OBJ[k].color}" data-minor><span class="igs-bn-code">${ico(OBJ[k].icon)}</span><span class="sr-only">${esc(OBJ[k].title)}</span><span class="igs-bn-val sr-only" data-val></span><span data-cut hidden></span></button>`
           : `<button type="button" class="igs-banner" data-igs-pick="${k}" aria-pressed="false" style="--bn:${OBJ[k].color}"><span class="igs-bn-code">${k}</span><span class="igs-bn-name">${esc(OBJ[k].title)}</span><span class="igs-bn-val" data-val></span><span class="igs-bn-cut" data-cut></span></button>`).join("")}</div>
@@ -1078,8 +1081,10 @@
     const fr = frameFor(data, S.vb, t, S.prefs);
     S.view.sel = S.sel;
     S.view.render(fr);
+    if (S.prefs.flows && S.phase === "prep") drawFlows(S.view, data, fr, t, moving);
     placeBanners(data);
     if (S.playing && now - S.last > 1700 / S.speed) { S.last = now; step(1, true); }
+    if (S.playing) { const pg = $("#igs-prog"); if (pg) pg.style.setProperty("--igs-prog", clamp((now - S.last) / (1700 / S.speed), 0, 1).toFixed(3)); }
     if ((moving || S.playing) && !S.raf) S.raf = requestAnimationFrame(frame);
   }
 
@@ -1205,6 +1210,102 @@
     clearTimeout(S.uiTimer);
     const wait = performance.now() - (S.lastUI || 0) > 120 ? 0 : 90;
     S.uiTimer = setTimeout(() => { S.lastUI = performance.now(); refreshUI(); }, wait);
+  }
+
+  /* ---------- 전력 흐름 ---------- */
+  // 모형 결과 행의 수지(태양광−출력제한 + 풍력 + 방전 + 디젤 = 공급 + 충전)를 계통 중심을 거치는 흐름으로 그린다.
+  // 시험 전에는 급전선별 차단을 드러내지 않는다(D-33): 부족이 있으면 계통 중심만 붉게 표시한다.
+  const HUB = [-0.7, 2.6, 2.2];
+  const FLOW_COL = { PV: [255, 211, 107], WIND: [226, 238, 246], DSL: [224, 164, 110], BAT: [113, 220, 235] };
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  function drawFlows(V, data, fr, t, moving) {
+    const g = V.g, row = data.rows[S.vb], P = data.P;
+    if (!g || !row) return;
+    const hub = V.project(HUB);
+    if (!hub) return;
+    const at = k => { const a = ANCHOR[k]; return V.project([a[0], a[1] - 0.7, a[2]]); };
+    const loads = loadsAt(row, P), night = fr.light ? fr.light.night || 0 : 0;
+    const sc = clamp(Math.min(V.W, V.H * 1.6) / 1100, 0.65, 1.25);
+    const links = [];
+    const add = (from, to, v, col, cut) => { if (from && to && (v > 0.05 || cut > EPS)) links.push({ from, to, v, col, cut: cut || 0 }); };
+    add(at("PV"), hub, Math.max(0, row.pv - row.curt), FLOW_COL.PV);
+    add(at("WIND"), hub, Math.max(0, row.r - row.pv), FLOW_COL.WIND);
+    add(at("DSL"), hub, row.g, FLOW_COL.DSL);
+    add(at("BAT"), hub, row.dis, FLOW_COL.BAT);
+    add(hub, at("BAT"), row.ch, FLOW_COL.BAT);
+    for (let i = 0; i < 4; i++) {
+      const k = "F" + (i + 1), cut = data.tested ? row.cut[i] : 0;
+      add(hub, at(k), Math.max(0, loads[i] - cut), hexRgb(OBJ[k].color), cut);
+    }
+    g.save();
+    g.lineCap = "round";
+    for (const l of links) {
+      const [x0, y0] = l.from, [x1, y1] = l.to, dist = Math.hypot(x1 - x0, y1 - y0);
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - dist * 0.24;
+      const q = u => [(1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * cx + u * u * x1, (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * cy + u * u * y1];
+      const w = clamp(1.4 + l.v * 0.5, 1.4, 5.5) * sc, c = l.col;
+      g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(cx, cy, x1, y1);
+      g.strokeStyle = "rgba(8,20,34,0.38)"; g.lineWidth = w + 2.4 * sc; g.stroke();
+      if (l.v > 0.05) { g.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.42 + night * 0.25})`; g.lineWidth = w; g.stroke(); }
+      if (l.cut > EPS) {
+        g.setLineDash([5 * sc, 5 * sc]); g.strokeStyle = "rgba(220,120,144,0.95)"; g.lineWidth = Math.max(1.6, w * 0.6); g.stroke(); g.setLineDash([]);
+        const pulse = moving ? 0.5 + 0.5 * Math.sin(t * 5) : 0.7;
+        g.beginPath(); g.arc(x1, y1, (9 + pulse * 5) * sc, 0, Math.PI * 2);
+        g.strokeStyle = `rgba(220,120,144,${0.55 + 0.4 * pulse})`; g.lineWidth = 2.4 * sc; g.stroke();
+      }
+      if (l.v <= 0.05) continue;
+      const n = clamp(Math.round(2 + l.v * 0.9), 2, 9), r = w * 0.62 + 1.2 * sc;
+      g.fillStyle = `rgba(${Math.min(255, c[0] + 30)},${Math.min(255, c[1] + 30)},${Math.min(255, c[2] + 30)},0.95)`;
+      for (let i = 0; i < n; i++) {
+        const u = moving ? (t * (0.32 + 0.04 * Math.min(l.v, 6)) + i / n) % 1 : (i + 0.5) / n;
+        const [px, py] = q(u);
+        g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+      }
+    }
+    // 계통 중심: 부족이 있으면 붉게 맥박친다.
+    const short = row.u > EPS, pulse = moving ? 0.5 + 0.5 * Math.sin(t * 4) : 0.6;
+    g.beginPath(); g.arc(hub[0], hub[1], (short ? 9 + pulse * 4 : 7) * sc, 0, Math.PI * 2);
+    g.fillStyle = short ? `rgba(220,120,144,${0.75 + 0.2 * pulse})` : "rgba(113,220,235,0.9)"; g.fill();
+    g.lineWidth = 2.2 * sc; g.strokeStyle = "rgba(8,20,34,0.75)"; g.stroke();
+    g.beginPath(); g.arc(hub[0], hub[1], 3 * sc, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+    g.restore();
+  }
+
+  /* ---------- 구간 보고 ---------- */
+  function reportFor(data, b) {
+    const L = labels(), r = data.rows[b], p = data.rows[(b + 7) % 8], P = data.P, items = [];
+    if (r.u > EPS) {
+      if (data.tested) {
+        const cuts = r.cut.map((c, i) => (c > EPS ? `F${i + 1} ${d2(c)}` : null)).filter(Boolean).join(" · ");
+        items.push({ tone: "danger", text: `부족 ${d2(r.u)} MW · 차단 ${cuts} MW` });
+      } else items.push({ tone: "danger", text: `부족 ${d2(r.u)} MW · 급전선별 차단은 시험 뒤 공개` });
+    }
+    if (Math.abs(r.pv - p.pv) >= 1) {
+      const why = r.pv > p.pv ? "해가 오르며" : data.s === "S2" && b >= 4 && b <= 6 ? "구름이 끼며" : "해가 기울며";
+      items.push({ tone: "sun", text: `${why} 태양광 ${d2(p.pv)} → ${d2(r.pv)} MW` });
+    }
+    if (r.ch > EPS) items.push({ tone: "cyan", text: `배터리 충전 ${d2(r.ch)} MW · 잔량 ${d2(r.soc)} MWh` });
+    else if (r.dis > EPS) items.push({ tone: "cyan", text: `배터리 방전 ${d2(r.dis)} MW · 잔량 ${d2(r.soc)} MWh${r.soc <= 1.6 + 1e-6 ? " (하한)" : ""}` });
+    if (r.n !== p.n || (b === 0 && r.n)) items.push({ tone: "gold", text: r.n ? `디젤 ${p.n}기 → ${r.n}기 · ${d2(r.g)} MW · CO₂ ${d2(r.g * 3 * 0.75)} t` : `디젤 ${p.n}기 → 정지` });
+    if (r.curt > EPS) items.push({ tone: "sun", text: `남는 태양광 ${d2(r.curt)} MW 출력제한` });
+    if (P.dr[b] && !P.dr[(b + 7) % 8]) items.push({ tone: "mint", text: "항구 수요반응 시작 · 1.5 MW 줄임" });
+    if (!items.length) items.push({ tone: "ok", text: `수요 ${d2(r.L)} MW를 모두 공급` });
+    const provisional = data.provisionalFrom !== null && b >= data.provisionalFrom;
+    return { time: L.times[b], scen: (data.tested ? L.scenarios[data.s] : "S1 예보대로 미리보기") + (provisional ? " · 임시값" : ""), items: items.slice(0, 3) };
+  }
+  function showReport() {
+    const el = $("#igs-report"), data = S.data;
+    if (!el || !data || !labels() || S.phase !== "prep") return;
+    const rp = reportFor(data, S.vb);
+    el.innerHTML = `<p class="igs-rep-h"><span class="igs-rep-t">${esc(rp.time)}</span><span class="igs-rep-s">${esc(rp.scen)}</span></p><ul>${rp.items.map(it => `<li data-tone="${it.tone}">${esc(it.text)}</li>`).join("")}</ul>`;
+    el.hidden = false;
+    el.dataset.show = "true";
+    clearTimeout(S.repTimer);
+    if (!S.playing) hideReportSoon();
+  }
+  function hideReportSoon() {
+    clearTimeout(S.repTimer);
+    S.repTimer = setTimeout(() => { const el = $("#igs-report"); if (el) { el.dataset.show = "false"; S.repTimer = setTimeout(() => { if (!S.playing && el.dataset.show === "false") el.hidden = true; }, 400); } }, 6000);
   }
 
   /* ---------- 선택 카드 ---------- */
@@ -1344,18 +1445,21 @@
     $("#igs-set-day").setAttribute("aria-pressed", String(S.prefs.daylock));
     $("#igs-set-motion").setAttribute("aria-pressed", String(S.prefs.motion));
     $("#igs-set-labels").setAttribute("aria-pressed", String(S.prefs.labels));
+    $("#igs-set-flows").setAttribute("aria-pressed", String(S.prefs.flows));
   }
 
   /* ---------- 시간 ---------- */
-  function setB(b) { S.vb = ((b % 8) + 8) % 8; refreshUI(); request(900); }
-  function step(d, auto) { setB(S.vb + d); if (!auto && S.playing) S.last = performance.now(); }
+  function setB(b, report) { S.vb = ((b % 8) + 8) % 8; refreshUI(); request(900); if (report) showReport(); }
+  function step(d, auto) { setB(S.vb + d, true); if (!auto && S.playing) S.last = performance.now(); }
   function setPlaying(on) {
     S.playing = !!on;
     const btn = $("#igs-play");
     btn.setAttribute("aria-pressed", String(S.playing));
     btn.setAttribute("aria-label", S.playing ? "하루 재생 멈춤" : "하루 재생");
     btn.innerHTML = ico(S.playing ? "pause" : "play");
+    S.root.dataset.playing = String(S.playing);
     S.last = performance.now();
+    if (S.playing) showReport(); else hideReportSoon();
     request();
   }
 
@@ -1383,7 +1487,7 @@
       else if (t.dataset.igsClose) { const btn = root.querySelector(`[data-igs-panel="${t.dataset.igsClose}"]`); openPanel(null); if (btn) btn.focus({ preventScroll: true }); }
       else if (t.dataset.igsOpen) openDialog(t.dataset.igsOpen, t);
       else if (t.dataset.igsPick) { select(S.sel === t.dataset.igsPick && t.closest(".igs-banners") ? null : t.dataset.igsPick, "button"); }
-      else if (t.dataset.igsB !== undefined) setB(Number(t.dataset.igsB));
+      else if (t.dataset.igsB !== undefined) setB(Number(t.dataset.igsB), true);
       else if (t.dataset.igsS) { S.s = t.dataset.igsS; refreshUI(); request(900); }
       else if (t.dataset.igsCam) cam(t.dataset.igsCam);
       else if (t.dataset.igsAct) act(t.dataset.igsAct);
@@ -1399,6 +1503,7 @@
       else if (t.id === "igs-set-day") { S.prefs.daylock = !S.prefs.daylock; paintSettings(); request(); }
       else if (t.id === "igs-set-motion") { S.prefs.motion = !S.prefs.motion; if (!S.prefs.motion) S.animUntil = 0; paintSettings(); request(); }
       else if (t.id === "igs-set-labels") { S.prefs.labels = !S.prefs.labels; paintSettings(); request(); }
+      else if (t.id === "igs-set-flows") { S.prefs.flows = !S.prefs.flows; paintSettings(); request(); }
     });
     // 띠의 안내 버튼은 셸 밖에 있다.
     const info = document.getElementById("igs-strip-info");
@@ -1478,6 +1583,7 @@
     if (S.raf) cancelAnimationFrame(S.raf);
     if (S.layoutRaf) cancelAnimationFrame(S.layoutRaf);
     clearTimeout(S.uiTimer);
+    clearTimeout(S.repTimer);
     S.raf = S.layoutRaf = 0;
     S.off.forEach(f => f());
     S.off = [];
