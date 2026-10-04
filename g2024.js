@@ -11,20 +11,27 @@
     F: { n: "숲", k: 4, feat: "일반적으로 낮은 에너지 생산 · 거주 여건 좋음", rel: "" },
     G: { n: "초원", k: 3, feat: "일반적으로 낮은 에너지 생산 · 거주 여건 좋음", rel: "" },
   };
+  /* 보고서 6쪽 '정착지 지역 배치도'(133칸). 위아래 변이 평평한 육각형이며 짝수 열(0, 2, …)은 반 칸 아래에 놓인다. */
   const MAP = [
-    "..LLDDMDLL.",
-    ".LDDFFWMDLL",
-    "LMFFFWWMDDL",
-    "LFFFFWWGGDL",
-    "LMFWWFGGGGM",
-    "LDMWWGGWGGL",
-    ".DDMFFGWWDL",
-    ".LDDMWWDDL.",
-    "..LLMDDLL..",
+    "....LLD...L....",
+    "...LDDFMMDDLL..",
+    "...DGFFWWMMDL..",
+    "..LGGFWMMWDDM..",
+    "LLFGFGFFFMDDW..",
+    "LFFFWFFFFDDWWWW",
+    "LFFFWWMGGGGGGGG",
+    ".FMWWWWMGGFWGGG",
+    "..DDDDMMFFWMGG.",
+    "..DDDDDDMWWM...",
+    "..LMWMMDMWMM...",
+    "...LLW.DDMLD...",
+    ".........L.....",
   ];
   const TCOL = { L: "#c8483a", W: "#72cdc4", M: "#7a6152", D: "#e1b870", F: "#3f8a4c", G: "#b9dc5a" };
   const MAX_TILES = 7;
   const MAX_ITEMS = 10;
+  const MAP_V = 2;
+  const MAP_NOTICE = "정착지 지도가 보고서 배치도로 바뀌어, 예전에 고른 정착지·확정·시뮬레이션 기록을 비웠습니다. 특별 아이템과 써 둔 글은 그대로 있습니다. 새 지도에서 정착지를 다시 골라 주세요.";
 
   const ITEMS = [
     { id: "eng", n: "엔지니어", up: 0, max: 6, d: "켄트로늄 채굴 기술자. 채굴한 켄트로늄에서 한 명당 10% 효율로 에너지를 생산한다." },
@@ -36,7 +43,7 @@
     { id: "eduF", n: "교육시설", up: 3, cat: "edu", d: "행성 거주에 필요한 지식과 기술을 효과적으로 개발할 수 있다. 교육전문가는 교육시설을 효과적으로 활용할 수 있다." },
     { id: "armP", n: "무기전문가", up: 2, cat: "arm", d: "유일하게 무기 사용이 허용된 전문가 집단으로, 예상치 못한 외계 생명체나 위험 요소에 대한 대응력이 높아진다." },
     { id: "armF", n: "무장시설", up: 3, cat: "arm", d: "정착지에 막강한 무장 능력을 제공하며, 목적에 따라 다양한 폭파 시설이나 무기도 제작할 수 있다." },
-    { id: "funP", n: "여가 및 문화 전문가", up: 2, cat: "fun", d: "탐험대의 고립감과 정신적 스트레스를 해소하고, 협동심과 공동체 의식을 높이며 창의적 문제 해결력을 키워준다." },
+    { id: "funP", n: "여가 및 문화 전문가", up: 2, cat: "fun", d: "정착지에서 탐험대의 고립감과 정신적 스트레스를 해소하고, 협동심과 공동체 의식을 높이며 창의적 문제 해결력을 키워준다." },
     { id: "funF", n: "여가 및 문화시설", up: 3, cat: "fun", d: "탐험대의 정신적 스트레스를 해소하고 체력 관리에 활용할 수 있다." },
     { id: "ccs", n: "온실가스 포집기", up: 3, cat: "env", d: "대기 중의 온실효과를 유발하는 기체를 다양한 방식으로 포집하여 저장 및 활용한다." },
     { id: "hvac", n: "냉난방시설", up: 1, d: "정착 시설의 실내 온도를 조절할 수 있는 장치로 항상 일정한 온도와 습도를 유지하는 것이 가능해진다." },
@@ -52,15 +59,16 @@
   const ITEM = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
   const ATTR = ["행복", "건강", "치안", "안전", "교육", "환경"];
 
-  /* 헥스 좌표 (odd-r) */
+  /* 헥스 좌표 (even-q: 짝수 열이 반 칸 아래) */
   const tiles = [];
   MAP.forEach((row, r) => row.split("").forEach((t, c) => { if (t !== ".") tiles.push({ r, c, t, id: r + "-" + c }); }));
   const TILE = Object.fromEntries(tiles.map((t) => [t.id, t]));
+  const dy = (r, c) => 2 * r + (c % 2 === 0 ? 1 : 0);
   const nbrs = (r, c) => {
-    const d = r % 2 === 0
-      ? [[-1, -1], [-1, 0], [0, -1], [0, 1], [1, -1], [1, 0]]
-      : [[-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0], [1, 1]];
-    return d.map(([dr, dc]) => (r + dr) + "-" + (c + dc)).filter((id) => TILE[id]);
+    const y = dy(r, c);
+    return [[0, -2], [0, 2], [-1, -1], [-1, 1], [1, -1], [1, 1]]
+      .map(([dc, dd]) => { const cc = c + dc, yy = y + dd; return (yy - (cc % 2 === 0 ? 1 : 0)) / 2 + "-" + cc; })
+      .filter((id) => TILE[id]);
   };
   const connected = (ids) => {
     if (ids.length <= 1) return true;
@@ -152,25 +160,47 @@
   const r1 = (v) => Math.round(v * 10) / 10;
 
   function g(state) {
-    state.game = Object.assign({ sel: [], items: {}, runs: [], showK: true, locked: null, matched: "" }, state.game || {});
-    return state.game;
+    const plain = (o) => o !== null && typeof o === "object" && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
+    const old = plain(state.game) ? state.game : {};
+    state.game = Object.assign({ sel: [], items: {}, runs: [], showK: true, locked: null, matched: "" }, old);
+    const G = state.game;
+    /* 같은 칸 번호라도 지도 판이 다르면 지형과 이웃 관계가 달라진다. */
+    if (G.mapV !== MAP_V) {
+      if ((Array.isArray(G.sel) && G.sel.length) || G.locked || (Array.isArray(G.runs) && G.runs.length) || G.matched) G.mapNotice = true;
+      else delete G.mapNotice;
+      G.sel = [];
+      G.locked = null;
+      G.matched = "";
+      G.runs = [];
+      G.mapV = MAP_V;
+    }
+    const valid = (a) => Array.isArray(a) && a.length <= MAX_TILES && a.every((id) => Object.hasOwn(TILE, id)) && connected(a);
+    const validItem = (id, n) => Object.hasOwn(ITEM, id) && Number.isInteger(n) && n >= 0 && n <= (ITEM[id].max || 1);
+    const validItems = (o) => plain(o) && Object.entries(o).every(([id, n]) => validItem(id, n));
+    if (!valid(G.sel)) G.sel = [];
+    G.items = Object.fromEntries(plain(G.items) ? Object.entries(G.items).filter(([id, n]) => validItem(id, n)) : []);
+    if (G.locked && (!valid(G.locked.sel) || !validItems(G.locked.items))) G.locked = null;
+    if (G.locked) delete G.mapNotice;
+    if (!G.locked) G.matched = "";
+    if (!Array.isArray(G.runs)) G.runs = [];
+    return G;
   }
   const itemCount = (items) => Object.values(items).reduce((a, b) => a + (b || 0), 0);
 
   function mapSVG(G, disabled) {
-    const s = 21, w = Math.sqrt(3) * s, m = 6;
+    const s = 18, h = Math.sqrt(3) * s, m = 6;
     let out = "";
     tiles.forEach((t) => {
-      const cx = m + w / 2 + w * (t.c + 0.5 * (t.r % 2));
-      const cy = m + s + 1.5 * s * t.r;
+      const cx = m + s + 1.5 * s * t.c;
+      const cy = m + (h / 2) * (dy(t.r, t.c) + 1);
       const pts = [0, 1, 2, 3, 4, 5].map((i) => {
-        const a = (Math.PI / 180) * (60 * i - 30);
+        const a = (Math.PI / 180) * (60 * i);
         return (cx + s * Math.cos(a)).toFixed(1) + "," + (cy + s * Math.sin(a)).toFixed(1);
       }).join(" ");
       const on = G.sel.includes(t.id);
       out += `<g><polygon class="t-${t.t} ${on ? "sel" : ""}" points="${pts}" data-hex="${t.id}" tabindex="${disabled ? -1 : 0}" role="button" aria-pressed="${on}" aria-label="${TER[t.t].n} ${TER[t.t].k}K"><title>${TER[t.t].n} · 연간 채굴가능량 ${TER[t.t].k}K</title></polygon>${G.showK ? `<text x="${cx}" y="${cy + 3.5}" text-anchor="middle">${TER[t.t].k}</text>` : ""}</g>`;
     });
-    const W = m * 2 + w * 11.5, H = m * 2 + s * 2 + 1.5 * s * 8;
+    const W = m * 2 + s * 2 + 1.5 * s * 14, H = m * 2 + (h / 2) * 26;
     return `<svg class="hexmap" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="group" aria-label="정착지 지역 배치도">${out}</svg>`;
   }
 
@@ -192,6 +222,7 @@
       const G = g(state);
       const locked = !!G.locked;
       root.innerHTML = `
+        ${G.mapNotice ? `<p class="caution small" id="map-notice24" role="status">${esc(MAP_NOTICE)}</p>` : ""}
         <div class="desk">
           <div class="stack">
             <section class="panel ${locked ? "locked" : ""}">
@@ -221,7 +252,7 @@
               </div>
               <p class="hint" style="margin-top:6px">에너지 생산량과 소비량은 화면에 바로 표시됩니다. 여섯 가지 속성은 원래 시험처럼 시뮬레이션을 돌려야 보입니다.</p>
             </section>
-            ${locked ? `<section class="panel"><h3>시뮬레이션 결과가 내 예상과 잘 일치했나요?</h3>
+            ${locked ? `<section class="panel"><h3>각각의 시뮬레이션 결과가 본인의 생각이나 예상과 잘 일치했나요?</h3>
               <div class="seg" role="group" aria-label="예상 일치 여부">
                 <button data-match="yes" aria-pressed="${G.matched === "yes"}">예</button><button data-match="no" aria-pressed="${G.matched === "no"}">아니오</button></div>
               <p class="hint" style="margin-top:6px">이 선택에 따라 면접실의 5번 질문이 달라집니다.</p></section>` : ""}
@@ -232,6 +263,11 @@
             ${locked ? "" : '<p class="hint" style="text-align:right">탐사계획을 확정해야 맞춤형 질문이 만들어집니다.</p>'}
           </div>
         </div>`;
+
+      if (G.mapNotice) {
+        delete G.mapNotice;
+        save();
+      }
 
       const src = () => (locked ? G.locked : { sel: G.sel, items: G.items });
       const paintMap = () => {
@@ -334,7 +370,7 @@
       const qs = [
         { k: "24-c1", src: "report", tag: "공통 1", q: "본인의 탐험 계획을 설명해 주세요. 최종적으로 고른 정착지와 특별 아이템을 선택한 이유는 무엇인가요?", time: "약 2~4분" },
         { k: "24-c2", src: "report", tag: "공통 2", q: "성공적인 정착 계획을 수립하려면 다양한 요소를 고려해야 합니다. 잠재적인 위험 요인은 어떤 것들을 예상했으며, 어떻게 대응할 수 있을까요?", time: "약 2~4분" },
-        { k: "24-c3", src: "report", tag: "공통 3", q: "탐험 계획을 수립하려면 다양한 상황과 조건 속에서 단 하나의 최종 선택을 결정해야 합니다. 결정이 어려웠던 부분은 특히 무엇이었으며, 이 상황에서 본인은 어디에 우선순위를 두었나요?", time: "약 2~4분" },
+        { k: "24-c3", src: "report", tag: "공통 3", q: "탐험 계획을 수립하려면 다양한 상황과 조건 속에서 단 하나의 최종 선택을 결정해야 합니다. 탐험 계획을 수립하는데 결정이 어려웠던 부분은 특히 무엇이었으며 이 상황에서 본인은 어디에 우선순위를 두었나요?", time: "약 2~4분" },
         { k: "24-c4", src: "report", tag: "공통 4", q: "수립한 탐험 계획을 수행하려면 대중과 탐험위원회를 설득해야 합니다. 본인의 계획을 알리고 지지를 받기 위해서 1년이 주어진다면 어떻게 할 것인가요?" },
         G.matched === "yes"
           ? { k: "24-c5-yes", src: "report", tag: "공통 5 (예)", q: "의사결정 과정에서 모두가 자기 생각과 같은 이야기를 해준다면, 최선의 결론을 내리기 위해 추가로 할 수 있는 것은 어떤 것이 있을까요?", time: "약 2~4분" }
@@ -347,7 +383,7 @@
       const has = (id) => (items[id] || 0) > 0;
       const indiv = [];
       if (r.prod < r.cons) indiv.push({ k: "24-i-energy-short", tag: "개별 · 에너지", q: "탐험대가 정착에 필요한 에너지를 충분히 확보하지 못하여 정착에 실패했습니다. 성공적인 탐험 계획을 수립하지 못한 이유는 무엇이라고 생각하나요?" });
-      else if (r.eng > 0 && r.K * 0.1 * (r.eng - 1) >= r.cons) indiv.push({ k: "24-i-energy-over", tag: "개별 · 에너지", q: "탐험 계획에 의하면, 엔지니어를 한 명 더 적게 선택해도 필요한 소비량을 충분히 공급할 수 있습니다. 그럼에도 불구하고 엔지니어를 더 선택한 이유는 무엇인가요? 의도적으로 에너지를 초과 생산하는 것인가요?" });
+      else if (r.eng > 0 && simulate(sel, Object.assign({}, items, { eng: r.eng - 1 })).prod >= r.cons) indiv.push({ k: "24-i-energy-over", tag: "개별 · 에너지", q: "탐험 계획에 의하면, 엔지니어를 한 명 더 적게 선택해도 필요한 소비량을 충분히 공급할 수 있습니다. 그럼에도 불구하고 엔지니어를 더 선택한 이유는 무엇인가요? 의도적으로 에너지를 초과 생산하는 것인가요?" });
       const labs = ITEMS.filter((it) => it.lab && has(it.id));
       if (labs.length) indiv.push({ k: "24-i-lab", tag: "개별 · 연구소", q: `탐험대에 ${labs[0].n}를 포함한 이유를 자세히 설명해 주세요. 에너지 수급과 지속 가능한 정착 생활을 위해 어떤 역할을 할 수 있을 것으로 생각하나요?` });
       else indiv.push({ k: "24-i-nolab", tag: "개별 · 연구소", q: "탐험대에 연구소를 포함하지 않아서 향후 에너지 기술 개발에 어려움이 예상됩니다. 본인의 탐험 계획에 연구소를 포함하지 않은 이유와 정착지의 에너지 생산 기술을 획기적으로 개선할 수 있는 대안을 설명해 주세요." });
@@ -359,7 +395,7 @@
       if (allCats) indiv.push({ k: "24-i-attr-all", tag: "개별 · 속성", q: "탐험 계획에 따르면 의료, 행정, 교육, 무장, 여가 및 문화, 환경을 모두 고르게 고려한 것으로 파악됩니다. 그중에서 정착민의 지속 가능한 외계 행성 거주를 위해 가장 중요한 요소 세 가지는 무엇이라고 생각하나요?" });
       else if (r.A[sorted[0]] >= 3.5) indiv.push({ k: "24-i-attr-high", tag: "개별 · 속성", q: `탐험 계획에 따르면 탐험대의 ${HIGH[sorted[0]][0]}을 중요하게 생각한 것으로 판단됩니다. ${HIGH[sorted[0]][1]} 탐험대의 성공적인 정착에 특히 중요한 이유는 무엇인가요?` });
       else { const lo = sorted[sorted.length - 1]; indiv.push({ k: "24-i-attr-low", tag: "개별 · 속성", q: `탐험 계획에 따르면 ${LOW[lo][0]}. ${LOW[lo][1]} 정착지에서 어떤 방안을 마련할 수 있을까요?` }); }
-      return qs.concat(indiv.slice(0, 2));
+      return qs.concat(indiv.slice(0, 2).map((x) => Object.assign(x, { time: "약 2~4분" })));
     },
 
     recap(state) {
@@ -369,6 +405,7 @@
       s.sel.forEach((id) => { const n = TER[TILE[id].t].n; cnt[n] = (cnt[n] || 0) + 1; });
       const r = simulate(s.sel, s.items);
       return [
+        ...(G.mapNotice ? [{ t: "안내", d: MAP_NOTICE }] : []),
         { t: "상태", d: G.locked ? "탐사계획 확정" : "아직 확정하지 않음" },
         { t: "정착지", d: Object.entries(cnt).map(([k, v]) => `${k} ${v}칸`).join(", ") || "(없음)" },
         { t: "특별 아이템", d: ITEMS.filter((it) => s.items[it.id]).map((it) => (it.max > 1 ? `${it.n} ${s.items[it.id]}명` : it.n)).join(", ") || "(없음)" },
@@ -378,14 +415,22 @@
       ];
     },
 
+    /* 성찰은 recap을 직접 표시하지 않으므로 예시 답안의 열림 여부와 무관하게 안내한다. */
+    afterReflect(root, state) {
+      const notice = this.recap(state)[0];
+      if (notice.t === "안내") root.insertAdjacentHTML("afterbegin", `<p class="caution small" id="map-notice24" role="status">${esc(notice.d)}</p>`);
+    },
+
     reflectExtra() {
       const ex = [
         ["공통 1 · 탐험 계획", "숲 4칸, 갯벌·초원·호수 각 1칸. 용암은 채굴량이 많지만 분출 위험과 주거 제한으로 과감히 제외. 호수는 물 자원 때문에 반드시 포함. 엔지니어 3명, 의료·행정·여가 및 문화·교육 전문가, 수중기지, 차세대그리드 연구소."],
         ["공통 2 · 위험 요인", "내부(시설 고장, 사람 사이의 갈등)와 외부(외계인 조우)로 나눠 생각. 우주왕복선 소프트웨어가 최신보다 안정성을 택한다는 배경지식으로 범용 장비의 장점을 설명."],
-        ["공통 3 · 우선순위", "모든 것을 만족시키는 조합은 없었음. 고립된 환경에서의 정서적·심리적 안정과 건강을 우선."],
+        ["공통 3 · 우선순위", "모든 것을 만족시키는 조합은 없었음. 고립된 환경에서의 정서적·심리적 안정과 건강을 우선. 그래서 의료전문가와 의료시설을 우선 포함."],
         ["공통 4 · 설득", "먼저 내 계획이 감이나 간접 근거로 정한 것은 아닌지 다시 검토하고, 틀린 부분은 공개적으로 수정. 그다음 공청회·설명회로 직접 설명."],
         ["공통 5 · 예상과 다른 결과", "무기전문가 대신 행정전문가를 택함. 무기전문가의 효과는 외계 문명을 만날 때만 나타나는 '변수'이고, 행정전문가의 효과는 늘 작동하는 '상수'라고 비유."],
         ["공통 6 · 추가 아이템", "모든 재료로 모든 제품을 만드는 3D 프린터. 사막의 규소로 반도체를, 유기물로 식량을 만들 수 있다고 확장."],
+        ["개별 7 · 차세대그리드 연구소", "아이템 수가 제한되어 연구소는 하나만 고름. 정착지가 넓어질수록 에너지 수송이 중요해지고, 손실을 줄이는 것은 그만큼 에너지를 생산한 것과 같은 효과라고 설명."],
+        ["개별 8 · 건강", "코로나19 확산으로 사회 경제가 멈춘 경험을 근거로, 시설과 장비도 결국 사람이 온전히 존재하기 위한 도구라고 봄. 그래서 의료전문가와 의료시설을 모두 포함."],
       ];
       return `<p class="small muted" style="margin-bottom:8px">보고서의 예시 답안 요약입니다. 내 답과 비교할 때 논리 구조(분류, 비유, 자기 검토)를 눈여겨보세요.</p>
         ${ex.map(([t, d]) => `<details class="reveal"><summary>${esc(t)} <span class="tag-official">보고서 요약</span></summary><p class="small">${esc(d)}</p></details>`).join("")}
@@ -393,9 +438,10 @@
           <ul class="small" style="margin:0;padding-left:1.1em">
             <li>에너지 생산 = 연간 채굴량 × 0.1 × 엔지니어 수. 에너지AI 연구소는 채굴량 +30%, 수소에너지 연구소는 호수 몫의 생산 +50%.</li>
             <li>에너지 소비 = 아이템 유지비 합계. 차세대그리드 연구소는 소비 −30%.</li>
+            <li>폭파장치는 무기전문가가 함께 있을 때 채굴량 +20%. 보고서에는 '채굴량도 늘릴 수 있게 한다'고만 적혀 있고 수치는 없습니다.</li>
             <li>수중기지 없이는 호수 채굴량이 절반. 신소재 연구소 없이 용암을 고르면 안전 하락. 냉난방시설 없이 용암·사막을 고르면 행복 하락.</li>
             <li>전문가와 시설을 짝지으면 해당 속성이 크게 오릅니다. 시설만 있으면 효과가 작습니다.</li>
-            <li>보고서 예시 답안의 조합은 생산 10.5, 소비 9.1로 자급에 성공합니다. 원래 시험의 계산식과 같다는 뜻은 아닙니다.</li>
+            <li>공통 1 예시 답안에 적힌 조합(숲 4칸, 갯벌·초원·호수 각 1칸, 엔지니어 3명, 의료·행정·여가 및 문화·교육 전문가, 수중기지, 차세대그리드 연구소)은 이 계산식으로 생산 10.5, 소비 9.1입니다. 공통 3·개별 8 예시 답안처럼 의료시설까지 더하면 소비가 11.2로 생산보다 많아집니다. 보고서는 생산량·소비량 수치를 공개하지 않았으므로 원래 시험의 결과와 같다는 뜻은 아닙니다.</li>
           </ul></details>`;
     },
   };
