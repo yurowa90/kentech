@@ -84,7 +84,9 @@ function param(key, grade, expected) {
 }
 
 block("B1", () => {
-  param("betaPopReal", "M"); param("betaIndReal", "M");
+  param("betaPopReal", "M");
+  // v1.2 우선: B15 — 산업 탄력은 주민 값 준용이므로 독립 추정(M)이 아닌 G.
+  param("betaIndReal", "G");
   param("eduSpeed", "G"); param("startMix", "G");
   // ECON-BALANCE B1(v1.1): startMix 값은 회복·안정 목표로 정한다(0.2 고정 → 0..1 범위). 행동 목표는 아래 단언이 판정.
   ok(D.params.startMix && D.params.startMix.v >= 0 && D.params.startMix.v <= 1, `params.startMix 0..1 (${D.params.startMix && D.params.startMix.v})`);
@@ -181,12 +183,17 @@ block("B4", () => {
     const a = baseline.reports[11].cities?.[id]?.Lparts?.price, b = trade.reports[11].cities?.[id]?.Lparts?.price;
     ok(finite(a) && finite(b) && Math.abs(a - b) < 1e-9, `${id} 거래0 price=${a}, 거래증가 price=${b} (목표 동일)`);
     const prices = [0.3, 0.5].map(mul => {
-      // 모든 도시를 포함한 산술 평균이 같은 0.012가 되게 나머지 원가를 조정한다.
-      const rest = (IDS.length - mul) / (IDS.length - 1);
-      const r = run(12, cid => ({ energy: { costPerMWh: FIXTURE.cost * (cid === id ? mul : rest) } }));
+      // v1.2 우선: B11 — 매달 입력 공급량으로 가중 평균을 0.012에 맞춘다.
+      const r = run(12, (cid, m, E) => {
+        const own = energy(E.cities[id]).demMWh;
+        const others = sum(IDS.filter(key => key !== id).map(key => energy(E.cities[key]).demMWh));
+        const rest = 1 + own * (1 - mul) / others;
+        return { energy: { costPerMWh: FIXTURE.cost * (cid === id ? mul : rest) } };
+      });
       return r.reports[11].cities?.[id]?.Lparts?.price;
     });
-    ok(prices.every(finite) && prices[0] === prices[1], `${id} 원가 평균0.3/0.5 price=${prices.join("/")} (목표 동일)`);
+    // v1.2 우선: B11 — 공급량 가중 평균의 0.3/0.5배 하한 비교.
+    ok(prices.every(finite) && prices[0] === prices[1], `${id} 원가 가중평균0.3/0.5 price=${prices.join("/")} (목표 동일)`);
   }));
   test("평균에 원가0 도시도 포함", () => {
     const r = run(12, id => id === SMALL ? { energy: { costPerMWh: 0 } } : {});
@@ -207,11 +214,13 @@ block("B4", () => {
       `${id} rev.tariff=${f?.rev?.tariff} (차익 목표 ${fmt(margin)})`);
   }));
   test("비싼 전력의 음수 차익", () => {
-    // 원가를 10배 올린 한 도시. 평균은 모든 도시의 입력 원가로 직접 구한다.
+    // v1.2 우선: B11 — 원가를 10배 올린 도시도 공급량 가중 평균으로 차익 계산.
     const E = initial(), ins = inputs(E, id => id === SMALL ? { energy: { costPerMWh: FIXTURE.cost * 10 } } : {});
-    const avg = mean(IDS.map(id => ins[id].energy.costPerMWh));
+    const avg = sum(IDS.map(id => ins[id].energy.demMWh * ins[id].energy.costPerMWh)) /
+      sum(IDS.map(id => ins[id].energy.demMWh));
     const e = ins[SMALL].energy, want = e.demMWh * (avg * (1 + markup?.v) - e.costPerMWh);
     const f = X.monthStep(E, ins, D)?.report?.fiscal?.[SMALL];
+    // v1.2 우선: B11 — 이 입력은 정전 0이므로 공급량=수요량.
     ok(finite(want) && want < 0 && finite(f?.rev?.tariff) && Math.abs(f.rev.tariff - want) < 0.01,
       `${SMALL} 비싼 전력 차익=${f?.rev?.tariff}, 목표=${fmt(want)} (음수 허용)`);
   });
@@ -246,28 +255,40 @@ block("B7", () => {
   IDS.forEach(id => test(`${id} 거래와 지방채`, () => {
     const r = run(24, (cid, m) => cid === id && m === 1 ? { energy: { tradeNet: D.start[id].cash0 * 100 } } : {});
     for (const m of [1, 2]) {
-      const cap = r.states[m].cities[id].debtCap, before = r.states[m - 1].cities[id].debtCap;
-      const delta = Math.abs(cap / before - 1);
+      const cap = r.states[m].cities[id].debtCap;
+      const rows = r.reports.slice(0, m + 1);
+      const eligible = rows.map(R => {
+        const rev = R.fiscal?.[id]?.rev;
+        return rev?.resTax + rev?.indTax + rev?.subsidy;
+      });
+      const want = mean(eligible) * 12 * D.params.debtCapRatio?.v;
       const control = baseline.states[m].cities[id].debtCap;
-      ok(finite(delta) && delta <= 0.2, `${id} ${m + 1}달 debtCap ${fmt(before)}→${fmt(cap)}, 변화 ${fmt(delta * 100)}% (목표 ≤20%)`);
+      // v1.2 우선: B11 — 관측 달 평균×12를 갱신하며 월 20% 제한은 적용하지 않는다.
+      ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
+        `${id} ${m + 1}달 debtCap=${fmt(cap)}, 세금·지원금 평균 연환산 목표=${fmt(want)}`);
       ok(finite(cap) && finite(control) && Math.abs(cap - control) <= Math.max(0.1, control * 0.001),
         `${id} 거래 제외 한도=${fmt(cap)}, 무거래=${fmt(control)} (같은 세입)`);
     }
     for (const m of [11, 23]) {
       const rev12 = sum(r.reports.slice(m - 11, m + 1).map(R => {
-        const f = R.fiscal?.[id];
-        return f?.revTotal - f?.rev?.trade;
+        const rev = R.fiscal?.[id]?.rev;
+        return rev?.resTax + rev?.indTax + rev?.subsidy;
       }));
       const want = D.params.debtCapRatio?.v * rev12, cap = r.states[m].cities[id].debtCap;
+      // v1.2 우선: B11 — 최근12달 세금·지원금만 포함, 전기 차익도 제외.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
-        `${id} ${m + 1}달 최근12달 거래 제외 한도=${fmt(cap)}, 목표=${fmt(want)}`);
+        `${id} ${m + 1}달 최근12달 세금·지원금 한도=${fmt(cap)}, 목표=${fmt(want)}`);
     }
-    const first = r.reports[0].fiscal?.[id];
-    const annual = (first?.revTotal - first?.rev?.trade - first?.rev?.subsidy) * 12 + first?.rev?.subsidy;
     for (const m of [0, 5]) {
+      const rows = r.reports.slice(0, m + 1);
+      const annual = mean(rows.map(R => {
+        const rev = R.fiscal?.[id]?.rev;
+        return rev?.resTax + rev?.indTax + rev?.subsidy;
+      })) * 12;
       const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * annual;
+      // v1.2 우선: B11 — 지원금도 수령 월 세입으로 포함해 매달 관측 평균 갱신.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
-        `${id} ${m + 1}달 첫달 기준 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (1월 지원금은 1회)`);
+        `${id} ${m + 1}달 관측 평균 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (지원금은 수령 월에 포함)`);
     }
   }));
 });

@@ -2,6 +2,7 @@
 import argparse
 import ast
 import json
+import math
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -10,9 +11,11 @@ JS = r"""
 ({months, rotations}) => {
   const C = KCP.leagueCore, BG = KCP.buildGame, X = KCP.econ;
   const R = C.regionOf("south"), ids = R.teams.map(t => t.id);
-  const strategies = ["nothing", "diesel", "renew", "ties", "taxlow", "taxhigh"];
+  const strategies = ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh"];
+  const hasAI = typeof KCP.leagueAI?.plan === "function";
   const out = {checks: [], runs: [], strategies, ids,
-    names: Object.fromEntries(R.teams.map(t => [t.id, t.name])), months, rotations};
+    names: Object.fromEntries(R.teams.map(t => [t.id, t.name])), months, rotations,
+    planner: hasAI ? "leagueAI balanced" : "legacy fallback (leagueAI 없음)"};
   const finite = Number.isFinite, clone = x => JSON.parse(JSON.stringify(x));
   const sum = xs => xs.reduce((a, b) => a + b, 0);
   const ok = (c, m) => out.checks.push([!!c, m]);
@@ -25,7 +28,7 @@ JS = r"""
   });
   const empty = () => ({builds: [], lines: [], policies: [], missions: [], shed: "home", fab2: false});
   const newGame = room => C.newState(room, "south", 0, ids, {turns: 36});
-  ok(ids.length === 6 && strategies.length === 6, `south 팀 ${ids.length}, 전략 ${strategies.length}`);
+  ok(ids.length === 6 && strategies.length === 7, `south 팀 ${ids.length}, 전략 ${strategies.length}`);
 
   // B9: 방 이름 200개 × 12달. drawEvents는 상태에 사건 이력을 남기므로 같은 S를 이어 쓴다.
   test("B9 달 사건 표본", () => {
@@ -158,7 +161,7 @@ JS = r"""
     ok(sawSalvage, "B10 양수 철거 회수 실제 발생·보고");
   });
 
-  const makePlan = (S, id, strategy) => {
+  const legacyPlan = (S, id, strategy) => {
     if (strategy === "nothing") return empty();
     BG.selectPack(id, "league");
     const old = S.teams[id].plan, plan = old ? clone(old) : __auto(id);
@@ -199,25 +202,131 @@ JS = r"""
     }
     return plan;
   };
+  const assets = plan => ({builds: clone(plan?.builds || []), lines: clone(plan?.lines || [])});
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const select = id => BG.selectPack(R.teams.find(t => t.id === id).pack, "league");
+  const fossil = type => ["diesel", "lng", "coal"].includes(type) && BG.BLD[type]?.cls === "disp";
+  // 선 길이 80칸은 기존 sanitize 프로토콜이다. 구간 경계 한 칸을 공유한다.
+  const addRoute = (plan, path) => {
+    for (let i = 0; i < path.length - 1; i += 79) plan.lines.push({p: path.slice(i, i + 80)});
+  };
+  // AI의 연결선을 유지하고 가장 싼 합법 자리·연결 경로부터 찾는다.
+  const placeTypes = (plan, types) => {
+    const candidate = assets(plan), used = new Set(candidate.builds.map(b => b.i));
+    const connected = new Set(candidate.lines.flatMap(l => l.p));
+    BG.network(candidate).nodes.filter(n => n.live).forEach(n => connected.add(n.tile));
+    if (!connected.size) return null;
+    for (const type of types) {
+      let best = null;
+      for (const tile of BG.TILES.filter(t => !used.has(t.i) && !BG.siteRule(type, t))) {
+        const near = Array.from(connected).sort((a, b) =>
+          Math.hypot(tile.X - BG.TILES[a].X, tile.Y - BG.TILES[a].Y) -
+          Math.hypot(tile.X - BG.TILES[b].X, tile.Y - BG.TILES[b].Y) || a - b)[0];
+        const path = connected.has(tile.i) ? [tile.i] : BG.routePath(near, tile.i);
+        if (!path) continue;
+        const extra = {builds: [{t: type, i: tile.i}], lines: []}; addRoute(extra, path);
+        const cost = BG.capex(extra);
+        if (!best || cost < best.cost || cost === best.cost && tile.i < best.i)
+          best = {i: tile.i, path, cost};
+      }
+      if (!best) return null;
+      candidate.builds.push({t: type, i: best.i}); used.add(best.i);
+      addRoute(candidate, best.path); best.path.forEach(i => connected.add(i));
+    }
+    return candidate;
+  };
+  const transform = (S, id, strategy, original) => {
+    select(id);
+    const city = S.econ?.cities?.[id], changes = [];
+    if (city && city.cash < -city.debtCap) return {plan: original, changes};
+    const prior = new Set((S.teams[id].plan?.builds || []).map(b => C.itemKey("b", b)));
+    // 이미 운영한 설비는 유지한다. AI가 이번 달 새로 제안한 설비만 전환한다.
+    const sources = original.builds.filter(b => !prior.has(C.itemKey("b", b)) &&
+      (strategy === "diesel" ? ["ren", "bat"].includes(BG.BLD[b.t]?.cls) : fossil(b.t)));
+    const legalTypes = cls => Object.keys(BG.BLD).filter(t => BG.BLD[t].cls === cls &&
+      BG.BLD[t].mw > 0 && BG.TILES.some(tile => !BG.siteRule(t, tile)));
+    const dispatch = legalTypes("disp").filter(fossil).sort((a, b) =>
+      Number(b === "diesel") - Number(a === "diesel") || BG.BLD[a].cost / BG.BLD[a].mw - BG.BLD[b].cost / BG.BLD[b].mw);
+    const renew = legalTypes("ren"), storage = legalTypes("bat");
+    let plan = assets(original), pending = [];
+    for (const source of sources) {
+      pending.push(source);
+      const mw = sum(pending.map(b => BG.BLD[b.t].mw)), recipes = [];
+      if (strategy === "diesel") {
+        // 정격 MW가 정확히 같은 묶음만 전환한다. 2 MW→3 MW 증설은 하지 않는다.
+        for (const t of dispatch) {
+          const count = Math.round(mw / BG.BLD[t].mw);
+          if (count > 0 && Math.abs(count * BG.BLD[t].mw - mw) < 1e-6)
+            recipes.push(Array(count).fill(t));
+        }
+      } else {
+        // 설비는 쪼갤 수 없으므로 원 화력 MW 이상인 최소 기수의 재생+저장을 묶는다.
+        for (const r of renew) for (const b of storage)
+          recipes.push([...Array(Math.ceil(mw / BG.BLD[r].mw)).fill(r),
+            ...Array(Math.ceil(mw / BG.BLD[b].mw)).fill(b)]);
+        recipes.sort((a, b) => sum(a.map(t => BG.BLD[t].cost)) - sum(b.map(t => BG.BLD[t].cost)));
+      }
+      const removed = new Set(pending.map(b => C.itemKey("b", b)));
+      const kept = assets(plan); kept.builds = kept.builds.filter(b => !removed.has(C.itemKey("b", b)));
+      let replacement = null, recipe = null;
+      for (const types of recipes) {
+        if (types.length > BG.TILES.length - kept.builds.length) continue;
+        const trial = placeTypes(kept, types);
+        if (!trial || C.spendOf(BG, S, R, id, trial) > C.budget(S, id) + 1e-6) continue;
+        const clean = C.cleanPlan(BG, R, id, trial,
+          C.budget(S, id) - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, trial));
+        select(id);
+        if (!same(trial, assets(clean))) continue;
+        replacement = trial; recipe = types; break;
+      }
+      if (replacement) {
+        const addedMW = sum(recipe.filter(t => BG.BLD[t].cls !== "bat").map(t => BG.BLD[t].mw));
+        const storageMW = sum(recipe.filter(t => BG.BLD[t].cls === "bat").map(t => BG.BLD[t].mw));
+        ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : addedMW >= mw && storageMW >= mw,
+          `${strategy} ${id} ${S.round}달 전환 ${mw}MW → 발전${addedMW}/저장${storageMW}MW`);
+        changes.push({removed: clone(pending), added: recipe, mw, addedMW, storageMW});
+        plan = replacement; pending = [];
+      }
+    }
+    return {plan, changes, unchanged: clone(pending)};
+  };
+  const makePlan = (S, id, strategy) => {
+    if (strategy === "nothing") return {plan: empty(), changes: []};
+    if (!hasAI) {
+      const annual = (S.round - 1) % 12 === 0;
+      return {plan: annual ? legacyPlan(S, id, strategy) : clone(S.teams[id].plan || empty()), changes: []};
+    }
+    // 반환 계약 {plan:{builds,lines}, econPol, ties}. 이 비교는 건설 기반만 공유하고 정책0을 기본으로 둔다.
+    const answer = KCP.leagueAI.plan(S, R, id, BG, "balanced");
+    const original = assets(answer.plan);
+    return strategy === "diesel" || strategy === "renew" ? transform(S, id, strategy, original) :
+      {plan: original, changes: []};
+  };
   const cooperate = (S, assignment, at) => {
+    const run = out.runs[out.runs.length - 1];
     R.ties.forEach(def => {
       const side = [def.a, def.b].find(id => assignment[id] === "ties");
       if (!side) return;
       const other = side === def.a ? def.b : def.a;
-      if (S.ties.some(t => t.st === "built" && t.a === def.a && t.b === def.b)) return;
-      const proposal = req(S, side, {type: "tie", other, op: "propose", cap: 2}, at);
-      if (proposal?.ok) {
-        // 모든 상대는 예산이 허용하면 협력 제안을 수락한다. 거절 사유를 원자료에 남긴다.
-        const result = req(S, other, {type: "tie", other: side, op: "accept"}, at + 1);
-        out.runs[out.runs.length - 1].tieRequests.push({round: S.round, a: side, b: other, result});
+      const existing = S.ties.find(t => t.a === def.a && t.b === def.b);
+      if (existing?.st === "built") return;
+      if (!existing) {
+        const result = req(S, side, {type: "tie", other, op: "propose", cap: 2}, at);
+        run.tieRequests.push({round: S.round, a: side, b: other, op: "propose", result});
+        if (!result?.ok) return;
       }
+      const proposal = S.ties.find(t => t.a === def.a && t.b === def.b);
+      const receiver = proposal.by === side ? other : side;
+      // 모든 상대는 기존 계획·예산·지방채 규칙 안에서 수락한다. 남은 제안은 다음 달 재시도한다.
+      const result = req(S, receiver, {type: "tie", other: proposal.by, op: "accept"}, at + 1);
+      run.tieRequests.push({round: S.round, a: proposal.by, b: receiver, op: "accept", result});
     });
   };
   for (let rotation = 0; rotation < rotations; rotation++) test(`전략 회전 ${rotation}`, () => {
     // 같은 방 씨앗: 회전별 난수 차이가 도시×전략 비교를 흐리지 않게 한다.
     const S = newGame("bots-strategy-common"); claim(S);
     const assignment = Object.fromEntries(ids.map((id, i) => [id, strategies[(i + rotation) % strategies.length]]));
-    const run = {rotation, assignment, hist: [], rows: [], tieRequests: []}; out.runs.push(run);
+    const run = {rotation, assignment, hist: [], rows: [], tieRequests: [], planRequests: []}; out.runs.push(run);
     const starting = clone(S.econ.cities); let prior = null, offerChecks = 0;
     for (let m = 1; m <= months; m++) {
       const at = m * 100000; C.host(S, "next", at);
@@ -230,15 +339,28 @@ JS = r"""
         const policy = req(S, id, {type: "econ", taxRes: tax, taxInd: tax, service: -tax, incentive: 0}, at + 2);
         ok(policy?.ok === true, `회전${rotation} ${id} ${m}달 econ ${JSON.stringify(policy)}`);
       });
-      // 연계선 비용을 먼저 예약하고 남은 연 예산 안에서 계획을 낸다.
-      cooperate(S, assignment, at + 3);
-      if ((m - 1) % 12 === 0) ids.forEach(id => {
-        const plan = makePlan(S, id, assignment[id]);
+      // 모든 도시의 AI 입력은 같은 월초 상태다. 요청 순서로 다른 도시 계획이 새 입력에 섞이지 않는다.
+      const plans = Object.fromEntries(ids.map(id => [id, makePlan(S, id, assignment[id])]));
+      ids.forEach(id => {
+        const strategy = assignment[id], proposal = plans[id], plan = proposal.plan;
+        select(id);
+        ok(plan.builds.every(b => BG.TILES[b.i] && !BG.siteRule(b.t, BG.TILES[b.i])) &&
+          new Set(plan.builds.map(b => b.i)).size === plan.builds.length,
+          `회전${rotation} ${id} ${m}달 합법 자리·중복 없음`);
+        const city = S.econ.cities[id], before = assets(S.teams[id].plan);
+        const spend = C.spendOf(BG, S, R, id, plan), budget = C.budget(S, id);
+        ok(spend <= budget + 1e-6 || city.cash < -city.debtCap && same(assets(plan), before),
+          `회전${rotation} ${id} ${m}달 계획 예산 ${spend}/${budget}`);
         const r = req(S, id, {type: "plan", rev: S.teams[id].rev + 1, plan}, at + 5);
-        ok(r?.ok === true, `회전${rotation} ${id} ${m}달 연 계획 ${JSON.stringify(r)}`);
-        if (assignment[id] === "renew") ok(!(S.teams[id].plan?.builds || []).some(b => b.t === "diesel"), `renew ${id} 디젤 없음`);
-        if (assignment[id] === "nothing") ok((S.teams[id].plan?.builds || []).length === 0 && (S.teams[id].plan?.lines || []).length === 0, `nothing ${id} 건설 없음`);
+        ok(r?.ok === true && same(assets(plan), assets(S.teams[id].plan)),
+          `회전${rotation} ${id} ${m}달 계획 수락·무손실 ${JSON.stringify(r)}`);
+        run.planRequests.push({month: m, id, strategy, spend, budget, result: r,
+          changes: proposal.changes, unchanged: proposal.unchanged || []});
+        if (strategy === "nothing") ok((S.teams[id].plan?.builds || []).length === 0 &&
+          (S.teams[id].plan?.lines || []).length === 0, `nothing ${id} 건설 없음`);
       });
+      // 공통 기반 건설 뒤 가능한 연계선을 모두 제안·수락한다. 비용으로 기반 계획을 깎지 않는다.
+      cooperate(S, assignment, at + 6);
       const res = C.run(S, BG, at + 50), rep = res?.econ;
       ok(!!rep?.fiscal, `회전${rotation} ${m}달 econ report 계약`);
       if (!rep) throw new Error(`${m}달 econ 보고서 없음`);
@@ -281,7 +403,7 @@ JS = r"""
         plans: clone(S.teams[id].plan), ties: clone(S.ties)});
     });
   });
-  if (rotations === 6) strategies.forEach(strategy => {
+  if (rotations === strategies.length) strategies.forEach(strategy => {
     const cities = out.runs.flatMap(r => r.rows).filter(r => r.strategy === strategy).map(r => r.id);
     ok(cities.length === 6 && new Set(cities).size === 6, `${strategy} 모든 도시 1회 배정 ${cities.join(",")}`);
   });
@@ -301,25 +423,67 @@ def load_auto():
     raise ValueError("calib.py의 AUTO 계약 없음")
 
 
+def strategy_summary(out):
+    """같은 도시의 전략 점수를 비교한다. 리그 상대 순위와 구분하고 공동1위도 센다."""
+    rows = [row for run in out.get("runs", []) for row in run.get("rows", [])]
+    strategies = out.get("strategies", [])
+    def mean(group, key):
+        values = [r.get(key) for r in group]
+        if not values or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+            return None
+        return sum(values) / len(values)
+    first = dict.fromkeys(strategies, 0)
+    complete = []
+    for city in out.get("ids", []):
+        scores = {s: mean([r for r in rows if r["id"] == city and r["strategy"] == s], "score")
+                  for s in strategies}
+        if not scores or any(v is None for v in scores.values()):
+            continue
+        complete.append(city)
+        best = max(scores.values())
+        for strategy, score in scores.items():
+            if abs(score - best) <= 1e-9:
+                first[strategy] += 1
+    scores = {s: mean([r for r in rows if r["strategy"] == s], "score") for s in strategies}
+    active = {s: score for s, score in scores.items() if s != "nothing" and score is not None}
+    best = max(active, key=active.get) if active else None
+    worst = min(active, key=active.get) if active else None
+    return {"firstCounts": first, "completeCities": complete, "meanScores": scores,
+            "meanUnsPct": {s: mean([r for r in rows if r["strategy"] == s], "unsPct") for s in strategies},
+            "best": best, "worst": worst,
+            "meanScoreGap": active[best] - active[worst] if active else None}
+
+
 def markdown(out):
+    summary = strategy_summary(out)
     rows = [row for run in out.get("runs", []) for row in run.get("rows", [])]
     def average(group, key, part=False):
         values = [(r.get("parts", {}) if part else r).get(key) for r in group]
-        if not values or any(not isinstance(v, (int, float)) for v in values):
+        if not values or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
             return "-"
         return f"{sum(values) / len(values):.3f}"
     lines = [f"# 전략 봇 {out['months']}달 결과", "",
              f"회전 {out['rotations']}회. 동일 방 씨앗, 도시·전략 회전 배정. 수치는 전략별 산술 평균.", "",
+             f"기반 계획기: {out.get('planner', '미실행')}. nothing은 건설 없음, 나머지는 정책 0의 공통 건설 기반에 전략만 추가한다.", "",
              "운영 수지/cash0는 1년차 사건 지원금을 제외한다(B6 참고). 지원금은 별도 억 단위. CO₂는 사람당 월 평균 t. 정전은 달별 평균 %.", "",
-             "| 전략 | 점수 | 순위 | pop | ind | fin | co2 | appr | rel | 주민 Δ% | 종사자 Δ% | 현금 억 | 1년 수지/cash0 | 사건 지원금 억 | 정전 % | CO₂ t/인·월 | 지지율 | 평가 통과 | 표본 |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "| 전략 | 점수 | 순위 | 도시 1위/6 | pop | ind | fin | co2 | appr | rel | 주민 Δ% | 종사자 Δ% | 현금 억 | 1년 수지/cash0 | 사건 지원금 억 | 정전 평균 % | CO₂ t/인·월 | 지지율 | 평가 통과 | 표본 |",
+             "|---|" + "---:|" * 19]
     for strategy in out.get("strategies", []):
         group = [r for r in rows if r["strategy"] == strategy]
-        cells = [strategy, average(group, "score"), average(group, "rank")]
+        cells = [strategy, average(group, "score"), average(group, "rank"),
+                 f"{summary['firstCounts'][strategy]}/6"]
         cells += [average(group, key, part=True) for key in ("pop", "ind", "fin", "co2", "appr", "rel")]
         cells += [average(group, key) for key in ("popPct", "indPct", "cash", "operatingRatio", "eventBonusYear1", "unsPct", "co2PerPerson", "approval", "reviewPass")]
         cells += [str(len(group))]
         lines.append("| " + " | ".join(cells) + " |")
+    gap = summary["meanScoreGap"]
+    gap_line = (f"전략 평균 점수 1위−최하위 차이(nothing 제외): {gap:.3f}점 "
+                f"({summary['best']} − {summary['worst']})." if gap is not None else
+                "전략 평균 점수 차이(nothing 제외): 미측정.")
+    lines += ["", gap_line, "",
+              f"도시 1위는 같은 도시의 7전략 비교이며 공동1위도 센다. 완전 비교 도시 {len(summary['completeCities'])}/6; "
+              "부분 실행에서는 1위 횟수가 전체 판정이 아니다.", ""]
+    lines += [f"B16 strategy-dominance: {s} 1위 {summary['firstCounts'][s]}/6" for s in out.get("strategies", [])]
     lines += ["", "## 도시×전략 점수", "",
               "| 도시 | " + " | ".join(out.get("strategies", [])) + " |",
               "|---|" + "---:|" * len(out.get("strategies", []))]
@@ -344,9 +508,9 @@ def main():
     parser.add_argument("--months", type=int, choices=(12, 24, 36), default=36)
     parser.add_argument("--quick", action="store_true", help="12달·회전 2개")
     args = parser.parse_args()
-    months, rotations = (12, 2) if args.quick else (args.months, 6)
+    months, rotations = (12, 2) if args.quick else (args.months, 7)
     out = {"months": months, "rotations": rotations, "strategies":
-           ["nothing", "diesel", "renew", "ties", "taxlow", "taxhigh"],
+           ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh"],
            "ids": [], "names": {}, "runs": [], "checks": []}
     errors = []
     try:
@@ -382,6 +546,7 @@ def main():
         errors.append(f"실행 예외: {exc}")
     out["checks"].extend([[False, message] for message in errors])
     out["url"] = args.url
+    out["strategySummary"] = strategy_summary(out)
     result_dir = Path(__file__).resolve().parents[1] / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
     report = markdown(out)
