@@ -1,7 +1,7 @@
-/* 도시 경제 모형의 자료. ui/econ.js가 읽는다(SPEC v1, 1턴 = 1달).
+/* 도시 경제 모형의 자료. ui/econ.js가 읽는다(SPEC v2, 2차 보정, 1턴 = 1달).
  * start: 도시마다 시작 인구(pop0)·산업 종사자(ind0)·집단 비중·항만·수출 비중·산업 구성.
  *   est: true = 자리표시 추정값. 조사 담당이 통계(주민등록 인구, 전국사업체조사 종사자, 재정자립도)로 바꾼다.
- * params: 계수마다 {v, grade, note}. 등급 O(공식 자료)·P(논문·보고서)·M(모형 추정)·G(게임 가정, D-56).
+ * params: 계수마다 {v, grade, note}. 등급 O(공식 원문)·O*(공식 통계 검색 요약)·P(논문·보고서)·M(모형 추정)·G(게임 가정, D-56).
  * intl: 국제 지수(달마다 씨앗 고정 무작위 걷기)와 사건. 사건 효과는 손잡이(지수에 더하는 값).
  * 돈 단위는 게임 억(도시 예산 160–365억과 같은 눈금), 사람 단위는 실제 명.
  */
@@ -24,15 +24,15 @@
       farm: { name: "농어민", short: "농어" },
       green: { name: "환경단체", short: "환경" }
     },
-    // 산업 부문: 수출 지수 이름과 RE100 요구 정도(0–1, 그 부문 기업 중 재생 비중을 요구하는 몫, G)
+    // 산업 부문. re100 숫자 필드는 아래에서 params.sectorRe100을 복사해 기존 자료 계약 유지.
     sectors: {
-      semi: { name: "반도체", re100: 0.9 },
-      display: { name: "디스플레이", re100: 0.8 },
-      auto: { name: "자동차", re100: 0.6 },
-      steel: { name: "철강", re100: 0.2 },
-      chem: { name: "화학", re100: 0.3 },
-      bio: { name: "바이오", re100: 0.4 },
-      other: { name: "기타", re100: 0.1 }
+      semi: { name: "반도체" },
+      display: { name: "디스플레이" },
+      auto: { name: "자동차" },
+      steel: { name: "철강" },
+      chem: { name: "화학" },
+      bio: { name: "바이오" },
+      other: { name: "기타" }
     },
     // 도시 시작값 — 2025 공식 통계(검색 요약으로 확인, O*)와 추정(G). 출처·등급은 docs/ECON-DATA.md. cash0 = 도시 지도 예산(게임 단위 억, 실제 시 예산이 아니라 에너지·산업 계정).
     start: {
@@ -83,10 +83,11 @@
       neutralScore: p(50, G, "중립 부분 점수"),
       airDefault: p(60, G, "배출 자료가 없을 때 대기 점수"),
       jobsSlope: p(1.5, G, "일자리 비율 민감도"),
-      servicePoints: p(20, G, "서비스 단계당 만족 점수"),
+      serviceCurve: p([-30, -12, 0, 10, 16], G, "GAMES §11.1 E2: 삭감 손실·증액 체감; 근거 약함: 게임 눈금 가정"),
+      taxCurve: p([14, 8, 0, -14, -36], G, "GAMES §11.1 E1: 절대 세율의 집단 만족; 근거 약함: 비대칭 크기는 게임 가정"),
       eduMax: p(25, G, "교육 가산 상한"),
       taxBase: p(60, G, "세금 중립 점수"),
-      taxPoints: p(20, G, "세율 단계당 만족 감점"),
+      taxPoints: p(10, G, "EVIDENCE §5: 상대 세율 단계당 이주 매력 감점; 근거 약함: 일자리보다 작은 가중 가정"),
       crowdKnee: p(0.9, G, "혼잡 감점 시작 수용률"),
       crowdBase: p(90, G, "혼잡 문턱 점수"),
       crowdSlope: p(400, G, "수용 초과 혼잡 감점"),
@@ -98,7 +99,10 @@
       logiBase: p(40, G, "물류 기본 점수"),
       logiPortPoints: p(30, G, "항만 물류 가산"),
       logiSitePoints: p(15, G, "산단 물류 가산"),
-      reWeightBase: p(0.5, G, "재생 가중 기본 몫"),
+      reWeightBase: p(0.3, G, "EVIDENCE §4 설문(P) 방향; 근거 약함: 재생 가중 기본 몫은 게임 가정"),
+      sectorRe100: p({ semi: 0.5, display: 0.4, auto: 0.3, bio: 0.2, chem: 0.15, steel: 0.15, other: 0.1 }, G, "EVIDENCE §4 대한상의(O*)·무역협회(P) 요구 15~30%; 근거 약함: 업종별 외삽"),
+      priceSlopeA: p(25 / 0.3, G, "EVIDENCE §3 설문(P): 원가 30% 차이에 산업 부분 점수 25점; 근거 약함: 점수 환산"),
+      priceWeightBase: p(0.5, G, "EVIDENCE §3 Kahn–Mansur(P) 방향; 근거 약함: 산업 요금 가중에 에너지 집약 몫을 더할 기본값"),
       carbonRefMul: p(2, G, "탄소 점수 기준 배수"),
       carbonWeight: p(0.3, G, "CBAM 산업 가중"),
       unrestPenalty: p(3, G, "시위 중 만족 감점"),
@@ -110,25 +114,26 @@
       normalRen: p(15, G, "시작 보정 재생 비중"),
       historyMonths: p(48, G, "경제 이력 보관 길이"),
       // 시간·지연
-      lambda: p(0.5, G, "지연 효과: 달마다 목표값으로 다가가는 몫"),
+      lambdaFast: p(0.5, G, "GAMES E3: 정전·요금·세금·집단 만족의 월 반영률; 근거 약함: 게임 시차"),
+      lambdaSlow: p(0.15, G, "GAMES E3: 서비스·교육·재생·혼잡·인력·대기 효과의 월 반영률; 근거 약함: 게임 시차"),
       // 이동(이주·기업 이전)
-      betaPopReal: p(0.08, M, "ECON-DATA 4절 실제 이동률로 역산한 주민 탄력"),
-      eduSpeed: p(1.25, G, "현실 탄력에 곱하는 수업용 이주 배속"),
+      betaPopReal: p(0.02, M, "EVIDENCE §1: κ=0.04와 짝, κβ=0.0008/달. ΔL=10 출발 연환산 약 1%; O* 순이동·P(FE) 범위에 맞춘 계산"),
+      eduSpeed: p(5, G, "EVIDENCE §1: 현실 탄력 ×5인 수업용 배속(비선형 이주율 자체의 정확한 배수 아님)"),
       startMix: p(0.9, G, "목표 몫에 섞는 시작 몫; 24달 회복 목표 검산으로 기본안 0.2에서 조정"),
       kappaPop: p(0.04, G, "달마다 목표 인구와의 차이 중 움직이는 몫"),
-      betaIndReal: p(0.08, M, "주민 탄력을 준용한 산업 탄력 추정(직접 추정 자료 없음)"),
+      betaIndReal: p(0.02, M, "EVIDENCE §1 주민값 준용: 기존 실효 β=0.1을 배속5로 나눈 계산; 근거 약함: 산업 직접 추정 없음, κ=0.005와 짝"),
       kappaInd: p(0.005, G, "달마다 목표 산업과의 차이 중 움직이는 몫"),
       anchor: p(0.9, G, "시작 매력 차이를 상쇄하는 몫(지금 분포는 이미 지금 조건의 균형)"),
-      gpYear: p(0.006, M, "지역 인구 연 증가율(경기 남부·충남 북부 최근 추세 참고, 추정)"),
-      giYear: p(0.012, M, "지역 산업 종사자 연 증가율(추정)"),
+      gpYear: p(0.01, M, "EVIDENCE §10: 최근 약 1.5%와 장래추계 0.3~0.6%(O*)의 중간 시나리오, 자연증가만이 아님"),
+      giYear: p(0.012, G, "근거 약함: EVIDENCE §10 전국 종사자 증가(O*)보다 높은 투자 집중 지역을 가정"),
       // 살기 좋음 L 가중치
-      wL: p({ rel: 0.26, price: 0.12, air: 0.12, jobs: 0.16, svc: 0.14, tax: 0.10, crowd: 0.10 }, G, "살기 좋음 부분 가중치"),
+      wL: p({ rel: 0.26, price: 0.08, air: 0.12, jobs: 0.22, svc: 0.10, tax: 0.10, crowd: 0.12 }, G, "EVIDENCE §1·3·6: 일자리 방향 P, 주민 요금·서비스 축소; 근거 약함: 크기와 혼잡 재배분은 G"),
       // 산업 매력 A 가중치(carbon은 CBAM 때 철강 수출 비중만큼 더 커진다)
-      wA: p({ rel: 0.26, price: 0.13, re: 0.10, labor: 0.13, talent: 0.08, logi: 0.10, tax: 0.07, inc: 0.05, land: 0.08, carbon: 0.02 }, G, "산업 매력 부분 가중치"),
+      wA: p({ rel: 0.26, price: 0.18, re: 0.10, labor: 0.11, talent: 0.08, logi: 0.10, tax: 0.07, inc: 0.05, land: 0.05, carbon: 0.02 }, G, "EVIDENCE §3: 요금 입지 설문·RD(P)의 방향; 근거 약함: 가중 크기는 G"),
       unsZeroL: p(16, G, "주민: 정전 이 %에서 전력 신뢰 0점"),
       unsZeroA: p(3, G, "기업: 정전 이 %에서 전력 신뢰 0점(반도체·데이터센터 민감)"),
       hospPen: p(20, G, "병원 정전이 있으면 전력 신뢰 감점"),
-      airRef: p(30, G, "대기: 지역 배출 t/주민 만 명/달이 이 값이면 37점"),
+      airRef: p(30, G, "근거 약함: EVIDENCE §7 CO₂는 농도·건강의 대리값일 뿐; t/주민 만 명/달이 30이면 37점"),
       crowdCapMul: p(1.15, G, "주거 수용 = 시작 인구 × 이 값(타일 정보가 없을 때)"),
       landCapMul: p(1.2, G, "산업 용지 수용 = 시작 종사자 × 이 값"),
       reTarget: p(50, G, "재생 비중 이 %면 RE 부분 만점"),
@@ -138,26 +143,32 @@
       // 재정(게임 억, 도시 예산 눈금에 맞춤)
       resTax: p(3.0e-5, G, "주민 관련 세: 1명당 달 억(실제 구조: 지방세 중 주민세·재산세 몫 참고)"),
       indTax: p(1.8e-5, G, "산업 관련 세: 종사자 1명당 달 억(지방소득세·법인분 참고)"),
+      indTaxK: p(3, G, "EVIDENCE §5 세수 급락 보도(O*) 방향; 근거 약함: 매출보다 큰 이익 변동을 out^3으로 단순화, 추정 지수 아님"),
+      subRevenueRate: p(0.8, "O", "EVIDENCE §5 지방교부세법 제8조 원문(위키문헌 판본 확인, 최신 개정 미대조): 표준세율 기준 수입 80%"),
+      subAdjust: p(0.5, G, "근거 약함: EVIDENCE §5 교부세 조정률 근사; 전년 표준세입 증가분의 40%를 1월 지원금에서 상쇄"),
       taxStep: p(0.1, G, "세율 단계 하나당 세입 +10%"),
       svcCost: p(6.0e-5, G, "공공서비스: 1명당 달 억"),
       svcStep: p(0.5, G, "서비스 단계 하나당 비용 +50%"),
       tariffMarkup: p(0.02, G, "지역 평균 원가 대비 전기 판매 가산율; 세입에는 차익만 반영"),
       priceFloor: p(0.5, G, "전기요금 점수 원가 하한: 지역 평균의 절반"),
       subBase: p(15, G, "국가 재정지원금 기본(억/년)"),
-      subPerCap: p(2.5e-5, M, "재정지원금 1인당(억/년). 보통교부세 수요 측정 원리"),
-      subEq: p(6e-5, M, "균형 몫: 1인당 × (기준 − 재정자립도)(지방교부세 원리)"),
-      fsrRef: p(0.6, M, "균형 몫 기준 재정자립도"),
+      subPerCap: p(2.5e-5, G, "근거 약함: 교부세 수요 원리만 EVIDENCE §5, 1인당 억/년 단가는 게임 눈금"),
+      subEq: p(6e-5, G, "근거 약함: EVIDENCE §5 교부세 원리를 단순화한 게임 균형 단가"),
+      fsrRef: p(0.6, G, "근거 약함: 균형 지원금 기준 자립도 60%는 법정 기준이 아닌 게임 가정"),
       fiscalTarget: p(0.6, G, "보통 조건 연 운영 수지 / 시작 현금; 시작 때 정액 보정 지원금 계산"),
       debtRate: p(0.003, G, "지방채 이자(월)"),
       debtCapRatio: p(0.5, G, "지방채 한도 = 거래·일회성 수입 제외 최근 12달 세입 × 이 값"),
       // 산업 산출 지수
-      outRel: p(0.04, G, "정전 1%당 산출 −4%"),
+      outRel: p(0.006, M, "EVIDENCE §2 ACO(2016) P·IV: 부족 10%→매출 -5.6%를 1%당 -0.6%로 환산"),
+      outRelSemi: p(0.03, G, "EVIDENCE §2 순간 정전 사례(O*) 방향; 근거 약함: 반도체·디스플레이 몫에 곱하는 추가 산출 손실"),
       outMin: p(0.5, G, "산출 지수 하한"),
       outMax: p(1.2, G, "산출 지수 상한"),
-      logiPort: p(0.3, G, "항만 도시: 해운 지수 1 차이당 산출 변화"),
-      fxExport: p(0.5, G, "환율 1 차이당 수출 산출 변화(원화 약세 → 수출↑)"),
-      cbamRate: p(0.25, G, "CBAM: 철강 수출 몫 × 탄소집약도/기준 × 이 값만큼 산출 감점"),
-      co2IntRef: p(0.45, "P", "t/MWh 전국 평균 전력 배출계수 근사(CBAM 기준)"),
+      logiPort: p(0.05, G, "EVIDENCE §9 해운 설문(O*) 방향; 근거 약함: 운임 비중 미확인, 지수 -0.3→산출 -1.5% 가정"),
+      fxExport: p(0.1, M, "EVIDENCE §9 기업 설문(보도 요약): 환율 +10%→수출 +1%p 환산, 인과 추정 아님"),
+      cbamRate: p(0.02, G, "EVIDENCE §9 임재헌·정윤세(2023, P) 모형 방향; 근거 약함: EU 몫 미확인, 0.12×0.167≈0.02로 근사"),
+      lngMarketK: p(0.03, G, "GAMES B1: 지역 화석 사용량/시작 기준 -1의 다음 달 LNG 효과; 근거 약함: 국제시장 가격 결정의 교육용 축소 모형"),
+      lngMarketMax: p(0.05, G, "근거 약함: 공유 LNG 시장 가감 상한 ±0.05, 누적하지 않음"),
+      co2IntRef: p(0.45, G, "근거 약함: EVIDENCE §9 탄소집약도 정규화 기준 t/MWh, 정확한 연도·공식 원문 미확인"),
       co2IntDef: p(0.45, G, "탄소집약도 정보가 없을 때 쓰는 값"),
       // 집단 만족(부분 점수 가중)
       groupW: p({
@@ -170,9 +181,13 @@
       }, G, "정전·세금·서비스를 각 집단의 생활 만족에 반영"),
       seniorHosp: p(15, G, "병원 정전 때 노년 만족 추가 감점"),
       sat0: p(55, G, "집단 만족 시작값"),
+      outageSatThreshold: p(1, G, "EVIDENCE §8: 정전 불만이 붙는 %; 근거 약함: 문턱은 게임 가정"),
+      outageSatPenalty: p(3, G, "EVIDENCE §8 정전·지지 P 방향; 근거 약함: 정전 달 만족 목표 -3, 누적 감점 아님"),
+      unrestOffDrop: p(4, G, "GAMES E3: 시작 지지율 -4 이상 회복해야 시위 종료; 근거 약함: 게임 문턱"),
+      unrestAttract: p(2, G, "GAMES E3: 시위 중 기업 유치 순위 감점; 근거 약함: 게임 점수"),
       approvalDrop: p(10, G, "평가 통과: 보정 뒤 시작 지지율에서 허용할 하락 폭"),
       reviewEvery: p(12, G, "주민 평가 주기(턴)"),
-      unrestMonths: p(12, G, "평가 탈락 뒤 시위·정책 비용↑ 기간(턴)"),
+      unrestMonths: p(12, G, "시위 켜짐을 기존 화면에 전달하는 양수 값; 회복 문턱까지 유지"),
       polChangeCost: p(2, G, "시위 기간에 정책 단계 하나 바꿀 때 드는 억"),
       // 기업 이전 희망
       offerGap: p([3, 6], G, "기업 이전 희망 사이 턴 수"),
@@ -216,4 +231,7 @@
       { id: "cbam", text: "EU CBAM: 2026년 본격 시행, 철강·시멘트·알루미늄 등. 게임에선 2028년 1월부터(G)." }
     ]
   };
+  Object.keys(KCP.ECON_DATA.sectors).forEach(k => {
+    KCP.ECON_DATA.sectors[k].re100 = KCP.ECON_DATA.params.sectorRe100.v[k];
+  });
 })();
