@@ -206,6 +206,20 @@ JS = r"""
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const select = id => BG.selectPack(R.teams.find(t => t.id === id).pack, "league");
   const fossil = type => ["diesel", "lng", "coal"].includes(type) && BG.BLD[type]?.cls === "disp";
+  const variableMW = plan => sum((plan?.builds || []).filter(b => BG.BLD[b.t]?.variable).map(b => BG.BLD[b.t].mw));
+  const essMW = plan => sum((plan?.builds || []).filter(b => BG.BLD[b.t]?.cls === "bat").map(b => BG.BLD[b.t].mw));
+  // 공개 headroom은 접속 예약 뒤 남은 값이다. 기존 대기의 미예약 몫과 AI의 새 설비도 차감한다.
+  // B18 계약: ESS 1MW는 접속 여유 1MW를 더한다. 이미 있던 ESS를 다시 더하지 않는다.
+  const hostingRoom = (S, id, plan) => {
+    const g = S.grid?.[id], old = S.teams[id].plan;
+    if (![g?.headroomMW, g?.connectedMW, g?.reservedMW].every(finite)) return null;
+    return g.headroomMW + g.connectedMW + g.reservedMW - variableMW(plan) + essMW(plan) - essMW(old);
+  };
+  const forecastGrid = (S, id, plan) => {
+    try {
+      return C.gridStatus({...S, teams: {...S.teams, [id]: {...S.teams[id], plan}}}, R, BG, id, true);
+    } finally { select(id); } // 연계선 양 끝 도시를 검사한 뒤 전환 대상 지도로 복원한다.
+  };
   // 선 길이 80칸은 기존 sanitize 프로토콜이다. 구간 경계 한 칸을 공유한다.
   const addRoute = (plan, path) => {
     for (let i = 0; i < path.length - 1; i += 79) plan.lines.push({p: path.slice(i, i + 80)});
@@ -261,9 +275,16 @@ JS = r"""
         }
       } else {
         // 설비는 쪼갤 수 없으므로 원 화력 MW 이상인 최소 기수의 재생+저장을 묶는다.
-        for (const r of renew) for (const b of storage)
-          recipes.push([...Array(Math.ceil(mw / BG.BLD[r].mw)).fill(r),
-            ...Array(Math.ceil(mw / BG.BLD[b].mw)).fill(b)]);
+        for (const r of renew) for (const b of storage) {
+          const room = hostingRoom(S, id, plan);
+          if (room === null) continue; // 공개 접속 계약을 확인할 수 없으면 원 계획 유지.
+          const count = Math.ceil(mw / BG.BLD[r].mw);
+          const variable = BG.BLD[r].variable ? count * BG.BLD[r].mw : 0;
+          const batteries = Math.max(Math.ceil(mw / BG.BLD[b].mw),
+            Math.ceil(Math.max(0, variable - room) / BG.BLD[b].mw));
+          // 여유를 만드는 ESS 자리를 먼저 확보한다. 모자란 H만큼은 저장 기수를 늘린다.
+          recipes.push([...Array(batteries).fill(b), ...Array(count).fill(r)]);
+        }
         recipes.sort((a, b) => sum(a.map(t => BG.BLD[t].cost)) - sum(b.map(t => BG.BLD[t].cost)));
       }
       const removed = new Set(pending.map(b => C.itemKey("b", b)));
@@ -273,6 +294,15 @@ JS = r"""
         if (types.length > BG.TILES.length - kept.builds.length) continue;
         const trial = placeTypes(kept, types);
         if (!trial || C.spendOf(BG, S, R, id, trial) > C.budget(S, id) + 1e-6) continue;
+        if (strategy === "renew") {
+          if (hostingRoom(S, id, trial) < -1e-6) continue;
+          // H를 늘려도 월별 접속 처리량은 늘지 않는다. 이번 달 전량 접속할 수 있는 설비만 전환한다.
+          // 기존 대기와 AI가 제안한 다른 변동 재생까지 같은 순서로 처리한 실제 엔진 경로를 확인한다.
+          const grid = forecastGrid(S, id, trial);
+          const added = trial.builds.slice(kept.builds.length).filter(b => BG.BLD[b.t].variable);
+          if (!grid || variableMW(trial) > grid.hostMW + 1e-6 ||
+            added.some(b => !grid.entries.some(e => e.key === `${b.t}:${b.i}` && e.allocatedMW >= e.mw))) continue;
+        }
         const clean = C.cleanPlan(BG, R, id, trial,
           C.budget(S, id) - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, trial));
         select(id);
@@ -285,6 +315,14 @@ JS = r"""
         ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : addedMW >= mw && storageMW >= mw,
           `${strategy} ${id} ${S.round}달 전환 ${mw}MW → 발전${addedMW}/저장${storageMW}MW`);
         changes.push({removed: clone(pending), added: recipe, mw, addedMW, storageMW});
+        if (strategy === "renew") {
+          const grid = forecastGrid(S, id, replacement);
+          const room = hostingRoom(S, id, replacement);
+          ok(room >= -1e-6 && variableMW(replacement) <= grid.hostMW + 1e-6,
+            `B18 renew ${id} ${S.round}달 접속 상한: 변동${variableMW(replacement)}/H${grid.hostMW}MW`);
+          Object.assign(changes[changes.length - 1], {headroomMW: room, variableMW: variableMW(replacement),
+            projectedWaitingMW: grid.waitingMW});
+        }
         plan = replacement; pending = [];
       }
     }
@@ -302,6 +340,58 @@ JS = r"""
     return strategy === "diesel" || strategy === "renew" ? transform(S, id, strategy, original) :
       {plan: original, changes: []};
   };
+  test("B18 renew 접속·유지 경계", () => {
+    const S = newGame("bots-renew-grid-probe"), id = ids[0];
+    C.host(S, "next", 100); select(id);
+    S.econ.cities[id].cash = 10000;
+    // 검사 장치(M): 기준 피크 100MW, 기존 태양광 30MW 전량 접속으로 H를 모두 사용한 상태.
+    // 계수는 바꾸지 않고 기존 접속 이력과 재정을 주입한다. 전략 통계에는 섞지 않는다.
+    const existing = placeTypes(assets(__auto(id)), Array(15).fill("solar"));
+    ok(!!existing, "B18 검사 장치 합법 태양광 자리·경로 존재");
+    if (!existing) return;
+    S.teams[id].plan = existing;
+    S.grid[id].peakMW = 100;
+    S.grid[id] = forecastGrid(S, id, existing);
+    S.grid[id].entries.forEach(e => { e.allocatedMW = e.mw; });
+    S.grid[id].round = 0;
+    S.grid[id] = C.gridStatus(S, R, BG, id);
+    select(id);
+    ok(Math.abs(S.grid[id].headroomMW) < 1e-6, "B18 기존 설비가 H를 모두 사용");
+    const original = placeTypes(existing, ["solar", "solar", "solar", "diesel"]);
+    ok(!!original, "B18 검사 장치 AI 새 재생6MW·화력3MW 계획 존재");
+    if (!original) return;
+    const before = JSON.stringify(S), input = clone(original);
+    const answer = transform(S, id, "renew", original), grid = forecastGrid(S, id, answer.plan);
+    ok(answer.changes.length > 0 && answer.changes.some(c => c.storageMW > c.mw &&
+      c.added.some(t => BG.BLD[t].variable)) && grid.waitingMW === 0,
+      "B18 H 부족: 기존·새 재생 몫 차감, ESS 확충 후 전량 접속");
+    ok(same(original, input) && JSON.stringify(S) === before, "B18 전환 입력 계획·상태 불변");
+    ok(existing.builds.every(b => answer.plan.builds.some(n => same(b, n))) &&
+      existing.lines.every(l => answer.plan.lines.some(n => same(l, n))) &&
+      answer.plan.builds.every(b => !BG.siteRule(b.t, BG.TILES[b.i])) &&
+      new Set(answer.plan.builds.map(b => b.i)).size === answer.plan.builds.length &&
+      C.spendOf(BG, S, R, id, answer.plan) <= C.budget(S, id),
+      "B18 ESS 추가: 기존 자산·합법 자리·중복·예산 유지");
+    const poor = clone(S);
+    poor.econ.cities[id].cash += C.spendOf(BG, poor, R, id, original) - C.budget(poor, id);
+    const fallback = transform(poor, id, "renew", original);
+    ok(fallback.changes.length === 0 && same(fallback.plan, original), "B18 ESS 예산 부족: 원 화력 계획 유지");
+    const exhausted = clone(S);
+    exhausted.grid[id].round = exhausted.round;
+    const simple = placeTypes(existing, ["diesel"]), full = transform(exhausted, id, "renew", simple);
+    ok(full.changes.every(c => c.added.every(t => !BG.BLD[t].variable)),
+      "B18 같은 달 재계획: 사용한 월 접속 처리량 재사용 금지");
+    const packed = assets(simple), used = new Set(packed.builds.map(b => b.i));
+    BG.TILES.filter(tile => !used.has(tile.i) && !BG.siteRule("battery", tile)).forEach(tile => {
+      const type = Object.keys(BG.BLD).find(t => ["ren", "bat"].includes(BG.BLD[t].cls) && !BG.siteRule(t, tile));
+      if (type) packed.builds.push({t: type, i: tile.i});
+    });
+    ok(same(transform(S, id, "renew", packed).plan, packed), "B18 ESS 자리 부족: 원 화력 계획 유지");
+    const missing = clone(S); delete missing.grid;
+    ok(same(transform(missing, id, "renew", original).plan, original), "B18 접속 계약 누락: 원 계획 유지");
+    const debt = clone(S); debt.econ.cities[id].cash = -debt.econ.cities[id].debtCap - 1;
+    ok(same(transform(debt, id, "renew", original).plan, original), "B18 부채 한도 초과: 원 계획 유지");
+  });
   const cooperate = (S, assignment, at) => {
     const run = out.runs[out.runs.length - 1];
     R.ties.forEach(def => {
@@ -370,6 +460,9 @@ JS = r"""
           `B10 회전${rotation} ${id} ${m - 1}→${m}달 ${prior[id]?.cashAfter} == ${f?.cashBefore}`);
         const input = r && C.econInput(S, R, id, r, C.roundsOf(S)[m - 1].mdays / 7);
         ok(finite(input?.energy?.spareMW), `B8 회전${rotation} ${id} ${m}달 econInput spareMW=${input?.energy?.spareMW}`);
+        ok(finite(input?.energy?.waitingMW) && input.energy.waitingMW >= 0 &&
+          finite(input?.energy?.curtailMWh) && input.energy.curtailMWh >= 0,
+          `B18 회전${rotation} ${id} ${m}달 접속 대기·출력제어 계약`);
         ok(finite(f?.eventBonus), `B9/B10 회전${rotation} ${id} ${m}달 eventBonus=${f?.eventBonus}`);
       });
       (rep.offers || []).forEach(o => ids.forEach(id => {
@@ -389,6 +482,8 @@ JS = r"""
       const operating = sum(first.map(f => f.revTotal - (f.expTotal - f.exp.capex)));
       const bonuses = sum(first.map(f => f.eventBonus ?? 0));
       const uns = run.hist.map(h => h.energy[id].unsPct);
+      const waiting = run.hist.map(h => h.energy[id].grid?.waitingMW);
+      const curtailed = run.hist.map(h => h.energy[id].curtailMWh * C.roundsOf(S)[h.month - 1].mdays / 7);
       const co2 = run.hist.map(h => h.energy[id].co2Cons * C.roundsOf(S)[h.month - 1].mdays / 7);
       const population = sum(run.hist.map(h => h.cities[id].pop));
       run.rows.push({id, name: out.names[id], strategy: assignment[id], score: sc?.score ?? null,
@@ -398,6 +493,8 @@ JS = r"""
         operatingYear1: operating, eventBonusYear1: bonuses,
         operatingRatio: (operating - bonuses) / starting[id].cash0,
         unsPct: sum(uns) / uns.length,
+        waitingMW: waiting.every(finite) ? sum(waiting) / waiting.length : null,
+        curtailMWh: curtailed.every(finite) ? sum(curtailed) / curtailed.length : null,
         co2PerPerson: sum(co2) / population, approval: city.approval,
         reviewPass: run.hist.filter(h => h.review?.[id]?.pass === true).length,
         plans: clone(S.teams[id].plan), ties: clone(S.ties)});
@@ -450,6 +547,8 @@ def strategy_summary(out):
     worst = min(active, key=active.get) if active else None
     return {"firstCounts": first, "completeCities": complete, "meanScores": scores,
             "meanUnsPct": {s: mean([r for r in rows if r["strategy"] == s], "unsPct") for s in strategies},
+            "meanWaitingMW": {s: mean([r for r in rows if r["strategy"] == s], "waitingMW") for s in strategies},
+            "meanCurtailMWh": {s: mean([r for r in rows if r["strategy"] == s], "curtailMWh") for s in strategies},
             "best": best, "worst": worst,
             "meanScoreGap": active[best] - active[worst] if active else None}
 
@@ -465,15 +564,15 @@ def markdown(out):
     lines = [f"# 전략 봇 {out['months']}달 결과", "",
              f"회전 {out['rotations']}회. 동일 방 씨앗, 도시·전략 회전 배정. 수치는 전략별 산술 평균.", "",
              f"기반 계획기: {out.get('planner', '미실행')}. nothing은 건설 없음, 나머지는 정책 0의 공통 건설 기반에 전략만 추가한다.", "",
-             "운영 수지/cash0는 1년차 사건 지원금을 제외한다(B6 참고). 지원금은 별도 억 단위. CO₂는 사람당 월 평균 t. 정전은 달별 평균 %.", "",
-             "| 전략 | 점수 | 순위 | 도시 1위/6 | pop | ind | fin | co2 | appr | rel | 주민 Δ% | 종사자 Δ% | 현금 억 | 1년 수지/cash0 | 사건 지원금 억 | 정전 평균 % | CO₂ t/인·월 | 지지율 | 평가 통과 | 표본 |",
-             "|---|" + "---:|" * 19]
+             "운영 수지/cash0는 1년차 사건 지원금을 제외한다(B6 참고). 지원금은 별도 억 단위. CO₂는 사람당 월 평균 t. 정전은 달별 평균 %. 접속 대기는 운영 뒤 달별 평균 MW, 출력제어는 7일 보고를 각 달 일수로 환산한 월 평균 MWh.", "",
+             "| 전략 | 점수 | 순위 | 도시 1위/6 | pop | ind | fin | co2 | appr | rel | 주민 Δ% | 종사자 Δ% | 현금 억 | 1년 수지/cash0 | 사건 지원금 억 | 정전 평균 % | 평균 접속 대기 MW | 평균 출력제어 MWh | CO₂ t/인·월 | 지지율 | 평가 통과 | 표본 |",
+             "|---|" + "---:|" * 21]
     for strategy in out.get("strategies", []):
         group = [r for r in rows if r["strategy"] == strategy]
         cells = [strategy, average(group, "score"), average(group, "rank"),
                  f"{summary['firstCounts'][strategy]}/6"]
         cells += [average(group, key, part=True) for key in ("pop", "ind", "fin", "co2", "appr", "rel")]
-        cells += [average(group, key) for key in ("popPct", "indPct", "cash", "operatingRatio", "eventBonusYear1", "unsPct", "co2PerPerson", "approval", "reviewPass")]
+        cells += [average(group, key) for key in ("popPct", "indPct", "cash", "operatingRatio", "eventBonusYear1", "unsPct", "waitingMW", "curtailMWh", "co2PerPerson", "approval", "reviewPass")]
         cells += [str(len(group))]
         lines.append("| " + " | ".join(cells) + " |")
     gap = summary["meanScoreGap"]
