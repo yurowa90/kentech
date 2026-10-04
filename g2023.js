@@ -283,7 +283,7 @@
         <details class="reveal"><summary>문제 2 예시 계획 · 최종 ${r.rows[9].cum.join(" / ")} <span class="tag-official">보고서</span></summary>
           <p class="small num">${ex.join(" → ")}</p>
           ${planTable("예시 가람국", r, ex, NB)}
-          <p class="small">최종 환경 지수가 가장 높고, 6년 차 누적 과학 6·환경 3으로 박람회 조건을 채워 7년 차 행복 +2가 적용됩니다. 3년 차 누적 과학 2·환경 2라 전염병은 피했습니다. <span class="tag-mine">연습실 설명</span></p></details>
+          <p class="small"><span class="tag-mine">연습실 설명</span> 최종 환경 지수가 가장 높고, 6년 차 누적 과학 6·환경 3으로 박람회 조건을 채워 7년 차 행복 +2가 적용됩니다. 3년 차 누적 과학 2·환경 2라 전염병은 피했습니다.</p></details>
         <details class="reveal"><summary>유실된 정보 공개 <span class="tag-official">보고서 참고사항</span></summary>
           <p class="small muted">보고서가 공개한 원래 문장입니다. 표시된 부분이 시험장에서는 가려져 있었습니다. 3G, 3H처럼 전체가 가려졌던 항목도 여기서 확인할 수 있습니다.</p>
           <ul class="small" style="margin:6px 0 0;padding-left:1.1em">${lostList}</ul></details>`;

@@ -9,6 +9,8 @@ import re
 
 from harness import Ctx, main
 
+MAP_NOTICE_24 = "정착지 지도가 보고서 배치도로 바뀌어, 예전에 고른 정착지·확정·시뮬레이션 기록을 비웠습니다. 특별 아이템과 써 둔 글은 그대로 있습니다. 새 지도에서 정착지를 다시 골라 주세요."
+
 
 def _wait(c, selector, state="visible"):
     c.page.locator(selector).first.wait_for(state=state)
@@ -264,6 +266,157 @@ def t_T0a_2_route_saves(c: Ctx):
     c.wait_saved(400)
     c.eq((c.ls("kcp:v1:2022") or {}).get("timer", {}).get("left"), left, "T0a-2 라우트 전환 뒤 이전 해 시계는 감소하지 않는다")
     c.check("T0a-2 2023 준비실")
+
+
+def t_T0a_2_2024_old_map(c: Ctx):
+    # 새 지도에도 남아 있는 옛 칸 번호를 넣어 판 번호로 정리하는지 확인한다.
+    for version in (None, 1, 3):
+        _home(c)
+        c.page.evaluate("KCP.flush()")
+        c.page.evaluate("""version => {
+          const sel = ['0-6','1-5','2-5','2-4','3-4','4-5','4-6'];
+          const game = {sel, items:{eng:3}, locked:{sel, items:{eng:3}},
+            matched:'yes', runs:[{prod:10.5,cons:9.1}],
+            plan:'숲을 골랐습니다. <img src=x onerror="window.__injected24=true">'};
+          if (version !== null) game.mapV = version;
+          localStorage.setItem('kcp:v1:2024', JSON.stringify({phase:'prep', game,
+            memo:'물 자원을 확인하자.', answers:{'24-c1':'가상 연습 답변'}}));
+        }""", version)
+        c.page.reload()
+        _wait(c, ".home-grid")
+        c.goto("#y2024", wait="#plan24")
+        notice = c.page.locator("#map-notice24")
+        c.eq(notice.count(), 1, f"T0a-2 지도 판 {version} 이전 안내 한 개")
+        c.eq(notice.inner_text(), MAP_NOTICE_24, "T0a-2 옛 계획 안내 문구 일치")
+        c.eq(c.page.locator('[data-hex][aria-pressed="true"]').count(), 0, "T0a-2 옛 지도 선택 해제")
+        c.eq(c.page.locator("#unlock, [data-match]").count(), 0, "T0a-2 옛 확정과 예상 일치 응답 해제")
+        c.expect(c.page.locator("#go24").is_disabled(), "T0a-2 새 지도에서 다시 확정해야 면접실 이동 가능")
+        c.eq(c.page.locator("#runs").inner_text(), "", "T0a-2 옛 시뮬레이션 횟수 해제")
+        c.expect("<img" in c.page.input_value("#plan24"), "T0a-2 계획 글은 원문 그대로 보존")
+        c.eq(c.page.locator("#prep-body img").count(), 0, "T0a-2 계획 글을 HTML로 실행하지 않는다")
+        c.wait_saved()
+        saved = c.ls("kcp:v1:2024") or {}
+        game = saved.get("game", {})
+        for key, expected in (("mapV", 2), ("sel", []), ("locked", None), ("matched", ""), ("runs", [])):
+            c.eq(game.get(key), expected, f"T0a-2 이전 후 {key} 저장")
+        c.eq(game.get("items"), {"eng": 3}, "T0a-2 기존 아이템 선택 보존")
+        c.eq(saved.get("memo"), "물 자원을 확인하자.", "T0a-2 자유 메모 보존")
+        c.eq(saved.get("answers"), {"24-c1": "가상 연습 답변"}, "T0a-2 직접 쓴 면접 답변 보존")
+        c.page.reload()
+        _wait(c, "#plan24")
+        c.eq(c.page.locator("#map-notice24").count(), 0, "T0a-2 이전 안내는 새로고침 뒤 반복하지 않는다")
+        c.eq(c.page.input_value("#plan24"), game.get("plan"), "T0a-2 다시 열어도 계획 글 보존")
+        c.check("T0a-2 옛 지도 저장값 이전")
+
+    # 이전 뒤 새로 확정한 계획은 다시 열어도 남아야 한다.
+    c.page.click('[data-hex="0-4"]')
+    c.page.click("#sim")
+    c.page.click("#lock")
+    c.page.click('[data-match="yes"]')
+    c.wait_saved()
+    c.page.reload()
+    _wait(c, "#unlock")
+    game = (c.ls("kcp:v1:2024") or {}).get("game", {})
+    c.eq(game.get("mapV"), 2, "T0a-2 새 계획에 지도 판 번호 저장")
+    c.eq(game.get("sel"), ["0-4"], "T0a-2 현재 지도 선택 복원")
+    c.eq((game.get("locked") or {}).get("sel"), ["0-4"], "T0a-2 현재 지도 확정 복원")
+    c.eq(game.get("matched"), "yes", "T0a-2 현재 지도 예상 일치 응답 복원")
+    c.eq(len(game.get("runs", [])), 1, "T0a-2 현재 지도 실행 기록 복원")
+
+
+def t_T0a_2_2024_old_map_room_reflect(c: Ctx):
+    for phase, selector in (("room", ".recap"), ("reflect", "table.rubric")):
+        _home(c)
+        c.page.evaluate("KCP.flush()")
+        c.page.evaluate("""phase => {
+          const sel = ['0-4'];
+          localStorage.setItem('kcp:v1:2024', JSON.stringify({phase,
+            game:{mapV:1,sel,items:{eng:1},locked:{sel,items:{eng:1}}}}));
+        }""", phase)
+        c.page.reload()
+        _wait(c, ".home-grid")
+        c.goto("#y2024", wait=selector)
+        c.eq(c.page.evaluate("KCP.games['2024'].recap(KCP.load('2024'))[0]"),
+             {"t": "안내", "d": MAP_NOTICE_24}, f"T0a-2 {phase} recap 첫 줄에 이전 안내")
+        if phase == "room":
+            c.eq(c.page.locator(".recap dt").first.inner_text(), "안내", "T0a-2 면접실 recap 첫 줄 안내 제목")
+            c.eq(c.page.locator(".recap dd").first.inner_text(), MAP_NOTICE_24, "T0a-2 면접실 recap 안내 문구")
+        else:
+            c.expect(c.page.locator("#map-notice24").is_visible(), "T0a-2 예시를 열지 않아도 성찰 안내 표시")
+            c.eq(c.page.locator("#map-notice24").inner_text(), MAP_NOTICE_24, "T0a-2 성찰 안내 문구")
+        c.page.evaluate("KCP.rerender()")
+        c.eq(c.page.evaluate("KCP.games['2024'].recap(KCP.load('2024'))[0].t"), "안내", f"T0a-2 {phase} 다시 표시해도 안내 유지")
+        c.check(f"T0a-2 {phase} 이전 안내")
+        _phase(c, "prep", "#plan24")
+        c.eq(c.page.locator("#map-notice24").inner_text(), MAP_NOTICE_24, "T0a-2 준비실에서 이전 안내 표시")
+        c.expect(not c.page.evaluate("KCP.games['2024'].recap(KCP.load('2024')).some(r => r.t === '안내')"),
+                 "T0a-2 준비실의 안내 소비 뒤 recap 안내 제거")
+        c.page.click('[data-hex="0-4"]')
+        c.page.click("#lock")
+        c.expect(not c.page.evaluate("KCP.games['2024'].recap(KCP.load('2024')).some(r => r.t === '안내')"),
+                 "T0a-2 다시 확정한 뒤 recap 안내 없음")
+
+
+def t_T0a_2_2024_old_map_notice_conditions(c: Ctx):
+    _results(c, "T0a-2 이전 안내 조건", """() => {
+      const game = KCP.games['2024'], out = [];
+      const emptyCases = [
+        ['빈 객체', {}], ['지도 판만', {mapV:1}],
+        ['아이템·글만', {mapV:1,items:{eng:1},plan:'가상 계획'}],
+        ['빈 기록', {mapV:1,sel:[],locked:null,runs:[],matched:''}],
+        ['손상 문자열', 'bad'], ['손상 배열', [{sel:['0-4'],locked:true,runs:[1],matched:'yes'}]],
+      ];
+      for (const [label, value] of emptyCases) {
+        const s = {phase:'room',game:value}, recap = game.recap(s);
+        out.push([!s.game.mapNotice && !recap.some(r => r.t === '안내'), label + ' 비울 기록이 없으면 안내 없음']);
+        out.push([s.game.mapV === 2 && s.game.sel.length === 0 && s.game.locked === null && s.game.runs.length === 0 && s.game.matched === '', label + ' 저장값 정리']);
+        if (label === '아이템·글만') out.push([s.game.items.eng === 1 && s.game.plan === value.plan, label + ' 보존']);
+      }
+      for (const patch of [{sel:['0-4']}, {locked:{sel:['0-4'],items:{eng:1}}}, {runs:[{prod:1,cons:0}]}, {matched:'yes'}]) {
+        const label = Object.keys(patch)[0], s = {phase:'room',game:{mapV:1,...patch}};
+        out.push([game.recap(s)[0].t === '안내', label + '만 있어도 안내']);
+        s.game.locked = {sel:['0-4'],items:{eng:1}};
+        out.push([!game.recap(s).some(r => r.t === '안내') && !s.game.mapNotice, label + ' 다시 확정하면 안내 해제']);
+      }
+      return out;
+    }""")
+
+
+def t_T0a_2_2024_damaged_save(c: Ctx):
+    _results(c, "T0a-2 손상 저장값", """() => {
+      const game = KCP.games['2024'], out = [];
+      const cases = [
+        ['items null', {items:null}],
+        ['items 배열', {items:[]}],
+        ['items 값 범위', {items:{eng:7,medP:-1,grid:0.5,ai:'1',sub:1}}],
+        ['runs null', {runs:null}],
+        ['constructor 칸', {sel:['constructor']}],
+        ['__proto__ 칸', {sel:['__proto__']}],
+        ['toString 칸', {sel:['toString']}],
+        // even-q 이웃 관계로 연결된 8칸: 0-4↔0-5↔0-6, 0-4↔1-3↔2-3,
+        // 0-4↔1-4, 0-4↔1-5, 0-6↔1-6. 연결 실패가 아닌 7칸 상한으로 해제된다.
+        ['8칸', {sel:['0-4','0-5','0-6','1-3','1-4','1-5','1-6','2-3']}],
+        ['locked items null', {locked:{sel:['0-4'],items:null},matched:'yes'}],
+        ['locked items 없음', {locked:{sel:['0-4']},matched:'yes'}],
+        ['locked items 배열', {locked:{sel:['0-4'],items:[]},matched:'yes'}],
+        ['locked items 값 범위', {locked:{sel:['0-4'],items:{eng:7}},matched:'yes'}],
+        ['locked 잘못된 칸', {locked:{sel:['constructor'],items:{eng:1}},matched:'yes'}],
+      ];
+      for (const [label, patch] of cases) {
+        const s = {game:{mapV:2,sel:['0-4'],items:{eng:1},runs:[],locked:null,matched:'',...patch}};
+        try {
+          const qs = game.questions(s), recap = game.recap(s), G = s.game;
+          out.push([Array.isArray(qs) && Array.isArray(recap), label + ' 질문·성찰 예외 없음']);
+          if (Object.hasOwn(patch, 'sel')) out.push([G.sel.length === 0, label + ' 선택 해제']);
+          if (Object.hasOwn(patch, 'locked')) out.push([G.locked === null && G.matched === '' && !qs.some(q => q.k === '24-c5-yes'), label + ' 확정·응답 함께 해제']);
+          if (Object.hasOwn(patch, 'items')) out.push([JSON.stringify(G.items) === JSON.stringify(label === 'items 값 범위' ? {sub:1} : {}), label + ' 아이템 정리']);
+          if (Object.hasOwn(patch, 'runs')) out.push([Array.isArray(G.runs) && G.runs.length === 0, label + ' 기록 정리']);
+        } catch (e) {
+          out.push([false, label + ' 예외: ' + e.message]);
+        }
+      }
+      return out;
+    }""")
 
 
 def t_T0a_3_pending_reads(c: Ctx):

@@ -248,7 +248,7 @@
       "긴 사용 시간일수록 오차막대가 커진다. 판정의 신뢰도가 낮아진다.",
       "체내 장착형은 외관상 사용 여부를 알 수 없다. 상대는 동의 없이 감정과 진실도를 분석당한다.",
       "'진실도 추정'이 틀리면 거짓말쟁이로 오판된다. 확률 정보를 사실로 받아들이는 위험이 있다.",
-      "한 번 충전으로 최대 30일이고 재사용에는 별매 렌즈통이 필요한데 '950일전 구매' 후기가 있다. 별매품, 구독 서비스, 대리점 방문 구매로 이어지는 비용 구조가 드러난다.",
+      "하루 16시간 기준 최대 30일 쓰고, 다시 쓰려면 별매 렌즈통이 필요한데 '950일전 구매' 후기가 있다. 별매품, 구독 서비스, 대리점 방문 구매로 이어지는 비용 구조가 드러난다.",
       "후기란 제목이 '사용자 극찬 리뷰'다. 별 4개 후기도 감점 이유는 성능이 아니라 구독료와 대리점 구매의 불편이다. 고른 후기만 실었을 수 있다.",
       "'렌즈가 판정해주는 대로 생각하면'이라는 후기는 판단을 기계에 맡기는 의존을 보여 준다.",
     ],
@@ -266,7 +266,7 @@
   const EXAMPLES = [
     { pick: "wc", s: { bb: [2, 2, 4, 5, 4], db: [1, 5, 4, 5, 1], ml: [3, 4, 1, 3, 1], wc: [5, 2, 5, 2, 5] }, gist: "현실에서 가장 필요하고, 최신 기술에 익숙하지 않은 사람도 쉽게 쓸 수 있다. 부작용이 불명확해 안전성은 낮게 주었다." },
     { pick: "bb", s: { bb: [5, 4, 4, 5, 5], db: [3, 2, 3, 4, 4], ml: [4, 4, 4, 4, 5], wc: [4, 4, 3, 5, 5] }, gist: "정량 데이터가 있고 적용 범위가 넓다. 고위험 직군의 실수를 줄이고, ADHD 학생·고령층의 격차를 줄이는 보정 장치가 될 수 있다." },
-    { pick: "db", s: { bb: [4, 2, 4, 4, 3], db: [5, 5, 4, 4, 4], ml: [4, 3, 4, 4, 4], wc: [4, 3, 4, 4, 4] }, gist: "현실 기술이 줄 수 없는 새로운 경험의 차원을 연다. 꿈 기반 활동이 이동과 자원 소비를 대체해 에너지를 줄일 수 있다.", note: "보고서 표에는 AI 마음렌즈 합계가 21로 적혀 있지만 항목 점수(4·3·4·4·4)를 더하면 19입니다. 이 표의 합계는 항목 점수로 다시 계산한 값입니다." },
+    { pick: "db", s: { bb: [4, 2, 4, 4, 3], db: [5, 5, 4, 4, 4], ml: [4, 3, 4, 4, 4], wc: [4, 3, 4, 4, 4] }, gist: "현실 기술이 줄 수 없는 새로운 경험의 차원을 연다. 꿈 기반 활동이 이동과 자원 소비를 대체해 에너지를 줄일 수 있다.", note: "보고서 표에는 AI 마음렌즈 합계가 21로 적혀 있지만 항목 점수(4·3·4·4·4)를 더하면 19입니다. *는 항목 점수로 다시 계산한 합계입니다." },
     { pick: "ml", s: { bb: [4, 2, 4, 5, 3], db: [5, 2, 3, 4, 5], ml: [5, 4, 4, 4, 5], wc: [4, 3, 3, 4, 5] }, gist: "오해에서 생기는 갈등을 구조적으로 줄인다. 물리적 안전성은 높지만 감정 데이터 유출에는 강력한 제도적 장치가 필요하다고 구분했다." },
   ];
 
@@ -431,8 +431,8 @@
       const ex = EXAMPLES.map(
         (e, i) => `<details class="reveal"><summary>예시 답안 ${i + 1} · ${esc(nameOf(e.pick))} 선정 <span class="tag-official">보고서</span></summary>
           <div class="table-wrap"><table class="scoretable"><thead><tr><th>기술명</th>${CRIT.map((c) => `<th>${c.n}</th>`).join("")}<th>합계</th></tr></thead><tbody>
-          ${TECH.map((t) => `<tr class="${t.id === e.pick ? "best" : ""}"><td class="name">${esc(t.name)}</td>${e.s[t.id].map((v) => `<td class="num">${v}</td>`).join("")}<td class="total">${e.s[t.id].reduce((a, b) => a + b, 0)}</td></tr>`).join("")}
-          </tbody></table></div><p class="small" style="margin-top:6px"><b>요지</b>: ${esc(e.gist)}</p>${e.note ? `<p class="small muted">${esc(e.note)}</p>` : ""}</details>`
+          ${TECH.map((t) => `<tr class="${t.id === e.pick ? "best" : ""}"><td class="name">${esc(t.name)}</td>${e.s[t.id].map((v) => `<td class="num">${v}</td>`).join("")}<td class="total">${e.s[t.id].reduce((a, b) => a + b, 0)}${e.note && t.id === "ml" ? "*" : ""}</td></tr>`).join("")}
+          </tbody></table></div><p class="small" style="margin-top:6px"><b>요지</b>: ${esc(e.gist)}</p>${e.note ? `<p class="small muted"><span class="tag-mine">연습실 계산</span> ${esc(e.note)}</p>` : ""}</details>`
       ).join("");
       const clues = TECH.map(
         (t) => `<details class="reveal"><summary>${esc(t.name)}: 자료 속 단서 <span class="tag-mine">비공식 해설</span></summary>
@@ -441,7 +441,7 @@
       ).join("");
       return `<p class="small muted" style="margin-bottom:8px">공식 예시 답안 네 개는 모두 다른 기술을 최우수로 골랐습니다. 점수 분포와 근거를 내 평가표와 비교해 보세요.</p>
         ${ex}
-        <div class="caution" style="margin-top:10px">예시 답안 2는 브레인부스트 듀오의 전력 소모가 스마트워치보다 낮다고 말합니다. 홍보자료 표에서는 브레인튜너 1~2W, 스마트워치 0.5~1W입니다. 같은 답안의 '집중력 +31%, 기억력 +30%, 사고 속도 +32%'도 그래프(집중력 30.8%, 기억력 25.7%, 처리속도 23.5%, 문제해결 32.3%)와 맞지 않습니다. 예시 답안도 자료와 대조해 읽어야 합니다.</div>
+        <div class="caution" style="margin-top:10px"><span class="tag-mine">연습실 대조</span> 예시 답안 2는 브레인부스트 듀오의 전력 소모가 스마트워치보다 낮다고 말합니다. 홍보자료 표에서는 브레인튜너 1~2W, 스마트워치 0.5~1W입니다. 같은 답안의 '집중력 +31%'는 그래프의 30.8%를 반올림한 값으로 볼 수 있습니다. '기억력 +30%'는 그래프의 25.7%와 다릅니다. '사고 속도'라는 항목은 그래프에 없습니다(처리속도 23.5%, 주의력 31.8%, 문제해결 32.3%). 예시 답안도 자료와 대조해 읽어야 합니다.</div>
         <h4 style="font-size:14px;margin:14px 0 8px">자료 속 단서</h4>
         <p class="small muted" style="margin-bottom:8px">출제 의도 가운데 하나는 "기술적 우수성으로 포장된 내용 뒤에 숨겨진 긍정적, 부정적인 영향성"을 파악하는 능력입니다. 아래는 연습용으로 정리한 관찰이며 대학의 채점 기준이 아닙니다.</p>
         ${clues}`;

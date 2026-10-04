@@ -30,6 +30,8 @@
   const TCOL = { L: "#c8483a", W: "#72cdc4", M: "#7a6152", D: "#e1b870", F: "#3f8a4c", G: "#b9dc5a" };
   const MAX_TILES = 7;
   const MAX_ITEMS = 10;
+  const MAP_V = 2;
+  const MAP_NOTICE = "정착지 지도가 보고서 배치도로 바뀌어, 예전에 고른 정착지·확정·시뮬레이션 기록을 비웠습니다. 특별 아이템과 써 둔 글은 그대로 있습니다. 새 지도에서 정착지를 다시 골라 주세요.";
 
   const ITEMS = [
     { id: "eng", n: "엔지니어", up: 0, max: 6, d: "켄트로늄 채굴 기술자. 채굴한 켄트로늄에서 한 명당 10% 효율로 에너지를 생산한다." },
@@ -158,12 +160,30 @@
   const r1 = (v) => Math.round(v * 10) / 10;
 
   function g(state) {
-    state.game = Object.assign({ sel: [], items: {}, runs: [], showK: true, locked: null, matched: "" }, state.game || {});
-    /* 예전 지도로 저장한 칸 번호는 현재 지도에 없을 수 있다 */
-    const valid = (a) => Array.isArray(a) && a.every((id) => TILE[id]) && connected(a);
-    if (!valid(state.game.sel)) state.game.sel = [];
-    if (state.game.locked && !valid(state.game.locked.sel)) state.game.locked = null;
-    return state.game;
+    const plain = (o) => o !== null && typeof o === "object" && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
+    const old = plain(state.game) ? state.game : {};
+    state.game = Object.assign({ sel: [], items: {}, runs: [], showK: true, locked: null, matched: "" }, old);
+    const G = state.game;
+    /* 같은 칸 번호라도 지도 판이 다르면 지형과 이웃 관계가 달라진다. */
+    if (G.mapV !== MAP_V) {
+      if ((Array.isArray(G.sel) && G.sel.length) || G.locked || (Array.isArray(G.runs) && G.runs.length) || G.matched) G.mapNotice = true;
+      else delete G.mapNotice;
+      G.sel = [];
+      G.locked = null;
+      G.matched = "";
+      G.runs = [];
+      G.mapV = MAP_V;
+    }
+    const valid = (a) => Array.isArray(a) && a.length <= MAX_TILES && a.every((id) => Object.hasOwn(TILE, id)) && connected(a);
+    const validItem = (id, n) => Object.hasOwn(ITEM, id) && Number.isInteger(n) && n >= 0 && n <= (ITEM[id].max || 1);
+    const validItems = (o) => plain(o) && Object.entries(o).every(([id, n]) => validItem(id, n));
+    if (!valid(G.sel)) G.sel = [];
+    G.items = Object.fromEntries(plain(G.items) ? Object.entries(G.items).filter(([id, n]) => validItem(id, n)) : []);
+    if (G.locked && (!valid(G.locked.sel) || !validItems(G.locked.items))) G.locked = null;
+    if (G.locked) delete G.mapNotice;
+    if (!G.locked) G.matched = "";
+    if (!Array.isArray(G.runs)) G.runs = [];
+    return G;
   }
   const itemCount = (items) => Object.values(items).reduce((a, b) => a + (b || 0), 0);
 
@@ -202,6 +222,7 @@
       const G = g(state);
       const locked = !!G.locked;
       root.innerHTML = `
+        ${G.mapNotice ? `<p class="caution small" id="map-notice24" role="status">${esc(MAP_NOTICE)}</p>` : ""}
         <div class="desk">
           <div class="stack">
             <section class="panel ${locked ? "locked" : ""}">
@@ -242,6 +263,11 @@
             ${locked ? "" : '<p class="hint" style="text-align:right">탐사계획을 확정해야 맞춤형 질문이 만들어집니다.</p>'}
           </div>
         </div>`;
+
+      if (G.mapNotice) {
+        delete G.mapNotice;
+        save();
+      }
 
       const src = () => (locked ? G.locked : { sel: G.sel, items: G.items });
       const paintMap = () => {
@@ -379,6 +405,7 @@
       s.sel.forEach((id) => { const n = TER[TILE[id].t].n; cnt[n] = (cnt[n] || 0) + 1; });
       const r = simulate(s.sel, s.items);
       return [
+        ...(G.mapNotice ? [{ t: "안내", d: MAP_NOTICE }] : []),
         { t: "상태", d: G.locked ? "탐사계획 확정" : "아직 확정하지 않음" },
         { t: "정착지", d: Object.entries(cnt).map(([k, v]) => `${k} ${v}칸`).join(", ") || "(없음)" },
         { t: "특별 아이템", d: ITEMS.filter((it) => s.items[it.id]).map((it) => (it.max > 1 ? `${it.n} ${s.items[it.id]}명` : it.n)).join(", ") || "(없음)" },
@@ -388,11 +415,17 @@
       ];
     },
 
+    /* 성찰은 recap을 직접 표시하지 않으므로 예시 답안의 열림 여부와 무관하게 안내한다. */
+    afterReflect(root, state) {
+      const notice = this.recap(state)[0];
+      if (notice.t === "안내") root.insertAdjacentHTML("afterbegin", `<p class="caution small" id="map-notice24" role="status">${esc(notice.d)}</p>`);
+    },
+
     reflectExtra() {
       const ex = [
         ["공통 1 · 탐험 계획", "숲 4칸, 갯벌·초원·호수 각 1칸. 용암은 채굴량이 많지만 분출 위험과 주거 제한으로 과감히 제외. 호수는 물 자원 때문에 반드시 포함. 엔지니어 3명, 의료·행정·여가 및 문화·교육 전문가, 수중기지, 차세대그리드 연구소."],
         ["공통 2 · 위험 요인", "내부(시설 고장, 사람 사이의 갈등)와 외부(외계인 조우)로 나눠 생각. 우주왕복선 소프트웨어가 최신보다 안정성을 택한다는 배경지식으로 범용 장비의 장점을 설명."],
-        ["공통 3 · 우선순위", "모든 것을 만족시키는 조합은 없었음. 고립된 환경에서의 정서적·심리적 안정과 건강을 우선."],
+        ["공통 3 · 우선순위", "모든 것을 만족시키는 조합은 없었음. 고립된 환경에서의 정서적·심리적 안정과 건강을 우선. 그래서 의료전문가와 의료시설을 우선 포함."],
         ["공통 4 · 설득", "먼저 내 계획이 감이나 간접 근거로 정한 것은 아닌지 다시 검토하고, 틀린 부분은 공개적으로 수정. 그다음 공청회·설명회로 직접 설명."],
         ["공통 5 · 예상과 다른 결과", "무기전문가 대신 행정전문가를 택함. 무기전문가의 효과는 외계 문명을 만날 때만 나타나는 '변수'이고, 행정전문가의 효과는 늘 작동하는 '상수'라고 비유."],
         ["공통 6 · 추가 아이템", "모든 재료로 모든 제품을 만드는 3D 프린터. 사막의 규소로 반도체를, 유기물로 식량을 만들 수 있다고 확장."],
