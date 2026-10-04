@@ -14,17 +14,21 @@
       careful: { invest: 0.4, risk: 0, delay: 1 },
       balanced: { invest: 0.6, risk: 0.5, delay: 0 },
       bold: { invest: 0.85, risk: 1, delay: 0 }
-    }, grade: "G", note: "A1 투자 몫·화력 선호(0..1)·결정 지연(달)" },
-    aiRenewCredit: { v: 0.3, grade: "G", note: "계획용 재생 정격의 유효 공급 몫; 발전 보너스가 아님" },
-    aiSupplyReserve: { v: 0.15, grade: "G", note: "최대 수요 위 공급 여유 목표" },
+    }, grade: "G", note: "A1 투자 몫·위험 선호(0..1)·선택 투자 지연(달); 안전 공급은 지연하지 않음" },
+    aiRenewFloor: { v: 0.1, grade: "G", note: "모든 성향의 피크 대비 최소 재생 정격 목표" },
+    aiSupplyReserve: { v: 0.35, grade: "G", note: "모든 성향의 확정 공급 여유; 송전 손실·날씨·수요 증가 대비" },
+    aiSafeReserve: { v: 0.2, grade: "G", note: "신중할수록 추가하는 확정 공급 여유 × (1-risk)" },
+    aiRenewTarget: { v: 1.6, grade: "G", note: "피크 대비 재생 정격 목표 × (1-risk); 공급 보증으로 쓰지 않음" },
+    aiBoldExpansion: { v: 0.3, grade: "G", note: "선택 투자 때 공격 성향의 추가 확정 공급 목표 × risk" },
     aiStorageShare: { v: 0.35, grade: "G", note: "재생 정격 대비 저장 출력 목표 × (1-risk)" },
     aiLargeWeight: { v: 0.25, grade: "G", note: "risk에 따른 대형 설비 선호 가중" },
     aiRepairEvery: { v: 3, grade: "G", note: "연 계획 사이 보완 판단 주기(달)" },
     aiRepairInvest: { v: 0.15, grade: "G", note: "보완 때 연 투자 몫에 추가로 곱할 비율" },
     aiApprovalMargin: { v: 3, grade: "G", note: "평가 탈락 기준 위 선제 대응 여유(점)" },
-    aiCashReserveMonths: { v: 3, grade: "G", note: "서비스 증액에 앞서 남길 기본 서비스 비용(달)" },
+    aiCashReserveMonths: { v: 3, grade: "G", note: "공격 성향의 감세·서비스 증액 전 기본 서비스 비용 비축(달)" },
+    aiSafeCashMonths: { v: 6, grade: "G", note: "신중할수록 추가하는 기본 서비스 비용 비축(달) × (1-risk)" },
     aiTieValue: { v: 0.04, grade: "G", note: "정전 회피 1 MWh의 계획상 가치(억); 실제 수입에 가산하지 않음" },
-    aiTieHours: { v: 120, grade: "G", note: "연계선 편익을 비교할 공급 부족 시간(시간)" }
+    aiTieMonths: { v: 6, grade: "G", note: "대표 주 거래 편익을 남은 달수와 비교해 최대 6달까지 환산; 수입 보너스 없음" }
   };
   const value = key => (KCP.ECON_DATA.params[key] || DEFAULTS[key]).v;
   const clone = x => JSON.parse(JSON.stringify(x));
@@ -116,22 +120,27 @@
     const gates = bg.SITES.filter(s => s.kind === "gridpt" && net.nodes.some(n =>
       n.tile === s.tile && n.comp >= 0 && net.comps.some(c =>
         c.towns.length && c.towns[0].comp === n.comp))).flatMap(s => s.to || []);
-    return { peak, firm, renew, storage, gates, total: firm + renew * value("aiRenewCredit") };
+    return { peak, firm, renew, storage, gates };
   }
 
-  function policy(S, id) {
+  function policy(S, id, style, investment) {
     const c = S.econ?.cities[id], previous = S.teams[id].econPol || c?.policy || {};
     const p = { taxRes: clampStep(previous.taxRes), taxInd: clampStep(previous.taxInd),
       service: clampStep(previous.service), incentive: 0 };
     if (!c) return p;
     const floor = (c.approval0 ?? KCP.ECON_DATA.params.sat0.v) - KCP.ECON_DATA.params.approvalDrop.v;
-    if (c.approval <= floor + value("aiApprovalMargin")) {
-      p.taxRes = clampStep(p.taxRes - 1); p.taxInd = clampStep(p.taxInd - 1);
-      p.service = clampStep(p.service + 1);
-    } else if (c.cash < 0) {
-      p.taxRes = clampStep(p.taxRes + 1); p.taxInd = clampStep(p.taxInd + 1);
-    } else if (c.cash > c.pop * KCP.ECON_DATA.params.svcCost.v * value("aiCashReserveMonths")) {
-      p.service = clampStep(p.service + 1);
+    const cash = c.cash - investment;
+    const reserve = c.pop * KCP.ECON_DATA.params.svcCost.v *
+      (value("aiCashReserveMonths") + value("aiSafeCashMonths") * (1 - style.risk));
+    if (cash < 0) {
+      p.taxRes = p.taxInd = 1; p.service = 0;
+    } else if (cash < reserve) {
+      p.taxRes = p.taxInd = clampStep(1 - style.risk); p.service = 0;
+    } else if (c.approval <= floor + value("aiApprovalMargin")) {
+      p.taxRes = p.taxInd = -1; p.service = 1;
+    } else {
+      p.taxRes = p.taxInd = clampStep(1 - 2 * style.risk);
+      p.service = clampStep(style.risk);
     }
     return p;
   }
@@ -142,22 +151,25 @@
     const rounds = C.roundsOf(S), turn = Math.max(1, S.round);
     const origin = rounds.slice(0, turn).reduce((a, rd, i) => rd.month === 1 ? i + 1 : a, 1);
     const age = turn - origin - style.delay;
-    const previous = S.results?.[S.results.length - 1 - style.delay]?.team[id];
     const annual = age === 0;
-    const repair = age > 0 && age % value("aiRepairEvery") === 0 && previous?.unsPct > R.goals.unsPct;
-    if (!annual && !repair) return plan;
+    const scheduled = annual || age > 0 && age % value("aiRepairEvery") === 0;
+    const initial = supply(bg, S, id, plan);
+    const safetyTarget = initial.peak * (1 + value("aiSupplyReserve") + value("aiSafeReserve") * (1 - style.risk));
+    // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
+    const unsafe = initial.firm < safetyTarget;
+    if (!unsafe && !scheduled) return plan;
     const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan);
-    // 이번 달 재호출해도 투자 몫이 다시 생기지 않게 지난 운영의 확정 투자에서 센다.
     const committed = S.teams[id].committed ??
       (S.teams[id].base || []).reduce((sum, x) => sum + x.c, 0) + fixed;
     const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
-    const cap = committed + extra - fixed;
+    const choiceCap = committed + extra - fixed;
+    const cap = unsafe ? budget - fixed : choiceCap;
     if (bg.capex(plan) >= cap) return plan;
     const types = Object.keys(bg.BLD).filter(t => ["ren", "disp", "bat"].includes(bg.BLD[t].cls));
     const used = new Set(plan.builds.map(b => b.i));
     const legal = Object.fromEntries(types.map(t => [t, bg.TILES.filter(x => !bg.siteRule(t, x)).map(x => x.i)]));
     const viable = types.filter(t => legal[t].some(i => !used.has(i)));
-    if (!viable.length || !extra) return plan;
+    if (!viable.length) return plan;
     const reserve = Math.min(...viable.filter(t => bg.BLD[t].cls !== "bat").map(t => bg.BLD[t].cost));
     const start = bg.SITES.find(s => s.kind === "plant") || bg.SITES.find(s => s.dem);
     if (!start) return plan;
@@ -195,13 +207,16 @@
     const reachesDemand = bg.SITES.some(s => s.dem && roots.has(s.tile));
     let route = routes(bg, roots);
     while (used.size < bg.TILES.length) {
-      const storageNeed = have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage;
-      if (plan.builds.length && have.total >= have.peak * (1 + value("aiSupplyReserve")) && storageNeed <= 0) break;
+      const safety = have.firm < safetyTarget;
+      const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
+      const renewNeed = scheduled ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
+      const storageNeed = scheduled ? Math.max(0, have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage) : 0;
+      if (!safety && (!scheduled || firmNeed + renewNeed + storageNeed <= 0)) break;
       const candidates = [];
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
-        const weight = battery ? (storageNeed > 0 ? 1 : 0) : b.cls === "ren" ? 1 - style.risk : style.risk;
-        if (!weight) return;
+        const need = b.cls === "disp" ? firmNeed : b.cls === "ren" ? renewNeed : storageNeed;
+        if (need <= 0 || safety && b.cls !== "disp") return;
         let best = null;
         legal[t].forEach(i => {
           if (used.has(i) || !Number.isFinite(route.dist[i])) return;
@@ -209,12 +224,9 @@
           const rank = KCP.econ.hashStr(`${seed}:${t}:${i}`);
           if (!best || cost < best.cost || cost === best.cost && rank < best.rank) best = { t, i, cost, rank };
         });
-        if (!best || bg.capex(plan) + best.cost > cap) return;
-        const capacity = battery ? Math.min(storageNeed, b.mw) : Math.min(
-          Math.max(0, have.peak * (1 + value("aiSupplyReserve")) - have.total),
-          b.mw * (b.cls === "ren" ? value("aiRenewCredit") : 1));
-        best.score = capacity * weight * (1 + style.risk * value("aiLargeWeight") * b.mw / maxMW) / best.cost;
-        // 재생 설비 뒤 필요한 저장 한 기를 먼저 보완한다.
+        if (!best || bg.capex(plan) + best.cost > (safety ? cap : choiceCap)) return;
+        const capacity = Math.min(need, b.mw);
+        best.score = capacity * (1 + style.risk * value("aiLargeWeight") * b.mw / maxMW) / best.cost;
         best.storage = battery && storageNeed > 0;
         candidates.push(best);
       });
@@ -231,7 +243,6 @@
         if (b.cls === "ren") have.renew += b.mw;
         else if (b.cls === "bat") have.storage += b.mw;
         else have.firm += b.mw;
-        have.total = have.firm + have.renew * value("aiRenewCredit");
       }
       if (extended) route = routes(bg, roots);
     }
@@ -240,36 +251,57 @@
 
   function ties(S, R, id, bg, style, plan) {
     const C = KCP.leagueCore, own = supply(bg, S, id, plan), actions = [];
-    let free = C.budget(S, id) - C.spendOf(bg, S, R, id, plan), reservedMW = 0;
-    for (const def of R.ties.filter(t => t.a === id || t.b === id)) {
+    let free = C.budget(S, id) - C.spendOf(bg, S, R, id, plan);
+    const pending = R.ties.filter(t => t.a === id || t.b === id);
+    let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => ({ ...t, id: C.tieId(t) }));
+    // 공개 계획·수요·연료 가격으로 대표 주를 예상한다. 사건의 숨은 실현값은 읽지 않는다.
+    const rd = C.roundsOf(S)[Math.max(0, S.round - 1)];
+    const preview = () => {
+      if (sims) return;
+      sims = {}; prices = {};
+      for (const key of Object.keys(S.teams)) {
+        const city = S.econ?.cities[key], fuel = S.econ?.intl?.cur?.fuelMul;
+        const mods = city ? { demandRes: city.pop / city.pop0, demandInd: city.ind / city.ind0 } : {};
+        if (fuel) mods.fuelMul = { lng: fuel, diesel: fuel, coal: Math.sqrt(fuel) };
+        const p = key === id ? plan : assets(S.teams[key].plan);
+        sims[key] = withMap(bg, R, key, () => C.simTeam(bg, R, key, p,
+          { ...rd, seed: KCP.econ.hashStr(`${S.room}:${S.round}:trade`) },
+          Math.max(C.budget(S, key), bg.capex(p)), mods));
+        prices[key] = S.teams[key].price;
+      }
+    };
+    for (const def of pending) {
       const other = def.a === id ? def.b : def.a;
       if (!S.teams[other]) continue;
       const existing = S.ties.find(t => t.a === def.a && t.b === def.b);
       if (existing?.st === "built") continue;
-      const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap }) / 2;
       const incoming = existing?.st === "prop" && existing.by !== id;
+      if (!incoming && (existing || style.risk !== value("aiStyles").bold.risk)) continue;
+      const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap }) / 2;
       const theirs = assets(S.teams[other].plan);
       const neighbor = withMap(bg, R, other, () => supply(bg, S, other, theirs));
-      // 코어 비용 함수도 지도 선택을 하므로 외부 지도 문맥을 되돌린다.
       const otherFree = withMap(bg, R, other, () => C.budget(S, other) - C.spendOf(bg, S, R, other, theirs));
       const debtOK = [id, other].every(key => !S.econ?.cities[key] ||
         S.econ.cities[key].cash >= -S.econ.cities[key].debtCap);
-      const linked = own.gates.includes(other) && neighbor.gates.includes(id);
-      const delivered = Math.min(cap, Math.max(0, neighbor.total - neighbor.peak)) * (1 - C.TIE_LOSS);
-      const gain = Math.min(Math.max(0, own.peak - own.total - reservedMW), delivered);
-      const benefit = gain * value("aiTieHours") * (value("aiTieValue") - S.teams[other].price);
-      const affordable = debtOK && free >= half && otherFree >= half;
-      if (incoming) {
-        const accept = linked && affordable && benefit > half;
-        actions.push({ type: accept ? "accept" : "cancel", other, cap });
-        if (accept) { free -= half; reservedMW += gain; }
-      } else if (style.risk === value("aiStyles").bold.risk && !existing && linked && affordable) {
-        const exportGain = Math.min(cap * (1 - C.TIE_LOSS), Math.max(0, own.total - own.peak),
-          Math.max(0, neighbor.peak - neighbor.total));
-        if (benefit > half || exportGain * value("aiTieHours") * value("aiTieValue") > half) {
-          actions.push({ type: "propose", other, cap }); free -= half;
-        }
+      const eligible = own.gates.includes(other) && neighbor.gates.includes(id) && debtOK && free >= half && otherFree >= half;
+      let worthwhile = false;
+      const candidate = { ...def, cap, id: C.tieId(def) };
+      if (eligible) {
+        preview();
+        const before = C.settle(accepted, sims, prices, sims[id].H, rd.days);
+        const after = C.settle([...accepted, candidate], sims, prices, sims[id].H, rd.days);
+        const horizon = C.roundsOf(S).slice(Math.max(0, S.round - 1), Math.max(0, S.round - 1) + value("aiTieMonths"));
+        const weeks = horizon.reduce((sum, r) => sum + (r.mdays || r.days) / rd.days, 0);
+        const worth = key => {
+          const net = t => t.earn - t.pay - t.fuelX + t.saveFuel +
+            t.del.reduce((sum, mw) => sum + mw, 0) * value("aiTieValue");
+          return (net(after.out[key]) - net(before.out[key])) * weeks;
+        };
+        worthwhile = worth(id) > half && (incoming || worth(other) > half);
       }
+      if (incoming) actions.push({ type: worthwhile ? "accept" : "cancel", other, cap });
+      else if (worthwhile) actions.push({ type: "propose", other, cap });
+      if (worthwhile) { free -= half; accepted.push(candidate); }
     }
     return actions;
   }
@@ -283,7 +315,7 @@
     return withMap(bg, R, id, () => {
       const original = assets(S.teams[id].plan);
       const result = build(S, R, id, bg, chosen, original);
-      return { plan: result, econPol: policy(S, id), ties: ties(S, R, id, bg, chosen, result) };
+      return { plan: result, econPol: policy(S, id, chosen, Math.max(0, bg.capex(result) - (S.teams[id].committed || 0))), ties: ties(S, R, id, bg, chosen, result) };
     });
   }
   KCP.leagueAI = { plan, get STYLES() { return clone(value("aiStyles")); } };
