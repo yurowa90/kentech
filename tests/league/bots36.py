@@ -344,19 +344,22 @@ JS = r"""
     const S = newGame("bots-renew-grid-probe"), id = ids[0];
     C.host(S, "next", 100); select(id);
     S.econ.cities[id].cash = 10000;
-    // 검사 장치(M): 기준 피크 100MW, 기존 태양광 30MW 전량 접속으로 H를 모두 사용한 상태.
+    // v1.4.1 검사 장치(M): 기준 피크 100MW의 H를 파라미터로 계산해 기존 태양광으로 채운다.
     // 계수는 바꾸지 않고 기존 접속 이력과 재정을 주입한다. 전략 통계에는 섞지 않는다.
-    const existing = placeTypes(assets(__auto(id)), Array(15).fill("solar"));
+    const peakMW = 100, hostMW = peakMW * KCP.ECON_DATA.params.hostCapMul.v;
+    const solarMW = BG.BLD.solar.mw, solarCount = Math.floor(hostMW / solarMW);
+    const headroomTolerance = hostMW - solarCount * solarMW + 1e-6;
+    const existing = placeTypes(assets(__auto(id)), Array(solarCount).fill("solar"));
     ok(!!existing, "B18 검사 장치 합법 태양광 자리·경로 존재");
     if (!existing) return;
     S.teams[id].plan = existing;
-    S.grid[id].peakMW = 100;
+    S.grid[id].peakMW = peakMW;
     S.grid[id] = forecastGrid(S, id, existing);
     S.grid[id].entries.forEach(e => { e.allocatedMW = e.mw; });
     S.grid[id].round = 0;
     S.grid[id] = C.gridStatus(S, R, BG, id);
     select(id);
-    ok(Math.abs(S.grid[id].headroomMW) < 1e-6, "B18 기존 설비가 H를 모두 사용");
+    ok(Math.abs(S.grid[id].headroomMW) < headroomTolerance, "B18 기존 설비가 H를 모두 사용");
     const original = placeTypes(existing, ["solar", "solar", "solar", "diesel"]);
     ok(!!original, "B18 검사 장치 AI 새 재생6MW·화력3MW 계획 존재");
     if (!original) return;
