@@ -173,7 +173,7 @@
     const leaders = Object.fromEntries(Object.keys(SCORE_NAMES).map(k => [k, Math.max(...rows.map(r => r.parts[k]))]));
     return `<section id="lg-rank" class="lg-sec"><h2>${L.snap?.phase === "end" ? "최종 순위" : "도시 순위"} <span class="tag-mine">모형 점수 · G</span></h2><div class="lg-rankrows">${rows.map((r, i) => {
       const shown = !nearby || Math.abs(i - own) <= 1, delta = prev[r.id] ? prev[r.id].rank - r.rank : 0;
-      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `<b>${esc(fmt(r.score, 1))}점</b><p>지역 성장 제외 개선폭: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${Object.keys(SCORE_NAMES).map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 공동 포함 1위" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
+      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 성장 제외 개선폭: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${Object.keys(SCORE_NAMES).map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 공동 포함 1위" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
     }).join("")}</div><p class="lg-hint">팀 순위 탭은 내 도시와 바로 위·아래 도시의 이름만 공개합니다.</p></section>`;
   }
   function tickerHTML(E) {
@@ -182,7 +182,7 @@
   }
   function critHTML(V) {
     if (V.phase !== "plan" || curRound().month !== 1) return "";
-    const crit = V.teams[L.team].crit || { chips: [], line: IQ.line, choice: "keep" }, { n } = monthNote();
+    const crit = L.pendingCrit || V.teams[L.team].crit || { chips: [], line: IQ.line, choice: "keep" }, { n } = monthNote();
     return `<section id="lg-crit" class="lg-sec"><h3>${L.role === "solo" ? "내 기준" : "우리 기준"}</h3><p>도시가 가장 지키고 싶은 항목 1~2개를 고르세요. 첫 항목의 부분 점수를 지킬 선으로 둡니다.</p><div class="lg-acts">${Object.entries(SCORE_NAMES).map(([k, name]) => `<button type="button" class="v2-btn" data-crit="${k}" aria-pressed="${crit.chips.includes(k)}">${name}</button>`).join("")}</div><label class="lg-field">${esc(SCORE_NAMES[crit.chips[0]] || "선택 첫 항목")} 지킬 선(점 이상)<input id="lg-crit-line" type="number" min="0" max="100" value="${esc(crit.line)}" ${V.phase === "plan" ? "" : "disabled"}></label><div class="lg-acts"><button class="v2-btn" type="button" data-crit-choice="keep" aria-pressed="${crit.choice === "keep"}">유지</button><button class="v2-btn" type="button" data-crit-choice="change" aria-pressed="${crit.choice === "change"}">바꾸기</button></div><label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="critReason" rows="2" maxlength="1000">${esc(n.critReason || "")}</textarea></label><p class="lg-hint">정해진 항목·숫자·유지/바꿈만 진행자에게 보냅니다.</p></section>`;
   }
   function predictionHTML(V) {
@@ -334,13 +334,13 @@
     const V = L.snap;
     if (!V) return;
     const { d, n } = monthNote();
-    if (!skip && V.econ && V.phase === "plan" && largeDecision() && !n.confirmed) { L.awaitReady = true; openPanel("journal"); return; }
+    if (!skip && !L.awaitReady && V.econ && V.phase === "plan" && largeDecision() && !n.confirmed) { L.awaitReady = true; openPanel("journal"); renderBar(); return; }
     if (V.econ && V.phase === "plan" && n.crit?.choice === "change" && !n.critReason?.trim()) { BG.toast("기준을 바꾸는 이유를 한 줄 적으세요"); openPanel("journal"); return; }
     n.confirmed = true; n.big = n.big || largeDecision();
-    if (V.econ && V.phase === "plan" && !V.teams[L.team].crit) {
+    if (V.econ && V.phase === "plan" && !L.pendingCrit && !V.teams[L.team].crit) {
       const crit = { chips: ["rel"], line: IQ.line, choice: "keep" }; n.crit = crit; send("crit", crit);
     }
-    putData(d); L.awaitReady = false;
+    putData(d); L.awaitReady = false; renderBar();
     if (L.role === "solo") soloNext();
     else { clearTimeout(L.planT); sendPlan(); send("ready", { ready: !V.teams[L.team].ready }); }
   }
@@ -358,7 +358,7 @@
     }
     const V = L.snap, { d, n } = monthNote(), chip = e.target.closest("[data-crit]"), choice = e.target.closest("[data-crit-choice]");
     if (chip || choice) {
-      const old = V.teams[L.team].crit || { chips: [], line: IQ.line, choice: "keep" }, crit = { ...old, chips: old.chips.slice() };
+      const old = L.pendingCrit || V.teams[L.team].crit || { chips: [], line: IQ.line, choice: "keep" }, crit = { ...old, chips: old.chips.slice() };
       if (chip) {
         const key = chip.dataset.crit;
         if (crit.chips.includes(key)) { if (crit.chips.length === 1) return true; crit.chips = crit.chips.filter(k => k !== key); }
@@ -367,7 +367,7 @@
       if (choice) crit.choice = choice.dataset.critChoice;
       const el = document.getElementById("lg-crit-line"); if (el && Number.isFinite(el.valueAsNumber)) crit.line = el.valueAsNumber;
       if (!crit.chips.length) crit.chips = ["rel"];
-      n.crit = crit; putData(d); send("crit", crit); return true;
+      n.crit = crit; putData(d); send("crit", crit); renderPanel(); return true;
     }
     const group = e.target.closest("[data-group]");
     if (group) { L.group = L.group === group.dataset.group ? null : group.dataset.group; renderPanel(); return true; }
@@ -388,7 +388,7 @@
     }
     if (line) {
       if (!Number.isFinite(line.valueAsNumber)) return true;
-      const crit = { ...(L.snap.teams[L.team].crit || { chips: ["rel"], choice: "keep" }), line: Math.max(0, Math.min(100, line.valueAsNumber)) };
+      const crit = { ...(L.pendingCrit || L.snap.teams[L.team].crit || { chips: ["rel"], choice: "keep" }), line: Math.max(0, Math.min(100, line.valueAsNumber)) };
       n.crit = crit; putData(d); send("crit", crit); return true;
     }
     if (note) { n[note.dataset.note] = note.value.slice(0, 1000); putData(d); return true; }
@@ -697,7 +697,7 @@
     </article>`;
   }
   function resultsTable(S, res) {
-    const g = C.goalsOf(S), act = actT(S);
+    const g = C.goalsOf(S), act = actT(S).filter(t => res.team[t.id]);
     const rows = act.map(t => {
       const r = res.team[t.id];
       return `<tr style="--c:${t.color}"><th scope="row">${esc(t.name)}</th>
@@ -1002,7 +1002,10 @@
     L.app = app;
     if (!L.team) seatPicker(app); else mountCity(app);
   }
-  function send(type, extra) { L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {})); }
+  function send(type, extra) {
+    if (type === "crit") L.pendingCrit = { chips: extra.chips.slice(), line: extra.line, choice: extra.choice };
+    L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}));
+  }
   function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, token: L.token }; tab.set(s); if (L.team) store.set(K_TEAM, s); }
   function seatPicker(app) {
     const reg = R(), V = L.snap;
@@ -1034,6 +1037,9 @@
     L.snap = V; L.skew = V.now - Date.now();
     if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
     const me = V.teams[L.team];
+    const pending = L.pendingCrit, crit = me?.crit;
+    if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
+    if (prev && (prev.phase !== V.phase || prev.round !== V.round)) L.awaitReady = false;
     if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
     if (!L.app || !L.app.isConnected || !document.getElementById("lg-bar")) return;
     // 내 도시를 다른 기기에서 처음 여는 경우: 진행자에게 남은 계획을 가져온다.
@@ -1154,7 +1160,8 @@
     set("lg-bround", V.round ? turnLabel(rd, V.round, RS0.length, true) : `준비 · ${turnLabel(RS0[0], 1, RS0.length, true)}`);
     set("lg-bphase", PHASE_NAME[V.phase]);
     const me = V.teams[L.team], rb = document.getElementById("lg-ready");
-    if (rb) { rb.setAttribute("aria-pressed", String(!!me.ready)); rb.textContent = L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비"; rb.disabled = V.phase === "end" || V.phase === "run" || L.role !== "solo" && V.phase !== "plan" && V.phase !== "lobby"; }
+    if (rb) rb.style.minHeight = V.econ ? "44px" : "";
+    if (rb) { rb.setAttribute("aria-pressed", String(!!me.ready)); rb.textContent = V.econ && V.phase === "plan" && L.awaitReady ? "건너뛰고 준비" : L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비"; rb.disabled = V.phase === "end" || V.phase === "run" || L.role !== "solo" && V.phase !== "plan" && V.phase !== "lobby"; }
     if (V.econ && !document.querySelector('.lg-bar [data-panel="city"]')) {
       const bar = document.getElementById("lg-bar"), b = document.createElement("button"); b.type = "button"; b.className = "lg-bbtn"; b.dataset.panel = "city"; b.textContent = "도시"; bar?.insertBefore(b, rb);
       const rank = b.cloneNode(true); rank.dataset.panel = "rank"; rank.textContent = "순위"; bar?.insertBefore(rank, rb);

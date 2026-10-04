@@ -297,7 +297,7 @@
       if (m.op === "cancel") {
         if (!X || X.st !== "prop") return err("noprop");
         S.ties.splice(S.ties.indexOf(X), 1);
-        log(S, `${teamDef(R, m.team).name}: ${teamDef(R, m.other).name} 연계선 제안 거둠`, now);
+        log(S, `${teamDef(R, m.team).name}: ${teamDef(R, m.other).name} 연계선 ${X.by === m.team ? "제안 거둠" : "제안 거절"}`, now);
         S.rev++; return { ok: true };
       }
       return err("op");

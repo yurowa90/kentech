@@ -2386,7 +2386,9 @@
     const placed = [];
     const hit = (a, b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
     S.banners.forEach(el => {
-      const W = SITES[+el.dataset.si], T = TILES[W.tile];
+      const W = SITES[+el.dataset.si];
+      if (!W) return;
+      const T = TILES[W.tile];
       const lift = W.kind === "city" || W.kind === "city_l" ? 1.45 : W.kind === "city_m" ? 1.2 : W.kind === "port" ? 1.05 : 0.95;
       const [x, y] = tileTop(T, 0);
       el.hidden = false;
@@ -2406,7 +2408,9 @@
     if (!S.banners) return;
     const R = S.run, ch = curHour();
     S.banners.forEach(el => {
-      const si = +el.dataset.si, ti = SITES[si].dem ? SITES[si].ti : -1;
+      const si = +el.dataset.si, W = SITES[si];
+      if (!W) return;
+      const ti = W.dem ? W.ti : -1;
       const v = el.querySelector("[data-bv]");
       let txt = "", state = "";
       if (R && ti >= 0) {
