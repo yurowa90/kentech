@@ -65,7 +65,7 @@
       if (KCP.econ && KCP.ECON_DATA) {
         const cash = {}; V.ids.forEach(id => { cash[id] = baseBudget(R, id); });
         S.econ = KCP.econ.initCities(V.ids, KCP.ECON_DATA, { seed: room, months: opt.turns, cash });
-        S.econRep = null; S.econCal = false;
+        S.econRep = null; S.econCal = false; S.grid = {};
         if (KCP.buildGame) refreshGrid(S, KCP.buildGame);
       }
     }
@@ -229,6 +229,7 @@
         plan = cleanPlan(bg, R, m.team, plan, room - lossOf(T.base, plan));
         if (capexOf(bg, R, m.team, plan) + lossOf(T.base, plan) > room + 1e-6) return err("budget:" + m.team);
       }
+      if (S.econ && !S.grid && bg) refreshGrid(S, bg); // 새 계획을 넣기 전에 옛 설비만 이행
       T.plan = plan; T.rev = m.rev; S.rev++;
       if (S.econ && bg) refreshGrid(S, bg);
       // 진행 기록(교사 화면의 '건설 속도'): 15초 안의 연속 변경은 한 점으로
@@ -380,7 +381,8 @@
       M.essCap = P.essCap.v;
       if (g) {
         M.reCap = Object.fromEntries(g.entries.map(b => [b.key, b.allocatedMW >= b.mw ? b.mw : 0]));
-        const r = g.peakMW > 0 ? g.connectedMW / (P.curtailLoadMul.v * g.peakMW) : 0;
+        const variableMW = g.entries.reduce((sum, b) => sum + (KCP.buildGame.BLD[b.t].variable && b.allocatedMW >= b.mw ? b.mw : 0), 0);
+        const r = g.peakMW > 0 ? variableMW / (P.curtailLoadMul.v * g.peakMW) : 0;
         const p = Math.max(0, Math.min(P.curtailMax.v, P.curtailSlope.v * (r - P.curtailKnee.v)));
         const rd = roundsOf(S)[Math.max(0, S.round - 1)];
         M.curtailP = p * (["spring", "autumn"].includes(rd.season) ? 1 : P.curtailOffSeason.v) * P.curtailLoss.v;
@@ -445,7 +447,7 @@
       return {
         peakMW: old ? old.peakMW : bg.peakDemand({}, false),
         essMW: st.builds.reduce((sum, b) => sum + (bg.BLD[b.t].cls === "bat" ? bg.BLD[b.t].mw : 0), 0),
-        builds: st.builds.filter(b => bg.BLD[b.t].variable).map(b => ({ key: b.t + ":" + b.i, t: b.t, i: b.i, mw: bg.BLD[b.t].mw, allocatedMW: 0 }))
+        builds: st.builds.filter(b => bg.BLD[b.t].hostLimited).map(b => ({ key: b.t + ":" + b.i, t: b.t, i: b.i, mw: bg.BLD[b.t].mw, allocatedMW: 0 }))
       };
     });
     const linked = (cid, other) => withPack(bg, R, cid, () => {
@@ -461,6 +463,9 @@
       const entry = Object.assign({}, byKey.get(b.key), { allocatedMW: b.allocatedMW });
       byKey.delete(b.key); return entry;
     }).concat([...byKey.values()]);
+    // v1.4.1: grid가 없던 저장의 기존 설비만 H 안에서 한 번 즉시 접속한다.
+    // 새 게임은 빈 grid로 시작하며, 이후 추가 설비에는 월 처리량을 적용한다.
+    if (!S.grid) entries.forEach(b => { b.allocatedMW = b.mw; });
     // ESS 철거·내부 전선 단절로 H가 줄면 뒤쪽 설비부터 다시 대기한다.
     // 접속 완료 이력만으로 상한을 우회할 수 없고, 재접속도 월 처리량을 쓴다.
     let room = hostMW;

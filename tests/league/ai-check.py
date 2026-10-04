@@ -103,6 +103,10 @@ JS = r"""
           const grid = S.grid[id], projected = C.gridStatus(S, R, bg, id, true);
           const sample = row.cities[id];
           sample.peakMW = grid.peakMW;
+          const hydroMW = sum(answer.plan.builds.filter(b => b.t === "hydro").map(b => bg.BLD[b.t].mw));
+          // B18 v1.4.1 작업 W: 소수력 우회·쏠림 방지. 매달 모든 도시에서 검사한다.
+          ok(hydroMW <= grid.peakMW * 0.2 + tolerance,
+            `${style}/${id}/${month} 소수력 ≤ 시작 피크 20%: ${hydroMW}/${grid.peakMW}`);
           sample.waiting.push(grid.waitingMW);
           ok(grid.waitingMW <= grid.peakMW * queueLimit + tolerance,
             `${style}/${id}/${month} 계획 뒤 대기 ≤ 피크 10%: ${grid.waitingMW}/${grid.peakMW}`);
@@ -172,7 +176,7 @@ JS = r"""
   const variableAdded = (S, answer) => {
     bg.selectPack(R.teams.find(t => t.id === gridId).pack, "league");
     const keys = new Set(S.teams[gridId].plan.builds.map(b => `${b.t}:${b.i}`));
-    return answer.plan.builds.filter(b => bg.BLD[b.t].variable && !keys.has(`${b.t}:${b.i}`));
+    return answer.plan.builds.filter(b => bg.BLD[b.t].hostLimited && !keys.has(`${b.t}:${b.i}`));
   };
   const forecast = (S, answer) => C.gridStatus({ ...S,
     teams: { ...S.teams, [gridId]: { ...S.teams[gridId], plan: answer.plan } }
@@ -182,7 +186,7 @@ JS = r"""
   try {
     params.connPerMonth = { ...savedMonthly, v: 0 };
     const answer = calculate(gridCase, gridId, "careful");
-    ok(variableAdded(gridCase, answer).length === 0, "월 처리량 0: 변동 재생 추가 없음");
+    ok(variableAdded(gridCase, answer).length === 0, "월 처리량 0: 접속 대상 재생 추가 없음");
     params.connPerMonth = savedMonthly;
     params.hostCapMul = { ...savedHost, v: 0 };
     const stored = calculate(gridCase, gridId, "careful"), after = forecast(gridCase, stored);
