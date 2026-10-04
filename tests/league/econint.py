@@ -21,8 +21,8 @@ JS = r"""
   for (let m = 1; m <= 12; m++) {
     C.host(S, "next", m * 100); S.events = S.events.filter(x => x.round !== S.round);
     const pv = C.publicView(S, m * 100 + 1);
-    if (m === 1) ids.forEach(id => ok(Math.abs(pv.teams[id].budget - pv.econ.cities[id].cash) < 0.01, `turn start: budget = cash (${id})`));
-    if (m === 2) ids.forEach(id => { const sp = C.spendOf(BG, S, R, id, S.teams[id].plan || { builds: [], lines: [] }); ok(Math.abs((C.budget(S, id) - sp) - S.econ.cities[id].cash) < 0.05, `month 2: left = cash (${id}) ${(C.budget(S, id) - sp).toFixed(2)} vs ${S.econ.cities[id].cash}`); });
+    if (m === 1) ids.forEach(id => ok(Math.abs(pv.teams[id].budget - (pv.econ.cities[id].cash + (pv.econ.cities[id].debtCap || 0))) < 0.01, `turn start: budget = cash + debtCap (${id})`) /* ECON-BALANCE B7: 남은 지방채 한도까지 쓸 수 있다 */);
+    if (m === 2) ids.forEach(id => { const sp = C.spendOf(BG, S, R, id, S.teams[id].plan || { builds: [], lines: [] }); ok(Math.abs((C.budget(S, id) - sp) - (S.econ.cities[id].cash + (S.econ.cities[id].debtCap || 0))) < 0.05, `month 2: left = cash + debtCap (${id}) ${(C.budget(S, id) - sp).toFixed(2)} vs ${S.econ.cities[id].cash}+${S.econ.cities[id].debtCap}`) /* ECON-BALANCE B7 */; });
     if (m === 1) ids.forEach(id => C.reduce(S, { type: "plan", team: id, token: tok(id), rev: 1, plan: id === "dangjin" ? { builds: [], lines: [] } : plans[id] }, m * 100 + 2, BG));
     if (m === 2) ok(C.reduce(S, { type: "econ", team: "asan", token: tok("asan"), taxRes: -2, taxInd: -1, service: 2, incentive: 0 }, m * 100 + 3, BG).ok, "econ policy request accepted");
     const cash0 = Object.fromEntries(ids.map(id => [id, S.econ.cities[id].cash]));

@@ -40,6 +40,6 @@ const E0 = X.initCities(IDS, D, { seed: "m" }), snap = JSON.stringify(E0); X.mon
 console.log("E0 immutable:", snap === JSON.stringify(E0));
 // yearStart double pay
 let E = X.initCities(IDS, D, { seed: "y" }); const c0 = E.cities.anseong.cash;
-E = X.yearStart(E, D).E; E = X.yearStart(E, D).E;
-console.log("yearStart twice in same year: anseong cash", c0, "->", E.cities.anseong.cash.toFixed(2), "(paid twice, no paidYear guard)");
+E = X.yearStart(E, D).E; const c1 = E.cities.anseong.cash; E = X.yearStart(E, D).E;
+console.log("yearStart twice in same year: anseong cash", c0, "->", c1.toFixed(2), "->", E.cities.anseong.cash.toFixed(2), E.cities.anseong.cash === c1 ? "(guard ok)" : "(PAID TWICE)");
 console.log(`checks ${checks}, fails ${fail}`);

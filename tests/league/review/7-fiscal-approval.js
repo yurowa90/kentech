@@ -1,12 +1,12 @@
 "use strict";
 const { X, D, IDS, run } = require("./lib");
 const P = k => D.params[k].v;
-// fiscalNorm: per-city multiplier and marginal yearly net tax per resident / per worker (억, x1e4 = per 만명)
+// ECON-BALANCE B3: 도시별 세율 배수 대신 같은 단가와 정액 보정 지원금을 관찰한다.
 const E = X.initCities(IDS, D, {});
-console.log("fiscalNorm fk and marginal value per 10k (억/yr):");
-IDS.forEach(id => { const c = E.cities[id], fk = c.fk; console.log(" ", id.padEnd(11), "fk", fk, " resident", (12 * 1e4 * fk * (P("resTax") - P("svcCost"))).toFixed(2), " worker", (12 * 1e4 * fk * P("indTax")).toFixed(2), " subsidy", c.subsidy || "-", " cash0", c.cash0); });
-const D2 = JSON.parse(JSON.stringify(D)); D2.params.fiscalNorm.v = 0; const E0 = X.initCities(IDS, D2, {});
-console.log("fiscalNorm=0 → yearly (tax-svc+subsidy)/cash0:", IDS.map(id => { const c = E0.cities[id]; const yr = 12 * (c.pop * P("resTax") + c.ind * P("indTax") - c.pop * P("svcCost")); return id + " " + ((yr + X.yearStart(E0, D2).subsidy[id]) / c.cash0).toFixed(2); }).join(", "));
+console.log("공통 단가: 주민·산업 1만 명당 연 세입, 정액 보정 지원금(억):");
+IDS.forEach(id => { const c = E.cities[id]; console.log(id, 12 * 1e4 * P("resTax"), 12 * 1e4 * P("indTax"), c.equalize); });
+// ECON-BALANCE B3 B6: 배수를 끄는 비교 대신 시작 보통 조건의 연 운영 수지 눈금을 확인한다.
+console.log("시작 연 운영 수지 / cash0:", IDS.map(id => { const c = E.cities[id]; const yr = 12 * (c.pop * P("resTax") + c.ind * P("indTax") - c.pop * P("svcCost")); return id + " " + ((yr + X.yearStart(E, D).subsidy[id]) / c.cash0).toFixed(2); }).join(", "));
 // approval under "realistically bad" play
 for (const [lbl, f] of [["uns5 tax+2 svc-2 ren0", () => ({ e: { uns: 5, ren: 0 }, p: { taxRes: 2, taxInd: 2, service: -2 } })], ["uns2 hosp tax+2 svc-2", () => ({ e: { uns: 2, hosp: 3, ren: 0 }, p: { taxRes: 2, taxInd: 2, service: -2 } })], ["policy only tax+2 svc-2", () => ({ p: { taxRes: 2, taxInd: 2, service: -2 } })]]) {
   const r = run({ seed: "a", months: 12, f });

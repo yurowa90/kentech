@@ -80,10 +80,10 @@
   function tieShare(S, R, id) { return S.ties.filter(T => T.st === "built" && (T.a === id || T.b === id)).reduce((a, T) => a + tieCost(R, T) / 2, 0); }
   function budget(S, id) {
     const R = regionOf(S.region);
-    // 경제 모드(달 턴): 쓸 수 있는 돈 = 이번 달 시작 현금 + 이미 확정된 투자(계획 안에 들어 있는 몫) − 이번 달 새 연계선 몫 + 아직 안 받은 이번 달 사건 지원금
+    // 경제 모드(달 턴): 쓸 수 있는 돈 = 이번 달 시작 현금 + 지방채 한도 + 이미 확정된 투자(계획 안에 들어 있는 몫) − 이번 달 새 연계선 몫 + 아직 안 받은 이번 달 사건 지원금
     if (S.econ && S.econ.cities[id]) {
       const T = S.teams[id] || {}, unpaid = S.phase === "lobby" || S.phase === "plan" ? bonusOf(S, R, id, S.round) : 0;
-      return r2(S.econ.cities[id].cash + (T.committed || 0) + (T.tieAt || 0) - tieShare(S, R, id) + unpaid);
+      return r2(S.econ.cities[id].cash + S.econ.cities[id].debtCap + (T.committed || 0) + (T.tieAt || 0) - tieShare(S, R, id) + unpaid);
     }
     return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + bonusOf(S, R, id));
   }
@@ -167,7 +167,7 @@
       const c = E.cities[id];
       cities[id] = { name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, approval: Math.round(c.approval), L: Math.round(c.L), A: Math.round(c.A), policy: c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, Math.round(c.groups[g].sat)])), hist: (c.hist || []).slice(-36) };
     });
-    return { year: E.year, month: E.month, t: E.t, cities, totals: E.totals, intl: E.intl.cur, offers: E.offers.map(o => ({ id: o.id, name: o.name, sector: o.sector, workers: o.workers, mw: o.mw, rePct: o.rePct, unsMax: o.unsMax, until: o.until })), score: KCP.econ ? KCP.econ.score(E) : null };
+    return { year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, offers: E.offers.map(o => ({ id: o.id, name: o.name, sector: o.sector, workers: o.workers, mw: o.mw, rePct: o.rePct, unsMax: o.unsMax, until: o.until })), score: KCP.econ ? KCP.econ.score(E) : null };
   }
   // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
   function publicView(S, now) {
@@ -211,8 +211,15 @@
       if (!canPlan(S)) return err("phase");
       if (!Number.isInteger(m.rev) || m.rev <= T.rev) return { ok: true, quiet: true };
       let plan = m.plan;
+      const city = S.econ && S.econ.cities[m.team];
+      if (city && city.cash < -city.debtCap) {
+        const existing = keysOf(T.plan);
+        if ([...keysOf(plan)].some(k => !existing.has(k))) return err("debt:" + m.team);
+      }
       if (bg) {
-        const room = budget(S, m.team) - fixedOf(S, R, m.team);
+        const over = city && city.cash < -city.debtCap;
+        // 한도 초과 때도 기존 설비 유지·철거·정책 변경은 허용한다. 새 자산은 위에서 거부했다.
+        const room = over ? capexOf(bg, R, m.team, T.plan || {}) + lossOf(T.base, plan) : budget(S, m.team) - fixedOf(S, R, m.team);
         plan = cleanPlan(bg, R, m.team, plan, room - lossOf(T.base, plan));
         if (capexOf(bg, R, m.team, plan) + lossOf(T.base, plan) > room + 1e-6) return err("budget:" + m.team);
       }
@@ -265,6 +272,8 @@
         if (!X || X.st !== "prop" || X.by === m.team) return err("noprop");
         const half = tieCost(R, X) / 2;
         for (const id of [X.a, X.b]) {
+          const city = S.econ && S.econ.cities[id];
+          if (city && city.cash < -city.debtCap) return err("debt:" + id);
           const used = bg && S.teams[id].plan ? spendOf(bg, S, R, id, S.teams[id].plan) : fixedOf(S, R, id);
           if (budget(S, id) - half < used - 1e-9) return err("budget:" + id);
         }
@@ -329,11 +338,15 @@
   const eventDef = (R, id) => (R.events || []).find(E => E.id === id) || null;
   function drawEvents(S, R) {
     const rd = roundsOf(S)[S.round - 1], act = activeOf(S);
-    const pool = (R.events || []).filter(E => (E.seasons || []).includes(rd.season) && act.some(id => hits(R, E, id)) && !(E.effect && E.effect.tieDown && !S.ties.some(T => T.st === "built")));
+    const pool = (R.events || []).filter(E => (!S.rounds || !(S.events || []).some(ev => ev.round === S.round - 1 && ev.id === E.id)) && (E.seasons || []).includes(rd.season) && act.some(id => hits(R, E, id)) && !(E.effect && E.effect.tieDown && !S.ties.some(T => T.st === "built")));
     const rnd = rng(hashStr(S.room + ":" + S.round)), out = [];
     const pick = () => { const list = pool.filter(E => !out.includes(E)), w = list.reduce((a, E) => a + (E.weight || 1), 0); let u = rnd() * w; for (const E of list) { u -= E.weight || 1; if (u <= 0) return E; } return list[list.length - 1]; };
-    if (pool.length) out.push(pick());
-    if (pool.length > 1 && rnd() < 0.4) out.push(pick());
+    if (S.rounds) {
+      if (pool.length && rnd() < KCP.ECON_DATA.params.monthEventP.v) out.push(pick());
+    } else {
+      if (pool.length) out.push(pick());
+      if (pool.length > 1 && rnd() < 0.4) out.push(pick());
+    }
     // 예보는 범위(fc)로만 알린다. 실제 크기 x(1 ± fc)는 지금 정해 두고 운영이 끝나야 공개한다(같은 방·라운드면 같은 값).
     S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round, x: r3(1 + (E.fc || 0) * (2 * rnd() - 1)) })));
     return out;
@@ -404,8 +417,13 @@
       const res = bg.simulate(st, rnd.days, { league: true, mods: mods && Object.keys(mods).length ? mods : null });
       const H = res.H, NT = res.NT, uns = new Float32Array(H);
       for (let k = 0; k < H; k++) { let s = 0; for (let ti = 0; ti < NT; ti++) s += res.hrUns[k * NT + ti]; uns[k] = s; }
+      // 최대 수요 시각에 계통 접속된 잉여 재생 + 추가 화력 출력에서 미공급 수요를 뺀다.
+      // gx는 build.simulate가 연계 정산용으로 내보내는 시간별 여유 능력이다.
+      let peak = 0;
+      for (let k = 1; k < H; k++) if (res.hrDem[k] > res.hrDem[peak]) peak = k;
+      const spareMW = res.gx ? Math.max(0, res.gx.reduce((a, g) => a + g.ren[peak] + g.head[peak], 0) - uns[peak]) : null;
       return {
-        H, dem: res.hrDem, uns, gx: res.gx || [], hosp: res.hrHosp,
+        spareMW, H, dem: res.hrDem, uns, gx: res.gx || [], hosp: res.hrHosp,
         k: {
           dem: res.tot.dem, uns: res.unsTotal, hospH: res.hospH || 0, capex: res.cost.capex, fuel: res.cost.fuel, policy: res.cost.policy,
           co2: res.co2, sat: Math.min(...res.sat), curt: res.tot.curt, ren: res.tot.ren + res.tot.batOut, by: res.tot.by, cp: res.cp.issues
@@ -479,7 +497,9 @@
     const act = R.teams.filter(t => Object.hasOwn(S.teams, t.id));
     act.forEach(t => {
       const T = S.teams[t.id];
-      sims[t.id] = simTeam(bg, R, t.id, T.plan, rnd, budget(S, t.id), modsFor(S, R, t.id));
+      // 이미 승인된 설비는 운영 적자로 지방채 한도를 넘더라도 사라지지 않는다.
+      const cap = S.econ ? Math.max(budget(S, t.id), capexOf(bg, R, t.id, T.plan || {})) : budget(S, t.id);
+      sims[t.id] = simTeam(bg, R, t.id, T.plan, rnd, cap, modsFor(S, R, t.id));
       price[t.id] = T.price;
     });
     const H = rnd.days * 24;
@@ -513,7 +533,7 @@
       cost.total = r2(cost.inv + cost.opex);
       const co2Prod = K.co2 + o.co2X - o.saveCo2, co2Cons = co2Prod - o.co2X + o.co2In;
       team[t.id] = {
-        dem: r2(K.dem), uns: r2(uns), unsPct: r2(100 * uns / Math.max(1e-9, K.dem)), outH, hospH,
+        spareMW: s.spareMW, dem: r2(K.dem), uns: r2(uns), unsPct: r2(100 * uns / Math.max(1e-9, K.dem)), outH, hospH,
         cost, co2Prod: Math.round(co2Prod), co2Cons: Math.round(co2Cons), imp: r2(o.imp), sub: r2(o.sub), exp: r2(o.exp), earn: r2(o.earn), pay: r2(o.pay),
         sat: K.sat, cp: K.cp, curt: r2(Math.max(0, K.curt - o.curtX)), renPct: Math.round(100 * Math.min(1, K.ren / Math.max(1e-9, K.dem))),
         unlinked: o.unlinked, isolated: { uns: r2(K.uns), co2: Math.round(K.co2) }
@@ -560,8 +580,9 @@
   function econInput(S, R, id, r, wk, extra) {
     const c = r.cost, dem = Math.max(1e-9, r.dem), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
-      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: r3((c.fuel + c.policy + c.trade) / dem), co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
-        tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk },
+      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: (c.fuel + c.policy) / dem, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+        tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, spareMW: r.spareMW,
+        bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: S.teams[id].econPol || {},
       assets: Object.assign({ uni: n("uni"), lab: n("lab") }, extra || {})
     };
@@ -574,7 +595,8 @@
       const base = {};
       ids.forEach(id => {
         const r = res.team[id], dem = Math.max(1e-9, r.dem);
-        base[id] = { energy: { unsPct: 0, hospH: 0, costPerMWh: 0.012, co2Local: 0.4 * dem * wk, co2: 0.4 * dem * wk, renPct: 10, demMWh: dem * wk }, policy: {}, assets: {} };
+        const P = KCP.ECON_DATA.params;
+        base[id] = { energy: { unsPct: 0, hospH: 0, costPerMWh: P.normalCost.v, opex: P.normalCost.v * dem * wk, co2Local: P.normalCo2.v * dem * wk, co2: P.normalCo2.v * dem * wk, renPct: P.normalRen.v, demMWh: dem * wk }, policy: {}, assets: {} };
       });
       S.econ = KCP.econ.calibrate(S.econ, base);
       S.econCal = true;
@@ -583,10 +605,9 @@
     ids.forEach(id => { inputs[id] = econInput(S, R, id, res.team[id], wk); });
     const out = KCP.econ.monthStep(S.econ, inputs);
     S.econ = out.E;
-    // 이번 달 사건 지원금은 현금으로, 철거 회수(새 투자가 음수)도 현금으로
+    // 투자 기준만 확정한다. 지원금·철거 회수는 monthStep 보고서에서 이미 정산했다.
     ids.forEach(id => {
-      const C = S.econ.cities[id], inv = res.team[id].cost.inv || 0, T = S.teams[id];
-      C.cash = r2(C.cash + bonusOf(S, R, id, S.round) + Math.max(0, -inv));
+      const T = S.teams[id];
       T.committed = r2(capexOf(bg, R, id, T.plan || {}) + fixedOf(S, R, id));
       T.tieAt = tieShare(S, R, id);
     });
