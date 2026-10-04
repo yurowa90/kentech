@@ -1,4 +1,4 @@
-/* 도시 경제 모형(화면 없음, SPEC v2, 2차 보정). 1턴 = 1달.
+/* 도시 경제 모형(화면 없음, SPEC v2, 3차(v1.2) 보정). 1턴 = 1달.
  * - 주민·산업은 지역 총량 안에서 더 좋은 도시로 옮긴다(로짓 목표 몫 + 관성, 정수 보존).
  * - 재정: 1월 국가 재정지원금 + 달마다 주민·산업 세 − 공공서비스·보조·운영비·이자.
  * - 집단 6개 만족 → 지지율(Democracy), 정책·투자 효과는 λ만큼씩 늦게 닿는다.
@@ -74,6 +74,8 @@
       opex: num(e.opex, 0, BIG, 0), capexNew: num(e.capexNew, 0, BIG, 0),
       bonus: num(e.bonus, 0, BIG, 0), salvage: num(e.salvage, 0, BIG, 0),
       demMWh: has(e, "demMWh") ? clamp(e.demMWh, 0, BIG) : null,
+      servedMWh: has(e, "servedMWh") ? clamp(e.servedMWh, 0, BIG) : null,
+      buyCost: num(e.buyCost, 0, BIG, Math.max(0, -fin(e.tradeNet, 0))),
       co2Int: has(e, "co2Int") ? clamp(e.co2Int, 0, 5) : null,
       fossilMWh: has(e, "fossilMWh") ? clamp(e.fossilMWh, 0, BIG) : null,
       spareMW: has(e, "spareMW") ? clamp(e.spareMW, 0, BIG) : null
@@ -92,10 +94,11 @@
   /* ---------- 지역 맥락 ---------- */
   function regionCtx(E, ins, data) {
     const ids = E.order, C = E.cities;
-    const costs = ids.map(id => fin(ins[id].energy.costPerMWh, pv(data, "normalCost")));
+    const supplied = sum(ids.map(id => servedOf(ins[id].energy)));
+    const costs = sum(ids.map(id => servedOf(ins[id].energy) * fin(ins[id].energy.costPerMWh, pv(data, "normalCost"))));
     const popT = sum(ids.map(id => C[id].pop)), indT = sum(ids.map(id => C[id].ind));
     return {
-      avgCost: costs.length ? sum(costs) / costs.length : null,
+      avgCost: supplied > 0 ? costs / supplied : null,
       taxResAvg: sum(ids.map(id => ins[id].policy.taxRes)) / Math.max(1, ids.length),
       taxIndAvg: sum(ids.map(id => ins[id].policy.taxInd)) / Math.max(1, ids.length),
       jobsAvg: popT > 0 ? indT / popT : 0.42,
@@ -109,7 +112,8 @@
   const wsum = (parts, w) => { let a = 0, b = 0; Object.keys(w).forEach(k => { if (parts[k] != null) { a += w[k] * parts[k]; b += w[k]; } }); return b > 0 ? c100(a / b) : 50; };
   // 넘침 꼴: 수용의 90%까지 90점 이상, 넘으면 빠르게 감점(SimCity 'R 수요' 포화)
   const crowdScore = (over, data) => { const knee = pv(data, "crowdKnee"), base = pv(data, "crowdBase"); return c100(over <= knee ? base + (100 - base) * (knee - over) / knee : base - pv(data, "crowdSlope") * (over - knee)); };
-  const priceScore = (e, reg, data) => !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
+  const servedOf = e => e.servedMWh != null ? Math.min(e.servedMWh, e.demMWh == null ? e.servedMWh : e.demMWh) : (e.demMWh || 0) * (1 - e.unsPct / 100);
+  const priceScore = (e, reg, data) => servedOf(e) <= 0 ? 0 : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
   const taxSatisfaction = (step, data) => c100(pv(data, "taxBase") + pv(data, "taxCurve")[step + 2]);
   const lagRate = (key, data) => pv(data, ["svc", "re", "crowd", "talent", "land", "labor", "air"].includes(key) ? "lambdaSlow" : "lambdaFast");
   // 호스트가 발전량을 넘기면 사용, 없으면 비재생 공급량을 화석 사용의 대리값으로 쓴다(G).
@@ -144,7 +148,7 @@
     const steelX = (mix.steel || 0) * (S.exportShare || 0);
     const parts = {
       rel: c100(100 * (1 - e.unsPct / P("unsZeroA"))),
-      price: !reg.avgCost ? P("neutralScore") : c100(P("neutralScore") + P("priceSlopeA") * (1 - Math.max(fin(e.costPerMWh, reg.avgCost) / reg.avgCost, P("priceFloor")))),
+      price: servedOf(e) <= 0 ? 0 : !reg.avgCost ? P("neutralScore") : c100(P("neutralScore") + P("priceSlopeA") * (1 - Math.max(fin(e.costPerMWh, reg.avgCost) / reg.avgCost, P("priceFloor")))),
       re: c100((100 * e.renPct) / P("reTarget")),
       labor: c100(P("neutralScore") + P("laborLog") * Math.log(pop / Math.max(1, reg.popAvg)) + P("laborYouth") * (city.groups.youth.share - reg.youthAvg)),
       talent: c100(P("talentBase") + P("talentUni") * as.uni + P("talentLab") * as.lab),
@@ -250,9 +254,9 @@
       const own = ownRev(C, ins[id], data, 1, reg), e0 = ins[id].energy;
       // 단가를 바꾸지 않고 시작 보통 조건의 운영 수지를 정액 이전재원으로 맞춘다.
       const operating = own.resTax + own.indTax + own.tariff - netOpex(e0) - C.pop * P("svcCost");
-      C.equalize = r3(P("fiscalTarget") * C.cash0 - 12 * operating - subsidyBase(C, data));
+      C.equalize = r3(clamp(P("fiscalTarget") * C.cash0 - 12 * operating - subsidyBase(C, data), 0, subsidyBase(C, data) * P("equalizeMaxShare") / (1 - P("equalizeMaxShare"))));
       C.revenueHistory = []; C.standardRevenueHistory = [];
-      C.revYear = Math.max(0, 12 * (own.resTax + own.indTax + own.tariff) + subsidyOf(C, data));
+      C.revYear = Math.max(0, 12 * (own.resTax + own.indTax) + subsidyOf(C, data));
       C.Leff = 0; C.Aeff = 0;
       C.debtCap = r1(P("debtCapRatio") * C.revYear);
       // 지연 추적·집단 만족도 시작 상태의 균형값에서 출발(아무것도 안 하면 지지율이 저절로 오르내리지 않게)
@@ -263,6 +267,7 @@
       Object.keys(C.groups).forEach(k => { C.groups[k].sat = g.tg[k]; });
       C.approval = c100(sum(Object.keys(C.groups).map(k => C.groups[k].share * C.groups[k].sat)));
       C.approval0 = C.approval;
+      C.approvalHistory = [];
     });
     return E;
   }
@@ -284,16 +289,36 @@
     const base = 12 * (C.pop0 * pv(data, "resTax") + C.ind0 * pv(data, "indTax"));
     return pv(data, "subRevenueRate") * pv(data, "subAdjust") * (sum(h) - base);
   }
-  const subsidyOf = (C, data) => r3(Math.max(0, subsidyBase(C, data) + C.equalize - subsidyOffset(C, data)));
-  // 발전·정책 원가는 tariff 차익에서 이미 차감했다. 그 밖의 대응·연구 운영비만 별도 지출.
-  const netOpex = e => Math.max(0, e.opex - (e.demMWh || 0) * (e.costPerMWh || 0));
+  function equalizeOf(C, data) {
+    const base = Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)), cap = pv(data, "equalizeMaxShare");
+    // 억 단위 소수 셋째 자리에서 내림: 표시 반올림으로 50% 상한을 넘지 않는다.
+    return Math.floor(Math.min(Math.max(0, fin(C.equalize, 0)), base * cap / (1 - cap)) * 1000) / 1000;
+  }
+  const subsidyOf = (C, data) => r3(Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)) + equalizeOf(C, data));
+  // 예전 저장의 차익 포함 세입 이력은 v1.2 세금·지원금 이력으로 넘기지 않는다.
+  function restoreDefaults(E, data) {
+    E.order.forEach(id => {
+      const c = E.cities[id];
+      c.equalize = Math.max(0, fin(c.equalize, 0));
+      c.approval0 = fin(c.approval0, c.approval);
+      c.hist = c.hist || [];
+      c.approvalHistory = c.approvalHistory || c.hist.slice(-pv(data, "approvalWindow")).map(h => h.appr).filter(Number.isFinite);
+      if (c.revenueVersion !== pv(data, "revenueVersion")) c.revenueHistory = [];
+      c.revenueVersion = pv(data, "revenueVersion");
+      c.revenueHistory = c.revenueHistory || [];
+      c.standardRevenueHistory = c.standardRevenueHistory || [];
+    });
+    return E;
+  }
+  // 자기수요 연료·정책·구매비는 차익에서 한 번 차감한다. 판매용 연료·대응·연구는 별도 지출.
+  const netOpex = e => Math.max(0, e.opex + e.buyCost - servedOf(e) * (e.costPerMWh || 0));
   function ownRev(C, inp, data, out, reg) {
     const P = k => pv(data, k), e = inp.energy, pol = C.policy;
     const o = {
       resTax: r3(C.pop * P("resTax") * (1 + P("taxStep") * pol.taxRes)),
       indTax: r3(C.ind * P("indTax") * Math.pow(out, P("indTaxK")) * (1 + P("taxStep") * pol.taxInd)),
-      tariff: e.demMWh != null ? r3(e.demMWh * ((reg.avgCost || 0) * (1 + P("tariffMarkup")) - fin(e.costPerMWh, reg.avgCost || 0))) : 0,
-      trade: r3(Math.max(0, e.tradeNet))
+      tariff: e.demMWh != null ? r3(servedOf(e) * ((reg.avgCost || 0) * (1 + P("tariffMarkup")) - fin(e.costPerMWh, reg.avgCost || 0))) : 0,
+      trade: r3(Math.max(0, e.tradeNet + e.buyCost))
     };
     return o;
   }
@@ -301,7 +326,7 @@
   function yearStart(E, data) {
     data = data || DATA();
     if (E.paidYear === E.year || E.month !== 1) return { E, subsidy: {} };
-    const E2 = clone(E), subsidy = {};
+    const E2 = restoreDefaults(clone(E), data), subsidy = {};
     E2.order.forEach(id => { const C = E2.cities[id], s = subsidyOf(C, data); C.cash += s; C.subsidy = s; C.paidSubsidy = s; subsidy[id] = s; });
     E2.paidYear = E2.year;
     return { E: E2, subsidy };
@@ -432,21 +457,21 @@
   }
 
   /* ---------- 한 달 ---------- */
-  // inputs[id] = {energy:{unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(벌이−지출), opex(거래 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
+  // inputs[id] = {energy:{unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
   //               policy:{taxRes, taxInd, service, incentive}, assets:{uni, lab, port, site, houseCap?, indCap?}}
   function monthStep(E0, inputs, data) {
     data = data || DATA();
     if (E0.t >= E0.len) return { E: E0, report: null };
-    const P = k => pv(data, k), E = clone(E0), ids = E.order, C = E.cities, lam = P("lambdaFast");
+    const P = k => pv(data, k), E = restoreDefaults(clone(E0), data), ids = E.order, C = E.cities, lam = P("lambdaFast");
     inputs = inputs || {};
     const news = [], fiscal = {}, cashBefore = {};
     ids.forEach(id => { cashBefore[id] = C[id].cash; });
     // 1) 1월 재정지원금
-    const sub = {}, subOffset = {};
+    const sub = {}, subOffset = {}, equalize = {};
     if (E.month === 1 && E.paidYear !== E.year) {
-      ids.forEach(id => { const s = subsidyOf(C[id], data); subOffset[id] = subsidyOffset(C[id], data); sub[id] = s; C[id].subsidy = s; });
+      ids.forEach(id => { const s = subsidyOf(C[id], data); subOffset[id] = subsidyOffset(C[id], data); equalize[id] = equalizeOf(C[id], data); sub[id] = s; C[id].subsidy = s; });
       E.paidYear = E.year;
-      news.push(`국가 재정지원금: ${ids.map(id => `${C[id].name} ${Math.round(sub[id])}억(정액 보정 ${Math.round(C[id].equalize)}억 포함)`).join(" · ")}`);
+      news.push(`국가 재정지원금: ${ids.map(id => `${C[id].name} ${Math.round(sub[id])}억(정액 보정 ${Math.round(equalize[id])}억 포함)`).join(" · ")}`);
     }
     // 2) 국제
     const started = intlStep(E, data), I = E.intl.cur;
@@ -498,23 +523,22 @@
         capex: r3(e.capexNew), opex: r3(netOpex(e)),
         service: r3(c.pop * P("svcCost") * (1 + P("svcStep") * c.policy.service)),
         incentive: r3(c.policy.incentive), interest: r3(Math.max(0, -c.cash) * P("debtRate")),
-        trade: r3(Math.max(0, -e.tradeNet)), policy: r3(polCost[id])
+        trade: 0, policy: r3(polCost[id])
       };
       const revT = sum(Object.values(rev)), expT = sum(Object.values(exp));
       c.cash = cashBefore[id] + revT - expT;
-      const recurring = own.resTax + own.indTax + own.tariff;
+      const recurring = own.resTax + own.indTax;
       c.standardRevenueHistory = c.standardRevenueHistory || [];
       c.standardRevenueHistory.push(c.pop * P("resTax") + c.ind * P("indTax") * Math.pow(o.v, P("indTaxK")));
       if (c.standardRevenueHistory.length > 12) c.standardRevenueHistory.shift();
       c.revenueHistory.push(recurring + rev.subsidy + (c.paidSubsidy || 0));
       c.paidSubsidy = 0;
       if (c.revenueHistory.length > 12) c.revenueHistory.shift();
-      if (c.revenueHistory.length === 1) c.firstRevenueYear = Math.max(0, 12 * recurring + subsidyOf(c, data));
-      c.revYear = c.revenueHistory.length < 12 ? c.firstRevenueYear : Math.max(0, sum(c.revenueHistory));
+      c.revYear = Math.max(0, sum(c.revenueHistory) * 12 / c.revenueHistory.length);
       c.debtCap = r1(P("debtCapRatio") * c.revYear);
       const over = c.cash < -c.debtCap;
       if (over && !(cashBefore[id] < -c.debtCap)) news.push(`${c.name} 지방채 한도 넘음 — 새 건설 멈춤`);
-      fiscal[id] = { tariffGross: r3((e.demMWh || 0) * (reg.avgCost || 0) * (1 + P("tariffMarkup"))), eventBonus: r3(e.bonus), equalize: sub[id] == null ? 0 : c.equalize, subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: r3(revT), expTotal: r3(expT), cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, spendable: spendable(c), out: o };
+      fiscal[id] = { tariffGross: r3(servedOf(e) * (reg.avgCost || 0) * (1 + P("tariffMarkup"))), eventBonus: r3(e.bonus), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: r3(revT), expTotal: r3(expT), cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, spendable: spendable(c), out: o };
       // 지연 추적(정전·CO₂·재생)
       const co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       c.unsS += lam * (e.unsPct - c.unsS);
@@ -527,6 +551,8 @@
       const c = C[id], g = groupTargets(c, ins[id], c.out, data);
       Object.keys(c.groups).forEach(k => { c.groups[k].sat = c100(c.groups[k].sat + lam * (g.tg[k] - c.groups[k].sat)); });
       c.approval = c100(sum(Object.keys(c.groups).map(k => c.groups[k].share * c.groups[k].sat)));
+      c.approvalHistory.push(c.approval);
+      if (c.approvalHistory.length > P("approvalWindow")) c.approvalHistory.shift();
       // 히스테리시스: 연말 평가 계약은 유지하고 시위 상태는 매달 켜고 끈다.
       if (c.unrest > 0 && c.approval >= c.approval0 - P("unrestOffDrop")) c.unrest = 0;
       else if (c.unrest <= 0 && c.approval < c.approval0 - P("approvalDrop")) {
@@ -597,7 +623,7 @@
         pop: c100(50 + K * gp), ind: c100(50 + K * gi),
         fin: c.cash >= 0 ? 100 : c.debtCap > 0 ? c100(100 * (1 + c.cash / c.debtCap)) : 0,
         co2: c100(100 * Math.exp(-fin(c.co2pc, 0) / P("scoreCo2Ref"))),
-        appr: c100(c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("unsZeroL")))
+        appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("unsZeroL")))
       };
       Object.keys(parts).forEach(k => { parts[k] = r1(parts[k]); });
       return { id, name: c.name, score: r1(wsum(parts, w)), parts };

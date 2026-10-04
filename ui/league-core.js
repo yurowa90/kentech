@@ -578,10 +578,10 @@
   /* ---------- 경제 한 달(ui/econ.js) ---------- */
   // 대표 7일 결과를 그 달 일수로 늘려 econ 입력으로 넘긴다. 첫 달에는 '새 건설 없는 시작 지도'로 기준을 잡는다(지도마다 원래 있던 차이로 이주가 생기지 않게).
   function econInput(S, R, id, r, wk, extra) {
-    const c = r.cost, dem = Math.max(1e-9, r.dem), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
+    const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
-      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: (c.fuel + c.policy) / dem, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
-        tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, spareMW: r.spareMW,
+      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+        tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: S.teams[id].econPol || {},
       assets: Object.assign({ uni: n("uni"), lab: n("lab") }, extra || {})
@@ -589,6 +589,31 @@
   }
   function econMonth(S, R, bg, res) {
     const rd = roundsOf(S)[S.round - 1], wk = (rd && rd.mdays ? rd.mdays : 30) / 7, ids = Object.keys(res.team);
+    if (S.econ.t >= S.econ.len) return;
+    // runRound의 공개 결과에는 판매용 연료와 시간별 거래가 없다.
+    // 같은 씨앗·계획·운영 배수로 정산을 재현한다. 계절 모드는 이 경로에 들어오지 않는다.
+    const sims = {}, price = {}, rnd = { season: res.season, days: res.days, seed: res.seed };
+    ids.forEach(id => {
+      const plan = S.teams[id].plan || {};
+      sims[id] = simTeam(bg, R, id, plan, rnd, Math.max(budget(S, id), capexOf(bg, R, id, plan)), modsFor(S, R, id));
+      price[id] = S.teams[id].price;
+    });
+    const tm = tieMods(S, R), ties = S.ties.filter(t => t.st === "built" && tieId(t) !== res.tieDown && tieId(t).split("~").reverse().join("~") !== res.tieDown)
+      .map(t => ({ id: tieId(t), a: t.a, b: t.b, cap: t.cap * tm.mul }));
+    const settled = settle(ties, sims, price, res.days * 24, res.days);
+    ids.forEach(id => {
+      const s = sims[id], r = res.team[id];
+      r.exportFuel = settled.out[id].fuelX;
+      let peak = 0;
+      for (let k = 1; k < s.H; k++) if (s.dem[k] > s.dem[peak]) peak = k;
+      // 해당 시각만 재정산해 판매에 쓴 여유를 뺀다. 미접속 망의 부족은 섞지 않는다.
+      const slice = {};
+      ids.forEach(cid => { slice[cid] = { gx: sims[cid].gx.map(g => Object.assign({}, g,
+        Object.fromEntries(["def", "ren", "head", "disp", "dmc", "dco2"].map(key => [key, [g[key] ? g[key][peak] : 0]])))) }; });
+      const atPeak = settle(ties, slice, price, 1, 1).out[id];
+      // 추가 화력 출력만 인정하고, 재생 판매도 전부 차감하는 보수적 하한이다.
+      r.spareMW = Math.max(0, s.gx.reduce((a, g) => a + Math.max(0, g.head[peak] - g.def[peak]), 0) - atPeak.exp);
+    });
     if (!S.econCal) {
       // 기준 = '전기가 정상으로 들어오는 보통 도시'(정전 0, 지역 평균 수준의 값). 게임은 빈 지도에서 시작하지만
       // 실제 도시는 이미 전기를 쓰고 있으므로, 빈 지도의 정전을 '평상시'로 삼지 않는다. 이후 달라진 만큼 사람이 움직인다.
@@ -612,6 +637,7 @@
       T.tieAt = tieShare(S, R, id);
     });
     const rep = out.report;
+    if (!rep) return;
     // 기업 이전 희망: 마지막 달까지 조건(재생 %·정전·구직 인력)을 맞춘 도시 가운데 산업 매력이 가장 큰 곳으로 정한다.
     (rep.offers || []).forEach(o => {
       if (rep.t < o.until - 1 || !o.eval) return;
