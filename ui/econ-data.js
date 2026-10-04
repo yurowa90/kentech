@@ -112,6 +112,18 @@
       normalCost: p(0.012, G, "시작 보정 전력 원가 억/MWh"),
       normalCo2: p(0.4, G, "시작 보정 t/MWh"),
       normalRen: p(15, G, "시작 보정 재생 비중"),
+      // B18: 경제 리그만. ECON-EVIDENCE §11의 접속·출력제어·ESS 근거.
+      hostCapMul: p(0.3, G, "B18 · EVIDENCE §11.2·11.6: 시작 접속 상한/도시 기준 피크; 0.72×0.4≈0.29의 게임 근사"),
+      hostEssMul: p(1, G, "B18 · EVIDENCE §11.2: ESS 1 MW당 접속 상한 +1 MW; ESS로 재생 수용 확대 정책의 방향만 반영"),
+      hostTieMul: p(0.5, G, "B18 · EVIDENCE §11.2: 양 끝 내부 전선이 연결된 연계선 MW당 접속 상한 +0.5 MW"),
+      connPerMonth: p(0.1, G, "B18 · EVIDENCE §11.6: 월 접속 진행 한도/기준 피크; 자료 환산·시간 압축 뒤보다 약 7배 느슨한 교육용 값"),
+      curtailLoadMul: p(0.4, M, "B18 · EVIDENCE §11.3: 봄 최저부하/여름 피크 약 0.39~0.41 환산"),
+      curtailSlope: p(1.7, M, "B18 · EVIDENCE §11.3·11.6: 육지 봄 제어일 비율 근사 기울기(P/O*·가정 용량 혼합), 인과 추정 아님"),
+      curtailKnee: p(0.72, M, "B18 · EVIDENCE §11.3·11.6: 변동 재생/최저부하의 제어 시작점 근사"),
+      curtailMax: p(0.6, G, "B18 · EVIDENCE §11.6: 제어일 비율 상한"),
+      curtailOffSeason: p(0.3, G, "B18 · EVIDENCE §11.6: 여름·겨울 제어일 비율 배수"),
+      curtailLoss: p(0.06, G, "B18 · EVIDENCE §11.3·11.6: 제어일 발전 손실 6%; 육지 1.8%와 제주 13% 사이 교육용 확대"),
+      essCap: p(0.9, "O*", "B18 · EVIDENCE §11.5: 2020 산업부 옥외 ESS 충전 상한 90%, 보도 확인·최신 법령 원문 미대조"),
       historyMonths: p(48, G, "경제 이력 보관 길이"),
       // 시간·지연
       lambdaFast: p(0.5, G, "GAMES E3: 정전·요금·세금·집단 만족의 월 반영률; 근거 약함: 게임 시차"),

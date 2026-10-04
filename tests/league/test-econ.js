@@ -297,8 +297,12 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   ok(!season.econ && C.roundsOf(season).length === 4, "계절 모드: 경제 상태 없이 기존 4라운드");
   ok(request(season, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "계절 모드: 예산 내 유료 대응 허용 유지");
   season.teams[id].sunk = C.budget(season, id) + 100;
+  // ECON-BALANCE v1.4 B18: 계절 동작은 변경 전과 같아야 한다.
+  // 변경 전 HEAD의 v1.3 respond도 비용 0 취소는 허용했다. 이를 거부한다고 기대하던
+  // 기존 단언은 작업 전부터 실패했다. 무료 취소와 유료 거부·선택 복원을 따로 검증한다.
+  ok(request(season, { type: "respond", ev: paid.id, opt: "none" }).ok && !season.teams[id].resp[`${season.round}:${paid.id}`], "계절 모드: 초과 예산에서도 기존 무료 취소 허용 유지");
   const old = JSON.stringify(season.teams[id].resp);
-  ok(!request(season, { type: "respond", ev: paid.id, opt: "none" }).ok && JSON.stringify(season.teams[id].resp) === old, "계절 모드: 기존 예산 검사·선택 복원 유지");
+  ok(!request(season, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok && JSON.stringify(season.teams[id].resp) === old, "계절 모드: 초과 예산 유료 선택 거부·선택 복원 유지");
 }
 
 Math.random = realRandom;

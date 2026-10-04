@@ -66,6 +66,7 @@
         const cash = {}; V.ids.forEach(id => { cash[id] = baseBudget(R, id); });
         S.econ = KCP.econ.initCities(V.ids, KCP.ECON_DATA, { seed: room, months: opt.turns, cash });
         S.econRep = null; S.econCal = false;
+        if (KCP.buildGame) refreshGrid(S, KCP.buildGame);
       }
     }
     return S;
@@ -169,7 +170,7 @@
     const cities = {};
     E.order.forEach(id => {
       const c = E.cities[id];
-      cities[id] = { name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
+      cities[id] = { grid: gridView(S.grid && S.grid[id]), curtailMWh: S.econRep && S.econRep.grid && S.econRep.grid[id] ? S.econRep.grid[id].curtailMWh : 0, name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
     });
     const report = S.econRep || null;
     return { year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, co2pc: c.co2pc, approval: c.approval, unsS: c.unsS }]; })), totals: E.totals } };
@@ -186,7 +187,7 @@
     const events = (S.events || []).map(ev => shown(ev) ? ev : { id: ev.id, round: ev.round });
     // 결과의 경제 보고서는 마지막 것만 싣는다(달 턴이 길어져도 상태가 커지지 않게).
     const results = S.results.map((x, i) => (x.econ && i < S.results.length - 1 ? Object.assign({}, x, { econ: null }) : x));
-    return { v: S.v, room: S.room, region: S.region, rounds: S.rounds || null, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results, events, econ: econView(S), log: S.log.slice(-12) };
+    return { ...(S.econ ? { grid: Object.fromEntries(activeOf(S).map(id => [id, gridView(S.grid && S.grid[id])])) } : {}), v: S.v, room: S.room, region: S.region, rounds: S.rounds || null, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results, events, econ: econView(S), log: S.log.slice(-12) };
   }
 
   const canPlan = S => S.phase === "lobby" || S.phase === "plan";
@@ -229,6 +230,7 @@
         if (capexOf(bg, R, m.team, plan) + lossOf(T.base, plan) > room + 1e-6) return err("budget:" + m.team);
       }
       T.plan = plan; T.rev = m.rev; S.rev++;
+      if (S.econ && bg) refreshGrid(S, bg);
       // 진행 기록(교사 화면의 '건설 속도'): 15초 안의 연속 변경은 한 점으로
       if (bg) {
         const pt = { t: now, r: S.round, cap: Math.round(capexOf(bg, R, m.team, plan)), n: plan.builds.length, l: plan.lines.length };
@@ -294,6 +296,7 @@
           if (budget(S, id) - half < used - 1e-9) return err("budget:" + id);
         }
         X.st = "built"; X.round = S.round;
+        if (S.econ && bg) refreshGrid(S, bg);
         log(S, `${teamDef(R, X.a).name}–${teamDef(R, X.b).name} 연계선 ${X.cap} MW 연결(각 ${r2(half)}억)`, now);
         S.rev++; return { ok: true };
       }
@@ -373,6 +376,15 @@
     if (tech.length) M.tech = tech;
     // 경제 모드: 주민·산업 규모만큼 수요, 국제 연료 가격만큼 연료비
     if (S.econ && S.econ.cities[id] && KCP.econ) {
+      const P = KCP.ECON_DATA.params, g = S.grid && S.grid[id];
+      M.essCap = P.essCap.v;
+      if (g) {
+        M.reCap = Object.fromEntries(g.entries.map(b => [b.key, b.allocatedMW >= b.mw ? b.mw : 0]));
+        const r = g.peakMW > 0 ? g.connectedMW / (P.curtailLoadMul.v * g.peakMW) : 0;
+        const p = Math.max(0, Math.min(P.curtailMax.v, P.curtailSlope.v * (r - P.curtailKnee.v)));
+        const rd = roundsOf(S)[Math.max(0, S.round - 1)];
+        M.curtailP = p * (["spring", "autumn"].includes(rd.season) ? 1 : P.curtailOffSeason.v) * P.curtailLoss.v;
+      }
       const dm = KCP.econ.demandMul(S.econ.cities[id]), I = S.econ.intl && S.econ.intl.cur;
       if (Math.abs(dm.res - 1) > 1e-3) M.demandRes = dm.res;
       if (Math.abs(dm.ind - 1) > 1e-3) M.demandInd = dm.ind;
@@ -423,6 +435,64 @@
   }
   function capexOf(bg, R, id, plan) { return withPack(bg, R, id, () => bg.capex(bg.sanitize(plan, 1e9))); }
 
+  // B18: 피크는 시작 지도의 기준 수요. 계절·정책·인구로 접속 한도를 바꾸지 않는다.
+  // 승인 순서대로 접속 진행 MW를 예약하며, 한 기 전량 접속 전에는 발전하지 않는다.
+  function gridStatus(S, R, bg, id, advance = false) {
+    if (!S.econ) return null;
+    const P = KCP.ECON_DATA.params, old = S.grid && S.grid[id];
+    const local = withPack(bg, R, id, () => {
+      const st = bg.sanitize(S.teams[id].plan || {}, 1e9);
+      return {
+        peakMW: old ? old.peakMW : bg.peakDemand({}, false),
+        essMW: st.builds.reduce((sum, b) => sum + (bg.BLD[b.t].cls === "bat" ? bg.BLD[b.t].mw : 0), 0),
+        builds: st.builds.filter(b => bg.BLD[b.t].variable).map(b => ({ key: b.t + ":" + b.i, t: b.t, i: b.i, mw: bg.BLD[b.t].mw, allocatedMW: 0 }))
+      };
+    });
+    const linked = (cid, other) => withPack(bg, R, cid, () => {
+      const net = bg.network(bg.sanitize(S.teams[cid].plan || {}, 1e9));
+      return net.nodes.some(n => n.kind === "import" && n.comp >= 0 && (bg.SITES[n.si].to || []).includes(other));
+    });
+    const tieMW = S.ties.filter(t => t.st === "built" && (t.a === id || t.b === id) && S.teams[t.a] && S.teams[t.b])
+      .reduce((sum, t) => sum + (linked(t.a, t.b) && linked(t.b, t.a) ? t.cap : 0), 0);
+    const hostMW = local.peakMW * P.hostCapMul.v + local.essMW * P.hostEssMul.v + tieMW * P.hostTieMul.v;
+    const monthlyMW = local.peakMW * P.connPerMonth.v;
+    const byKey = new Map(local.builds.map(b => [b.key, b]));
+    const entries = (old ? old.entries : []).filter(b => byKey.has(b.key)).map(b => {
+      const entry = Object.assign({}, byKey.get(b.key), { allocatedMW: b.allocatedMW });
+      byKey.delete(b.key); return entry;
+    }).concat([...byKey.values()]);
+    // ESS 철거·내부 전선 단절로 H가 줄면 뒤쪽 설비부터 다시 대기한다.
+    // 접속 완료 이력만으로 상한을 우회할 수 없고, 재접속도 월 처리량을 쓴다.
+    let room = hostMW;
+    entries.forEach(b => {
+      b.allocatedMW = Math.min(b.allocatedMW, room); room -= b.allocatedMW;
+    });
+    const tick = advance && S.round > 0 && (!old || old.round !== S.round);
+    let left = tick ? monthlyMW : 0;
+    for (const b of entries) {
+      if (b.allocatedMW >= b.mw) continue;
+      const need = b.mw - b.allocatedMW, add = Math.min(need, room, left);
+      b.allocatedMW = add === need ? b.mw : b.allocatedMW + add;
+      room -= add; left -= add;
+      if (b.allocatedMW < b.mw) break;
+    }
+    const connectedMW = entries.reduce((sum, b) => sum + (b.allocatedMW >= b.mw ? b.mw : 0), 0);
+    return { peakMW: local.peakMW, hostMW, headroomMW: Math.max(0, room), connectedMW,
+      waitingMW: entries.reduce((sum, b) => sum + (b.allocatedMW < b.mw ? b.mw : 0), 0),
+      reservedMW: entries.reduce((sum, b) => sum + b.allocatedMW, 0) - connectedMW,
+      monthlyMW, entries, round: tick ? S.round : old ? old.round : 0 };
+  }
+  function gridView(g) {
+    if (!g) return null;
+    const { entries, ...view } = g;
+    return view;
+  }
+  function refreshGrid(S, bg, advance = false) {
+    if (!S.econ) return;
+    const R = regionOf(S.region);
+    S.grid = Object.fromEntries(activeOf(S).map(id => [id, gridStatus(S, R, bg, id, advance)]));
+  }
+
   // 팀 도시 하나를 고립 운전한다. 반환: 정산에 쓸 시간별 자료와 자체 지표.
   function simTeam(bg, R, id, plan, rnd, cap, mods) {
     return withPack(bg, R, id, () => {
@@ -439,6 +509,7 @@
       for (let k = 1; k < H; k++) if (res.hrDem[k] > res.hrDem[peak]) peak = k;
       const spareMW = res.gx ? Math.max(0, res.gx.reduce((a, g) => a + g.ren[peak] + g.head[peak], 0) - uns[peak]) : null;
       return {
+        ...(mods && mods.curtailP != null ? { curtailMWh: res.tot.curtailMWh } : {}),
         spareMW, H, dem: res.hrDem, uns, gx: res.gx || [], hosp: res.hrHosp,
         k: {
           dem: res.tot.dem, uns: res.unsTotal, hospH: res.hospH || 0, capex: res.cost.capex, fuel: res.cost.fuel, policy: res.cost.policy,
@@ -508,6 +579,7 @@
   // 라운드 하나를 돌려 결과를 state.results에 붙인다.
   function runRound(S, bg) {
     const R = regionOf(S.region), rd = roundsOf(S)[S.round - 1];
+    if (S.econ) refreshGrid(S, bg, true);
     const rnd = { season: rd.season, days: rd.days, seed: 7000 + S.round * 13 };
     const sims = {}, price = {};
     const act = R.teams.filter(t => Object.hasOwn(S.teams, t.id));
@@ -554,6 +626,10 @@
         sat: K.sat, cp: K.cp, curt: r2(Math.max(0, K.curt - o.curtX)), renPct: Math.round(100 * Math.min(1, K.ren / Math.max(1e-9, K.dem))),
         unlinked: o.unlinked, isolated: { uns: r2(K.uns), co2: Math.round(K.co2) }
       };
+      if (S.econ) {
+        team[t.id].grid = gridView(S.grid[t.id]);
+        team[t.id].curtailMWh = s.curtailMWh;
+      }
       rDem += K.dem; rUns += uns; rCo2 += co2Prod;
     });
     const region = { dem: r2(rDem), uns: r2(rUns), unsPct: r2(100 * rUns / Math.max(1e-9, rDem)), co2: Math.round(rCo2) };
@@ -596,7 +672,7 @@
   function econInput(S, R, id, r, wk, extra) {
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
-      energy: { unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+      energy: { ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
         tradeNet: r2((r.earn - r.pay) * wk), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: S.teams[id].econPol || {},
@@ -660,6 +736,8 @@
     });
     const rep = out.report;
     if (!rep) return;
+    rep.grid = Object.fromEntries(ids.map(id => [id, Object.assign({}, res.team[id].grid,
+      { curtailMWh: inputs[id].energy.curtailMWh })]));
     // 기업 이전 희망: 마지막 달까지 조건(재생 %·정전·구직 인력)을 맞춘 도시 가운데 산업 매력이 가장 큰 곳으로 정한다.
     (rep.offers || []).forEach(o => {
       if (rep.t < o.until - 1 || !o.eval) return;
@@ -692,7 +770,7 @@
   }
 
   KCP.leagueCore = {
-    econView, computerPlans, eventDef, modsFor, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
+    gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf,
     SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf, econInput

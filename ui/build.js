@@ -197,11 +197,11 @@
   // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
   const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
   const BLD0 = {
-    solar: { name: "태양광", spec: "2 MW", mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
-    roof: { name: "지붕 태양광", spec: "0.6 MW", mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
-    wind: { name: "풍력", spec: "2 MW", mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
-    offshore: { name: "해상풍력", spec: "4 MW", mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
-    tidal: { name: "조력", spec: "2 MW", mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
+    solar: { variable: true, name: "태양광", spec: "2 MW", mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
+    roof: { variable: true, name: "지붕 태양광", spec: "0.6 MW", mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
+    wind: { variable: true, name: "풍력", spec: "2 MW", mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
+    offshore: { variable: true, name: "해상풍력", spec: "4 MW", mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
+    tidal: { variable: true, name: "조력", spec: "2 MW", mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
     hydro: { name: "소수력", spec: "0.8 MW", mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
     diesel: { name: "디젤", spec: "3 MW", mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
     biomass: { name: "바이오매스", spec: "2 MW", mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
@@ -528,7 +528,12 @@
     const v0 = renOut0(g, day, h, k);
     if (!MODS) return v0;
     const m = g.kind === "solar" || g.kind === "roof" ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
-    return typeof m === "number" ? v0 * m : v0;
+    let v = typeof m === "number" ? v0 * m : v0;
+    // B18 손잡이가 없으면 기존 계산·반환 자료를 그대로 유지한다.
+    if (MODS.reCap && BLD[g.kind] && BLD[g.kind].variable) {
+      v *= clamp((MODS.reCap[g.kind + ":" + g.tile] || 0) / BLD[g.kind].mw, 0, 1);
+    }
+    return v;
   }
   function renOut0(g, day, h, k) {
     const T = TILES[g.tile], B = BLD[g.kind], C = PK.climate, vMul = day.mult * day.noise[h];
@@ -568,6 +573,8 @@
     if (RR) Object.keys(RR.adoptW).forEach(id => { techDay[id] = RR.adoptW[id] * 7; });
     else ((opt && opt.mods && opt.mods.tech) || []).forEach(id => { techDay[id] = 0; });
     let bEff = M.batEff, fcst = false;
+    const batCeiling = MODS && MODS.essCap != null ? M.batMWh * clamp(MODS.essCap, 0, 1) : M.batMWh;
+    const curtail = MODS && MODS.curtailP != null;
     // 대학·연구소 전력 수요: 가장 가까운 마을에 더한다.
     const instLoad = new Float32Array(TOWNS.length);
     st.builds.forEach(B => {
@@ -581,10 +588,11 @@
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
     const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0 };
+    if (curtail) { tot.curtailMWh = 0; tot.curtailCapturedMWh = 0; }
     let dk = 0;
     gens.forEach(g => {
       g.runH = 0;
-      if (g.kind === "battery") { g.soc = M.batMWh * 0.5; g.floor = M.batMWh * M.socFloor; }
+      if (g.kind === "battery") { g.soc = Math.min(batCeiling, M.batMWh * 0.5); g.floor = M.batMWh * M.socFloor; }
       if (SMOKY[g.kind]) g.dk = dk++;
       const D = g.kind === "lng" || g.kind === "coal" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
       if (D) {
@@ -631,10 +639,13 @@
         const dcap = C.disp.reduce((a, u) => a + (u.D ? u.D.cap : 0), 0);
         let short = 0;
         for (let h = 17; h < 23; h++) {
-          const k = d * 24 + h, dm = C.towns.reduce((a, n) => a + demand(n.ti, h, wx, pol, fab2) + instLoad[n.ti], 0), rn = C.ren.reduce((a, g) => a + renOut(g, wx, h, k), 0);
+          const k = d * 24 + h, dm = C.towns.reduce((a, n) => a + demand(n.ti, h, wx, pol, fab2) + instLoad[n.ti], 0), rn = C.ren.reduce((a, g) => {
+            const v = renOut(g, wx, h, k);
+            return a + (curtail && BLD[g.kind] && BLD[g.kind].variable ? v * (1 - clamp(MODS.curtailP, 0, 1)) : v);
+          }, 0);
           short += Math.max(0, dm - rn - dcap);
         }
-        C.keep = Math.min(M.batMWh, M.batMWh * M.socFloor + 1.1 * short / C.bat.length / bEff);
+        C.keep = Math.min(batCeiling, M.batMWh * M.socFloor + 1.1 * short / C.bat.length / bEff);
       });
       if (techDay.grid === d) N.comps.forEach(C => [C.RL, C.RB, C.BL, C.DL].forEach(L => (L || []).forEach(P => { P.eff = Math.max(0.4, 1 - (PK.lossPerHex || M.lossPerHex) * (2 / 3) * P.d); })));
       for (let h = 0; h < 24; h++) {
@@ -646,12 +657,28 @@
           if (g.D) { g.out = 0; g.w = 0; return; }
           g.av = renOut(g, wx, h, k);
           if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
+          if (curtail) {
+            g.cut = BLD[g.kind] && BLD[g.kind].variable ? g.av * clamp(MODS.curtailP, 0, 1) : 0;
+            g.av -= g.cut;
+          }
         });
         const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2) + instLoad[ti]);
         const rem = dem.slice();
         const dem0 = dem.reduce((a, b) => a + b, 0);
         let deliv = 0;
         for (const C of N.comps) {
+          // 제어 대상 전력은 같은 망의 자기 ESS가 먼저 받는다. 남은 양은 판매 불가.
+          if (curtail) {
+            for (const P of C.RB) {
+              const g = P.g, b = P.l;
+              const room = Math.min(M.batMW - b.chg, (batCeiling - b.soc) / bEff);
+              if (g.cut <= 0 || room <= 0) continue;
+              const give = Math.min(g.cut * P.eff, room), sent = give / P.eff;
+              g.cut -= sent; b.chg += give; b.soc += give * bEff;
+              tot.loss += sent - give; tot.ren += sent; tot.curtailCapturedMWh += sent; addFlow(P, sent, k);
+            }
+            C.ren.forEach(g => { tot.curtailMWh += Math.max(0, g.cut); });
+          }
           if (!C.towns.length) continue;
           for (const P of C.RL) {
             const g = P.g, ti = P.l.ti;
@@ -662,7 +689,7 @@
           for (const P of C.RB) {
             const g = P.g, b = P.l;
             if (g.av <= 1e-6) continue;
-            const room = Math.min(M.batMW - b.chg, (M.batMWh - b.soc) / bEff);
+            const room = Math.min(M.batMW - b.chg, (batCeiling - b.soc) / bEff);
             if (room <= 1e-6) continue;
             const give = Math.min(g.av * P.eff, room), sent = give / P.eff;
             g.av -= sent; b.chg += give; b.soc += give * bEff; tot.loss += sent - give; tot.ren += sent; addFlow(P, sent, k);
@@ -727,7 +754,7 @@
     tot.diesel = tot.by.diesel;
     // 배터리 시작·끝 잔량(MWh). 시작보다 덜 남았으면 그만큼은 이 기간 발전이 아니라 처음 채워 둔 전기로 쓴 것이다.
     tot.batStart = 0; tot.batEnd = 0;
-    gens.forEach(g => { if (g.kind === "battery") { tot.batStart += M.batMWh * 0.5; tot.batEnd += g.soc; } });
+    gens.forEach(g => { if (g.kind === "battery") { tot.batStart += Math.min(batCeiling, M.batMWh * 0.5); tot.batEnd += g.soc; } });
     // 배터리는 전기를 만들지 않는다: 끝 잔량이 시작보다 적으면 그 차이를 다시 채우는 값(디젤 연료비·CO₂, 충전 효율 반영)을 이 기간에 물린다.
     tot.batDebt = Math.max(0, tot.batStart - tot.batEnd);
     if (tot.batDebt > 1e-6) { const D = dispOf("diesel"), e = tot.batDebt / bEff; tot.fuel += e * D.fuel; tot.co2 += e * D.co2; }
