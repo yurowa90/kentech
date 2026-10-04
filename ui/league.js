@@ -313,8 +313,10 @@
     const session = L;
     if (session?.role !== "solo") return fn();
     session.mutating = (session.mutating || 0) + 1;
-    try { return fn(); }
-    finally { if (--session.mutating === 0 && L === session) saveSolo(); }
+    // 예외면 반쯤 바뀐 상태를 저장하지 않는다(새로고침하면 마지막 정상 저장으로 돌아간다).
+    let ok = false;
+    try { const r = fn(); ok = true; return r; }
+    finally { if (--session.mutating === 0 && L === session && ok) saveSolo(); }
   }
   window.addEventListener("pagehide", saveSolo);
   document.addEventListener("visibilitychange", () => { if (document.hidden) saveSolo(); });

@@ -266,8 +266,8 @@
       const used = bg && T.plan ? spendOf(bg, S, R, m.team, T.plan) : fixedOf(S, R, m.team);
       const city = S.econ && S.econ.cities[m.team], over = city && city.cash < -city.debtCap;
       const cost = m.opt === "none" ? 0 : E.opts.find(o => o.id === m.opt).cost || 0;
-      // ECON-BALANCE v1.3: 한도 초과라도 무비용 대응은 허용하고 유료 대응은 막는다.
-      if (over ? cost > 0 : used > budget(S, m.team) + 1e-6) { if (prev) T.resp[key] = prev; else delete T.resp[key]; return err("budget:" + m.team); }
+      // ECON-BALANCE v1.3: 비용이 0인 대응은 언제나 허용하고, 유료 대응은 한도 초과나 예산 초과면 막는다.
+      if (cost > 0 && (over || used > budget(S, m.team) + 1e-6)) { if (prev) T.resp[key] = prev; else delete T.resp[key]; return err("budget:" + m.team); }
       log(S, `${teamDef(R, m.team).name}: ${E.name} — ${m.opt === "none" ? "대응 안 함" : E.opts.find(o => o.id === m.opt).name}`, now);
       S.rev++; return { ok: true };
     }
