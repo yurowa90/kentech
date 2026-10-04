@@ -1,6 +1,6 @@
 """수정 명세만 근거로 만든 인수 검사. 브라우저 실행은 통합 담당이 수행한다.
 
-ID: 12.1-1~5, 12.2-1~6, 12.3-1~8, 12.4-1~6, 12.5-1~3.
+ID: 12.1-1~6, 12.2-1~6, 12.3-1~8, 12.4-1~6, 12.5-1~3.
 12.2는 입력/첫 시험/거부·승인/완료/수치표/표시·비용의 여섯 항목,
 12.4·12.5는 명세의 글머리표 순서다. 공통 기준은 C-1~4로 표시한다.
 검산표 전체와 고정 시드 물리 검사는 model_s-island-grid.mjs에도 있다.
@@ -8,6 +8,7 @@ ID: 12.1-1~5, 12.2-1~6, 12.3-1~8, 12.4-1~6, 12.5-1~3.
 """
 import re
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 
@@ -17,8 +18,9 @@ B = {"bat": [-1, -1, 0, 4, 4, -1, -2, -2],
      "n": [2, 2, 1, 0, 0, 2, 3, 3], "dr": [4, 5]}
 A = {"bat": [0, 0, 0, 3, 2, 0, -2, -2],
      "n": [3, 2, 1, 1, 2, 3, 3, 3], "dr": [4, 5]}
+# 답변 15분에 맞춘 일곱 문항: 공통 3 + 개별 2 + 반문 1 + 발산 1.
 Q_B = ["ig-c1", "ig-c2-in", "ig-c3-hit", "ig-b-outage",
-       "ig-b-correction", "ig-b-diesel-long", "ig-r-r2", "ig-storage-alt"]
+       "ig-b-correction", "ig-r-r2", "ig-storage-alt"]
 LINE = "배출 감소를 얻는 대신 구름 날씨의 공급 여유를 잃었다."
 LIMITATION = "사망자나 환자 수를 계산하지 않는 비교용 지수"
 TOTAL_FIELDS = ["ch", "dis", "u", "heat", "diesel", "co2", "curt", "soc", "delta",
@@ -36,7 +38,8 @@ TOTALS = {
     "A": [
         [8.421053,12,0,0,87.406200,65.554650,29.846947,3.368421,-4.631579,0,104.427253,20.892863,8.954084,18,5,[]],
         [8.421053,12,0,0,102.582174,76.936631,6.768547,3.368421,-4.631579,0,119.603227,4.737983,2.030564,18,5,[]],
-        [8.421053,12,0,0,89.801400,67.351050,20.582947,3.368421,-4.631579,.683453,106.822453,14.408063,6.174884,18,5,[]]],
+        # dcharge .683453 → 0: 한계 기준 배정. 09–12시는 디젤 최소 출력·출력제한 중이라 충전해도 디젤이 늘지 않는다.
+        [8.421053,12,0,0,89.801400,67.351050,20.582947,3.368421,-4.631579,0,106.822453,14.408063,6.174884,18,5,[]]],
     "B": [
         [15.069252,18,0,0,69.406200,52.054650,11.198748,3.368421,-4.631579,0,87.059663,11.198748,0,15,5,[3,5]],
         [10.752000,15.783680,9.484800,6.731148,86.313694,64.735270,1.437600,1.600000,-6.400000,0,103.640478,1.437600,0,15,5,[3,4]],
@@ -156,7 +159,7 @@ def _lock(c):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-island-grid'].questions(KCP.load('s-island-grid'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-island-grid'].questions(KCP.load('s-island-grid'))"))
 
 
 def _keys(c):
@@ -227,6 +230,8 @@ def t_12_1_initial(c: Ctx):
         c.eq(tab.get_attribute("aria-selected"), "true", f"{aid} 자료 탭 {value} 선택")
         c.expect(c.page.locator(f"#ig-pane-{value}").is_visible(), f"{aid} 자료 패널 연결")
         c.check(f"{aid} 자료 탭 {value}")
+    _words(c, "#ig-pane-weather", ["가정 출력", "35~50%", "정체 고기압", "크게 낮을 수"], aid)
+    c.expect("바람이 약한 날을 설정" not in _text(c, "#ig-pane-weather"), f"{aid} 넉넉한 풍력을 약한 바람이라 부르지 않음")
     tab = c.page.locator("#ig-tab-weather")
     tab.focus()
     tab.press("ArrowLeft")
@@ -261,6 +266,8 @@ def t_12_1_keyboard(c: Ctx):
          f"{aid} 시간축의 탭 정지점 세 행")
     c.eq(c.page.locator('.ig-control-row [tabindex="0"]').count(), 0, f"{aid} 자식 탭 정지점 없음")
     c.eq(c.page.locator('.ig-cell[tabindex="0"]').count(), 0, f"{aid} 칸별 탭 정지점 없음")
+    # slider의 자식은 보조기기에 노출되지 않으므로 칸별 aria-label을 두지 않고 행의 aria-valuetext로 읽힌다.
+    c.eq(c.page.locator(".ig-cell[aria-label]").count(), 0, f"{aid} 읽히지 않는 칸별 aria-label 없음")
     c.expect(row.evaluate("e=>e===document.activeElement"), f"{aid} 조작 뒤 포커스 보존")
 
 
@@ -315,14 +322,42 @@ def t_12_1_mobile_access(c: Ctx):
         c.eq(_game(c)["n"][4], 1, f"{aid} 큰 감소 버튼")
         # 배터리 터치도 좌표를 SVG viewBox로 환산한 기대값에 대조.
         svg = c.page.locator("#ig-bat-row svg").first
+        # 손가락은 화면에 보이는 막대만 누를 수 있다. sticky 띠 아래에 숨은 좌표를 누르지 않도록
+        # 그래프를 화면 가운데로 옮긴 뒤, 누를 점이 실제로 그래프인지 먼저 확인한다.
+        svg.evaluate("e=>e.scrollIntoView({block:'center'})")
         box = svg.bounding_box()
-        c.page.touchscreen.tap(box["x"]+box["width"]*4.5/8, box["y"]+box["height"]*18/180)
+        x, y = box["x"]+box["width"]*4.5/8, box["y"]+box["height"]*18/180
+        c.eq(c.page.evaluate("([x,y])=>document.elementFromPoint(x,y)?.closest('#ig-bat-svg')?.id||null", [x, y]),
+             "ig-bat-svg", f"{aid} 누를 점이 배터리 그래프")
+        c.page.touchscreen.tap(x, y)
         c.eq(_game(c)["bat"][4], 4, f"{aid} 배터리 터치로 b4 충전4")
         c.page.locator("#ig-minus").tap()
         c.eq(_game(c)["bat"][4], 3, f"{aid} 배터리 큰 버튼 동일 조작")
         c.page.locator('#ig-dr-row .ig-cell[data-ig-b="2"]').tap()
         c.eq(_game(c)["dr"][2], True, f"{aid} DR 터치 지원")
     c.check(f"{aid} 시간축·버튼")
+
+
+def t_12_1_baseline_message(c: Ctx):
+    aid = "12.1-6"
+    _configure(c, aid=aid)
+    msg = c.page.locator("#ig-baseline-msg")
+    _hidden(c, "#ig-baseline-msg", aid)
+    for bad in ("1.25", "-1", "301"):
+        c.page.locator("#ig-baseline-limit").fill(bad)
+        c.expect(msg.is_visible(), f"{aid} {bad} 입력에 안내 표시")
+        _disabled(c, "#ig-test", True, aid)
+        c.eq(_game(c)["baseline"]["limit"], None, f"{aid} {bad}는 기준선으로 저장 안 함")
+    _words(c, "#ig-baseline-msg", ["0.1 MWh 단위", "시험 운전"], aid)
+    c.eq(c.page.locator("#ig-baseline-limit").get_attribute("aria-describedby"), "ig-baseline-msg", f"{aid} 입력과 안내 연결")
+    c.page.locator("#ig-shed-R1").click()
+    c.eq(c.page.locator("#ig-baseline-limit").input_value(), "301", f"{aid} 다른 조작 뒤에도 잘못된 입력을 지우지 않음")
+    c.expect(msg.is_visible(), f"{aid} 다른 조작 뒤에도 안내 유지")
+    c.page.locator("#ig-baseline-limit").fill("9.5")
+    _hidden(c, "#ig-baseline-msg", aid)
+    c.eq(_game(c)["baseline"]["limit"], 9.5, f"{aid} 올바른 값 저장")
+    _disabled(c, "#ig-test", False, aid)
+    c.check(f"{aid} 기준선 안내")
 
 
 def t_12_2_b_consent(c: Ctx):
@@ -391,6 +426,8 @@ def t_12_2_b_values(c: Ctx):
     # 명세 4.5·12.2: 필요한 것은 각 부하/발전량 대비 백분율 표시다.
     # '비율'이라는 단어는 고정 문안이 아니므로 단어 단언은 제거하되,
     # 아래 독립 계산값에 %까지 붙여 실제 백분율 표시 검사는 유지한다.
+    _words(c, "#ig-detail", ["충전하지 않았다면", "잔량(저장 에너지)"], aid)
+    c.expect("SOC 시작" not in _text(c, "#ig-detail"), f"{aid} SOC 대신 잔량 용어")
     _words(c, "#ig-detail", ["F3", "6.73", "F4", "2.75", "87.06", "103.64", "11.90", "3.26",
                              "새", "5", "15", "디젤", "출력 여유", "수산물", "실제"], aid)
     # 분모를 각 급전선 하루 부하로 직접 계산해 표시된 비율에 대조한다.
@@ -447,14 +484,15 @@ def t_12_3_questions(c: Ctx):
     aid = "12.3-2"
     qs = _questions(c)
     c.eq([q["k"] for q in qs], Q_B, f"{aid} B 질문 순서")
-    c.eq(len({q["k"] for q in qs}), 8, f"{aid} 질문 k 중복 없음")
+    c.eq(len({q["k"] for q in qs}), 7, f"{aid} 질문 k 중복 없음")
     c.expect(all(set(q) == {"k", "tag", "q"} for q in qs), f"{aid} src·rec 없는 질문 객체")
     for word in ("S2", "9.48", "F3", "6.73", "12–15시", "11.90", "디젤을 한 대도 켜 두지 않았습니다"):
         c.expect(word in qs[3]["q"], f"{aid} 정전 질문에 {word}")
     c.page.locator("#ig-go").click()
     cards = c.page.locator(".qdeck .qcard")
     c.expect(6 <= cards.count() <= 9, "C-2 면접 질문 카드 6~9개")
-    c.eq(cards.count(), 8, f"{aid} 확정 질문 정확히 여덟 개")
+    c.eq(cards.count(), 7, f"{aid} 확정 질문 정확히 일곱 개")
+    c.expect("얻는 것과 잃는 것을 한 문장으로" in qs[0]["q"], f"{aid} 공통 1에 얻는 것·잃는 것 한 문장")
     c.expect(all("연습용 질문" in t for t in cards.all_text_contents()), "C-2 모든 카드 연습용 질문 표시")
     c.expect(all("보고서 문항" not in t for t in cards.all_text_contents()), "C-2 보고서 문항 표시 없음")
     c.check("C-2 면접실")
@@ -556,7 +594,7 @@ def t_12_3_restore(c: Ctx):
     for key in ("bat", "n", "dr", "locked", "oneLine", "tests"):
         c.eq(after[key], before[key], f"{aid} {key} 복원")
     c.eq(len(after["locked"]["corrections"]), 6, f"{aid} 보정 여섯 건 복원")
-    c.eq(_keys(c), Q_B, f"{aid} 질문 여덟 개 복원")
+    c.eq(_keys(c), Q_B, f"{aid} 질문 일곱 개 복원")
     # 불신해야 하는 임의 결과 캐시를 주입. 입력 및 승인 스냅숏은 그대로 둔다.
     saved["game"]["locked"]["results"] = [{"u": 999, "soc": 999}] * 3
     saved["game"]["latestRun"]["u"] = 999
@@ -622,7 +660,7 @@ def t_12_3_rules_weights_cost(c: Ctx):
         _test(c, aid)
         _words(c, '#ig-metric-u [data-ig-s="S2"]', [f"{v:.2f}" for v in cut], aid)
         _lock(c)
-        c.eq(_keys(c)[6], f"ig-r-{shed.lower()}", f"{aid} {shed} 반문")
+        c.eq(_keys(c)[5], f"ig-r-{shed.lower()}", f"{aid} {shed} 반문")
         c.page.locator("#ig-unlock").click()
     c.page.locator("#ig-shed-R2").click()
     _test(c, aid)
@@ -638,7 +676,7 @@ def t_12_3_rules_weights_cost(c: Ctx):
     _words(c, "#ig-sensitivity", ["R1", "11.16", "R2", "6.73", "R3", "10.30"], aid)
     c.eq(_game(c), before, f"{aid} 민감도 펼침은 계획·시험·승인 불변")
     _lock(c)
-    c.eq(_keys(c)[5], "ig-b-weights", f"{aid} 변경 가중치 질문 우선")
+    c.eq(_keys(c)[4], "ig-b-weights", f"{aid} 변경 가중치 질문 우선")
     c.page.locator("#ig-unlock").click()
     c.page.locator("#ig-weight-f1").select_option("3")
     c.page.locator("#ig-weight-f2").select_option("1.5")
@@ -647,7 +685,7 @@ def t_12_3_rules_weights_cost(c: Ctx):
     _test(c, aid)
     _words(c, "#ig-metric-diesel", ["운영비 지수", "92.53"], aid)
     _lock(c)
-    c.eq(_keys(c)[5], "ig-b-cost", f"{aid} 비용 기준 질문")
+    c.eq(_keys(c)[4], "ig-b-cost", f"{aid} 비용 기준 질문")
 
 
 def t_12_3_a_branch(c: Ctx):
@@ -656,10 +694,10 @@ def t_12_3_a_branch(c: Ctx):
     _test(c, aid)
     _lock(c)
     keys = _keys(c)
-    c.eq(keys[3:6], ["ig-b-reserve", "ig-b-tomorrow", "ig-b-diesel-long"], f"{aid} A 개별 세 칸 우선순위")
+    c.eq(keys[3:5], ["ig-b-reserve", "ig-b-tomorrow"], f"{aid} A 개별 두 칸 우선순위")
     c.expect("ig-b-outage" not in keys and "ig-b-dcharge" not in keys and "ig-b-curtail" not in keys,
              f"{aid} 조건이 참이어도 추가 질문 만들지 않음")
-    c.eq(len(keys), 8, f"{aid} 정확히 여덟 문항")
+    c.eq(len(keys), 7, f"{aid} 정확히 일곱 문항")
 
 
 def t_12_3_boundary(c: Ctx):
@@ -669,8 +707,8 @@ def t_12_3_boundary(c: Ctx):
     _test(c, aid)
     _lock(c)
     keys = _keys(c)
-    c.eq(keys[3:6], ["ig-b-outage", "ig-b-curtail", "ig-b-feeders"], f"{aid} 대체 질문으로 세 칸 충족")
-    c.eq(len(keys), 8, f"{aid} 경계안도 여덟 문항")
+    c.eq(keys[3:5], ["ig-b-outage", "ig-b-curtail"], f"{aid} 대체 질문으로 두 칸 충족")
+    c.eq(len(keys), 7, f"{aid} 경계안도 일곱 문항")
     c.expect(all(re.fullmatch(r"ig-[a-z0-9-]+", k) for k in keys), f"{aid} k는 수치·날씨·보정 키 없는 고정 식별자")
 
 
@@ -897,6 +935,15 @@ def t_12_5_reflect_gate(c: Ctx):
         c.eq(detail.evaluate("e=>e.open"), False, f"{aid} {ident} Space로 닫기")
     c.page.locator("#ig-values summary").click()
     _words(c, "#ig-values", ["2.85", "0.15", "74.96", "79.76", "56.22", "59.82"], "12.4-1")
+    for ident, words in (("ig-example-a", ["계획 A · 구간별 요청", "충전 3 MW"]),
+                         ("ig-example-b", ["계획 B · 구간별 요청", "11.90", "1.23"]),
+                         ("ig-example-c", ["계획 C · 구간별 요청", "방전 1 MW"]),
+                         ("ig-limits", ["1.23", "순환 정전", "필수 부하", "전날 밤 가동 대수를 0기"]),
+                         ("ig-science", ["5.76×10¹⁰", "5.9만 톤"])):
+        text = c.page.locator(f"#{ident}").text_content()
+        for word in words:
+            c.expect(word in text, f"{aid} {ident}에 {word!r}")
+    c.eq(c.page.locator("#ig-reflect table.ig-table").count(), 3, f"{aid} 예시마다 계획 표 하나")
     c.wait_saved()
     saved = c.ls(KEY)
     c.eq(saved["compare"]["open"], True, f"{aid} 공통 compare에 열림 저장")

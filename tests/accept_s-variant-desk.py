@@ -8,6 +8,7 @@ import copy
 import math
 import re
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 GAME = "s-variant-desk"
@@ -16,7 +17,8 @@ ROUTE = "#ys-variant-desk"
 POLICIES = ("secondary", "minors", "noCare", "relatives")
 ORDER = ["P-01", "P-07", "P-13", "P-02", "P-09", "P-14", "P-03", "P-08",
          "P-15", "P-04", "P-10", "P-16", "P-05", "P-11", "P-06", "P-12"]
-DEFAULT = dict(version=1, weights=[2, 2, 3, 1, 1], t1=12, t2=2, overrides={},
+# 검토 H1: 기본 무게에서 빈도를 1로 낮추고 상담선을 1로 둔다.
+DEFAULT = dict(version=1, weights=[2, 1, 3, 1, 1], t1=12, t2=1, overrides={},
                stage1Confirmed=False, policyMode="pending",
                policy=dict.fromkeys(POLICIES), piPct=1, piTouched=False,
                revealed=False, truthSeen=False, replannedAfterReveal=False,
@@ -52,7 +54,7 @@ def _load(c):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-variant-desk'].questions(KCP.load('s-variant-desk'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-variant-desk'].questions(KCP.load('s-variant-desk'))"))
 
 
 def _prep(c):
@@ -278,9 +280,11 @@ def _keys(c, expected, aid):
     return qs
 
 
-def _expected_keys(result="balance", evidence="evidence-pair", policy=None, moved=False):
-    return ["vd-c1", "vd-c2", "vd-c3", "vd-error-" + result, "vd-" + evidence,
-            *(["vd-" + policy] if policy else []), "vd-pi-" + ("moved" if moved else "unmoved"),
+def _expected_keys(result="balance", evidence="evidence-pair", policy=None, moved=False, replanned=False):
+    # 검토 반영: 면접 카드 6~7장. 공통 1(기준 먼저), 오류 질문(얻는 것·잃는 것 한 문장), 반문을 늘 포함한다.
+    return ["vd-c1", "vd-error-" + result, "vd-" + evidence,
+            *(["vd-" + policy] if policy else []),
+            "vd-replanned" if replanned else "vd-pi-" + ("moved" if moved else "unmoved"),
             "vd-counter-capacity", "vd-divergent-system"]
 
 
@@ -296,8 +300,10 @@ def t_12_1_1_home(c: Ctx):
     card.click()
     c.page.wait_for_selector("#vd-board")
     c.expect(c.page.url.endswith(ROUTE), f"{aid} 게임 라우트")
-    _groups(c, [4, 6, 6], aid)
+    _groups(c, [4, 8, 4], aid)
     _has(c, ".brief", "창작 게임 · 가상 자료", aid)
+    _has(c, ".brief", "1차 목적", aid)
+    _has(c, ".brief", "‘2차 발견’", aid)
     c.page.locator("#vd-plan").fill("가상 자료의 불확실성을 설명합니다.")
     c.wait_saved(400)
     c.expect(isinstance(c.ls(KEY), dict), f"{aid} 400ms 후 저장키 생성")
@@ -328,7 +334,12 @@ def t_12_1_3_detail_privacy(c: Ctx):
       .some(s=>/분류 점수|이 게임이 정한 분류|truth|\\bTP\\b/.test(s)))""")
     c.expect(not leak, f"{aid} 접힌 카드 텍스트·속성에 점수·참값 없음")
     c.page.locator("#vd-card-P-01").click()
-    c.eq(_text(c, "#vd-card-score"), "22", f"{aid} 상세 점수22")
+    c.eq(_text(c, "#vd-card-score"), "20", f"{aid} 상세 점수20")
+    _has(c, "#vd-detail", "병원성으로 보고하면 검토할 조치", aid)
+    # N1: VUS 분류 설명을 앞세운 새 문구의 대명사와 지침 구절을 확인한다.
+    _has(c, "#vd-detail", "의미불명 변이(VUS)는 보고 시점의 증거로 정하는 분류", aid)
+    _has(c, "#vd-detail", "이를 임상 결정에 쓰지 말라고 권고합니다", aid)
+    c.expect("혈족 연락 가능 사례" in c.page.locator("#vd-card-P-01").inner_text(), f"{aid} P-01 혈족 표식 문구")
     for text in ("40~70%", "가계 내 공동분리", "집단 내 빈도", "기능 실험", "컴퓨터 예측",
                  "같은 위치의 다른 변이 보고", "가상 자료"):
         _has(c, "#vd-detail", text, aid)
@@ -340,16 +351,16 @@ def t_12_1_3_detail_privacy(c: Ctx):
 def t_12_1_4_weights(c: Ctx):
     aid = "12.1-4"
     _prep(c)
-    for value in (2, 3):
+    # 기본 [2,1,3,1,1]에서 예측 무게 2: 이동 없음 / 3: P-08이 보고하지 않음→상담으로 1장 이동.
+    for value, groups, moved in ((2, [4, 8, 4], "이동한 카드가 없습니다."), (3, [4, 9, 3], "1장이 이동했습니다.")):
         c.page.locator("#vd-w-3-plus").click()
-        _groups(c, [4, 8, 4], aid)
-        c.eq(_text(c, "#vd-w-3-value"), str(value), f"{aid} 예측 무게{value}")
+        _groups(c, groups, aid)
+        c.eq(_text(c, f"#vd-w-3-value"), str(value), f"{aid} 예측 무게{value}")
         live = c.page.locator("#vd-live").text_content()
-        c.expect(live.startswith("2장이 이동했습니다." if value == 2 else "이동한 카드가 없습니다."),
-                 f"{aid} 이동량 알림")
-        c.expect(all(t in live for t in ("보고 4장", "상담 8장", "보고하지 않음 4장")), f"{aid} 알림의 장수")
-        c.eq([_text(c, f"#vd-w-{i}-value") for i in (0, 1, 2, 4)], ["2", "2", "3", "1"], f"{aid} 다른 무게 유지")
-        c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["12", "2"], f"{aid} 문턱 유지")
+        c.expect(live.startswith(moved), f"{aid} 이동량 알림")
+        c.expect(all(t in live for t in (f"보고 {groups[0]}장", f"상담 {groups[1]}장", f"보고하지 않음 {groups[2]}장")), f"{aid} 알림의 장수")
+        c.eq([_text(c, f"#vd-w-{i}-value") for i in (0, 1, 2, 4)], ["2", "1", "3", "1"], f"{aid} 다른 무게 유지")
+        c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["12", "1"], f"{aid} 문턱 유지")
         c.eq(c.page.locator("#vd-board table, #vd-board #vd-card-score").count(), 0, f"{aid} 카드판 전면 점수표 없음")
     c.expect(c.page.locator("#vd-w-3-plus").is_disabled(), f"{aid} 무게3의 +만 비활성")
 
@@ -404,41 +415,52 @@ def t_12_1_7_uncertain(c: Ctx):
     for id_ in ("P-13", "P-14", "P-15", "P-16"):
         _has(c, "#vd-uncertain", id_, aid)
         c.page.locator(f"#vd-card-{id_}").click()
-        _has(c, "#vd-detail", "현재 과학으로 알 수 없다 — 이 게임이 정한 추적 뒤에도 판단하지 못한 가상 사례", aid)
+        _has(c, "#vd-detail", "현재 자료로는 판단할 수 없다 — 이 게임이 정한 추적 뒤에도 판단하지 못한 가상 사례", aid)
+        _has(c, "#vd-detail", "보고에 따른 조치 요청과 재검토·재연락 등록을 함께 표시", aid)
         _has(c, "#vd-detail", "미확정", aid)
         c.expect(not re.search(r"발병 범위[^<]*\d+\.\d+%", _text(c, "#vd-detail")), f"{aid} U 발병 숫자 없음")
         c.expect("이 게임이 정한 분류(가상의 추적 결과): 병원성" not in _text(c, "#vd-detail"), f"{aid} U 숨은 병원성 없음")
     for kind in ("r", "rc"):
         c.eq(sum(int(x) for x in c.page.locator(f"#vd-matrix-{kind} [data-vd-cell]").all_text_contents()), 12, f"{aid} U 제외 분모12")
     _has(c, "#vd-uncertain", "미확정 — 발병 범위를 추정하지 않음", aid)
+    # N1: 성찰에서도 동일한 VUS 분류 설명과 지침 문구를 확인한다.
+    _has(c, "#vd-uncertain", "의미불명 변이(VUS)는 보고 시점의 증거로 정하는 분류", aid)
+    _has(c, "#vd-uncertain", "이를 임상 결정에 쓰지 말라고 권고합니다", aid)
 
 
 def t_12_2_default(c: Ctx):
     _prep(c)
     _reveal(c)
     _matrix(c, "r", [4, 0, 2, 6], "12.2-1")
-    _matrix(c, "rc", [5, 1, 1, 5], "12.2-1")
+    _matrix(c, "rc", [6, 2, 0, 4], "12.2-1")
     _metrics(c, "r", ["4/6", "6/6", "0.7~100.0%"], "12.2-2")
-    _metrics(c, "rc", ["5/6", "5/6", "0.7~24.6%"], "12.2-2")
+    _metrics(c, "rc", ["6/6", "4/6", "0.8~9.5%"], "12.2-2")
+    # 검토 M2: 열 머리 '비병원성'에 양성(良性) 괄호를 붙이지 않고, 양성 판정(陽性)을 따로 풀이한다.
+    c.eq(c.page.locator('#vd-matrix-r th[scope="col"]').all_text_contents()[1:], ["병원성", "비병원성"], "12.2-1 열 머리")
+    _has(c, "#vd-results", "양성 판정’은 보고 쪽으로 분류했다는 뜻(陽性)", "12.2-1")
+    # 검토 H1: 빈도만 쓴 분류의 한계를 결과에서 밝힌다.
+    _has(c, "#vd-results", "집단 내 빈도 하나만 쓰면 어떤 문턱에서도 12장 가운데 4장 이상을 잘못 분류합니다", "12.2-1")
     _final(c, [1, 2, 3, 4], "12.2-3")
     for text in ("1단계 보고 분류(정책 판단 보류)", "미성년 P-03", "예방·치료법 없음 P-04", "2차 발견", "실제로 전할지는 정하지 않았습니다."):
         _has(c, "#vd-results", text, "12.2-3")
-    _resources(c, [3, 1, 1, 3], 10, "12.2-4")
+    _resources(c, [3, 1, 1, 3], 12, "12.2-4")
     _has(c, "#vd-wait", "대기 발생", "12.2-4")
+    c.eq(_text(c, "#vd-recontact"), "0", "12.2-4 보고한 미확정 없음")
+    _has(c, "#vd-over", "이 카드 묶음에서는 없음", "12.2-4")
     c.eq(set(c.page.locator("#vd-missed [data-vd-missed]").evaluate_all("es=>es.map(e=>e.dataset.vdMissed)")),
          {"P-05", "P-06"}, "12.2-4 놓친 카드 둘")
     _has(c, '#vd-missed [data-vd-missed="P-06"]', "상담 후 결정에 남음", "12.2-4")
     _no_grade(c, "12.2-4")
     _onset(c, "40-70", "40~70%", "0.3~70.0%", "12.2-5")
-    for key, value, r, rc, aid in (("End", "50", "3.8~100.0%", "3.9~63.0%", "12.2-6"),
-                                  ("Home", "2", "0.1~100.0%", "0.1~6.1%", "12.2-7")):
+    for key, value, r, rc, aid in (("End", "50", "3.8~100.0%", "4.3~35.3%", "12.2-6"),
+                                  ("Home", "2", "0.1~100.0%", "0.1~2.1%", "12.2-7")):
         c.page.locator("#vd-pi").press(key)
         c.eq(c.page.locator("#vd-pi").input_value(), value, f"{aid} π 키보드 끝점")
         _metrics(c, "r", ["4/6", "6/6", r], aid)
-        _metrics(c, "rc", ["5/6", "5/6", rc], aid)
-        _groups(c, [4, 6, 6], aid)
+        _metrics(c, "rc", ["6/6", "4/6", rc], aid)
+        _groups(c, [4, 8, 4], aid)
         _final(c, [1, 2, 3, 4], aid)
-        _resources(c, [3, 1, 1, 3], 10, aid)
+        _resources(c, [3, 1, 1, 3], 12, aid)
     for _ in range(8):
         c.page.locator("#vd-pi").press("ArrowRight")
     c.eq(c.page.locator("#vd-pi").input_value(), "10", "12.2-7 π 기본값 복귀")
@@ -454,7 +476,7 @@ def t_12_2_default(c: Ctx):
     c.page.locator("#vd-next").click()
     c.page.wait_for_selector(".qcard")
     _keys(c, _expected_keys(moved=True), "12.2-8")
-    c.eq(c.page.locator(".qdeck .qcard").count(), 8, "12.2-8 면접 카드8개")
+    c.eq(c.page.locator(".qdeck .qcard").count(), 6, "12.2-8 면접 카드6개")
     for text in c.page.locator(".qdeck .qcard").all_text_contents():
         c.expect("연습용 질문" in text and "보고서 문항" not in text, "12.2-8 모든 카드 연습용 표시")
     c.check("12.2-8 면접실")
@@ -470,8 +492,15 @@ def t_12_3_1_extreme_report(c: Ctx):
         _matrix(c, k, [6, 6, 0, 0], aid)
         _metrics(c, k, ["6/6", "0/6", ppv], aid)
     _f(c, [6, 6, 0, 0], aid)
+    # 결함 0·7: 미확정 4장의 요청 [2,0,2,2]도 합산하고 재연락을 병기한다.
     _resources(c, [10, 2, 6, 7], 16, aid)
+    _has(c, "#vd-uncertain-actions", "정기 영상 검사 2건", aid)
+    c.eq(_text(c, "#vd-recontact"), "4", f"{aid} 재검토·재연락 등록 4건")
     _final(c, list(range(1, 17)), aid)
+    # 검토 M6: 비병원성인데 보고한 카드와 그 부담을 따로 보여 준다.
+    c.eq(c.page.locator("#vd-over [data-vd-over]").evaluate_all("es=>es.map(e=>e.dataset.vdOver)"),
+         [i for i in ORDER if i in {f"P-{n:02}" for n in range(7, 13)}], f"{aid} 비병원성 보고 6장")
+    _has(c, "#vd-results", "불필요한 정기 관찰이나 예방적 수술 상담", aid)
     _has(c, "#vd-results", "전부 양성인 규칙에서는 새 구별 정보가 없어 π와 같습니다.", aid)
     _has(c, "#vd-uncertain", "미확정 — 발병 범위를 추정하지 않음", aid)
     _onset(c, "40-70", "40~70%", "0.4~0.7%", aid)
@@ -500,6 +529,7 @@ def t_12_3_3_prediction_policy(c: Ctx):
     _policy(c, [True, False, False, True])
     preview = _text(c, "#vd-policy-preview")
     c.expect("3장" in preview and "2건" in preview, f"{aid} 미리보기 최종3·혈족2")
+    c.expect("상담에서 제외 P-04" in preview, f"{aid} 정책이 상담 칸에도 적용(M3)")
     c.expect(not re.search(r"\bTP\b|\bFP\b|병원성으로 설정|참값", preview), f"{aid} 공개 전 미리보기 참값 없음")
     _has(c, "#vd-family-warning", "P-01은 혈족 연락을 거부했습니다.", aid)
     _contrast(c, "#vd-family-warning, #vd-policy p, #vd-policy .vd-source", aid)
@@ -509,14 +539,16 @@ def t_12_3_3_prediction_policy(c: Ctx):
     _matrix(c, "r", [2, 2, 4, 4], aid)
     _matrix(c, "rc", [5, 3, 1, 3], aid)
     _f(c, [1, 1, 5, 5], aid)
-    _resources(c, [3, 1, 1, 0], 10, aid)
+    _resources(c, [3, 1, 1, 0], 9, aid)
+    c.eq(_text(c, "#vd-recontact"), "1", f"{aid} 보고한 미확정 P-13은 재검토·재연락 등록")
+    _has(c, "#vd-consult-removed", "P-04", aid)
     _onset(c, "50-80", "50~80%", "0.0~5.5%", aid)
     _onset(c, "20-50", "20~50%", "0.0~3.5%", aid)
     _has(c, "#vd-results", "표시 자릿수 때문에 하한이 0.0%로 보일 수 있습니다. 위험이 없다는 뜻은 아닙니다.", aid)
     _has(c, "#vd-uncertain", "P-13", aid)
     _has(c, "#vd-uncertain", "미확정 — 발병 범위를 추정하지 않음", aid)
     c.page.locator("#vd-lock").click()
-    _keys(c, _expected_keys("consult", "prediction", "relatives"), aid)
+    _keys(c, _expected_keys("consult", "prediction", "relatives-on"), aid)
 
 
 def t_12_3_4_policy_changes(c: Ctx):
@@ -524,9 +556,9 @@ def t_12_3_4_policy_changes(c: Ctx):
     _seed(c, **CASES["D"])
     _reveal(c, [True, False, False, True])
     before = c.page.evaluate("KCP.games['s-variant-desk'].model.compute(KCP.load('s-variant-desk').game).ranges")
-    for key, yes, expected, demand in (("minors", True, [2, 3, 7, 13], 11),
+    for key, yes, expected, demand in (("minors", True, [2, 3, 7, 13], 10),
                                         ("noCare", True, [2, 3, 7, 8, 13], 12),
-                                        ("secondary", False, [2, 7, 8, 13], 11)):
+                                        ("secondary", False, [2, 7, 8, 13], 10)):
         c.page.locator(f"#vd-policy-{key}-{'yes' if yes else 'no'}").check()
         _hidden(c, "#vd-results", aid)
         _enabled(c, "#vd-export", True, aid)
@@ -548,11 +580,11 @@ def t_12_3_5_all_policies(c: Ctx):
     _prep(c)
     _reveal(c, [True]*4)
     _matrix(c, "r", [4, 0, 2, 6], aid)
-    _matrix(c, "rc", [5, 1, 1, 5], aid)
+    _matrix(c, "rc", [6, 2, 0, 4], aid)
     _final(c, [1, 2, 3, 4], aid)
     _f(c, [4, 0, 2, 6], aid)
-    _resources(c, [3, 1, 1, 3], 11, aid)
-    _has(c, "#vd-results", "혈족 고지 검토 1건", aid)
+    _resources(c, [3, 1, 1, 3], 14, aid)
+    _has(c, "#vd-results", "혈족 고지 검토 2건", aid)
     _onset(c, "40-70", "40~70%", "0.3~70.0%", aid)
 
 
@@ -577,18 +609,19 @@ def t_12_3_6_zero_weights(c: Ctx):
 def t_12_3_7_thresholds(c: Ctx):
     aid = "12.3-7"
     _prep(c)
-    # range에 실제 키보드 입력. t1 12 -> 2에서 t2가1로 밀린다.
+    # range에 실제 키보드 입력. 기본 t1 12, t2 1에서 t1을 1로 내리면 t2가 0으로 밀린다.
     c.page.locator("#vd-t1").focus()
-    for _ in range(10):
+    for _ in range(11):
         c.page.keyboard.press("ArrowLeft")
-    c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["2", "1"], f"{aid} T1이 T2에 닿으면 T2=T1-1")
-    _has(c, "#vd-live", "두 분류선이 겹치지 않도록", aid)
+    c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["1", "0"], f"{aid} T1이 T2에 닿으면 T2=T1-1")
+    _has(c, "#vd-live", "두 분류선이 겹치지 않도록 상담선을 0에 두었습니다.", aid)
     c.page.locator("#vd-t2").press("ArrowRight")
-    c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["3", "2"], f"{aid} T2가 T1에 닿으면 T1=T2+1")
+    c.eq([c.page.locator(f"#vd-{k}").input_value() for k in ("t1", "t2")], ["2", "1"], f"{aid} T2가 T1에 닿으면 T1=T2+1")
+    _has(c, "#vd-live", "보고선을 2에 두었습니다.", aid)
     c.page.locator("#vd-w-0-plus").click()
     c.wait_saved()
     game = c.ls(KEY)["game"]
-    c.eq([game["t1"], game["t2"]], [3, 2], f"{aid} 저장된 문턱 엄격부등식·무게 변경 때 유지")
+    c.eq([game["t1"], game["t2"]], [2, 1], f"{aid} 저장된 문턱 엄격부등식·무게 변경 때 유지")
 
 
 def t_12_4_1_manual_f(c: Ctx):
@@ -602,7 +635,7 @@ def t_12_4_1_manual_f(c: Ctx):
     _has(c, "#vd-card-P-05", "수동", aid)
     c.expect("수동" in c.page.locator("#vd-card-P-05").get_attribute("aria-label"), f"{aid} 수동 aria 표식")
     _manual(c, "P-06", "R", "판독 근거의 한계를 설명하며 보고하겠습니다.")
-    _groups(c, [6, 5, 5], aid)
+    _groups(c, [6, 6, 4], aid)
     _reveal(c)
     _matrix(c, "r", [6, 0, 0, 6], aid)
     _metrics(c, "r", ["6/6", "6/6", "1.5~100.0%"], aid)
@@ -719,7 +752,12 @@ def t_12_4_5_branch_prediction(c: Ctx):
 
 
 def t_12_4_5_branch_segregation(c: Ctx):
-    _branch(c, {"weights": [0, 2, 3, 1, 1]}, _expected_keys(evidence="segregation-zero"))
+    _branch(c, {"weights": [0, 1, 3, 1, 1]}, _expected_keys(evidence="segregation-zero"))
+
+
+def t_12_4_5_branch_frequency(c: Ctx):
+    # 검토 H1: 빈도에 가계·기능보다 큰 무게를 두면 드물지만 비병원성인 P-11·P-12를 묻는다.
+    _branch(c, {"weights": [1, 3, 2, 1, 1]}, _expected_keys(evidence="frequency"))
 
 
 def t_12_4_5_branch_pi(c: Ctx):
@@ -754,12 +792,25 @@ def _policy_branch_test(extra, values, result, evidence, key):
     return run
 
 
-# 정책 버킷 각각을 독립 컨텍스트에서 실행한다. 첫 일치만 반환해야 한다.
-t_12_4_5_branch_minors = _policy_branch_test({}, [True, True, True, False], "balance", "evidence-pair", "minors")
-t_12_4_5_branch_minors_off = _policy_branch_test({}, [True, False, True, False], "balance", "evidence-pair", "minors-off")
-t_12_4_5_branch_secondary = _policy_branch_test(CASES["B"], [True, False, False, False], "more-miss", "evidence-pair", "secondary-nocare")
-t_12_4_5_branch_nocare = _policy_branch_test({"weights": [2, 3, 3, 0, 1], "t1": 18, "t2": 10}, [False]*4, "balance", "evidence-pair", "nocare-off")
-t_12_4_5_branch_relatives_off = _policy_branch_test({"weights": [2, 2, 2, 1, 1], "t1": 22, "t2": 0}, [False, False, True, False], "consult", "evidence-pair", "relatives-off")
+# 명세 8.4 + 총괄 B: 정책 전 카드 분류가 같은 상태에서 켬/끔 양쪽을 묻는다.
+# 미성년·조치 수단은 목적 안 카드, 중복 표식은 2차 발견에서 다룬다. 다른 정책 값으로 후보를 거르지 않는다.
+for _key, _target in (("minors", "P-11"), ("nocare", "P-08"), ("secondary", "P-12"), ("relatives", "P-09")):
+    for _on in (True, False):
+        _extra = {"t1": 47, "t2": 46, "overrides": {_target: {"to": "R", "reason": "이 카드의 정책 갈등을 검토합니다."}}}
+        _values = [True, True, True, False]
+        _values[{"secondary": 0, "minors": 1, "nocare": 2, "relatives": 3}[_key]] = _on
+        globals()[f"t_12_4_5_branch_{_key}_{'on' if _on else 'off'}"] = _policy_branch_test(
+            _extra, _values, "more-miss", "manual", f"{_key}-{'on' if _on else 'off'}")
+
+
+def t_12_4_5_consult_filter(c: Ctx):
+    # 검토 M3: 예시 나(정책 모두 끔)에서 미성년 P-03은 상담 칸에 있어도 참여자 상담에서 빠진다.
+    aid = "12.4-5"
+    _seed(c, weights=[2, 3, 3, 0, 1], t1=18, t2=10)
+    _reveal(c, [False]*4)
+    _final(c, [1, 2], aid)
+    c.eq(_text(c, "#vd-consult-removed"), "P-03", f"{aid} 상담에서 제외 P-03")
+    _resources(c, [2, 1, 1, 1], 3, aid)
 
 
 def t_12_4_6_replan_unseen(c: Ctx):
@@ -800,6 +851,8 @@ def t_12_4_6_replan_seen(c: Ctx):
         _enabled(c, f'.phases button[data-phase="{p}"]', False, aid)
     _reveal(c)
     c.page.locator("#vd-lock").click()
+    # 검토 M7: 결과를 본 뒤 다시 계획하면 과적합을 묻는 질문이 π 질문 자리에 온다.
+    _keys(c, _expected_keys(replanned=True), aid)
     c.phase("room")
     _has(c, ".recap", "결과 공개 뒤 다시 계획함", aid)
     _has(c, "#room-orphans", "이전 질문의 답변", aid)
@@ -942,6 +995,13 @@ def t_12_5_reflect_gate(c: Ctx):
     c.page.locator("#openEx").click()
     for text in ("가. 놓침 줄이기 우선", "나. 과한 개입 피하기 우선", "다. 선택권 중심", "확률 해설", "이 모형이 단순화한 것"):
         _has(c, "#exwrap", text, aid)
+    # 검토 M1·M4·H2·Low: 실제 지침과의 차이, 결함 9 예시 가의 혼합 정책, VUS 재분류, 차별 금지 조항을 밝힌다.
+    exwrap = c.page.locator("#exwrap").text_content()
+    for text in ("다섯 단계", "(BA1)", "(PVS1)", "de novo", "생식세포 변이만", "Pejaver", "Mersch", "약 90%",
+                 "제46조", "ACMG SF", "미성년 참여자의 성인기 위험 보고와 참여자 거부 시 혈족 고지 검토는 끄겠습니다", "참여자 상담 11건",
+                 "0.1~2.1%", "4.3~35.3%"):
+        c.expect(text in exwrap, f"{aid} 성찰 해설에 {text}")
+    c.expect("현재 과학으로" not in exwrap, f"{aid} ‘현재 과학으로 알 수 없다’ 표현 없음")
     c.expect(c.page.locator("#exwrap").is_visible(), f"{aid} 공통 관문 뒤 해설 보임")
     c.eq(c.page.locator("#exwrap #openEx, #exwrap textarea, #exwrap button").count(), 0, f"{aid} 게임 자체 관문·적용 버튼 없음")
     c.expect(c.page.evaluate("typeof KCP.games['s-variant-desk'].afterReflect==='undefined'"), f"{aid} 자체 afterReflect 없음")
@@ -970,8 +1030,8 @@ def t_12_5_visual(c: Ctx):
     _contrast(c, "#vd-prep p, #vd-prep .vd-source, #vd-prep .vd-notice, #vd-prep [data-vd-metric], #vd-onset li, #vd-results svg text", aid)
     svgs = c.page.locator("#vd-results svg")
     c.eq(svgs.count(), 2, f"{aid} R/RC에만 범위 SVG")
-    # F 검산: R=(6,0,0,6), RC=(6,1,0,5). 표 순서가 R 다음 RC다.
-    for svg, tp, tn in zip(svgs.all(), (6, 6), (6, 5)):
+    # F 검산: R=(6,0,0,6), RC=(6,2,0,4). 표 순서가 R 다음 RC다.
+    for svg, tp, tn in zip(svgs.all(), (6, 6), (6, 4)):
         _graph(c, svg, tp, tn, aid)
     before = _load(c)["game"]
     c.page.emulate_media(reduced_motion="reduce")

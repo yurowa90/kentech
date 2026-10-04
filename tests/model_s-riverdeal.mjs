@@ -1,9 +1,19 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 // 기대값은 사용자 제공 수정 명세 5·6·8·12절에서만 옮겼다.
 // 실행: node tests/model_s-riverdeal.mjs (전수 탐색도 기본 실행)
+// 전수 탐색은 같은 파일을 worker_threads로 나눠 실행한다. 조항 28개를 번갈아 나누므로 탐색 영역은 그대로다.
+// RD_SWEEP_WORKERS=1 이면 worker 하나로 순서대로 실행한다.
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import os from 'node:os';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 
 const source = fileURLToPath(new URL('../games/s-riverdeal.js', import.meta.url));
 const KCP = {
@@ -49,6 +59,40 @@ const orders = {proportional:null, agFirst:['ag','city','env'], cityFirst:['city
 const parties = ['dam','ag','city','eco'];
 const names = ['은여울댐 공사','들녘 농민조합','여울시 상수도사업소','하구 어민·생태 단체'];
 const plan = (ag,city,env,f=0,save=false,link=false,pulse=false,order='proportional') => ({ag,city,env,f,save,link,pulse,order});
+// 12.4-7 전수 탐색 한 조각: 유효 조항 조합 가운데 index%parts===part인 것만 계산한다.
+// 건조 감량은 공사의 공통 조건이므로 순서와 무관한 shortage만 전달한다.
+// 평년 감량이 없으면 네 순서의 평년·습윤 결과가 같아 4배로 집계한다.
+// 평년 감량이 있으면 네 순서를 모두 실제 계산한다. 탐색 영역은 축소하지 않는다.
+function sweepPart(part,parts) {
+  const hn=new Array(256).fill(0),hw=new Array(256).fill(0),bits=a=>a.reduce((v,s,i)=>v|(s==='accept'?1<<i:0),0);
+  let count=0,clauses=0,index=-1,maxSevere=0;
+  function histogram(p,dry,rn,rw,mult) {
+    hn[bits(m.response(rn,dry,0))*16+bits(m.response(rn,dry,15))]+=mult;
+    hw[bits(m.response(rw,dry,0))*16+bits(m.response(rw,dry,15))]+=mult;
+    // 평년 심각 미달 당사자 수(기준 상승과 무관). 개별 질문 3자리 보장의 근거.
+    const sev=m.severe(rn).filter(Boolean).length;if(sev>maxSevere)maxSevere=sev;
+    count+=mult;
+  }
+  for(const f of [0,.1,.2,.3])for(const save of [false,true])for(const link of [false,true])for(const pulse of [false,true]) {
+    if(150*f+5*Number(save)+25*Number(link)>60)continue;
+    if(++index%parts!==part)continue;
+    clauses++;
+    for(let ag=0;ag<=80;ag++)for(let city=0;city<=80;city++)for(let env=0;env<=80;env++) {
+      const p=plan(ag,city,env,f,save,link,pulse),rp=ag+city+env+(pulse?4:0);
+      const dry={shortage:Math.max(0,rp-(99+(link?10:0)))};
+      const normalCuts=rp>139+(link?10:0),wetCuts=rp>184+(link?10:0);
+      const rn=m.simulate(p,55),rw=m.simulate(p,100);
+      if(!normalCuts)histogram(p,dry,rn,rw,4);
+      else for(const order of Object.keys(orders)) {
+        p.order=order;
+        histogram(p,dry,order==='proportional'?rn:m.simulate(p,55),wetCuts&&order!=='proportional'?m.simulate(p,100):rw,1);
+      }
+    }
+  }
+  return {hn,hw,count,clauses,maxSevere};
+}
+if(!isMainThread) parentPort.postMessage(sweepPart(workerData.part,workerData.parts));
+else {
 const plans = {
   Z:plan(0,0,0), X:plan(80,80,80,0,false,false,true,'envFirst'),
   N:plan(50,35,20), D:plan(50,35,20), L:plan(43,33,15,.2,true,false,true),
@@ -187,44 +231,62 @@ function expectedQuestions(state) {
   const f=(x,d=3)=>x===null?'계산 불가':x.toFixed(d);
   const decisions=L.rounds.map(r=>r.decision).filter(Boolean),rejects=decisions.filter(d=>d.action==='reject');
   const latestReject=rejects.at(-1),hard=decisions.find(d=>d.id===L.final.hardDecisionId)||decisions.at(-1),applied=decisions.filter(d=>d.action==='apply').length;
-  const hardText=hard?`${names[parties.indexOf(hard.party)]}의 역제안을 가장 다루기 어려운 요구로 골랐습니다. 이를 ${hard.action==='apply'?'반영':'거절'}한 기준은 무엇인가요?`:'이번 역할극에서는 역제안 처리 없이 동의가 모였습니다. 가장 동의하기 어려웠던 요구는 무엇이었나요?';
-  const rejectText=latestReject?` ${names[parties.indexOf(latestReject.party)]}의 요구를 거절하며 “${latestReject.reason}”라고 적었습니다. 그 이유가 상대에게도 설득력이 있는지 설명해 주세요.`:'';
-  const qs=[{k:'rd-c1',tag:'공통 1',q:'상정한 배분안과 조항을 설명해 주세요. 조정의 기준과 그 무게를 먼저 말하고, 이 안으로 얻는 것과 잃는 것을 한 문장으로 정리해 주세요.'},
-    {k:'rd-c2',tag:'공통 2',q:hardText+rejectText+' 반문을 다시 받는다면 이 안을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요.'},
-    {k:'rd-c3',tag:'공통 3',q:'물고기와 갯벌 생물은 협상 테이블에서 말할 수 없습니다. 이 안에서 그들의 몫은 누가, 어떻게 대변했나요? 대변자가 놓칠 수 있는 것은 무엇인가요?'}];
-  const indiv=[],partyQs=[],damMissing=Number(N.end<110+(L.mask&1)-EPS)+Number(D.shortage>EPS),cityMissing=[];
+  const hardText=hard?`${names[parties.indexOf(hard.party)]}의 역제안을 가장 다루기 어려운 요구로 골랐습니다. 이를 ${hard.action==='apply'?'반영':'거절'}했습니다.`:'이번 역할극에서는 역제안 처리 없이 동의가 모였습니다.';
+  // 명세 8절: 가장 어려운 결정과 최신 거절이 같으면 당사자·거절 행동을 중복 서술하지 않는다.
+  const rejectText=latestReject?` ${latestReject.id===hard?.id?"그때 거절 이유로":names[parties.indexOf(latestReject.party)]+"의 요구를 거절하며"} “${latestReject.reason}”라고 적었습니다.`:'';
+  // N4·N6: 기준 먼저, 미래 비용·과학 추론 요청 및 실제 감량 선택 문안을 검증한다.
+  const qs=[{k:'rd-c1',tag:'공통 1 · 기준 먼저 · 얻는 것과 잃는 것',q:'어떤 배분 기준을 앞세웠는지 먼저 밝히고, 이 안으로 얻는 것과 잃는 것을 한 문장으로 말해 주세요.'},
+    {k:'rd-c2',tag:'공통 2 · 고침·유지와 이유',q:hardText+rejectText+' 상대가 다시 반문한다면, 수용·거절 기준 하나에 비추어 이 안을 고치거나 유지할 이유를 말해 주세요.'},
+    {k:'rd-c3',tag:'공통 3',q:'물고기와 갯벌 생물은 협상 테이블에서 말할 수 없습니다. 이 안에서 그들의 몫을 대변한 방식의 한계는 무엇인가요?'}];
+  const indiv=[],situ=[],damMissing=Number(N.end<110+(L.mask&1)-EPS)+Number(D.shortage>EPS),cityMissing=[];
   if(N.supply<.95+.01*((L.mask>>2)&1)-EPS)cityMissing.push('공급량 부족');
   if(N.C===null||N.C>.90-.01*((L.mask>>2)&1)+EPS)cityMissing.push('수질 기준 미달');
   const issue=cityMissing.length===2?KCP.josa(cityMissing[0],'와/과')+' '+cityMissing[1]:cityMissing[0]||'';
-  if(missing(3))partyQs.push({k:'rd-eco',tag:'개별 · 생태 부담',q:`하구 모형 유량은 ${f(N.Qe)}m³/s, 수온은 ${f(N.T,2)}℃, DO는 ${N.DO===null?'계산 불가':f(N.DO)+'mg/L'}입니다. 수온과 유량·산소 소모로 이 값을 설명하고, 생물과 어업인에게 돌아가는 부담을 줄일 다른 방법을 제안해 주세요.`});
-  if(missing(2))partyQs.push({k:'rd-city',tag:'개별 · 생활 부담',q:`도시 공급률은 ${f(100*N.supply,1)}%, 취수 수질 지표는 ${f(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(issue,'을/를')} 설명해 주세요. 제한 급수가 필요하다면 가장 먼저 영향을 받는 시민은 누구인가요?`});
-  if(missing(1))partyQs.push({k:'rd-ag',tag:'개별 · 생계 부담',q:`농가 소득 지수는 ${f(N.income)}입니다. 이 배분에서 농가가 잃는 몫을 무엇으로 정당화하나요? 물을 다른 용도에 더 주었다면 그 기준을 말하고, 부담을 줄일 대안을 제안해 주세요.`});
-  if(missing(0))indiv.push({k:'rd-dam-future',tag:'개별 · 미래 비용',q:`평년 기말 저수량은 ${f(N.end,2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. 가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?`},
-    {k:'rd-dam-structure',tag:'개별 · 비축의 대표성',q:'미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자는 직접 반대할 수 없다는 구조를 어떻게 보나요? 이 안을 고치겠습니까, 유지하겠습니까? 이유도 말해 주세요.'});
-  if(partyQs.length)indiv.push(partyQs.shift());
+  // 8절 개정: 당사자 질문은 심각도(심각 미달 0 < 거부 1 < 조건부 2) → 기준과의 상대 거리(큰 것 먼저) → 당사자 순.
+  const up=i=>(L.mask>>i)&1, rel=(v,t,upper)=>v===null?Infinity:upper?(v-t)/t:(t-v)/t;
+  const crit=[[[N.end,110+up(0),false],[D.shortage,0,'dry']],[[N.income,.85+.01*up(1),false]],
+    [[N.supply,.95+.01*up(2),false],[N.C,.90-.01*up(2),true]],[[N.Qe,(N.pulseEffective?3:4)+.1*up(3),false],[N.DO,5+.1*up(3),false]]];
+  const unmetGap=([v,t,kind])=>kind==='dry'?(v>EPS?v/D.Rplan:null):v===null?Infinity:(kind?v>t+EPS:v<t-EPS)?rel(v,t,kind):null;
+  const isSevere=[N.end<80-EPS,N.income<.70-EPS,N.supply<.85-EPS||(N.C!==null&&N.C>1+EPS),N.Qe<(N.pulseEffective?2:3)-EPS||(N.DO!==null&&N.DO<4-EPS)];
+  const others=[1,2,3].some(missing);
+  const pq=[
+    {k:'rd-dam-future',tag:'개별 · 미래 비용',q:`평년 기말 저수량은 ${f(N.end,2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. ${others?"미래 사용자는 직접 반대할 수 없습니다. 가을에도 비가 오지 않을 때 그들이 질 비용을 고려해, 비축을 깎는 것이 지금 당사자들 사이에서 쉬운 타협이 되지 않았는지 설명해 주세요.":"가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?"}`},
+    {k:'rd-ag',tag:'개별 · 생계 부담',q:`농가 소득 지수는 ${f(N.income)}입니다. 이 배분에서 농가가 지는 부담을 줄일 대안 하나를 제안해 주세요.`},
+    {k:'rd-city',tag:'개별 · 생활 부담',q:`도시 공급률은 ${f(100*N.supply,1)}%, 취수 수질 지표는 ${f(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(issue,'을/를')} 감수할 때 가장 먼저 영향을 받는 시민은 누구인가요?`},
+    {k:'rd-eco',tag:'개별 · 생태 부담',q:`하구 모형 유량은 ${f(N.Qe)}m³/s, 수온은 ${f(N.T,2)}℃, DO는 ${N.DO===null?'계산 불가':f(N.DO)+'mg/L'}입니다. ${N.DO === null ? "물이 흐르지 않아 DO를 계산할 수 없다는 한계를 근거로," : "수온·유량·산소 소모가 이 DO 값에 미친 영향을 근거로,"} 생물과 어업인에게 돌아가는 부담을 설명해 주세요.`}];
+  const order=[0,1,2,3].filter(missing).map(i=>({i,rank:isSevere[i]?0:N.responses[i]==='reject'?1:2,gap:Math.max(...crit[i].map(unmetGap).filter(g=>g!==null))}))
+    .sort((a,b)=>a.rank-b.rank||b.gap-a.gap||a.i-b.i);
+  const partyQs=order.map(o=>pq[o.i]);
+  const must=Math.max(order.filter(o=>o.rank===0).length,Math.min(2,order.length));
+  if(missing(0)&&!others)situ.push({k:'rd-dam-structure',tag:'개별 · 비축의 대표성',q:'미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자의 몫을 고려해 이 안을 고치거나 유지할 이유를 말해 주세요.'});
+  if(L.mask)situ.push({k:'rd-repeat',tag:'개별 · 반복 거절',q:`${names.filter((_,i)=>(L.mask>>i)&1).join(', ')}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요?`});
+  if(applied>=3)situ.push({k:'rd-applied-three',tag:'개별 · 조정의 일관성',q:`역제안을 ${applied}번 반영했습니다. 요구를 받아들이면서도 유지하려 한 기준은 무엇인가요?`});
   const dissentText=L.mode==='role'?`최종 역할극 반응에서 ${KCP.josa(diss.join(', '),'이/가')} 수용하지 않았습니다.`:`최종 자동 반응에서 ${diss.join(', ')}의 모형 기준을 채우지 못했습니다.`;
-  if(diss.length)indiv.push({k:'rd-dissent',tag:'개별 · 상정 절차',q:dissentText+' 이 안을 상정하는 절차적 근거는 무엇이며, 그 당사자를 다시 협상에 참여시키려면 무엇을 바꾸겠습니까?'});
-  if(L.mask)indiv.push({k:'rd-repeat',tag:'개별 · 반복 거절',q:`${names.filter((_,i)=>(L.mask>>i)&1).join(', ')}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요? 실제 협상에서도 기준이 반드시 오를까요?`});
-  if(D.shortage>EPS)indiv.push({k:'rd-dry-cut',tag:'개별 · 건조 감량',q:`건조 전망에서 계획대로 방류하면 사수위(40)보다 ${f(D.shortage,2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order==='proportional'?'같은 비율로 줄이는 방식을':{agFirst:'농업부터 줄이는 순서를',cityFirst:'도시부터 줄이는 순서를',envFirst:'하천유지부터 줄이는 순서를'}[L.proposal.order]} 택한 이유와 먼저 부담을 지는 사람·생물을 설명해 주세요.`});
-  if(N.cost>=50)indiv.push({k:'rd-tax',tag:'개별 · 테이블 밖 비용',q:`대책비 ${f(N.cost,0)}억 원을 쓰는 안입니다. 유역 밖 납세자가 이 비용을 함께 내야 하는 이유는 무엇이며, 그들에게 어떤 설명과 참여 기회를 제공하겠습니까?`});
-  if(applied>=3)indiv.push({k:'rd-applied-three',tag:'개별 · 조정의 일관성',q:`역제안을 ${applied}번 반영했습니다. 조정위원이 요구를 받아들이는 동안 잃을 수 있는 기준이나 신뢰는 무엇인가요? 유지한 기준과 바꾼 기준을 나누어 말해 주세요.`});
-  if(W.responses.every(x=>x==='accept')&&!N.responses.every(x=>x==='accept')&&!D.responses.every(x=>x==='accept'))indiv.push({k:'rd-wet-only',tag:'개별 · 비에 기대는 합의',q:'이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 충분히 오기를 기대는 합의인가요? 비가 적으면 비용을 누가 지도록 약속하겠습니까?'});
-  indiv.push(...partyQs);
-  if(indiv.length<2)indiv.push({k:'rd-order-reason',tag:'개별 · 감량의 원칙',q:'부족 시 감량 순서를 정하거나 비례 감량을 유지한 기준은 무엇인가요? 계획을 세우기 어려워지는 부담을 누가 지는지도 설명해 주세요.'});
-  const lastQ=applied>0||L.mask!==0?{k:'rd-divergent',tag:'발산 · 모형 밖 대안',q:'하류로 내려가면서 산소가 다시 녹아드는 과정인 재폭기와 유기물 분해를 모형에 넣으면 판단이 달라질까요? 하수 재이용이나 해수 담수화 시설이 생기면 협상 구도와 비용 부담은 어떻게 바뀔까요? 안을 고치거나 유지할 이유를 말해 주세요.'}:
-    {k:'rd-science',tag:'과학 · 회귀수와 희석',q:'같은 물이라도 도시가 쓸 때와 농업이 쓸 때 이 모형의 하구로 돌아오는 양이 다릅니다. 회귀수와 희석으로 자신의 배분을 설명하고, 회귀수 비율이 달라지면 판단을 고칠지 말해 주세요.'};
-  return qs.concat(indiv.slice(0,5),lastQ);
+  if(diss.length)situ.push({k:'rd-dissent',tag:'개별 · 상정 절차',q:dissentText+' 그 당사자가 수용하지 않은 안을 상정할 절차적 근거는 무엇인가요?'});
+  if(D.shortage>EPS)situ.push({k:'rd-dry-cut',tag:'개별 · 건조 감량',q:`건조 전망에서 계획대로 방류하면 사수위 저수량(40백만 m³)보다 ${f(D.shortage,2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order==='proportional'?'같은 비율로 줄이는 방식을':{agFirst:'농업부터 줄이는 순서를',cityFirst:'도시부터 줄이는 순서를',envFirst:'하천유지부터 줄이는 순서를'}[L.proposal.order]} 택했습니다. 감량 부담을 지는 사람·생물에게 이 방식의 근거를 설명해 주세요.`});
+  if(N.cost>=50)situ.push({k:'rd-tax',tag:'개별 · 테이블 밖 비용',q:`대책비 ${f(N.cost,0)}억 원을 쓰는 안입니다. 유역 밖 납세자에게 어떤 참여 기회를 제공하겠습니까?`});
+  if(W.responses.every(x=>x==='accept')&&!N.responses.every(x=>x==='accept')&&!D.responses.every(x=>x==='accept'))situ.push({k:'rd-wet-only',tag:'개별 · 비에 기대는 합의',q:'이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 적으면 비용을 누가 지도록 약속하겠습니까?'});
+  // 개별 질문은 최대 3개: 반드시 묻는 당사자 → 상황 질문 → 남은 당사자.
+  indiv.push(...partyQs.slice(0,must),...situ,...partyQs.slice(must));
+  indiv.length=Math.min(indiv.length,3);
+  if(indiv.length<2)indiv.push({k:'rd-order-reason',tag:'개별 · 감량의 원칙',q:`부족 시 ‘${{proportional:'미지정(비례 감량)',agFirst:'농업→도시→하천',cityFirst:'도시→하천→농업',envFirst:'하천→농업→도시'}[L.proposal.order]}’ 방식으로 감량하기로 했습니다. 이 방식 때문에 계획을 세우기 어려워지는 부담은 누가 지나요?`});
+  // 명세 8절 rd-divergent/rd-science·10절 한계: 재폭기·분해 및 회귀수·희석을 보존하고 요청은 하나로 묶는다.
+  const lastQ=applied>0||L.mask!==0?{k:'rd-divergent',tag:'발산 · 모형 밖 대안',q:'대기에서 산소가 다시 녹아드는 재폭기와 산소를 소비하는 유기물 분해는 이 모형에서 빠져 있습니다. 이 과정이나 하수 재이용·해수 담수화 중 하나를 고려해, 이 안을 고치거나 유지할 이유를 말해 주세요.'}:
+    {k:'rd-science',tag:'과학 · 회귀수와 희석',q:'같은 물이라도 도시가 쓸 때와 농업이 쓸 때 이 모형의 하구로 돌아오는 양이 다릅니다. 회귀수와 희석을 근거로, 회귀수 비율이 달라질 때 자신의 배분을 고치거나 유지할 이유를 말해 주세요.'};
+  return qs.concat(indiv,lastQ);
 }
 function checkQuestions(label,state,keys=null) {
   const before=JSON.stringify(state),expected=expectedQuestions(state),actual=game.questions(state);
+  for(const q of actual) test(`결함 8 ${label}/${q.k} 요청 하나`,()=>eq(requestCount(q.q),1)); // 결함 8: 모든 검산 사례에 같은 요청 수 검사
   test(`${label} 키`,()=>eq(m.questionKeys(state),keys||expected.map(q=>q.k)));
   test(`${label} 문장·수치·우선순위`,()=>eq(actual,expected));
   test(`${label} 비수정`,()=>eq(JSON.stringify(state),before));
-  test(`${label} src·중복·개수`,()=> {eq(actual.every(q=>!Object.hasOwn(q,'src')),true);eq(new Set(actual.map(q=>q.k)).size,actual.length);eq(actual.length>=6&&actual.length<=9,true);});
+  test(`${label} src·중복·개수`,()=> {eq(actual.every(q=>!Object.hasOwn(q,'src')),true);eq(new Set(actual.map(q=>q.k)).size,actual.length);eq(actual.length>=6&&actual.length<=7,true);});
 }
 const common=['rd-c1','rd-c2','rd-c3'];
-for(const [id,individual] of [['N',['rd-dam-future','rd-dam-structure','rd-dissent','rd-dry-cut']],
-  ['L',['rd-dam-future','rd-dam-structure','rd-dissent','rd-wet-only']],['T',['rd-eco','rd-dissent','rd-tax']]])
+// 개정 전 N은 rd-dry-cut, L은 rd-wet-only까지 8문항이었다. 개별 질문 상한 3개로 줄었다.
+for(const [id,individual] of [['N',['rd-dam-future','rd-dam-structure','rd-dissent']],
+  ['L',['rd-dam-future','rd-dam-structure','rd-dissent']],['T',['rd-eco','rd-dissent','rd-tax']]])
   checkQuestions(`8 ${id} 자동`,lockedState(plans[id]),[...common,...individual,'rd-science']);
 checkQuestions('8 역할극 보충',lockedState(plan(0,35,22),'role'),[...common,'rd-ag','rd-order-reason','rd-science']);
 for(const [id,p] of Object.entries(plans)) for(const mode of ['auto','role']) checkQuestions(`8 ${id}/${mode}`,lockedState(p,mode));
@@ -249,6 +311,77 @@ hostile.game.rounds[0].decision.reason='<img src=x onerror=alert(1)>';
 checkQuestions('12.3-9 가상 HTML 원문',hostile);
 test('12.3-9 질문 키 안정',()=>eq(game.questions(hostile).map(q=>q.k),game.questions(lockedState(plans.N)).map(q=>q.k)));
 
+// 8절 개정 공정성: 고정 순서(하구→도시→농업)로 한 자리만 주던 방식에서 농민 질문이 빠지던 재현 사례.
+{
+  const p=plan(20,0,80,.3),keys=m.questionKeys(lockedState(p));
+  test('8 공정성 재현 농민 심각 미달 질문 포함',()=>{eq(m.evaluate(p).normal.responses,['reject','reject','reject','accept']);eq(keys.includes('rd-ag'),true);});
+  test('8 공정성 재현 공사 비축 질문 합침',()=>{eq(keys.includes('rd-dam-structure'),false);eq(keys.length,7);});
+}
+// 8절 개정 전수 격자(4 간격, 28개 조항, 자동·역할극): 심각 미달 당사자는 모두 질문을 받고,
+// 미충족 당사자가 둘 이상이면 당사자 질문이 둘 이상이며, 총 문항은 6~7개다. 키는 독립 규범과 대조한다.
+{
+  const partyKey=['rd-dam-future','rd-ag','rd-city','rd-eco'];
+  let grid=0,bad=[];
+  for(const f of [0,.1,.2,.3])for(const save of [false,true])for(const link of [false,true])for(const pulse of [false,true]) {
+    if(150*f+5*Number(save)+25*Number(link)>60)continue;
+    for(let ag=0;ag<=80;ag+=4)for(let city=0;city<=80;city+=4)for(let env=0;env<=80;env+=4) {
+      const p=plan(ag,city,env,f,save,link,pulse),N=evaluate(p).normal,sev=m.severe(N);
+      for(const mode of ['auto','role']) {
+        const st=lockedState(p,mode),keys=m.questionKeys(st);grid++;
+        const unmet=[0,1,2,3].filter(i=>N.responses[i]!=='accept'),asked=unmet.filter(i=>keys.includes(partyKey[i]));
+        const ok=keys.length>=6&&keys.length<=7&&unmet.every(i=>!sev[i]||keys.includes(partyKey[i]))&&asked.length>=Math.min(2,unmet.length)
+          &&JSON.stringify(keys)===JSON.stringify(expectedQuestions(st).map(q=>q.k));
+        if(!ok&&bad.length<3)bad.push([p,mode,keys]);
+      }
+    }
+  }
+  test('8 전수 격자 심각 미달 보장·상한·규범 일치',()=>eq([grid,bad],[518616,[]]));
+}
+// 명세 5절 무유량 분기·8절 생태 질문: 계산 불가를 수치처럼 해석시키지 않는다.
+for(const [label,p,isNull] of [['무유량',plan(0,0,0),true],['유량 있음',plan(0,35,0),false]]) {
+  test(`8 DO ${label} 질문`,()=>{
+    const q=game.questions(lockedState(p)).find(q=>q.k==='rd-eco');
+    eq(q.q.includes('물이 흐르지 않아 DO를 계산할 수 없다는 한계'),isNull);
+    eq(q.q.includes('이 DO 값에 미친 영향'),!isNull);
+    eq(requestCount(q.q),1);
+  });
+}
+// 7.4 개정: 반올림하면 기준과 같아 보이는 미충족 값은 자릿수를 늘리거나 반올림 전 미달을 밝힌다.
+{
+  const at=(p,key)=>m.checks(m.simulate(p,55),m.simulate(p,15),0).flat().find(c=>c.key===key);
+  for(const [p,key,text] of [[plan(3,59,2),'DO','4.99997 / 5.00000 (이상) · −0.00003 · 미충족'],
+    [plan(55,0,39),'C','0.9005 / 0.9000 (이하) · 초과량 0.0005 · 미충족'],
+    [plan(54,22,80),'income','0.8498 / 0.8500 (이상) · −0.0002 · 미충족'],
+    [plan(61,46,80),'supply','94.98% / 95.00% (이상) · −0.02% · 미충족']])
+    test(`7.4 반올림 동률 미충족 ${key}`,()=>eq(m.checkText(at(p,key)),text));
+  test('7.4 6자리에서도 같으면 반올림 전 미달',()=>eq(m.checkText({key:'DO',value:5-2e-9,threshold:5,upper:false,met:false}),'5.000000 / 5.000000 (이상) · −0.000000 · 미충족 (반올림 전 미달)'));
+  test('7.4 충족 값은 자릿수 유지',()=>eq(m.checkText({key:'DO',value:6.0475,threshold:5,upper:false,met:true}),'6.048 / 5.000 (이상) · +1.048 · 충족'));
+}
+// 7.1 개정: 학생이 고른 가장 어려운 역제안 기록은 다음 결정이 덮어쓰지 않는다.
+{
+  let g=m.fresh();g.mode='auto';g.criterion='가상 기준 한 줄이다.';
+  const T=a=>{g=m.transition(g,a).game;};
+  T({type:'submit'});T({type:'reject',party:'dam',reason:'가상 이유 하나다.'});
+  test('7.1 첫 결정은 기본 선택',()=>eq(g.final.hardDecisionId,'rd-r1-decision'));
+  T({type:'submit'});T({type:'reject',party:'dam',reason:'가상 이유 둘이다.'});
+  test('7.1 다음 결정이 기존 선택 유지',()=>eq(g.final.hardDecisionId,'rd-r1-decision'));
+  g.final.hardDecisionId='rd-r2-decision';
+  test('7.1 학생이 바꾼 선택 유지',()=>eq(g.final.hardDecisionId,'rd-r2-decision'));
+  let h=m.fresh();h.mode='auto';h.criterion='가상 기준 한 줄이다.';h.final.hardDecisionId='rd-r9-decision';
+  for(const a of [{type:'submit'},{type:'reject',party:'dam',reason:'가상 이유 하나다.'}])h=m.transition(h,a).game;
+  test('7.1 유효하지 않은 선택은 새 결정으로 채움',()=>eq(h.final.hardDecisionId,'rd-r1-decision'));
+}
+// 성찰 개정: 예시 4(농가 생계 우선)의 수치는 모형에서 다시 계산하고, 3자 합의 비율은 전수 탐색표에서 계산한다.
+{
+  const html=game.reflectExtra(lockedState(plans.N)),farm=plan(55,33,12,0,true,true,false,'cityFirst'),E=m.evaluate(farm);
+  test('성찰 예시 4 수치',()=>{
+    const want=[`${E.normal.cost}억`,E.normal.income.toFixed(3),(100*E.normal.supply).toFixed(1)+'%',E.normal.Qe.toFixed(3),E.normal.DO.toFixed(3),E.normal.end.toFixed(2),E.dry.end.toFixed(2)];
+    eq([want,E.normal.responses,E.wet.responses,E.dry.shortage],[['30억','1.000','100.0%','4.585','5.299','89.00','49.00'],['conditional','accept','accept','accept'],['accept','accept','accept','accept'],0]);
+    const body=html.slice(html.indexOf('id="rd-example-farm"'),html.indexOf('</details>',html.indexOf('id="rd-example-farm"')));
+    for(const w of [...want,'올해 농가 생계 우선','다수 합의안'])if(!body.includes(w))throw new Error(`예시 4에 ${w} 없음`);
+  });
+  globalThis.__rdReflection=html;
+}
 // 6절 mask15 증인: 어느 한 곳만 항상 빠지는 구조가 아님을 독립 기대값으로 검사.
 for(const [p,expected] of [[plan(49,35,10),['conditional','accept','accept','accept']],
   [plan(0,35,22),['accept','reject','accept','accept']], [plan(49,0,14,0,false,false,true),['accept','accept','reject','accept']],
@@ -256,10 +389,7 @@ for(const [p,expected] of [[plan(49,35,10),['conditional','accept','accept','acc
   test('6 mask15 단독 제외 증인 '+JSON.stringify(p),()=>eq(m.evaluate(p,15).normal.responses,expected));
 test('6 mask15 습윤 증인',()=>eq(m.evaluate(plan(49,35,10),15).wet.responses,['accept','accept','accept','accept']));
 
-// 12.4-7 전체 전수 탐색표. 앱 model의 simulate/response로 다시 계산한다.
-// 건조 감량은 공사의 공통 조건이므로 순서와 무관한 shortage만 전달한다.
-// 평년 감량이 없으면 네 순서의 평년·습윤 결과가 같아 4배로 집계한다.
-// 평년 감량이 있으면 네 순서를 모두 실제 계산한다. 탐색 영역은 축소하지 않는다.
+// 12.4-7 전체 전수 탐색표. 앱 model의 simulate/response로 다시 계산한다(sweepPart 참고).
 const expectedCounts=[
  [0,10931917,585172,85072,316,193132],[0,10931917,525724,70680,160,193132],
  [0,10788681,585172,79368,132,183180],[0,10788681,525724,65616,40,183180],
@@ -271,29 +401,20 @@ const expectedCounts=[
  [0,10335054,518112,68384,108,151556],[0,10335054,463292,56136,32,151556]
 ];
 console.log('12.4-7 전수 탐색 시작: 59,521,392개 제안, 마스크 0~15 전체 표');
-const hn=new Float64Array(256),hw=new Float64Array(256),bits=a=>a.reduce((v,s,i)=>v|(s==='accept'?1<<i:0),0);
-let count=0,clauses=0;
-function histogram(p,dry,rn,rw,mult) {
-  hn[bits(m.response(rn,dry,0))*16+bits(m.response(rn,dry,15))]+=mult;
-  hw[bits(m.response(rw,dry,0))*16+bits(m.response(rw,dry,15))]+=mult;
-  count+=mult;
-}
-for(const f of [0,.1,.2,.3])for(const save of [false,true])for(const link of [false,true])for(const pulse of [false,true]) {
-  if(150*f+5*Number(save)+25*Number(link)>60)continue;
-  clauses++;
-  for(let ag=0;ag<=80;ag++)for(let city=0;city<=80;city++)for(let env=0;env<=80;env++) {
-    const p=plan(ag,city,env,f,save,link,pulse),rp=ag+city+env+(pulse?4:0);
-    const dry={shortage:Math.max(0,rp-(99+(link?10:0)))};
-    const normalCuts=rp>139+(link?10:0),wetCuts=rp>184+(link?10:0);
-    const rn=m.simulate(p,55),rw=m.simulate(p,100);
-    if(!normalCuts)histogram(p,dry,rn,rw,4);
-    else for(const order of Object.keys(orders)) {
-      p.order=order;
-      histogram(p,dry,order==='proportional'?rn:m.simulate(p,55),wetCuts&&order!=='proportional'?m.simulate(p,100):rw,1);
-    }
-  }
-  console.log(`전수 탐색 조항 ${clauses}/28 완료`);
-}
+const parts=Math.max(1,Math.min(28,Number(process.env.RD_SWEEP_WORKERS)||(os.availableParallelism?os.availableParallelism():os.cpus().length)));
+console.log(`전수 탐색 worker ${parts}개`);
+const started=Date.now();
+const pieces=await Promise.all(Array.from({length:parts},(_,part)=>new Promise((resolve,reject)=>{
+  const w=new Worker(new URL(import.meta.url),{workerData:{part,parts}});
+  w.once('message',r=>{console.log(`전수 탐색 조각 ${part+1}/${parts} 완료 (조항 ${r.clauses}개)`);resolve(r);});
+  w.once('error',reject);
+  w.once('exit',code=>{if(code)reject(new Error(`worker ${part} 종료 코드 ${code}`));});
+})));
+console.log(`전수 탐색 ${((Date.now()-started)/1000).toFixed(1)}초`);
+const hn=new Float64Array(256),hw=new Float64Array(256);
+let count=0,clauses=0,maxSevere=0;
+for(const r of pieces){r.hn.forEach((v,i)=>{hn[i]+=v;});r.hw.forEach((v,i)=>{hw[i]+=v;});count+=r.count;clauses+=r.clauses;maxSevere=Math.max(maxSevere,r.maxSevere);}
+test('8 평년 심각 미달 당사자 최대 3곳(개별 질문 3자리 안에 모두 보장)',()=>eq(maxSevere,3));
 test('12.4-7 탐색 영역',()=>eq([clauses,count],[28,59521392]));
 const counts=Array.from({length:16},()=>[0,0,0,0,0,0]);
 for(let mask=0;mask<16;mask++)for(let b=0;b<16;b++)for(let h=0;h<16;h++) {
@@ -302,5 +423,12 @@ for(let mask=0;mask<16;mask++)for(let b=0;b<16;b++)for(let h=0;h<16;h++) {
   const absent=[14,13,11,7].indexOf(actual);if(absent>=0)counts[mask][absent+1]+=hn[i];
 }
 counts.forEach((row,mask)=>row.forEach((value,column)=>test(`12.4-7 mask${mask} 열${column}`,()=>eq(value,expectedCounts[mask][column]))));
+// 성찰 개정: 평년 3자 합의안 비율(기준 상승 없음)을 전수 탐색표에서 계산해 성찰 문장과 대조한다.
+{
+  const row=expectedCounts[0],three=row[1]+row[2]+row[3]+row[4],pct=(x,d)=>(100*x/three).toFixed(d)+'%';
+  const want=[three.toLocaleString('en-US'),pct(row[1],1),pct(row[2],1),pct(row[3],1),pct(row[4],3)];
+  test('성찰 3자 합의 비율',()=>{eq(want,['11,602,477','94.2%','5.0%','0.7%','0.003%']);for(const w of want)if(!globalThis.__rdReflection.includes(w))throw new Error(`성찰에 ${w} 없음`);});
+}
 if(failures) {console.error(`통과 ${total-failures}건, 실패 ${failures}건`);process.exitCode=1;}
 else console.log(`통과 ${total}건`);
+}

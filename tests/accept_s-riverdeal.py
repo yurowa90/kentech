@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,8 @@ PARTIES = ("dam", "ag", "city", "eco")
 CRITERION = "현재 생활과 생계를 우선하되 미래 비용을 공개한다."
 REASON = "현재 생활과 생계를 먼저 보장하되 미래 비용을 공개하겠습니다."
 COMMON = ["rd-c1", "rd-c2", "rd-c3"]
-NKEYS = COMMON + ["rd-dam-future", "rd-dam-structure", "rd-dissent", "rd-dry-cut", "rd-science"]
+# 개별 질문 상한 3개(공통3+개별3+마지막1=최대7). 개정 전에는 rd-dry-cut까지 8문항이었다.
+NKEYS = COMMON + ["rd-dam-future", "rd-dam-structure", "rd-dissent", "rd-science"]
 
 
 def _plan(ag=50, city=35, env=20, f=0, save=False, link=False,
@@ -138,14 +140,14 @@ def _lock_n(c, reason=REASON):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-riverdeal'].questions(KCP.load('s-riverdeal'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-riverdeal'].questions(KCP.load('s-riverdeal'))"))
 
 
 def _keys(c, expected, aid):
     qs = _questions(c)
     c.eq([q["k"] for q in qs], expected, f"{aid} 면접 질문 키 순서")
     c.eq(c.page.locator(".qdeck .qcard").count(), len(expected), f"{aid} 실제 질문 카드 수")
-    c.expect(6 <= len(qs) <= 9, f"{aid} 총 6~9문항")
+    c.expect(6 <= len(qs) <= 7, f"{aid} 총 6~7문항")
     c.eq(len(set(q["k"] for q in qs)), len(qs), f"{aid} 중복 키 없음")
     c.expect(all("src" not in q for q in qs), f"{aid} 모든 src 생략")
     cards = c.page.locator(".qdeck .qcard")
@@ -199,6 +201,13 @@ def t_12_1_normal(c: Ctx):
     _disabled(c,["rd-go","rd-memo","rd-scenario"],"12.1-7",False)
     c.page.locator("#rd-tab-model").click()
     c.expect(c.page.locator("#rd-pane-model").is_visible(),"12.1-7 확정 뒤 자료 사용 가능")
+    _has(c,"#rd-pane-model",["염분 침입","기수역","홍수기 제한수위"],"자료 개정")
+    c.page.locator("#rd-tab-clauses").click()
+    # 명세 3절·4.3: 조항 칸은 감량 순서의 선택 가능함을 확인한다.
+    # 법령과 게임의 차이를 설명하는 “강제하지 않는 선택지”는 10절 성찰의 한계 칸에서 검사한다.
+    _has(c,"#rd-pane-clauses",["댐 용수공급 조정기준","관심→주의→경계→심각","하천유지용수(주의)","농업용수(경계)","생활·공업용수(심각)","여러 선택지 가운데 하나"],"자료 개정")
+    c.page.locator("#rd-tab-basin").click()
+    _has(c,"#rd-pane-basin",["물 높이 단위가 아닙니다."],"자료 개정")
     c.check("12.1-7 준비실")
     c.page.locator("#rd-go").click()
     _keys(c,NKEYS,"12.1-7")
@@ -497,7 +506,7 @@ def t_12_3_role_reset(c: Ctx):
 def t_12_3_question_examples(c: Ctx):
     c.goto("#ys-riverdeal",wait="#rd-root")
     c.eq(_questions(c),[],"12.3-7 미확정 questions=[]")
-    for p,mode,keys in ((_plan(43,33,15,.2,True,False,True),"auto",COMMON+["rd-dam-future","rd-dam-structure","rd-dissent","rd-wet-only","rd-science"]),
+    for p,mode,keys in ((_plan(43,33,15,.2,True,False,True),"auto",COMMON+["rd-dam-future","rd-dam-structure","rd-dissent","rd-science"]),
                         (_plan(42,36,0,.2,False,True),"auto",COMMON+["rd-eco","rd-dissent","rd-tax","rd-science"]),
                         (_plan(0,35,22),"role",COMMON+["rd-ag","rd-order-reason","rd-science"])):
         s=_state(p,mode,locked=True)
@@ -559,6 +568,69 @@ def t_12_3_restart(c: Ctx):
     c.eq(g["final"]["hardDecisionId"],"","12.3-10 새 협상은 가장 어려운 기록 비움")
 
 
+def t_rev_rounding(c: Ctx):
+    # 7.4 개정: 판정은 반올림 전 값. 평년 DO 4.99997은 5.000/5.000으로 보이지 않는다.
+    _prep(c,p=_plan(3,59,2))
+    c.page.locator("#rd-submit").click()
+    eco=_text(c,"#rd-response-eco")
+    c.expect("4.99997 / 5.00000 (이상) · −0.00003 · 미충족" in eco,"7.4 반올림 동률 DO 자릿수 확대")
+    c.expect("5.000 / 5.000" not in eco,"7.4 같은 값처럼 보이는 미충족 없음")
+    _has(c,"#rd-responses",["판정은 반올림 전 값으로 합니다"],"7.4")
+    c.page.locator("#rd-counter-party").select_option("eco")
+    c.page.locator("#rd-want-a").click()
+    c.page.locator("#rd-counter-start").click()
+    c.page.locator("#rd-env").fill("3")
+    _has(c,"#rd-cascade",["판정은 반올림 전 값으로 합니다","4.99997 / 5.00000"],"7.4 연쇄 비교")
+    c.check("7.4 반올림 동률 표시")
+
+
+def t_rev_hard_choice(c: Ctx):
+    # 7.1 개정: 학생이 고른 가장 어려운 역제안 기록을 다음 결정이 덮어쓰지 않는다.
+    _prep(c)
+    c.page.locator("#rd-submit").click()
+    _reject(c)
+    c.page.locator("#rd-submit").click()
+    _reject(c)
+    c.eq(c.page.locator("#rd-hard-decision").input_value(),"rd-r1-decision","7.1 기존 선택 유지")
+    c.page.locator("#rd-hard-decision").select_option("rd-r2-decision")
+    c.eq(_game(c)["final"]["hardDecisionId"],"rd-r2-decision","7.1 학생 선택 저장")
+    c.page.locator("#rd-submit").click()
+    _reject(c)
+    c.eq(_game(c)["final"]["hardDecisionId"],"rd-r2-decision","7.1 셋째 결정 뒤에도 학생 선택 유지")
+    c.eq(c.page.locator("#rd-hard-decision").input_value(),"rd-r2-decision","7.1 화면 선택 유지")
+
+
+def t_rev_revert_ready(c: Ctx):
+    # 7.2 개정: 끝난 제출 뒤 값을 바꿨다가 되돌리면 추가 제출 없이 확정할 수 있다.
+    _prep(c)
+    c.page.locator("#rd-submit").click()
+    _reject(c)
+    _final(c)
+    _disabled(c,["rd-lock"],"7.2 수정 전 확정 가능",False)
+    c.page.locator("#rd-ag-plus").click()
+    c.eq(_game(c)["stage"],"draft","7.2 수정하면 초안")
+    _disabled(c,["rd-lock"],"7.2 수정한 초안은 확정 불가")
+    c.page.locator("#rd-ag-minus").click()
+    c.eq(_game(c)["stage"],"ready","7.2 되돌리면 ready 복귀")
+    _disabled(c,["rd-lock"],"7.2 되돌린 뒤 확정 가능",False)
+    c.page.locator("#rd-lock").click()
+    g=_game(c)
+    c.eq([len(g["rounds"]),g["stage"]],[1,"locked"],"7.2 추가 제출 없이 확정")
+    c.page.reload();c.page.wait_for_selector("#rd-root")
+    c.eq(_game(c)["stage"],"locked","7.2 새로고침 뒤 확정 유지")
+
+
+def t_rev_question_balance(c: Ctx):
+    # 8절 개정: 농민이 심각 미달이면 고정 순서와 무관하게 질문을 받는다(개정 전에는 빠졌다).
+    s=_state(_plan(20,0,80,.3),"auto",locked=True)
+    _inject(c,s)
+    c.phase("room")
+    # 세 곳 모두 심각 미달: 기준과의 상대 거리(도시 공급 0 > 농가 소득 > 비축) 순으로 모두 묻는다.
+    _keys(c,COMMON+["rd-city","rd-ag","rd-dam-future","rd-science"],"8 공정성")
+    texts=" ".join(q["q"] for q in _questions(c))
+    c.expect("쉬운 타협이 되지 않았는지" in texts,"8 공사 비축 대표성 질문 합침")
+
+
 def t_12_4_reflection(c: Ctx):
     _lock_n(c)
     c.phase("reflect")
@@ -570,14 +642,15 @@ def t_12_4_reflection(c: Ctx):
     c.page.locator("#before-s-riverdeal").fill("가나다라마바사아자차")
     c.page.locator("#openEx").click()
     c.expect(c.page.locator("#exwrap #rd-reflect").is_visible(),"COMMON-3 공통 관문 안 성찰 내용 표시")
-    c.eq(c.page.locator("#rd-examples details").count(),3,"12.4-1 가상 예시 세 개")
+    c.eq(c.page.locator("#rd-examples details").count(),4,"12.4-1 가상 예시 네 개")
     c.eq(c.page.locator("#rd-examples details[open]").count(),0,"12.4-1 초기 details 전부 닫힘")
     c.eq(c.page.locator("#rd-reflect button, #rd-reflect textarea, #rd-reflect input").count(),0,"12.4-1 자체 관문 없음")
     for id_ in ("rd-science-water","rd-science-oxygen","rd-science-crop","rd-model-limits"):
         c.expect(c.page.locator(f"#{id_}").is_visible(),"12.4-1 과학 해설과 한계도 공통 관문 뒤 표시")
     for id_,values in (("life",["35억","100.0%","0.898","5.099","84.00","44.00","5.973"]),
                        ("eco",["50억","5.986","6.604","0.847","95.7%","83.00"]),
-                       ("future",["116.00","0.455","58.3%","3.318","76.00","농민과 도시는 거부","하구는 조건부"])):
+                       ("future",["116.00","0.455","58.3%","3.318","76.00","농민과 도시는 거부","하구는 조건부"]),
+                       ("farm",["올해 농가 생계 우선","30억","1.000","100.0%","4.585","5.299","89.00","49.00","다수 합의안"])):
         summary=c.page.locator(f"#rd-example-{id_} summary")
         summary.focus();summary.press("Enter")
         _has(c,f"#rd-example-{id_}",values,"12.4-1")
@@ -585,6 +658,11 @@ def t_12_4_reflection(c: Ctx):
             c.expect(c.page.locator("#rd-example-eco").get_attribute("open") is None,"12.4-1 다른 예시는 독립 닫힘")
     for loc in c.page.locator("#exwrap details").all():
         loc.evaluate("e=>e.open=true")
+    # 명세 3절·4.3의 활동 약속과 10절 모형 한계: “강제하지 않는 선택지”는 성찰에서 확인한다.
+    _has(c,"#rd-model-limits",["강제하지 않는 선택지"],"N1 감량 순서 설명 위치")
+    # 성찰 개정: 3자 합의 비율, 실제 댐 감량 순서, 염분 침입, FAO-33 근거와 적용 한계.
+    _has(c,"#rd-model-limits",["11,602,477","94.2%","5.0%","0.7%","0.003%","관심→주의→경계→심각","하천유지유량","환경생태유량","염분 침입","기수역"],"성찰 개정")
+    _has(c,"#rd-science-crop",["FAO","33호","Ky","50%","83%"],"성찰 개정")
     c.check("12.4-3 성찰 모든 details 펼침")
 
 
@@ -788,7 +866,12 @@ def t_12_4_exhaustive(c: Ctx):
     # 전수 탐색은 환경과 무관한 Node 검사여서 네 환경 중 한 번만 실행한다.
     if c.cfg.name != "desktop-light":
         return
-    result=subprocess.run(["node",str(ROOT/"tests/model_s-riverdeal.mjs")],capture_output=True,text=True)
+    # 59,521,392개 전수 탐색이 멈추면 무한 대기하지 않도록 넉넉한 시간 제한을 둔다(worker 분할 실행).
+    try:
+        result=subprocess.run(["node",str(ROOT/"tests/model_s-riverdeal.mjs")],capture_output=True,text=True,timeout=1800)
+    except subprocess.TimeoutExpired as e:
+        c.expect(False,f"12.4-7 전수 탐색 1800초 시간 초과\n{e.stdout or ''}{e.stderr or ''}")
+        return
     c.eq(result.returncode,0,"12.4-7 59,521,392개·전체16행×6열·검산·분기 대조\n"+result.stdout+result.stderr)
 
 
