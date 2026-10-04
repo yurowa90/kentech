@@ -19,6 +19,14 @@
 
 
 
+
+## 이어받을 곳(2026-10-04 저녁)
+- 브랜치 claude/kentech-league-econ-balance(push, 344b0b7 이후): 밸런스 v1.4.1(B18 계통 접속 여유·출력제어·ESS 상한, 소수력 포함, 배수 0.4), 혼자 하기 저장 고침, 지방채 v1.3, 컴퓨터 AI 접속 여유 고려, 도시 서랍 접속·출력제어 표시.
+- 최종 검사(v1.4.1): balance 553/0, 1-invariants 2,688,699/0, 9-grid 168/0, econui 804/0, solo 372/0(직접 3회 반복도 0), ai-check 4,909/0, rules·e2e·e2e2·e2e3·econint 0, 회귀 14종 0, 콘솔·가로 스크롤 0.
+- 남은 1건: bots36.py 검사 장치 단언 "B18 기존 설비가 H를 모두 사용"(bots36.py:359) 실패 — 장치가 태양광 30MW = 피크 100 × 0.3을 가정했는데 v1.4.1에서 배수가 0.4로 바뀜. 구현 결함 아님, 검사 작성자가 장치를 hostCapMul 값에서 읽게 고칠 것(13,822/13,823).
+- 출력제어량은 여전히 작음(봄 월 0.04 MWh 수준) — 근거를 넘겨 키우지 않음. 필요하면 사용자와 '교육용 배속' 표시 방식 결정.
+- PR #1·#2: 검토 반영 push·코멘트 완료, 병합은 사용자 확인 뒤. 다음 큰 일: 다른 해 기출 재정비.
+
 ## 이어받을 곳(2026-10-04 오후, 사용량 한도로 중단)
 - 브랜치 claude/kentech-league-econ-balance(push됨): 밸런스 v1.2, 2차 보정(ECON-EVIDENCE·GAMES 반영), 화면 U1–U4, 혼자 하기(#league/solo), 컴퓨터 도시 AI(ui/league-ai.js), D-57 확정·D-59, README·HANDOFF-econ §9.
 - 마지막 통합 검사(e1d4a79 기준): econui 804/0, ai-check 3,772/0, rules·e2e·e2e2·e2e3·econint 0, balance 534/0, test-econ 791,651/0, 회귀 screens·base·regression 0. 그 이전 전체(2e7b979): 회귀 14종 0, bots36 12,322/0(연계선 4/6 도시 1위, 지배 전략 없음).
