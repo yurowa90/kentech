@@ -243,7 +243,7 @@
     if (m.type === "crit") {
       if (!S.econ || S.phase !== "plan") return err("phase");
       const keys = Object.keys(KCP.ECON_DATA.params.wScore.v);
-      if (!Array.isArray(m.chips) || m.chips.length < 1 || m.chips.length > 2 || new Set(m.chips).size !== m.chips.length || m.chips.some(k => !keys.includes(k)) || typeof m.line !== "number" || !Number.isFinite(m.line) || !["keep", "change"].includes(m.choice)) return err("crit");
+      if (!Array.isArray(m.chips) || m.chips.length < 1 || m.chips.length > 2 || new Set(m.chips).size !== m.chips.length || m.chips.some(k => !keys.includes(k)) || typeof m.line !== "number" || !Number.isFinite(m.line) || m.line < 0 || m.line > 100 || !["keep", "change"].includes(m.choice)) return err("crit");
       T.crit = { chips: m.chips.slice(), line: m.line, choice: m.choice };
       S.rev++; return { ok: true };
     }

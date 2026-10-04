@@ -222,25 +222,25 @@
 .lg-evopt:focus-visible { outline: 3px solid #d08a1c; outline-offset: 2px; }
 
 /* U1–U4 경제 화면: 공통 토큰은 밝음·어두움 양쪽에서 바뀐다. */
-.lg-bbtn,
-.lg-ptab,
-.lg-px,
-.lg-preset,
-.lg-kick,
-.lg-mapnav a { min-height: 44px; }
+.lg-bar[data-econ="true"] .lg-bbtn,
+.lg-panel[data-econ="true"] .lg-ptab,
+.lg-panel[data-econ="true"] .lg-px,
+.lg-host[data-econ="true"] .lg-preset,
+.lg-host[data-econ="true"] .lg-kick,
+.lg-host[data-econ="true"] .lg-mapnav a { min-height: 44px; }
 .lg-lobby [hidden],
 .lg-host [hidden],
 .lg-bar [hidden],
 .lg-panel[hidden],
 .lg-panel [hidden] { display: none !important; }
-.lg-field select,
-.lg-field input[type="number"] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+#lg-solo .lg-field select,
+.lg-panel[data-econ="true"] .lg-field input[type="number"] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
 .lg-solo-cities { display: grid; gap: 6px; }
-.lg-ptabs { flex-wrap: wrap; }
-.lg-ptab { padding: 0 9px; font-size: 13px; }
-.lg-pbody { overflow-wrap: anywhere; }
-.lg-pbody h2 { font-size: 19px; }
-.lg-pbody h4 { margin: 14px 0 6px; }
+.lg-panel[data-econ="true"] .lg-ptabs { flex-wrap: wrap; }
+.lg-panel[data-econ="true"] .lg-ptab { padding: 0 9px; font-size: 13px; }
+.lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; }
+.lg-panel[data-econ="true"] .lg-pbody h2 { font-size: 19px; }
+.lg-panel[data-econ="true"] .lg-pbody h4 { margin: 14px 0 6px; }
 .lg-grp { margin: 8px 0; }
 .lg-grp button { display: block; width: 100%; min-height: 44px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--paper); color: var(--ink); font: inherit; }
 .lg-grp meter,
@@ -279,14 +279,14 @@
 .lg-debriefcards h3 { margin: 0; font-size: 15px; }
 .lg-host #lg-wsim { max-width: 600px; }
 .lg-host #lg-rank { margin: 16px 0; }
-.lg-panel .lg-mini { display: block; overflow-x: auto; max-width: 100%; }
-.lg-panel .lg-kpi > div { min-width: 0; overflow-wrap: anywhere; }
+.lg-panel[data-econ="true"] .lg-mini { display: block; overflow-x: auto; max-width: 100%; }
+.lg-panel[data-econ="true"] .lg-kpi > div { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
-  .lg-bbtn { min-height: 44px; }
-  .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
-  .lg-ptabs { gap: 3px; }
-  .lg-ptab { padding: 0 7px; }
-  .lg-panel { top: calc(var(--bd-top, 120px) + 110px); }
+  .lg-bar[data-econ="true"] .lg-bbtn { min-height: 44px; }
+  .lg-host[data-econ="true"] .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
+  .lg-panel[data-econ="true"] .lg-ptabs { gap: 3px; }
+  .lg-panel[data-econ="true"] .lg-ptab { padding: 0 7px; }
+  .lg-panel[data-econ="true"] { top: calc(var(--bd-top, 120px) + 110px); }
 }
 
-.lg-panel .lg-radio { min-height: 44px; align-content: center; }
+.lg-panel[data-econ="true"] .lg-radio { min-height: 44px; align-content: center; }
