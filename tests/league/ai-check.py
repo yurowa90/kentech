@@ -13,6 +13,8 @@ JS = r"""
   const clone = x => JSON.parse(JSON.stringify(x)), same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const empty = () => ({builds: [], lines: []});
   const checks = [], runs = [], timings = [], snapshots = {};
+  // 작업 T 수용 기준(G): 승인 직후 대기 ≤ 기준 피크 10%, 운영 뒤에는 새 대기를 남기지 않음.
+  const queueLimit = 0.1, tolerance = 1e-6;
   let acceptanceCase;
   const ok = (pass, message) => checks.push([!!pass, message]);
   const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -61,7 +63,7 @@ JS = r"""
 
   for (const style of ["nothing", "careful", "balanced", "bold"]) {
     const S = newGame(), row = {style, cities: {}, tieRequests: 0, tieAccepted: 0, tradedMWh: 0, maxMs: 0};
-    ids.forEach(id => { row.cities[id] = {name: R.teams.find(t => t.id === id).name, uns: [], ren: [], invested: [], policies: [], tieAccepted: 0, builds: 0, types: {}}; });
+    ids.forEach(id => { row.cities[id] = {name: R.teams.find(t => t.id === id).name, uns: [], ren: [], invested: [], policies: [], tieAccepted: 0, builds: 0, types: {}, waiting: [], operatedWaiting: [], peakMW: 0}; });
     const timingStart = timings.length;
     for (let month = 1; month <= months; month++) {
       ok(C.host(S, "next", month) && S.round === month && S.phase === "plan", `${style}/${month} host next`);
@@ -97,6 +99,17 @@ JS = r"""
         const rp = request(S, id, {type: "plan", rev: S.teams[id].rev + 1, plan: answer.plan});
         ok(rp.ok && same(saved, {builds: S.teams[id].plan?.builds, lines: S.teams[id].plan?.lines}),
           `${style}/${id}/${month} reduce plan: ${rp.err || "ok"}`);
+        if (style !== "nothing") {
+          const grid = S.grid[id], projected = C.gridStatus(S, R, bg, id, true);
+          const sample = row.cities[id];
+          sample.peakMW = grid.peakMW;
+          sample.waiting.push(grid.waitingMW);
+          ok(grid.waitingMW <= grid.peakMW * queueLimit + tolerance,
+            `${style}/${id}/${month} 계획 뒤 대기 ≤ 피크 10%: ${grid.waitingMW}/${grid.peakMW}`);
+          ok(projected.waitingMW <= tolerance, `${style}/${id}/${month} 이번 달 전량 접속 예상`);
+          ok(projected.connectedMW + projected.reservedMW <= projected.hostMW + tolerance,
+            `${style}/${id}/${month} 접속·예약 ≤ H`);
+        }
         ok(request(S, id, {type: "econ", ...answer.econPol}).ok, `${style}/${id}/${month} reduce econ`);
         for (const t of answer.ties) {
           if (t.type === "accept" && !acceptanceCase) acceptanceCase = {S: clone(S), id, other: t.other, style};
@@ -114,6 +127,9 @@ JS = r"""
         ok(Number.isFinite(uns), `${style}/${id}/${month} 유한 정전 값`);
         row.cities[id].uns.push(uns);
         row.cities[id].ren.push(result.team[id].renPct);
+        row.cities[id].operatedWaiting.push(result.team[id].grid.waitingMW);
+        if (style !== "nothing") ok(result.team[id].grid.waitingMW <= tolerance,
+          `${style}/${id}/${month} 실제 운영 뒤 접속 대기 0`);
         row.tradedMWh += result.team[id].imp || 0;
       });
     }
@@ -122,6 +138,9 @@ JS = r"""
     ids.forEach(id => {
       const city = row.cities[id], plan = S.teams[id].plan;
       city.unsPct = sum(city.uns) / months; city.renPct = sum(city.ren) / months; city.builds = plan.builds.length;
+      city.maxWaitingMW = Math.max(0, ...city.waiting);
+      city.maxWaitingPct = city.peakMW ? city.maxWaitingMW / city.peakMW * 100 : 0;
+      city.maxOperatedWaitingMW = Math.max(0, ...city.operatedWaiting);
       city.types = plan.builds.reduce((a, b) => { a[b.t] = (a[b.t] || 0) + 1; return a; }, {});
       if (style !== "nothing") {
         ok(city.builds > 0, `${style}/${id} 설비 수 > 0`);
@@ -147,7 +166,58 @@ JS = r"""
   ok(byStyle.bold.tieAccepted > 0, `${months}달 정상 게임: 공격 선제 제안에 수락 ${byStyle.bold.tieAccepted}건`);
   ok(byStyle.bold.tradedMWh > 0, "수락한 연계선으로 실제 전력 거래 발생");
 
-  // 지지율·현금·부채 입력에 대한 반응. 보완 달이 아닌 3월에 시험한다.
+  // B18 경계: 남은 H·월 처리량·기존 예약·같은 달 재계획을 실제 호스트로 확인한다.
+  const gridCase = clone(snapshots.careful), gridId = ids[0];
+  gridCase.round = 2; gridCase.econ.cities[gridId].cash = 10000;
+  const variableAdded = (S, answer) => {
+    bg.selectPack(R.teams.find(t => t.id === gridId).pack, "league");
+    const keys = new Set(S.teams[gridId].plan.builds.map(b => `${b.t}:${b.i}`));
+    return answer.plan.builds.filter(b => bg.BLD[b.t].variable && !keys.has(`${b.t}:${b.i}`));
+  };
+  const forecast = (S, answer) => C.gridStatus({ ...S,
+    teams: { ...S.teams, [gridId]: { ...S.teams[gridId], plan: answer.plan } }
+  }, R, bg, gridId, true);
+  const params = KCP.ECON_DATA.params;
+  const savedMonthly = params.connPerMonth, savedHost = params.hostCapMul;
+  try {
+    params.connPerMonth = { ...savedMonthly, v: 0 };
+    const answer = calculate(gridCase, gridId, "careful");
+    ok(variableAdded(gridCase, answer).length === 0, "월 처리량 0: 변동 재생 추가 없음");
+    params.connPerMonth = savedMonthly;
+    params.hostCapMul = { ...savedHost, v: 0 };
+    const stored = calculate(gridCase, gridId, "careful"), after = forecast(gridCase, stored);
+    ok(variableAdded(gridCase, stored).length > 0 && after.waitingMW <= tolerance,
+      "시작 H 0: ESS 확충 뒤 월 한도 안에서 전량 접속");
+    ok(stored.plan.builds.some(b => bg.BLD[b.t].cls === "bat"), "접속 여유 부족: ESS 투자");
+  } finally { params.connPerMonth = savedMonthly; params.hostCapMul = savedHost; }
+  const legacy = clone(gridCase); delete legacy.grid;
+  const legacyAnswer = calculate(legacy, gridId, "careful");
+  ok(forecast(legacy, legacyAnswer).waitingMW <= tolerance, "접속 이력 없는 저장: 호스트 복원으로 대기 방지");
+  const queued = clone(gridCase);
+  bg.selectPack(R.teams.find(t => t.id === gridId).pack, "league");
+  const tile = bg.TILES.find(t => !bg.siteRule("solar", t) &&
+    !queued.teams[gridId].plan.builds.some(b => b.i === t.i));
+  ok(!!tile, "예약 경계 검사에 쓸 합법 변동 재생 부지");
+  if (tile) {
+    queued.teams[gridId].plan.builds.push({ t: "solar", i: tile.i });
+    try {
+      params.hostCapMul = { ...savedHost, v: 0 };
+      const repaired = calculate(queued, gridId, "careful"), after = forecast(queued, repaired);
+      ok(variableAdded(queued, repaired).length === 0 && after.reservedMW > 0,
+        "H 부족·월 한도보다 큰 기존 대기: 새 대기 없이 ESS로 접속 진행 재개");
+    } finally { params.hostCapMul = savedHost; }
+    queued.grid[gridId] = C.gridStatus(queued, R, bg, gridId, true);
+    ok(queued.grid[gridId].reservedMW > 0 && queued.grid[gridId].waitingMW > 0,
+      "기존 대기의 일부 예약 사례");
+    const sameMonth = calculate(queued, gridId, "careful");
+    ok(variableAdded(queued, sameMonth).length === 0, "같은 달 재계획: 접속 처리량 재사용 금지");
+    queued.round++;
+    const nextMonth = calculate(queued, gridId, "careful"), projected = forecast(queued, nextMonth);
+    ok(variableAdded(queued, nextMonth).length > 0 && projected.waitingMW <= tolerance,
+      "다음 달: 기존 미예약 몫 차감 뒤 남은 처리량만 사용");
+  }
+
+  // 지지율·현금·부채 입력에 대한 반응. 연초 이후인 3월에 시험한다.
   const policyCase = clone(snapshots.balanced), id = ids[0]; policyCase.round = 3;
   policyCase.teams[id].econPol = {taxRes: 0, taxInd: 0, service: 0, incentive: 0};
   let city = policyCase.econ.cities[id];
@@ -272,6 +342,11 @@ def main():
     error_label = "Node 실행" if args.node else "페이지·콘솔·실행"
     out["checks"].append([not errors, f"{error_label} 오류 {len(errors)}개"])
     out["checks"].extend([[False, message] for message in errors])
+    print("| 성향 | 도시 | 평균 정전 % | 평균 재생 % | 계획 뒤 최대 대기 MW | 피크 대비 % | 운영 뒤 최대 대기 MW |")
+    print("|---|---|---:|---:|---:|---:|---:|")
+    for run in out["runs"]:
+        for city in run["cities"].values():
+            print(f"| {run['style']} | {city['name']} | {city['unsPct']:.2f} | {city['renPct']:.2f} | {city['maxWaitingMW']:.3f} | {city['maxWaitingPct']:.2f} | {city['maxOperatedWaitingMW']:.3f} |")
     for run in out["runs"]:
         print(f"{run['style']}: 최대 계획 {run['maxMs']:.1f}ms, 연계선 수락 {run['tieAccepted']}건 / 응답 {run['tieRequests']}건, 대표 주 거래 합계 {run['tradedMWh']:.2f} MWh")
         for city in run["cities"].values():

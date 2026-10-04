@@ -22,6 +22,8 @@
     aiBoldExpansion: { v: 0.3, grade: "G", note: "선택 투자 때 공격 성향의 추가 확정 공급 목표 × risk" },
     aiStorageShare: { v: 0.35, grade: "G", note: "재생 정격 대비 저장 출력 목표 × (1-risk)" },
     aiLargeWeight: { v: 0.25, grade: "G", note: "risk에 따른 대형 설비 선호 가중" },
+    aiGridRenewDelay: { v: 4, grade: "G", note: "B18 재생 선택 투자 추가 지연(달) × risk; 신중은 재생·저장 우선, 공격은 확정 공급 먼저" },
+    aiGridRepairEvery: { v: 1, grade: "G", note: "B18 경제 모드 보완 주기(달); 이월되지 않는 월 접속량 안에서 분할 투자" },
     aiRepairEvery: { v: 3, grade: "G", note: "연 계획 사이 보완 판단 주기(달)" },
     aiRepairInvest: { v: 0.15, grade: "G", note: "보완 때 연 투자 몫에 추가로 곱할 비율" },
     aiApprovalMargin: { v: 3, grade: "G", note: "평가 탈락 기준 위 선제 대응 여유(점)" },
@@ -123,6 +125,13 @@
     return { peak, firm, renew, storage, gates };
   }
 
+  // 호스트의 승인 순서·예약·연계선 연결 판정을 재사용한다. 원 상태와 지도 선택은 보존한다.
+  function gridFor(bg, S, R, id, plan, advance = false) {
+    if (!S.econ) return null;
+    const draft = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan } } };
+    return withMap(bg, R, id, () => KCP.leagueCore.gridStatus(draft, R, bg, id, advance));
+  }
+
   function policy(S, id, style, investment) {
     const c = S.econ?.cities[id], previous = S.teams[id].econPol || c?.policy || {};
     const p = { taxRes: clampStep(previous.taxRes), taxInd: clampStep(previous.taxInd),
@@ -152,7 +161,7 @@
     const origin = rounds.slice(0, turn).reduce((a, rd, i) => rd.month === 1 ? i + 1 : a, 1);
     const age = turn - origin - style.delay;
     const annual = age === 0;
-    const scheduled = annual || age > 0 && age % value("aiRepairEvery") === 0;
+    const scheduled = annual || age > 0 && age % value(S.econ ? "aiGridRepairEvery" : "aiRepairEvery") === 0;
     const initial = supply(bg, S, id, plan);
     const safetyTarget = initial.peak * (1 + value("aiSupplyReserve") + value("aiSafeReserve") * (1 - style.risk));
     // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
@@ -204,17 +213,31 @@
     const maxMW = Math.max(...viable.map(t => bg.BLD[t].mw));
     const seed = `${S.room}:${S.round}:${id}`;
     const have = supply(bg, S, id, plan);
+    const grid = gridFor(bg, S, R, id, plan);
+    // 기존 대기의 미예약 몫부터 처리한다. 같은 달 운영을 마쳤다면 처리량은 다시 주지 않는다.
+    const waiting = grid ? grid.waitingMW - grid.reservedMW : 0;
+    let gridRoom = grid ? grid.headroomMW - waiting : Infinity;
+    let gridMonth = grid ? Math.max(0, (grid.round === S.round ? 0 : grid.monthlyMW) - waiting) : Infinity;
     const reachesDemand = bg.SITES.some(s => s.dem && roots.has(s.tile));
     let route = routes(bg, roots);
     while (used.size < bg.TILES.length) {
       const safety = have.firm < safetyTarget;
       const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
-      const renewNeed = scheduled ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
-      const storageNeed = scheduled ? Math.max(0, have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage) : 0;
+      const renewReady = scheduled && (!grid || age >= value("aiGridRenewDelay") * style.risk);
+      const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
+      const nextVariable = viable.filter(t => bg.BLD[t].variable && bg.BLD[t].mw <= gridMonth &&
+        legal[t].some(i => !used.has(i))).map(t => bg.BLD[t].mw);
+      const nextMW = renewNeed > 0 && nextVariable.length ? Math.min(...nextVariable) : 0;
+      const hostNeed = grid && value("hostEssMul") > 0 ?
+        Math.max(0, nextMW - gridRoom) / value("hostEssMul") : 0;
+      const storageNeed = scheduled ? Math.max(hostNeed,
+        have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage, 0) : 0;
       if (!safety && (!scheduled || firmNeed + renewNeed + storageNeed <= 0)) break;
       const candidates = [];
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
+        // 설비 일부만 예약하면 발전은 0이다. 정격 전체가 이번 달 두 한도에 들어가야 한다.
+        if (b.variable && b.mw > Math.min(gridRoom, gridMonth)) return;
         const need = b.cls === "disp" ? firmNeed : b.cls === "ren" ? renewNeed : storageNeed;
         if (need <= 0 || safety && b.cls !== "disp") return;
         let best = null;
@@ -235,6 +258,9 @@
       if (!best) break;
       const path = route.path(best.i);
       plan.builds.push({ t: best.t, i: best.i }); used.add(best.i);
+      const added = bg.BLD[best.t];
+      if (grid && added.variable) { gridRoom -= added.mw; gridMonth -= added.mw; }
+      if (grid && added.cls === "bat") gridRoom += added.mw * value("hostEssMul");
       const extended = path.some(i => !roots.has(i));
       addPath(plan, path); path.forEach(i => roots.add(i));
       // 나무에 붙인 설비만 더하므로 매 기마다 전체 network를 재계산할 필요가 없다.
@@ -251,6 +277,10 @@
 
   function ties(S, R, id, bg, style, plan) {
     const C = KCP.leagueCore, own = supply(bg, S, id, plan), actions = [];
+    const grid = gridFor(bg, S, R, id, plan);
+    const renewNeed = Math.max(0, own.peak *
+      (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - own.renew);
+    const gridTight = grid && grid.headroomMW - (grid.waitingMW - grid.reservedMW) < Math.min(grid.monthlyMW, renewNeed);
     let free = C.budget(S, id) - C.spendOf(bg, S, R, id, plan);
     const pending = R.ties.filter(t => t.a === id || t.b === id);
     let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => ({ ...t, id: C.tieId(t) }));
@@ -260,10 +290,11 @@
       if (sims) return;
       sims = {}; prices = {};
       for (const key of Object.keys(S.teams)) {
-        const city = S.econ?.cities[key], fuel = S.econ?.intl?.cur?.fuelMul;
-        const mods = city ? { demandRes: city.pop / city.pop0, demandInd: city.ind / city.ind0 } : {};
-        if (fuel) mods.fuelMul = { lng: fuel, diesel: fuel, coal: Math.sqrt(fuel) };
         const p = key === id ? plan : assets(S.teams[key].plan);
+        const grid = gridFor(bg, S, R, key, p, true);
+        // 이번 달 접속 뒤의 발전·ESS 상한만 예상한다. 비공개 사건 실현값은 제외한다.
+        const mods = S.econ ? withMap(bg, R, key, () => C.modsFor({ ...S, events: [],
+          grid: { ...S.grid, [key]: grid } }, R, key)) : {};
         sims[key] = withMap(bg, R, key, () => C.simTeam(bg, R, key, p,
           { ...rd, seed: KCP.econ.hashStr(`${S.room}:${S.round}:trade`) },
           Math.max(C.budget(S, key), bg.capex(p)), mods));
@@ -276,7 +307,7 @@
       const existing = S.ties.find(t => t.a === def.a && t.b === def.b);
       if (existing?.st === "built") continue;
       const incoming = existing?.st === "prop" && existing.by !== id;
-      if (!incoming && (existing || style.risk !== value("aiStyles").bold.risk)) continue;
+      if (!incoming && (existing || style.risk !== value("aiStyles").bold.risk && !gridTight)) continue;
       const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap }) / 2;
       const theirs = assets(S.teams[other].plan);
       const neighbor = withMap(bg, R, other, () => supply(bg, S, other, theirs));
