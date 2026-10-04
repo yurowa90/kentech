@@ -11,6 +11,38 @@ JS = r"""
   ok(S.rounds.length === 12 && S.rounds[0].month === 1 && S.rounds[0].season === "winter" && S.rounds[6].season === "summer", "12 month turns, Jan=winter, Jul=summer");
   ok(S.econ && S.econ.order.length === 3, "econ state created");
   ids.forEach(id => C.reduce(S, { type: "claim", team: id, token: tok(id) }, 1, BG));
+  // v1.3: 한도 초과 도시의 사건 대응은 league-core 계약이다. 기존 12달 진행과 분리한다.
+  {
+    const debt = C.newState("ECON-DEBT", "south", 0, ids, { turns: 12 }), id = ids[0];
+    C.reduce(debt, { type: "claim", team: id, token: tok(id) }, 1, BG);
+    C.host(debt, "next", 2);
+    const defs = R.events;
+    let ev = debt.events.find(e => e.round === debt.round && (() => {
+      const d = C.eventDef(R, e.id);
+      return d && C.hits(R, d, id) && d.opts?.some(o => o.cost === 0) && d.opts.some(o => o.cost > 0);
+    })());
+    if (!ev) {
+      const fixture = { id: "econ_v13_response", name: "검사용 사건", scope: "region", effect: {},
+        opts: [{ id: "free", name: "무비용 대응", cost: 0 }, { id: "paid", name: "유료 대응", cost: 4 }] };
+      R.events = defs.concat(fixture);
+      ev = { id: fixture.id, round: debt.round, x: 1 };
+    }
+    try {
+      debt.events = [ev];
+      const def = C.eventDef(R, ev.id), freeOpt = def.opts.find(o => o.cost === 0), paidOpt = def.opts.find(o => o.cost > 0);
+      const city = debt.econ.cities[id], key = debt.round + ":" + ev.id, team = debt.teams[id];
+      city.cash = -city.debtCap - 100;
+      // '대응 안 함'도 실제 변경으로 검사한다(중복 요청 quiet 경로 제외).
+      team.resp = { [key]: freeOpt.id };
+      const respond = (opt, now) => C.reduce(debt, { type: "respond", team: id, token: tok(id), ev: ev.id, opt }, now, BG);
+      const none = respond("none", 3), cleared = !Object.hasOwn(team.resp, key);
+      // 앞 요청이 거부돼도 무비용 대응을 중복 요청이 아닌 실제 변경으로 검사한다.
+      team.resp = {};
+      const free = respond(freeOpt.id, 4), paid = respond(paidOpt.id, 5);
+      ok(city.cash < -city.debtCap && none.ok === true && cleared && free.ok === true && paid.ok === false && team.resp[key] === freeOpt.id,
+        `v1.3 debt over: no response/free accepted, paid rejected; cash=${city.cash}, cap=${city.debtCap}, none=${JSON.stringify(none)}, free=${JSON.stringify(free)}, paid=${JSON.stringify(paid)}`);
+    } finally { R.events = defs; }
+  }
   const plans = {}; ids.forEach(id => { plans[id] = __auto(id); });
   // 평택만 디젤로 전기를 넉넉히, 당진은 아무것도 안 함
   BG.selectPack("pyeongtaek", "league");

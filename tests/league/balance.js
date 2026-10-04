@@ -446,16 +446,19 @@ block("B11", () => {
     for (const [label, r] of [["보통", baseline], ["첫달 원가3배", spike]]) IDS.forEach(id => {
       for (const m of [...Array.from({ length: 11 }, (_, i) => i), 11, 23]) {
         const rows = r.reports.slice(Math.max(0, m - 11), m + 1);
-        // v1.2의 '지금까지 달 평균×12'를 세금·지원금 합계에 그대로 적용한다.
-        // 12달 뒤에는 최근 12달 합계. 차익·거래·사건·회수 수입은 포함하지 않는다.
-        const eligible = rows.map(R => {
+        // v1.3: 첫 12달 전에는 반복 세입만 달 평균×12, 올해 1월 지원금은 한 번만 더한다.
+        // 12달부터는 최근 12달 세금·지원금 합계. 차익·거래·사건·회수 수입은 제외한다.
+        const recurring = rows.map(R => {
           const rev = R.fiscal?.[id]?.rev;
-          return rev?.resTax + rev?.indTax + rev?.subsidy;
+          return rev?.resTax + rev?.indTax;
         });
-        const want = mean(eligible) * 12 * D.params.debtCapRatio?.v;
+        const subsidies = rows.map(R => R.fiscal?.[id]?.rev?.subsidy);
+        const annual = rows.length < 12 ? mean(recurring) * 12 + r.reports[0].fiscal?.[id]?.rev?.subsidy :
+          sum(recurring) + sum(subsidies);
+        const want = annual * D.params.debtCapRatio?.v;
         const cap = r.reports[m].fiscal?.[id]?.debtCap;
-        ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
-          `${label} ${id} ${m + 1}달 fiscal.debtCap=${fmt(cap)}, 세금·지원금 평균 연환산 목표=${fmt(want)}`);
+        ok(recurring.every(finite) && subsidies.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
+          `${label} ${id} ${m + 1}달 fiscal.debtCap=${fmt(cap)}, 반복 세입 연환산·지원금1회 목표=${fmt(want)}`);
       }
       const caps = r.reports.slice(0, 11).map(R => R.fiscal?.[id]?.debtCap);
       ok(caps.every(c => finite(c) && c > 0),
@@ -545,6 +548,35 @@ block("B15", () => {
   const p = D.params.betaIndReal;
   ok(p?.grade === "G" && finite(p?.v) && typeof p.note === "string" && p.note.length > 0,
     `주민 값 준용 params.betaIndReal=${JSON.stringify(p)} (G·유한값·note)`);
+});
+
+block("B17", () => {
+  // v1.3: 정책·인구·종사자를 고정해 1월 지원금 연환산에 따른 한도 왜곡을 측정한다.
+  const data = clone(D);
+  for (const key of ["eduSpeed", "gpYear", "giYear"]) data.params[key].v = 0;
+  let E = X.initCities(IDS, data, { seed: "balance-v1.3", months: 24 });
+  const ins = inputs12(E);
+  E = X.calibrate(E, ins, data);
+  const start = clone(E), reports = [], states = [];
+  for (let m = 0; m < 13; m++) {
+    const r = X.monthStep(E, ins, data);
+    if (!r?.E || !r?.report) throw new Error(`monthStep v1.3 ${m + 1}달 E/report 없음`);
+    E = r.E; reports.push(r.report); states.push(E);
+  }
+  ok(IDS.length === 6, `v1.3 참가 도시=${IDS.length} (목표 6)`);
+  IDS.forEach(id => test(`${id} 첫달·13달째 한도`, () => {
+    const first = reports[0].fiscal?.[id]?.debtCap, later = reports[12].fiscal?.[id]?.debtCap;
+    const cash0 = start.cities[id].cash0, delta = Math.abs(later - first) / first;
+    const fixed = states.every(S => S.cities[id].pop === start.cities[id].pop &&
+      S.cities[id].ind === start.cities[id].ind &&
+      JSON.stringify(S.cities[id].policy) === JSON.stringify(ins[id].policy));
+    ok(fixed, `${id} 13달 정책·인구·종사자 고정`);
+    console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%`);
+    ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && first <= cash0 * 1.5,
+      `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (≤${fmt(cash0 * 1.5)})`);
+    ok(fixed && finite(first) && first > 0 && finite(later) && finite(delta) && delta <= 0.3,
+      `${id} 첫달/13달째 한도=${fmt(first)}/${fmt(later)}, 첫달 대비 차이=${fmt(delta * 100)}% (≤30%)`);
+  }));
 });
 
 failures.forEach(message => console.log(`FAIL ${message}`));
