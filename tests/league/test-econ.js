@@ -176,6 +176,131 @@ ok(X.roundSum([0.5, 0.5, -1], 0).reduce((a, b) => a + b, 0) === 0, "roundSum");
 ok(V1.reports[12].intl.cbam === 1 && V1.reports[11].intl.cbam === 0, "CBAM 2028년 1월부터");
 ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 국제 사건 발생");
 
+// ECON-BALANCE v1.3: 기대값은 정산 세금·지원금 원장으로 별도 계산한다.
+// 1월의 일회성 지원금은 첫해 평균에 넣지 않고, 12달부터만 실제 이동 합계에 넣는다.
+{
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const roundedCap = yearly => Math.round(D.params.debtCapRatio.v * yearly * 10) / 10;
+  let E = X.initCities(IDS, D, { seed: "v1.3-ledger", months: 24 });
+  const ledger = [];
+  for (let t = 0; t < 24; t++) {
+    const input = varied(37)(E, t), result = X.monthStep(E, input, D);
+    ledger.push(result.report.fiscal);
+    IDS.forEach(id => {
+      const rows = ledger.slice(-12).map(f => f[id].rev);
+      const annual = t < 12
+        ? sum(rows.map(r => r.resTax + r.indTax)) / rows.length * 12 + ledger[0][id].rev.subsidy
+        : sum(rows.map(r => r.resTax + r.indTax + r.subsidy));
+      ok(result.E.cities[id].debtCap === roundedCap(annual), `v1.3 원장 기반 ${t + 1}달 한도 ${id}`);
+      ok(result.E.cities[id].revenueHistory.length === Math.min(t + 1, 12), `v1.3 이력 창 ${t + 1}달 ${id}`);
+    });
+    if (t === 4 || t === 11) {
+      const saved = clone(E), before = JSON.stringify(saved);
+      IDS.forEach(id => ok(saved.cities[id].revenueVersion === 2 && saved.cities[id].revenueHistory.every(Number.isFinite), `v2 숫자 이력 fixture ${id}`));
+      const resumed = X.monthStep(saved, input, D);
+      ok(JSON.stringify(resumed) === JSON.stringify(result), `v2 저장 이어가기 ${t + 1}달`);
+      ok(JSON.stringify(saved) === before, "v2 저장 입력 불변");
+    }
+    E = result.E;
+  }
+
+  // SPEC §5 yearStart 선지급: 현금과 한도에서 지원금을 각각 한 번만 센다.
+  const start = X.initCities(IDS, D, { seed: "v1.3-prepaid" });
+  const paid = X.yearStart(start, D), paidTwice = X.yearStart(paid.E, D);
+  const direct = X.monthStep(start, {}, D), prepaid = X.monthStep(paid.E, {}, D);
+  ok(JSON.stringify(paidTwice.E) === JSON.stringify(paid.E), "yearStart 중복 지급 없음");
+  IDS.forEach(id => {
+    ok(prepaid.report.fiscal[id].rev.subsidy === 0, `선지급 지원금 정산 재지급 없음 ${id}`);
+    ok(prepaid.E.cities[id].cash === direct.E.cities[id].cash, `선지급 현금 일치 ${id}`);
+    ok(prepaid.E.cities[id].debtCap === direct.E.cities[id].debtCap, `선지급 한도 일치 ${id}`);
+    ok(JSON.stringify(prepaid.E.cities[id].revenueHistory) === JSON.stringify(direct.E.cities[id].revenueHistory), `선지급 이력 일치 ${id}`);
+  });
+
+  // SPEC §5/B11: 차익·거래·사건 보너스·철거 회수는 반복 세입에 포함하지 않는다.
+  const excluded = {
+    tariff: { demMWh: 100, costPerMWh: 0.02, opex: 2 },
+    trade: { tradeNet: 100 }, bonus: { bonus: 100 }, salvage: { salvage: 100 }
+  };
+  Object.entries(excluded).forEach(([field, energy]) => {
+    const input = Object.fromEntries(IDS.map(id => [id, { energy }]));
+    const changed = X.monthStep(start, input, D);
+    IDS.forEach(id => {
+      ok(changed.report.fiscal[id].rev[field] !== direct.report.fiscal[id].rev[field], `한도 제외 수입 ${field} 실제 변경 ${id}`);
+      ok(changed.E.cities[id].debtCap === direct.E.cities[id].debtCap, `한도 제외 수입 ${field} 한도 불변 ${id}`);
+    });
+  });
+
+  // v1.3 동일 조건 목표. 검사 복제본에서만 성장·이동·국제 변동을 0으로 고정한다.
+  // 게임 계수 변경이 아니며, 여섯 도시의 실제 시작 인구·산업·현금과 정책 0은 유지한다.
+  const fixed = clone(D);
+  ["gpYear", "giYear", "kappaPop", "kappaInd"].forEach(k => { fixed.params[k].v = 0; });
+  Object.keys(fixed.intl.sigma).forEach(k => { fixed.intl.sigma[k] = 0; });
+  fixed.intl.eventP = 0; fixed.intl.schedule = [];
+  let same = X.initCities(IDS, fixed, { seed: "v1.3-fixed", months: 24 });
+  const initial = clone(same), caps = [];
+  for (let t = 0; t < 13; t++) {
+    same = X.monthStep(same, {}, fixed).E;
+    IDS.forEach(id => ok(same.cities[id].pop === initial.cities[id].pop && same.cities[id].ind === initial.cities[id].ind && same.cities[id].out === 1, `동일 인구·산업·산출 ${t + 1}달 ${id}`));
+    caps.push(Object.fromEntries(IDS.map(id => [id, same.cities[id].debtCap])));
+  }
+  console.log("\nv1.3 동일 조건: 도시 | cash0 | 첫 달 한도 | cash0×1.5 | 13달 한도 | 차이/첫 달");
+  IDS.forEach(id => {
+    const cash0 = initial.cities[id].cash0, first = caps[0][id], thirteenth = caps[12][id];
+    const diff = Math.abs(thirteenth - first) / first;
+    ok(first <= cash0 * 1.5, `첫 달 한도 ≤ cash0×1.5 ${id}`);
+    ok(diff <= 0.3, `첫 달·13달 한도 차이 ≤ 30% ${id}`);
+    console.log(`${D.start[id].name} | ${cash0.toFixed(1)} | ${first.toFixed(1)} | ${(cash0 * 1.5).toFixed(1)} | ${thirteenth.toFixed(1)} | ${(diff * 100).toFixed(2)}%`);
+  });
+}
+
+// ECON-BALANCE v1.3: 실제 reduce·건설 비용을 VM에서 실행한다. 화면 등록만 비활성화.
+{
+  const vm = require("node:vm");
+  const context = vm.createContext({ console, document: { documentElement: {} }, KCP: { route() {}, on() {}, esc: x => x } });
+  context.window = context;
+  vm.runInContext('Math.random = () => { throw new Error("Math.random called"); };', context);
+  ["build-maps", "build", "econ-data", "econ", "league-data", "league-core"].forEach(name => {
+    const file = path.join(ROOT, `ui/${name}.js`);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  });
+  const C = context.KCP.leagueCore, bg = context.KCP.buildGame, R = C.regionOf("south");
+  const grant = R.events.find(e => e.effect.budgetAdd > 0 && (e.opts || []).some(o => o.cost === 0 && o.grant > 0));
+  const id = R.teams.find(t => C.hits(R, grant, t.id)).id;
+  const paid = R.events.find(e => C.hits(R, e, id) && (e.opts || []).some(o => o.cost > 0));
+  const freeOpt = grant.opts.find(o => o.cost === 0 && o.grant > 0), paidOpt = paid.opts.find(o => o.cost > 0);
+  const request = (S, message) => C.reduce(S, Object.assign({ team: id, token: "v1.3-fixture" }, message), 1, bg);
+  const fixture = monthly => {
+    const S = C.newState("v1.3-response", R.id, 0, IDS, monthly ? { turns: 12 } : undefined);
+    ok(request(S, { type: "claim" }).ok && C.host(S, "next", 1), "사건 대응 fixture 시작");
+    S.events = [{ round: S.round, id: paid.id }, { round: S.round, id: grant.id }];
+    S.teams[id].plan = { builds: [], lines: [] };
+    return S;
+  };
+  const S = fixture(true), city = S.econ.cities[id], key = `${S.round}:${paid.id}`;
+  city.cash = -city.debtCap - 100;
+  S.teams[id].resp = { [key]: paidOpt.id };
+  ok(C.budget(S, id) < 0, "한도 초과·사건 지원금 포함 예산 음수 fixture");
+  ok(request(S, { type: "respond", ev: paid.id, opt: "none" }).ok && !S.teams[id].resp[key], "한도 초과: 유료 대응 취소 허용");
+  ok(request(S, { type: "respond", ev: grant.id, opt: freeOpt.id }).ok, "한도 초과: 비용 0 지원금 선택 허용");
+  const before = JSON.stringify(S.teams[id].resp);
+  ok(!request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok && JSON.stringify(S.teams[id].resp) === before, "한도 초과: 유료 대응 거부·기존 선택 보존");
+  city.cash = -city.debtCap - 1;
+  ok(C.budget(S, id) > paidOpt.cost, "사건 지원금 때문에 유료 대응을 살 수 있는 예산 fixture");
+  ok(!request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "한도 초과: 사건 지원금으로 예산 양수여도 유료 대응 거부");
+  const build = request(S, { type: "plan", rev: 1, plan: { builds: [{ t: "solar", i: 0 }], lines: [] } });
+  ok(!build.ok && build.err === `debt:${id}`, "한도 초과: 새 건설 거부 유지");
+  ok(!request(S, { type: "respond", ev: paid.id, opt: "missing-option" }).ok, "무료 예외에서도 잘못된 선택 거부");
+  city.cash = 0;
+  ok(request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "한도 이내: 예산 내 유료 대응 허용");
+
+  const season = fixture(false);
+  ok(!season.econ && C.roundsOf(season).length === 4, "계절 모드: 경제 상태 없이 기존 4라운드");
+  ok(request(season, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "계절 모드: 예산 내 유료 대응 허용 유지");
+  season.teams[id].sunk = C.budget(season, id) + 100;
+  const old = JSON.stringify(season.teams[id].resp);
+  ok(!request(season, { type: "respond", ev: paid.id, opt: "none" }).ok && JSON.stringify(season.teams[id].resp) === old, "계절 모드: 기존 예산 검사·선택 복원 유지");
+}
+
 Math.random = realRandom;
 console.log(`\n시험: ${passes} 통과, ${fails} 실패\n`);
 

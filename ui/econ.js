@@ -534,7 +534,14 @@
       c.revenueHistory.push(recurring + rev.subsidy + (c.paidSubsidy || 0));
       c.paidSubsidy = 0;
       if (c.revenueHistory.length > 12) c.revenueHistory.shift();
-      c.revYear = Math.max(0, sum(c.revenueHistory) * 12 / c.revenueHistory.length);
+      const observed = c.revenueHistory.length, revenue = sum(c.revenueHistory);
+      // ECON-BALANCE v1.3: 1월 지원금은 한 번만, 반복 세금만 연환산한다.
+      // v2 숫자 이력은 유지한다. 옛 저장의 이력을 비운 경우 1월이 이력에 없을 수도 있다.
+      const annualSubsidy = E.paidYear === E.year ? fin(c.subsidy, 0) : 0;
+      const recordedSubsidy = observed >= E.month ? annualSubsidy : 0;
+      c.revYear = Math.max(0, observed < 12
+        ? (revenue - recordedSubsidy) * 12 / observed + annualSubsidy
+        : revenue);
       c.debtCap = r1(P("debtCapRatio") * c.revYear);
       const over = c.cash < -c.debtCap;
       if (over && !(cashBefore[id] < -c.debtCap)) news.push(`${c.name} 지방채 한도 넘음 — 새 건설 멈춤`);
