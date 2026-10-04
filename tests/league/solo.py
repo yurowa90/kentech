@@ -59,6 +59,11 @@ CHANGED_JS = r"""([oldRound, oldPhase, oldCount]) => {
   return !!S && (S.round !== oldRound || S.phase !== oldPhase ||
     (S.results || []).length !== oldCount);
 }"""
+# // ECON-UI v1.1: 준비 뒤에는 단계 전환 또는 건너뛰기 카드가 열릴 때까지 기다린다.
+PROGRESS_OR_PREDICT_JS = """args => {
+  const skip = document.querySelector('#lg-predict-skip');
+  return (""" + CHANGED_JS + """)(args) || !!(skip && skip.getClientRects().length);
+}"""
 
 
 def read(page):
@@ -116,9 +121,15 @@ def click_next(page, state):
         for i in range(locator.count()):
             button = locator.nth(i)
             if button.is_visible() and button.is_enabled():
+                ready = button.get_attribute("id") == "lg-ready"
                 button.click()
-                page.wait_for_function(CHANGED_JS, arg=[state["round"], state["phase"],
-                                                       len(state.get("results", []))])
+                previous = [state["round"], state["phase"], len(state.get("results", []))]
+                # // ECON-UI v1.1: 준비가 예측 카드만 열었으면 화면의 건너뛰기로 준비를 확정한다.
+                if ready:
+                    page.wait_for_function(PROGRESS_OR_PREDICT_JS, arg=previous)
+                    if not page.evaluate(CHANGED_JS, previous):
+                        page.locator("#lg-predict-skip").click()
+                page.wait_for_function(CHANGED_JS, arg=previous)
                 page.wait_for_timeout(400)
                 return read(page)
     raise AssertionError(f"{state['round']}달 {state['phase']}: 누를 진행 버튼 없음")
@@ -134,11 +145,11 @@ def response_evidence(state, proposal):
                 return True
             if tie.get("response") in ("accept", "reject", "accepted", "rejected"):
                 return True
-    # 거절은 기존 엔진에 별도 tie 상태가 없으므로 새로 남은 명시적 응답 로그도 검사.
+    # // ECON-UI v1.1: 새 응답 로그의 수락·거절·연결·거둠을 인정하며 상대 도시·연계선 조건은 유지한다.
     for item in state.get("log", []):
         text = item if isinstance(item, str) else str(item.get("t", item.get("text", item.get("msg", ""))))
         if (text not in proposal["old_log"] and proposal["other_name"] in text and
-                "연계선" in text and re.search(r"수락|거절|연결|취소", text)):
+                "연계선" in text and re.search(r"수락|거절|연결|거둠", text)):
             return True
     return False
 
@@ -251,10 +262,8 @@ def play(checks, page, base, label):
     checks.ok(bool(built) and all(count > 0 for count in built.values()),
               f"{label} U3 컴퓨터 도시 실제 설비 수 > 0: {built}")
     checks.ok(replied or response_evidence(state, proposal), f"{label} U3 컴퓨터 연계선 수락/거절 응답")
-    # U3는 끝 화면 최종 순위를 요구한다. U2와 같은 #lg-rank를 검사한다.
-    rank = page.locator('[data-panel="rank"]')
-    if rank.count() and rank.first.is_visible() and not shown(page, "#lg-rank"):
-        rank.first.click()
+    # // ECON-UI v1.1: 최종 순위 탭을 직접 열고 공통 data-team·meter[value]·data-total 계약으로 검사한다.
+    open_panel(page, "rank")
     rank_checks(checks, page, observation["active"], label + " U3 최종")
     overflow(checks, page, label + " 끝")
     screenshot(checks, page, f"econui-solo-{label}-end.png")
@@ -266,19 +275,21 @@ def main():
         base = local_address(sys.argv)
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
-            for scheme in ("light", "dark"):
-                label = f"390x844-{scheme}"
-                context, external = context_for(browser, base, 390, 844, scheme)
-                page, events = monitored_page(context)
-                try:
-                    play(checks, page, base, label)
-                except Exception as exc:
-                    checks.ok(False, f"{label} U3 진행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
-                    screenshot(checks, page, f"econui-solo-{label}-failure.png")
-                finally:
-                    diagnostics(checks, events, label + " U3")
-                    checks.ok(not external, f"{label} U3 외부 연결 시도 0: {external}")
-                    context.close()
+            # // ECON-UI v1.1: 공통 수용 기준의 데스크톱·모바일을 밝음·어두움 모두 검사한다.
+            for width, height in ((1280, 900), (390, 844)):
+                for scheme in ("light", "dark"):
+                    label = f"{width}x{height}-{scheme}"
+                    context, external = context_for(browser, base, width, height, scheme)
+                    page, events = monitored_page(context)
+                    try:
+                        play(checks, page, base, label)
+                    except Exception as exc:
+                        checks.ok(False, f"{label} U3 진행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+                        screenshot(checks, page, f"econui-solo-{label}-failure.png")
+                    finally:
+                        diagnostics(checks, events, label + " U3")
+                        checks.ok(not external, f"{label} U3 외부 연결 시도 0: {external}")
+                        context.close()
             browser.close()
     except Exception as exc:
         checks.ok(False, f"검사 실행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")

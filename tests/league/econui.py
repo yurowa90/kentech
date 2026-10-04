@@ -64,15 +64,19 @@ PLAN_JS = """() => {
   });
 }"""
 RANK_JS = r"""() => {
+  // ECON-UI v1.1: 표의 행·열 대신 계약의 팀 행·부분 점수 meter·총점을 읽는다.
   const root = document.querySelector('#lg-rank');
-  if (!root) return {rows:[], headers:[]};
-  const headers = [...root.querySelectorAll('thead th, [role=columnheader]')]
-    .map(n => n.innerText.replace(/\s+/g,' ').trim());
-  const rows = [...root.querySelectorAll('tr, [role=row]')]
-    .filter(n => n.querySelector('td, [role=cell]'))
-    .map(n => ({text:n.innerText,
-      cells:[...n.querySelectorAll('td, [role=cell]')].map(c => c.innerText)}));
-  return {rows, headers};
+  if (!root) return {rows:[]};
+  const keys = ['pop', 'ind', 'fin', 'co2', 'appr', 'rel'];
+  const rows = [...root.querySelectorAll('[data-team]')].map(n => ({
+    id:n.dataset.team,
+    parts:[...n.querySelectorAll('[data-part]')].map(p => p.dataset.part),
+    values:Object.fromEntries(keys.map(key => [key,
+      [...n.querySelectorAll(`[data-part="${key}"] meter[value]`)]
+        .map(m => m.getAttribute('value'))])),
+    totals:[...n.querySelectorAll('[data-total]')].map(t => t.innerText)
+  }));
+  return {rows};
 }"""
 POLICY_JS = """([id, key, expected]) => {
   const S = KCP.league.state().S, P = S.teams[id].econPol;
@@ -273,22 +277,31 @@ def change_policy(team, host, team_id, key):
 
 
 def rank_checks(checks, page, ids, label):
+    # // ECON-UI v1.1: 익명 표시 여부와 무관하게 data-team으로 활성 도시를 식별한다.
     checks.test(f"{label} U2 #lg-rank 표시", lambda: shown(page, "#lg-rank"))
     snapshot = page.evaluate(RANK_JS)
     checks.ok(len(snapshot["rows"]) == len(ids), f"{label} U2 순위 행 = 활성 팀 {len(ids)}개")
-    names = page.evaluate("ids => ids.map(id => KCP.ECON_DATA.start[id].name)", ids)
-    for name in names:
-        checks.ok(sum(name in row["text"] for row in snapshot["rows"]) == 1,
-                  f"{label} U2 자료의 도시 {name} 순위 1행")
+    for team_id in ids:
+        checks.ok(sum(row["id"] == team_id for row in snapshot["rows"]) == 1,
+                  f"{label} U2 활성 도시 {team_id} 순위 1행")
+    checks.ok(bool(snapshot["rows"]) and all(
+        sorted(row["parts"]) == sorted(SCORES) for row in snapshot["rows"]),
+        f"{label} U2 각 행 부분 점수 정확히 6종")
+    # // ECON-UI v1.1: 총점은 [data-total]에서, 부분 점수는 meter의 원래 value에서 확인한다.
+    totals_valid = bool(snapshot["rows"])
+    for row in snapshot["rows"]:
+        value = re.search(r"(?<![\d.])-?\d+(?:\.\d+)?", row["totals"][0]) if len(row["totals"]) == 1 else None
+        totals_valid = totals_valid and bool(value) and math.isfinite(float(value.group()))
+    checks.ok(totals_valid, f"{label} U2 각 행 총점 1개·유한 숫자")
     for key, title in SCORES.items():
-        # 내부 data 속성은 명세에 없다. 표의 열 제목과 대응 셀로 검증한다.
-        columns = [i for i, header in enumerate(snapshot["headers"])
-                   if title.replace(" ", "") in header.replace(" ", "")]
-        valid = len(columns) == 1 and bool(snapshot["rows"])
+        valid = bool(snapshot["rows"])
         for row in snapshot["rows"]:
-            cell = row["cells"][columns[0]] if columns and columns[0] < len(row["cells"]) else ""
-            value = re.search(r"(?<![\d.])-?\d+(?:\.\d+)?", cell)
-            valid = valid and bool(value) and 0 <= float(value.group()) <= 100
+            values = row["values"][key]
+            try:
+                value = float(values[0]) if len(values) == 1 else math.nan
+            except ValueError:
+                value = math.nan
+            valid = valid and math.isfinite(value) and 0 <= value <= 100
         checks.ok(valid, f"{label} U2 부분 점수 {key}({title}) 각 행 0–100")
 
 
@@ -381,13 +394,16 @@ def economic(checks, context, base, label, pages):
     speed = host.evaluate("() => KCP.leagueCore.publicView(KCP.league.state().S, Date.now()).econ.eduSpeed")
     checks.test(f"{label} U1 배속 ×{speed}", lambda: shown(team, "#lg-city") and bool(re.search(
         r"×\s*" + re.escape(str(speed)) + r"(?![\d.])", team.locator("#lg-city").inner_text())))
-    checks.test(f"{label} U4 첫 달 #lg-crit", lambda: shown(team, "#lg-crit"))
+    # // ECON-UI v1.1: 기준 카드는 일지 탭 안에 있으므로 확인 전에 직접 연다.
+    checks.test(f"{label} U4 첫 달 #lg-crit", lambda:
+                (open_panel(team, "journal"), shown(team, "#lg-crit"))[1])
     checks.test(f"{label} U4 crit 객체 키·칩·숫자만 전송", lambda: choose_crit(team, host, tid))
     overflow(checks, team, label + " 계획 도시 서랍")
     overflow(checks, host, label + " 계획 진행자")
     screenshot(checks, team, f"econui-{label}-team-plan.png")
     # 허용된 규칙 엔진 fixture. solo.py에서는 이런 상태/계획 주입을 하지 않는다.
-    team.evaluate(automatic_plan())
+    # // ECON-UI v1.1: AUTO의 함수 값이 자동 호출되지 않도록 정의만 실행한다.
+    team.evaluate("() => {" + automatic_plan() + "}")
     team.evaluate(PLAN_JS)
     host.wait_for_function("id => !!KCP.league.state().S.teams[id].plan", arg=tid)
     migration_months = 0
@@ -397,7 +413,9 @@ def economic(checks, context, base, label, pages):
         advance(host, team, month, "review")
         checks.test(f"{label} U4 {month}달 결과 .lg-ask ≤ 1", lambda:
                     team.locator('.lg-ask').count() <= 1)
-        checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda: disabled_policies(team))
+        # // ECON-UI v1.1: 결과로 자동 전환된 서랍에서 도시 탭을 직접 열어 검사한다.
+        checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda:
+                    (open_panel(team, "city"), disabled_policies(team))[1])
         state = host.evaluate(HOST_JS)
         flows = [flow for flow in state["results"][-1]["econ"]["flows"]["pop"] if flow["n"] > 0]
         if flows:
@@ -405,8 +423,10 @@ def economic(checks, context, base, label, pages):
             checks.test(f"{label} U2 {month}달 이주 화살표 설명", lambda flows=flows:
                         migration_caption(host, flows))
         if month == 1:
-            checks.test(f"{label} U1 지난달 #lg-fiscal", lambda: shown(team, '#lg-fiscal') and
-                        all(word in team.locator('#lg-fiscal').inner_text() for word in ('세입', '세출')))
+            # // ECON-UI v1.1: 지난달 돈 표도 도시 탭을 열고 기존 세입·세출 조건을 확인한다.
+            checks.test(f"{label} U1 지난달 #lg-fiscal", lambda:
+                        (open_panel(team, "city"), shown(team, '#lg-fiscal') and
+                         all(word in team.locator('#lg-fiscal').inner_text() for word in ('세입', '세출')))[1])
             rank_checks(checks, host, ids, label)
             checks.test(f"{label} U2 #lg-ticker 표시", lambda: shown(host, '#lg-ticker'))
             for title in ("LNG", "환율", "수출", "해운"):
@@ -420,7 +440,9 @@ def economic(checks, context, base, label, pages):
     advance(host, team, 12, "end")
     for selector in ('#lg-debrief', '#lg-wsim'):
         checks.test(f"{label} U4 끝 {selector}", lambda selector=selector: shown(host, selector))
-    checks.test(f"{label} U1 끝 정책 disabled", lambda: disabled_policies(team))
+    # // ECON-UI v1.1: 끝 단계도 결과 탭으로 바뀌므로 도시 탭을 직접 연다.
+    checks.test(f"{label} U1 끝 정책 disabled", lambda:
+                (open_panel(team, "city"), disabled_policies(team))[1])
     overflow(checks, host, label + " 끝 진행자")
     overflow(checks, team, label + " 끝 팀")
     screenshot(checks, host, f"econui-{label}-host-end.png")

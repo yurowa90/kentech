@@ -22,7 +22,7 @@ window.__auto = (id, extra) => {
 with sync_playwright() as pw:
     br = pw.chromium.launch(); pg = br.new_page()
     pg.goto("http://127.0.0.1:9400/index.html#home"); pg.wait_for_timeout(800)
-    pg.evaluate(AUTO)
+    pg.evaluate("() => {" + AUTO + "}")  # // ECON-UI v1.1: 함수 정의만 실행하여 인자 없는 자동 호출을 막는다.
     out = pg.evaluate("""() => {
       const C = KCP.leagueCore, BG = KCP.buildGame, R = C.regionOf("south");
       const runAll = (ties, seasonIdx) => {
