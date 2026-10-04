@@ -1,0 +1,289 @@
+"""ECON-UI U3: 화면 버튼만 눌러 혼자 하기 12달 완주.
+
+evaluate는 상태/저장/DOM 조회만 한다. 엔진 호출·상태 주입·AI 대체는 금지.
+새 컨텍스트의 빈 저장소로 시작하며 새로고침은 한 번 수행한다.
+실행: python3 tests/league/solo.py <로컬 주소> (브라우저 실행은 총괄 담당).
+"""
+
+import json
+import re
+import sys
+
+from playwright.sync_api import sync_playwright
+
+from econui import (Checks, WAIT, context_for, diagnostics, local_address,
+                    monitored_page, open_panel, overflow, rank_checks,
+                    screenshot, shown)
+
+KEY = "kcp-league-solo-v1"
+# 저장 wrapper 필드는 U3에 미지정. 전체 규칙 상태는 teams/phase/round로 식별한다.
+# UI 코드의 비공개 변수 이름에는 의존하지 않는다.
+READ_JS = r"""() => {
+  const raw = localStorage.getItem('kcp-league-solo-v1');
+  let save = null, invalid = false;
+  try { save = raw === null ? null : JSON.parse(raw); } catch (_) { invalid = true; }
+  const find = (x, depth=0) => {
+    if (!x || typeof x !== 'object' || depth > 4) return null;
+    if (x.teams && typeof x.phase === 'string' && Number.isInteger(x.round)) return x;
+    for (const child of Object.values(x)) { const S = find(child, depth+1); if (S) return S; }
+    return null;
+  };
+  const L = window.KCP && KCP.league && KCP.league.state ? KCP.league.state() : null;
+  const live = find(L), saved = find(save), S = live || saved;
+  const active = S ? (S.active || Object.keys(S.teams)) : [];
+  const player = (L && L.team) || (save && (save.team || save.player || save.human || save.myCity));
+  return {raw:raw !== null, invalid, saved, live, S, player, active,
+    hash:location.hash, soloKeys:Object.keys(localStorage).filter(k => k.startsWith('kcp-league-solo'))};
+}"""
+STATE_READY_JS = r"""() => {
+  const find = (x, depth=0) => {
+    if (!x || typeof x !== 'object' || depth > 4) return false;
+    if (x.teams && typeof x.phase === 'string' && Number.isInteger(x.round)) return true;
+    return Object.values(x).some(v => find(v, depth+1));
+  };
+  const L = window.KCP && KCP.league && KCP.league.state ? KCP.league.state() : null;
+  if (find(L)) return true;
+  try { return find(JSON.parse(localStorage.getItem('kcp-league-solo-v1'))); }
+  catch (_) { return false; }
+}"""
+CHANGED_JS = r"""([oldRound, oldPhase, oldCount]) => {
+  const find = (x, depth=0) => {
+    if (!x || typeof x !== 'object' || depth > 4) return null;
+    if (x.teams && typeof x.phase === 'string' && Number.isInteger(x.round)) return x;
+    for (const v of Object.values(x)) { const found = find(v, depth+1); if (found) return found; }
+    return null;
+  };
+  const L = window.KCP && KCP.league && KCP.league.state ? KCP.league.state() : null;
+  let S = find(L);
+  if (!S) { try { S = find(JSON.parse(localStorage.getItem('kcp-league-solo-v1'))); } catch (_) {} }
+  return !!S && (S.round !== oldRound || S.phase !== oldPhase ||
+    (S.results || []).length !== oldCount);
+}"""
+
+
+def read(page):
+    return page.evaluate(READ_JS)
+
+
+def fingerprint(state):
+    """재시작/재운영을 잡도록 달·단계·결과·경제·모든 팀 계획·연계선을 비교한다."""
+    if not state:
+        return None
+    teams = {key: {field: value.get(field) for field in
+                   ("plan", "econPol", "base", "hist", "ready", "crit")}
+             for key, value in state["teams"].items()}
+    return json.dumps({"round": state["round"], "phase": state["phase"],
+                       "active": state.get("active"), "rounds": state.get("rounds"),
+                       "results": state.get("results"), "econ": state.get("econ"),
+                       "teams": teams, "ties": state.get("ties")},
+                      ensure_ascii=False, sort_keys=True)
+
+
+def start(page):
+    card = page.locator("#lg-solo")
+    # U3 기본 길이 12달. 길이 버튼이 있으면 명시적으로 누른다(선택 상자 조작 없음).
+    length = card.locator('[data-turns="12"]')
+    if not length.count():
+        length = card.get_by_role("button", name=re.compile(r"^12\s*달"))
+    if length.count() and length.first.is_visible():
+        length.first.click()
+    # #lg-solo 자체가 버튼/링크인 구현과 카드 안 시작 버튼을 모두 허용한다.
+    if card.evaluate("el => el.tagName === 'BUTTON' || el.tagName === 'A'"):
+        card.click()
+    else:
+        card.get_by_role("button", name=re.compile(r"시작|혼자 하기")).first.click()
+    page.wait_for_url(re.compile(r".*#league/solo$"), timeout=WAIT)
+    page.wait_for_function(STATE_READY_JS)
+    page.wait_for_timeout(400)
+    return read(page)
+
+
+def close_drawer(page):
+    close = page.locator(".lg-px")
+    if close.count() and close.first.is_visible():
+        close.first.click()
+
+
+def click_next(page, state):
+    close_drawer(page)
+    # 기존 팀 '준비'가 우선. 결과→다음 달도 UI에 있는 버튼만 누른다.
+    candidates = [page.locator("#lg-ready"), page.locator("#lg-next"),
+                  page.get_by_role("button", name=re.compile(
+                      r"^(?:준비(?: 완료)?|다음 (?:달|턴|라운드)(?:.*)?|"
+                      r"최종 (?:결과|순위)(?:.*)?|리그 끝|끝내기|운영(?:.*)?|"
+                      r"(?:1월|1달|첫 달|게임) 시작)$"))]
+    for locator in candidates:
+        for i in range(locator.count()):
+            button = locator.nth(i)
+            if button.is_visible() and button.is_enabled():
+                button.click()
+                page.wait_for_function(CHANGED_JS, arg=[state["round"], state["phase"],
+                                                       len(state.get("results", []))])
+                page.wait_for_timeout(400)
+                return read(page)
+    raise AssertionError(f"{state['round']}달 {state['phase']}: 누를 진행 버튼 없음")
+
+
+def response_evidence(state, proposal):
+    """수락/거절 모두 답이다. 단순히 제안이 사라진 것만으로는 통과시키지 않는다."""
+    if not state or not proposal:
+        return False
+    for tie in state.get("ties", []):
+        if {tie.get("a"), tie.get("b")} == {proposal["human"], proposal["other"]}:
+            if tie.get("st") in ("built", "accepted", "rejected", "declined"):
+                return True
+            if tie.get("response") in ("accept", "reject", "accepted", "rejected"):
+                return True
+    # 거절은 기존 엔진에 별도 tie 상태가 없으므로 새로 남은 명시적 응답 로그도 검사.
+    for item in state.get("log", []):
+        text = item if isinstance(item, str) else str(item.get("t", item.get("text", item.get("msg", ""))))
+        if (text not in proposal["old_log"] and proposal["other_name"] in text and
+                "연계선" in text and re.search(r"수락|거절|연결|취소", text)):
+            return True
+    return False
+
+
+def propose(page, observation):
+    open_panel(page, "deal")
+    buttons = page.locator('[data-tie="propose"][data-other][data-cap]')
+    human = observation["player"]
+    computers = set(observation["active"]) - {human}
+    for i in range(buttons.count()):
+        button = buttons.nth(i)
+        other = button.get_attribute("data-other")
+        if other in computers and button.is_visible() and button.is_enabled():
+            old_log = []
+            for item in observation["S"].get("log", []):
+                old_log.append(item if isinstance(item, str) else
+                               str(item.get("t", item.get("text", item.get("msg", "")))))
+            proposal = {"human": human, "other": other, "old_log": old_log,
+                        "other_name": page.evaluate("id => KCP.ECON_DATA.start[id].name", other)}
+            button.click()
+            page.wait_for_timeout(400)
+            return proposal
+    raise AssertionError("컴퓨터 도시에 보낼 활성 연계선 제안 버튼 없음")
+
+
+def computer_builds(observation):
+    human = observation["player"]
+    return {city: len((observation["S"]["teams"][city].get("plan") or {}).get("builds", []))
+            for city in observation["active"] if city != human}
+
+
+def resume(checks, page, label):
+    page.wait_for_timeout(400)
+    before = read(page)
+    checks.ok(before["raw"] and not before["invalid"] and before["saved"] is not None,
+              f"{label} U3 {KEY}에 전체 규칙 상태 저장")
+    checks.ok(before["soloKeys"] == [KEY], f"{label} U3 혼자 하기 저장 키 하나")
+    checks.ok(fingerprint(before["S"]) == fingerprint(before["saved"]),
+              f"{label} U3 저장 상태 = 현재 상태")
+    page.reload()
+    page.wait_for_function(STATE_READY_JS)
+    page.wait_for_timeout(400)
+    after = read(page)
+    checks.ok(after["hash"] == "#league/solo", f"{label} U3 새로고침 뒤 혼자 하기 경로")
+    checks.ok(fingerprint(before["S"]) == fingerprint(after["S"]),
+              f"{label} U3 새로고침 뒤 달·단계·경제·설비·결과·연계선 그대로")
+    checks.ok(before["player"] == after["player"], f"{label} U3 새로고침 뒤 내 도시 그대로")
+    overflow(checks, page, label + " 새로고침")
+    screenshot(checks, page, f"econui-solo-{label}-resume.png")
+    return after
+
+
+def play(checks, page, base, label):
+    page.goto(base + "#league")
+    checks.test(f"{label} U3 로비 #lg-solo 카드", lambda: shown(page, "#lg-solo"))
+    overflow(checks, page, label + " 로비")
+    screenshot(checks, page, f"econui-solo-{label}-lobby.png")
+    observation = start(page)
+    state = observation["S"]
+    checks.ok(state.get("econ") is not None and len(state.get("rounds") or []) == 12,
+              f"{label} U3 시작은 경제 모드 12달")
+    checks.ok(observation["player"] in observation["active"] and
+              2 <= len(observation["active"]) <= 6 and "pyeongtaek" in observation["active"],
+              f"{label} U3 내 도시 하나 + 컴퓨터 도시, 필수 도시 포함")
+    checks.ok(observation["hash"] == "#league/solo", f"{label} U3 시작 경로")
+    checks.test(f"{label} U3 준비 버튼", lambda: shown(page, "#lg-ready"))
+    proposal = None
+    replied = False
+    attempted = False
+    reloaded = False
+    reviews = set()
+    built = {}
+    # 12달 × 계획/결과 + 로비/끝. 무한 루프를 막는 실행기 한도다.
+    for _ in range(40):
+        state = observation["S"]
+        current_builds = computer_builds(observation)
+        for city, count in current_builds.items():
+            built[city] = max(built.get(city, 0), count)
+        if response_evidence(state, proposal):
+            replied = True
+        if state["phase"] == "end":
+            break
+        if state["phase"] == "plan" and not attempted:
+            attempted = True
+            try:
+                proposal = propose(page, observation)
+                checks.ok(True, f"{label} U3 화면 버튼으로 연계선 제안")
+                observation = read(page)
+                replied = response_evidence(observation["S"], proposal)
+            except Exception as exc:
+                checks.ok(False, f"{label} U3 화면 버튼으로 연계선 제안: {str(exc).splitlines()[0]}")
+            overflow(checks, page, label + " 연계선 서랍")
+            screenshot(checks, page, f"econui-solo-{label}-tie.png")
+        if state["phase"] == "review" and state["round"] not in reviews:
+            reviews.add(state["round"])
+            checks.ok(len(state.get("results", [])) == state["round"],
+                      f"{label} U3 {state['round']}달 버튼 진행 → 운영 결과")
+            overflow(checks, page, f"{label} {state['round']}달 결과")
+            if not reloaded:
+                observation = resume(checks, page, label)
+                reloaded = True
+        observation = click_next(page, observation["S"])
+        overflow(checks, page, f"{label} {observation['S']['round']}달 {observation['S']['phase']}")
+    state = observation["S"]
+    checks.ok(state["phase"] == "end" and state["round"] == 12 and
+              len(state.get("results", [])) == 12 and (state.get("econ") or {}).get("t") == 12,
+              f"{label} U3 버튼 클릭만으로 12달 완주")
+    checks.ok(reviews == set(range(1, 13)), f"{label} U3 1–12달 결과 모두 거침")
+    checks.ok(reloaded, f"{label} U3 진행 중 새로고침 검사 수행")
+    checks.ok(bool(built) and all(count > 0 for count in built.values()),
+              f"{label} U3 컴퓨터 도시 실제 설비 수 > 0: {built}")
+    checks.ok(replied or response_evidence(state, proposal), f"{label} U3 컴퓨터 연계선 수락/거절 응답")
+    # U3는 끝 화면 최종 순위를 요구한다. U2와 같은 #lg-rank를 검사한다.
+    rank = page.locator('[data-panel="rank"]')
+    if rank.count() and rank.first.is_visible() and not shown(page, "#lg-rank"):
+        rank.first.click()
+    rank_checks(checks, page, observation["active"], label + " U3 최종")
+    overflow(checks, page, label + " 끝")
+    screenshot(checks, page, f"econui-solo-{label}-end.png")
+
+
+def main():
+    checks = Checks()
+    try:
+        base = local_address(sys.argv)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            for scheme in ("light", "dark"):
+                label = f"390x844-{scheme}"
+                context, external = context_for(browser, base, 390, 844, scheme)
+                page, events = monitored_page(context)
+                try:
+                    play(checks, page, base, label)
+                except Exception as exc:
+                    checks.ok(False, f"{label} U3 진행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+                    screenshot(checks, page, f"econui-solo-{label}-failure.png")
+                finally:
+                    diagnostics(checks, events, label + " U3")
+                    checks.ok(not external, f"{label} U3 외부 연결 시도 0: {external}")
+                    context.close()
+            browser.close()
+    except Exception as exc:
+        checks.ok(False, f"검사 실행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+    return checks.finish()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

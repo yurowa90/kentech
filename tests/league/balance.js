@@ -323,6 +323,209 @@ block("B10", () => {
   });
 });
 
+// v1.2 전용 입력: 기존 B1–B10의 동일 원가 입력과 단언은 그대로 둔다.
+function inputs12(E, change = () => ({}), m = E.t) {
+  return Object.fromEntries(E.order.map((id, i) => {
+    const o = change(id, m, E) || {};
+    const e = energy(E.cities[id], Object.assign({
+      demMWh: E.cities[id].pop / FIXTURE.people * (450 + 80 * i),
+      costPerMWh: FIXTURE.cost * (0.7 + 0.15 * i),
+      unsPct: i * 0.4, tradeNet: (i - (IDS.length - 1) / 2) * 0.3
+    }, o.energy));
+    // 명세의 공급량 해석: 명시된 servedMWh가 없으면 수요×(1−정전율)로 계산한다.
+    e.servedMWh = o.energy?.servedMWh ?? e.demMWh * (1 - e.unsPct / 100);
+    e.buyCost = o.energy?.buyCost ?? Math.max(0, -e.tradeNet);
+    // costPerMWh는 자기 수요용 연료·정책·구매비를 합친 공급량당 원가로 해석한다.
+    // opex에는 구매비를 뺀 연료·정책비와 판매용 연료를 넣는다. 판매 수입은 tradeNet에만 있다.
+    e.opex = o.energy?.opex ?? e.servedMWh * e.costPerMWh - e.buyCost + Math.max(0, e.tradeNet) * 0.5;
+    return [id, { energy: e,
+      policy: Object.assign({ taxRes: 0, taxInd: 0, service: 0, incentive: 0 }, o.policy) }];
+  }));
+}
+function run12(months, change = () => ({}), seed = "balance-v1.2") {
+  let E = X.initCities(IDS, D, { seed, months });
+  E = X.calibrate(E, inputs12(E), D);
+  const start = clone(E), reports = [], states = [], supplied = [];
+  for (let m = 0; m < months; m++) {
+    const ins = inputs12(E, change, m), r = X.monthStep(E, ins, D);
+    if (!r?.E || !r?.report) throw new Error(`monthStep v1.2 ${m + 1}달 E/report 없음`);
+    E = r.E; supplied.push(ins); reports.push(r.report); states.push(E);
+  }
+  return { start, E, reports, states, supplied };
+}
+const served12 = e => e.servedMWh ?? e.demMWh * (1 - e.unsPct / 100);
+function averageCost12(ins) {
+  const live = IDS.map(id => ins[id].energy).filter(e => served12(e) > 0);
+  return sum(live.map(e => served12(e) * e.costPerMWh)) / sum(live.map(served12));
+}
+
+block("B11", () => {
+  test("공급량 가중 매출·차익과 0공급 제외", () => {
+    const r = run12(1, id => id === SMALL ? { energy: { unsPct: 100, costPerMWh: 0, tradeNet: 0 } } : {});
+    const ins = r.supplied[0], avg = averageCost12(ins), markup = D.params.tariffMarkup?.v;
+    IDS.forEach(id => {
+      const e = ins[id].energy, f = r.reports[0].fiscal?.[id], served = served12(e);
+      const gross = served * avg * (1 + markup), margin = gross - served * e.costPerMWh;
+      ok(finite(f?.tariffGross) && finite(gross) && Math.abs(f.tariffGross - gross) <= 0.01,
+        `${id} 공급=${fmt(served)}/${fmt(e.demMWh)}, 가중원가=${fmt(avg)}, tariffGross=${f?.tariffGross}, 목표=${fmt(gross)}`);
+      ok(finite(f?.rev?.tariff) && finite(margin) && Math.abs(f.rev.tariff - margin) <= 0.01,
+        `${id} 공급량 기준 차익=${f?.rev?.tariff}, 목표=${fmt(margin)}`);
+    });
+    const blackoutPrice = r.reports[0].cities?.[SMALL]?.Lparts?.price;
+    // 한 도시의 원가를 다른 공급 도시의 가중 평균에 맞추면 지역 평균과도 같아진다.
+    const target = IDS.find(id => id !== SMALL);
+    const others = IDS.filter(id => id !== target && served12(ins[id].energy) > 0);
+    const normalCost = sum(others.map(id => served12(ins[id].energy) * ins[id].energy.costPerMWh)) /
+      sum(others.map(id => served12(ins[id].energy)));
+    const normal = run12(1, id => id === SMALL ? { energy: { unsPct: 100, costPerMWh: 0, tradeNet: 0 } } :
+      id === target ? { energy: { unsPct: 0, costPerMWh: normalCost, tradeNet: 0 } } : {});
+    const normalPrice = normal.reports[0].cities?.[target]?.Lparts?.price;
+    ok(blackoutPrice === 0 && finite(normalPrice) && blackoutPrice < normalPrice,
+      `정전100% ${SMALL} price=${blackoutPrice}, 정전0%·평균원가 ${target} price=${normalPrice} (0점·정상보다 낮음)`);
+    const normalCap = normal.reports[0].fiscal?.[target]?.debtCap;
+    ok(finite(normalCap) && normalCap > 0,
+      `${target} 정전0%·평균원가 fiscal.debtCap=${fmt(normalCap)} (목표 >0)`);
+    const f = r.reports[0].fiscal?.[SMALL];
+    ok(f?.rev?.tariff === 0 && f?.tariffGross === 0,
+      `${SMALL} 정전100% 차익=${f?.rev?.tariff}, 매출=${f?.tariffGross} (둘 다 0)`);
+  });
+  IDS.forEach(id => test(`${id} 구매·판매 요금 점수`, () => {
+    const scenarios = [
+      { tradeNet: 0, buyCost: 0 },
+      { tradeNet: -2, buyCost: 2 },
+      { tradeNet: 2, buyCost: 0 },
+      { tradeNet: 20, buyCost: 0 }
+    ];
+    const prices = scenarios.map(e => run12(1, cid => cid === id ? {
+      energy: Object.assign({ unsPct: 0, costPerMWh: FIXTURE.cost }, e)
+    } : {}).reports[0].cities?.[id]?.Lparts?.price);
+    const gap = Math.abs(prices[1] - prices[2]);
+    ok(prices.every(finite) && gap <= 5,
+      `${id} 자기수요 원가 동일 수입/수출 price=${prices[1]}/${prices[2]}, 차이=${fmt(gap)} (≤5점)`);
+    ok(prices.every(finite) && Math.max(...prices) - Math.min(...prices) <= 0.01,
+      `${id} 무거래/구매/판매/판매10배 price=${prices.join("/")} (자기수요 원가만 반영)`);
+  }));
+  test("공급0 도시 원가는 지역 평균에서 제외", () => {
+    const results = [0, FIXTURE.cost * 100].map(costPerMWh => run12(1, id => id === SMALL ? {
+      energy: { unsPct: 100, costPerMWh, tradeNet: 0 }
+    } : {}));
+    IDS.filter(id => id !== SMALL).forEach(id => {
+      const a = results[0].reports[0], b = results[1].reports[0];
+      const ap = a.cities?.[id]?.Lparts?.price, bp = b.cities?.[id]?.Lparts?.price;
+      const ag = a.fiscal?.[id]?.tariffGross, bg = b.fiscal?.[id]?.tariffGross;
+      ok([ap, bp, ag, bg].every(finite) && Math.abs(ap - bp) < 0.01 && Math.abs(ag - bg) < 0.01,
+        `${id} 0공급 도시 원가0/100배 price=${ap}/${bp}, 매출=${ag}/${bg} (동일)`);
+    });
+  });
+  test("세금·지원금만으로 매달 지방채 한도 갱신", () => {
+    const baseline = run12(24);
+    const spike = run12(24, (id, m) => m === 0 ? { energy: {
+      costPerMWh: baseline.supplied[0][id].energy.costPerMWh * 3
+    } } : {});
+    for (const [label, r] of [["보통", baseline], ["첫달 원가3배", spike]]) IDS.forEach(id => {
+      for (const m of [...Array.from({ length: 11 }, (_, i) => i), 11, 23]) {
+        const rows = r.reports.slice(Math.max(0, m - 11), m + 1);
+        // v1.2의 '지금까지 달 평균×12'를 세금·지원금 합계에 그대로 적용한다.
+        // 12달 뒤에는 최근 12달 합계. 차익·거래·사건·회수 수입은 포함하지 않는다.
+        const eligible = rows.map(R => {
+          const rev = R.fiscal?.[id]?.rev;
+          return rev?.resTax + rev?.indTax + rev?.subsidy;
+        });
+        const want = mean(eligible) * 12 * D.params.debtCapRatio?.v;
+        const cap = r.reports[m].fiscal?.[id]?.debtCap;
+        ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
+          `${label} ${id} ${m + 1}달 fiscal.debtCap=${fmt(cap)}, 세금·지원금 평균 연환산 목표=${fmt(want)}`);
+      }
+      const caps = r.reports.slice(0, 11).map(R => R.fiscal?.[id]?.debtCap);
+      ok(caps.every(c => finite(c) && c > 0),
+        `${label} ${id} 1~11달 한도=${caps.map(fmt).join("/")} (모두 >0)`);
+    });
+  });
+});
+
+block("B12", () => {
+  // 실행 3분 제한을 위해 씨앗은 하나, 한 도시의 정책만 변경한다. 5×5×5와 36달은 모두 검사한다.
+  const winners = {}, bests = {}, lowWinners = [];
+  IDS.forEach(id => test(`${id} 주민세×산업세×서비스 격자`, () => {
+    const grid = [];
+    for (let taxRes = -2; taxRes <= 2; taxRes++) for (let taxInd = -2; taxInd <= 2; taxInd++)
+      for (let service = -2; service <= 2; service++) {
+        const r = run12(36, cid => cid === id ? { policy: { taxRes, taxInd, service } } : {});
+        grid.push({ key: `${taxRes},${taxInd},${service}`, taxRes, taxInd,
+          score: X.score(r.E, D)?.by?.[id]?.score });
+      }
+    const valid = grid.length === 125 && grid.every(p => finite(p.score));
+    ok(valid, `${id} 125개 조합 유한 점수=${grid.filter(p => finite(p.score)).length}/125`);
+    if (!valid) return;
+    const best = Math.max(...grid.map(p => p.score));
+    const top = grid.filter(p => Math.abs(p.score - best) <= 1e-9);
+    winners[id] = top.map(p => p.key); bests[id] = best;
+    // 공동 1위도 1위로 센다. 주민세와 산업세를 독립적으로 움직인다.
+    if (top.some(p => p.taxRes === -2 && p.taxInd === -2)) lowWinners.push(id);
+  }));
+  const complete = Object.keys(winners).length === IDS.length;
+  const common = complete ? winners[IDS[0]].filter(key => IDS.every(id => winners[id].includes(key))) : [];
+  ok(complete && common.length === 0,
+    `모든 도시 공통1위=${JSON.stringify(common)}, 도시별 1위=${JSON.stringify(winners)}, 점수=${JSON.stringify(bests)} (공통 조합 없음)`);
+  ok(complete && lowWinners.length <= 3,
+    `(-2,-2,·) 계열 1위=${lowWinners.length}/${IDS.length} ${JSON.stringify(lowWinners)} (≤3곳)`);
+});
+
+block("B13", () => {
+  for (const months of [12, 24, 36]) test(`${months}달 평균 지지율`, () => {
+    const base = run12(months);
+    IDS.forEach(id => test(`${id} 막판 정책 변경`, () => {
+      const late = run12(months, (cid, m) => cid === id && m >= months - 2 ? {
+        policy: { taxRes: -2, taxInd: -2, service: 2 }
+      } : {});
+      for (const [label, r] of [["보통", base], ["마지막2달 변경", late]]) {
+        // 매달 정산 뒤 지지율을 사용한다. 초기 보정 상태는 '달'에 포함하지 않는다.
+        const approvals = r.states.slice(-12).map(E => E.cities[id].approval);
+        const want = mean(approvals), appr = X.score(r.E, D)?.by?.[id]?.parts?.appr;
+        // 공개 점수는 소수 첫째 자리로 보고하므로 평균의 반올림 오차 0.05점을 허용한다.
+        ok(approvals.every(finite) && finite(appr) && Math.abs(appr - want) <= 0.051,
+          `${months}달 ${id} ${label} parts.appr=${fmt(appr)}, 마지막12달 평균=${fmt(want)}`);
+      }
+      const a = X.score(base.E, D)?.by?.[id]?.score, b = X.score(late.E, D)?.by?.[id]?.score;
+      const delta = b - a;
+      ok(finite(a) && finite(b) && delta <= 1 + 1e-9,
+        `${months}달 ${id} 막판변경 점수=${fmt(b)}, 보통=${fmt(a)}, 증가=${fmt(delta)} (≤1점)`);
+    }));
+  });
+});
+
+block("B14", () => {
+  test("정책0 주민의 재정 기여와 정액 보정 상한", () => {
+    const r = run12(36);
+    for (const m of [0, 12, 24]) IDS.forEach(id => {
+      const f = r.reports[m].fiscal?.[id], pop = r.states[m].cities[id].pop;
+      // 정액 subBase와 equalize는 주민 한 명의 한계 기여가 아니다. 1월 지원금에서 제외한다.
+      // 나머지 인구 비례 지원금/주민 수를 연 1인당 지원금으로 읽고 12달로 나눈다.
+      const perCapSubsidy = (f?.rev?.subsidy - f?.equalize - D.params.subBase?.v) / pop;
+      const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
+      ok(finite(perCapSubsidy) && finite(net) && net > 0,
+        `${id} ${m + 1}달 주민1명 월 순효과=${fmt(net * 1e8)}원, 주민세=${fmt(f?.rev?.resTax / pop * 1e8)}, 지원/12=${fmt(perCapSubsidy / 12 * 1e8)}, 서비스=${fmt(f?.exp?.service / pop * 1e8)} (순효과 >0)`);
+      const ratio = f?.equalize / f?.rev?.subsidy;
+      ok(finite(f?.equalize) && f.equalize >= 0 && finite(ratio) && ratio <= 0.5,
+        `${id} ${m + 1}달 정액보정=${fmt(f?.equalize)}, 1월 지원=${fmt(f?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
+    });
+  });
+});
+
+block("B15", () => {
+  const speed = D.params.eduSpeed?.v, kappa = D.params.kappaPop?.v, beta = D.params.betaPopReal?.v;
+  // 공개 β_game 별도 필드가 없는 계약: 현실 탄력×교육 배속을 게임 탄력으로 읽는다.
+  const betaGame = finite(D.params.betaPop?.v) ? D.params.betaPop.v : beta * speed;
+  const evidenceRate = 0.0008, declaredRate = speed * evidenceRate, gameRate = kappa * betaGame;
+  const err = Math.abs(gameRate / declaredRate - 1);
+  ok([speed, kappa, betaGame, declaredRate, gameRate, err].every(finite) && speed > 0 && err <= 0.1,
+    `eduSpeed=${speed}, κ_game=${kappa}, β_game=${betaGame}, 표시속도=${declaredRate}, 게임속도=${gameRate}, 상대오차=${fmt(err * 100)}% (≤10%)`);
+  // 명세가 '주민 값 준용'으로 지목한 산업 탄력은 숫자가 같아도 직접 측정치(M)가 아니다.
+  const p = D.params.betaIndReal;
+  ok(p?.grade === "G" && finite(p?.v) && typeof p.note === "string" && p.note.length > 0,
+    `주민 값 준용 params.betaIndReal=${JSON.stringify(p)} (G·유한값·note)`);
+});
+
 failures.forEach(message => console.log(`FAIL ${message}`));
 console.log(`pass ${pass} fail ${fail}`);
 process.exitCode = fail ? 1 : 0;

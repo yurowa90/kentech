@@ -144,9 +144,11 @@ JS = r"""
             `B9/B10 ${id} eventBonus=${f?.eventBonus}, 사건=${bonus}`);
           if (bonus > 0 && f?.eventBonus > 0) sawBonus = true;
           if (id === target) {
-            ok(finite(f?.salvage) && f.salvage > 0 && Math.abs(f.salvage - expectedSalvage) < 0.011,
-              `B10 ${id} 철거 회수 줄 salvage=${f?.salvage}, 목표=${expectedSalvage}`);
-            sawSalvage = finite(f?.salvage) && f.salvage > 0;
+            // B10은 fiscal에 회수 줄을 요구한다. rev.salvage와 기존 salvage 보고를 모두 허용한다.
+            const salvage = f?.rev?.salvage ?? f?.salvage;
+            ok(finite(salvage) && salvage > 0 && Math.abs(salvage - expectedSalvage) < 0.011,
+              `B10 ${id} 철거 회수 줄 salvage=${salvage}, 목표=${expectedSalvage}`);
+            sawSalvage = finite(salvage) && salvage > 0;
           }
         }
       });

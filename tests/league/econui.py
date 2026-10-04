@@ -1,0 +1,475 @@
+"""ECON-UI 수용 검사. 실행: python3 tests/league/econui.py <로컬 주소>.
+
+구현과 독립된 기대값은 docs/ECON-UI.md U1/U2/U4·수용 기준에서 온다.
+calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의 브라우저 실행 방지).
+브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
+"""
+
+import ast
+import json
+import math
+import re
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from playwright.sync_api import sync_playwright
+
+RESULTS = Path(__file__).resolve().parents[1] / "results"
+SCORES = {"pop": "주민", "ind": "산업", "fin": "재정", "co2": "탄소",
+          "appr": "지지", "rel": "전력 신뢰"}
+POLICIES = ("taxRes", "taxInd", "service", "incentive")
+WAIT = 12000  # 실행기 대기 한도. 경제 모형 계수가 아니다.
+
+BOOT_JS = "() => !!(window.KCP && KCP.leagueCore && KCP.league && KCP.buildGame)"
+HIDDEN_JS = r"""el => {
+  for (let n = el; n; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if (n.hidden || s.display === 'none' || s.visibility === 'hidden' ||
+        s.visibility === 'collapse') return true;
+  }
+  return false;
+}"""
+OVERFLOW_JS = """() => Math.max(document.documentElement.scrollWidth,
+  document.body.scrollWidth) - document.documentElement.clientWidth"""
+HOST_JS = "() => KCP.league.state().S"
+SYNC_JS = """([round, phase]) => {
+  const L = KCP.league.state(), V = L && (L.S || L.snap);
+  return !!V && V.round === round && V.phase === phase;
+}"""
+SEED_JS = """turns => {
+  const C = KCP.leagueCore, ids = ['pyeongtaek', 'dangjin'];
+  const room = turns ? 'ECNF22' : 'SEAS22', now = Date.now();
+  const S = C.newState(room, 'south', now, ids, turns ? {turns} : null);
+  C.reduce(S, {type:'claim', team:ids[1], token:'fixture-computer'}, now, KCP.buildGame);
+  if (turns) C.reduce(S, {type:'econ', team:ids[1], token:'fixture-computer',
+    taxRes:2, taxInd:2, service:-2, incentive:0}, now, KCP.buildGame);
+  const net = {kind:'local'};
+  localStorage.setItem('kcp-league-net-v1', JSON.stringify(net));
+  localStorage.setItem('kcp-league-host-v1', JSON.stringify({room, net, state:S}));
+  return {room, ids, team:ids[0]};
+}"""
+PLAN_JS = """() => {
+  // calib.py의 연결 경로를 쓰되 이주를 관찰할 수 있도록 한 팀만 설비를 짓는다.
+  KCP.league.plan(st => {
+    const BG = KCP.buildGame, P = window.__auto('pyeongtaek');
+    const connected = new Set(P.lines.flatMap(L => L.p));
+    const candidates = BG.TILES.filter(t => !t.out && t.site < 0 &&
+      !BG.siteRule('diesel', t) && t.nb.some(i => connected.has(i)));
+    P.builds = candidates.slice(0, 6).map(t => ({t:'diesel', i:t.i}));
+    candidates.slice(0, 6).forEach(t => {
+      P.lines.push({p:[t.nb.find(i => connected.has(i)), t.i]});
+    });
+    Object.assign(st, P);
+  });
+}"""
+RANK_JS = r"""() => {
+  const root = document.querySelector('#lg-rank');
+  if (!root) return {rows:[], headers:[]};
+  const headers = [...root.querySelectorAll('thead th, [role=columnheader]')]
+    .map(n => n.innerText.replace(/\s+/g,' ').trim());
+  const rows = [...root.querySelectorAll('tr, [role=row]')]
+    .filter(n => n.querySelector('td, [role=cell]'))
+    .map(n => ({text:n.innerText,
+      cells:[...n.querySelectorAll('td, [role=cell]')].map(c => c.innerText)}));
+  return {rows, headers};
+}"""
+POLICY_JS = """([id, key, expected]) => {
+  const S = KCP.league.state().S, P = S.teams[id].econPol;
+  return !!P && P[key] === expected;
+}"""
+CRIT_JS = """id => {
+  const S = KCP.league.state().S;
+  return !!S.teams[id].crit;
+}"""
+NEXT_JS = "() => { KCP.league.next(); }"
+
+
+class Checks:
+    def __init__(self):
+        self.count = 0
+        self.failed = 0
+
+    def ok(self, condition, label):
+        self.count += 1
+        self.failed += not bool(condition)
+        print(("PASS " if condition else "FAIL ") + label, flush=True)
+        return bool(condition)
+
+    def test(self, label, fn):
+        try:
+            return self.ok(bool(fn()), label)
+        except Exception as exc:
+            detail = str(exc).splitlines()[0][:200]
+            return self.ok(False, f"{label} ({type(exc).__name__}: {detail})")
+
+    def finish(self):
+        print(f"checks {self.count} fail {self.failed}", flush=True)
+        return 1 if self.failed else 0
+
+
+def local_address(argv):
+    base = argv[1] if len(argv) > 1 else "http://127.0.0.1:9430/index.html"
+    url = urlsplit(base)
+    if url.scheme not in ("http", "https") or url.hostname not in (
+            "localhost", "127.0.0.1", "::1") or url.username or url.password:
+        raise ValueError("외부 네트워크 금지: loopback 주소만 사용할 수 있습니다")
+    return base.split("#", 1)[0]
+
+
+def context_for(browser, base, width, height, scheme):
+    context = browser.new_context(viewport={"width": width, "height": height},
+                                  locale="ko-KR", color_scheme=scheme,
+                                  service_workers="block")
+    context.set_default_timeout(WAIT)
+    context.set_default_navigation_timeout(WAIT)
+    context.add_init_script("""(() => {
+      const apply = () => { document.documentElement.dataset.theme = %s; };
+      if (document.documentElement) apply();
+      else document.addEventListener('DOMContentLoaded', apply, {once:true});
+    })();""" % json.dumps(scheme))
+    origin = urlsplit(base)
+    external = []
+
+    def route(request_route):
+        url = urlsplit(request_route.request.url)
+        if (url.scheme, url.netloc) == (origin.scheme, origin.netloc):
+            request_route.continue_()
+        elif url.hostname in ("fonts.googleapis.com", "fonts.gstatic.com"):
+            # 외부 전송 금지. 기존 Google Fonts CSS는 빈 응답 → 로컬 대체 폰트.
+            request_route.fulfill(status=200, content_type="text/css", body="")
+        else:
+            external.append(url.hostname or url.scheme)
+            request_route.abort()
+
+    context.route("**/*", route)
+    # local 리그는 BroadcastChannel. 웹소켓은 서버에 연결하기 전에 막는다.
+    context.route_web_socket("**/*", lambda ws: (external.append("websocket"), ws.close()))
+    return context, external
+
+
+def monitored_page(context):
+    page = context.new_page()
+    events = {"error": [], "warning": [], "pageerror": []}
+    page.on("console", lambda message: events[message.type].append(message.text)
+            if message.type in ("error", "warning") else None)
+    page.on("pageerror", lambda error: events["pageerror"].append(str(error)))
+    return page, events
+
+
+def shown(page, selector):
+    nodes = page.locator(selector)
+    return nodes.count() > 0 and any(
+        not nodes.nth(i).evaluate(HIDDEN_JS) and nodes.nth(i).is_visible()
+        for i in range(nodes.count()))
+
+
+def absent_or_hidden(page, selector):
+    # tests.md: 폭 0을 hidden으로 오인하지 않는다.
+    nodes = page.locator(selector)
+    return all(nodes.nth(i).evaluate(HIDDEN_JS) for i in range(nodes.count()))
+
+
+def open_panel(page, name):
+    button = page.locator(f'#lg-bar [data-panel="{name}"]')
+    if button.count() != 1:
+        raise AssertionError(f"{name} 서랍 버튼 1개 필요")
+    if button.get_attribute("aria-expanded") != "true":
+        button.click()
+    page.wait_for_timeout(200)
+
+
+def screenshot(checks, page, name):
+    def capture():
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(RESULTS / name), full_page=True)
+        return True
+    checks.test(f"캡처 {name}", capture)
+
+
+def overflow(checks, page, label):
+    checks.test(f"{label} 가로 스크롤 0", lambda: page.evaluate(OVERFLOW_JS) <= 0)
+
+
+def diagnostics(checks, events, label):
+    for kind in ("error", "warning", "pageerror"):
+        checks.ok(not events[kind],
+                  f"{label} {kind} 0" + (f": {events[kind][:2]}" if events[kind] else ""))
+
+
+def automatic_plan():
+    module = ast.parse(Path(__file__).with_name("calib.py").read_text())
+    return next(ast.literal_eval(node.value) for node in module.body
+                if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "AUTO" for t in node.targets))
+
+
+def setup_pair(context, base, turns, pages):
+    host, events_h = monitored_page(context)
+    pages.append((host, events_h, "진행자"))
+    host.goto(base + "#home")
+    host.wait_for_function(BOOT_JS)
+    fixture = host.evaluate(SEED_JS, turns)
+    host.goto(base + "#league/host")
+    host.wait_for_selector("#lg-roomcode")
+    team, events_t = monitored_page(context)
+    pages.append((team, events_t, "팀"))
+    team.goto(base + "#league")
+    team.fill("#lg-code", fixture["room"])
+    team.click("#lg-join")
+    team.click(f'[data-seat="{fixture["team"]}"]:not([disabled])')
+    team.wait_for_selector("#lg-bar")
+    return host, team, fixture
+
+
+def advance(host, team, round_number, phase):
+    host.evaluate(NEXT_JS)
+    host.wait_for_function(SYNC_JS, arg=[round_number, phase])
+    team.wait_for_function(SYNC_JS, arg=[round_number, phase])
+
+
+def disabled_policies(page):
+    return all(page.locator(f'#lg-city [data-pol="{key}"]').count() > 0 and
+               all(page.locator(f'#lg-city [data-pol="{key}"]').nth(i).is_disabled()
+                   for i in range(page.locator(f'#lg-city [data-pol="{key}"]').count()))
+               for key in POLICIES)
+
+
+def change_policy(team, host, team_id, key):
+    nodes = team.locator(f'#lg-city [data-pol="{key}"]')
+    if not nodes.count():
+        return False
+    node = nodes.first
+    if node.evaluate("el => el.tagName === 'INPUT' && el.type === 'range'"):
+        current = float(node.input_value())
+        low = float(node.get_attribute("min") or 0)
+        high = float(node.get_attribute("max") or 100)
+        node.focus()
+        node.press("ArrowRight" if current < high else "ArrowLeft")
+        expected = float(node.input_value())
+        if expected == current or not low <= expected <= high:
+            return False
+    elif node.evaluate("el => el.tagName === 'INPUT' && el.type === 'number'"):
+        current = float(node.input_value())
+        maximum = node.get_attribute("max")
+        expected = current - 1 if maximum is not None and current >= float(maximum) else current + 1
+        node.fill(str(expected))
+        node.press("Tab")
+    else:
+        # U1는 range 또는 5단 버튼을 허용한다. 버튼은 숫자 레이블/값으로 읽는다.
+        candidates = [nodes.nth(i) for i in range(nodes.count())
+                      if nodes.nth(i).get_attribute("aria-pressed") != "true"]
+        if not candidates:
+            return False
+        node = candidates[0]
+        value = node.get_attribute("value") or node.inner_text().replace("−", "-")
+        number = re.search(r"[-+]?\d+(?:\.\d+)?", value)
+        if not number:
+            return False
+        expected = float(number.group())
+        node.click()
+    host.wait_for_function(POLICY_JS, arg=[team_id, key, expected])
+    return True
+
+
+def rank_checks(checks, page, ids, label):
+    checks.test(f"{label} U2 #lg-rank 표시", lambda: shown(page, "#lg-rank"))
+    snapshot = page.evaluate(RANK_JS)
+    checks.ok(len(snapshot["rows"]) == len(ids), f"{label} U2 순위 행 = 활성 팀 {len(ids)}개")
+    names = page.evaluate("ids => ids.map(id => KCP.ECON_DATA.start[id].name)", ids)
+    for name in names:
+        checks.ok(sum(name in row["text"] for row in snapshot["rows"]) == 1,
+                  f"{label} U2 자료의 도시 {name} 순위 1행")
+    for key, title in SCORES.items():
+        # 내부 data 속성은 명세에 없다. 표의 열 제목과 대응 셀로 검증한다.
+        columns = [i for i, header in enumerate(snapshot["headers"])
+                   if title.replace(" ", "") in header.replace(" ", "")]
+        valid = len(columns) == 1 and bool(snapshot["rows"])
+        for row in snapshot["rows"]:
+            cell = row["cells"][columns[0]] if columns and columns[0] < len(row["cells"]) else ""
+            value = re.search(r"(?<![\d.])-?\d+(?:\.\d+)?", cell)
+            valid = valid and bool(value) and 0 <= float(value.group()) <= 100
+        checks.ok(valid, f"{label} U2 부분 점수 {key}({title}) 각 행 0–100")
+
+
+def crit_safe(value):
+    # U4는 전송 필드 이름을 정하지 않았다. 필드명 스키마를 새로 강제하지 않고
+    # 모든 깊이에서 자유 서술용 키를 거부하며 값도 칩·유한 숫자·유지/바꿈만 허용.
+    prose_keys = re.compile(r"reason|why|text|memo|note|free|essay|body|description|"
+                            r"comment|content|reflection|이유|서술|메모|내용", re.I)
+    tokens = set(SCORES) | {"keep", "change", "유지", "바꿈"}
+    leaves = []
+    chip_keys = set()
+
+    def visit(item):
+        if isinstance(item, dict):
+            chip_keys.update(set(item) & set(SCORES))
+            return bool(item) and all(isinstance(key, str) and not prose_keys.search(key)
+                                      for key in item) and all(visit(v) for v in item.values())
+        if isinstance(item, list):
+            return all(visit(v) for v in item)
+        leaves.append(item)
+        return (isinstance(item, bool) or
+                isinstance(item, (int, float)) and math.isfinite(item) or
+                isinstance(item, str) and item in tokens)
+
+    return isinstance(value, dict) and visit(value) and any(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in leaves) and (
+            "pop" in leaves or "pop" in chip_keys)
+
+
+def choose_crit(team, host, team_id):
+    root = team.locator("#lg-crit")
+    if not root.count():
+        return False
+    # 칩의 data 속성은 미지정이므로 명세의 한국어 표시명으로 조작한다.
+    chip = root.get_by_role("button", name=re.compile("주민"))
+    if not chip.count():
+        return False
+    chip.first.click()
+    number = root.locator('input[type="number"], input[type="range"]').first
+    if not number.count():
+        return False
+    number.fill("1") if number.get_attribute("type") == "number" else number.press("ArrowRight")
+    number.press("Tab")
+    # 가상 문자열을 기기 입력에 넣어도 진행자에게 전송되어서는 안 된다(D-59).
+    prose = root.locator('textarea, input[type="text"]')
+    for i in range(prose.count()):
+        prose.nth(i).fill("검사용 자유 서술은 기기에만 저장")
+        prose.nth(i).press("Tab")
+    save = root.get_by_role("button", name=re.compile("^(저장|확정|적용|기준 저장|기준 정하기)$"))
+    if save.count() and save.first.is_visible():
+        save.first.click()
+    host.wait_for_function(CRIT_JS, arg=team_id)
+    host.wait_for_timeout(400)  # tests.md: 250ms 지연 저장 뒤 확인.
+    return crit_safe(host.evaluate("id => KCP.league.state().S.teams[id].crit", team_id))
+
+
+def migration_caption(host, flows):
+    text = host.locator("#lg-mapcap").inner_text()
+    names = host.evaluate("() => Object.fromEntries(Object.entries(KCP.ECON_DATA.start).map(([k,v]) => [k,v.name]))")
+    top = sorted(flows, key=lambda flow: flow["n"], reverse=True)[:3]
+    return shown(host, "#lg-mapcap") and all(re.search(
+        re.escape(names[flow["from"]]) + r"\s*→\s*" + re.escape(names[flow["to"]]) +
+        r"\s+[\d,.]+\s*명\s*[:：]\s*\S", text) for flow in top)
+
+
+def economic(checks, context, base, label, pages):
+    host, team, fixture = setup_pair(context, base, 12, pages)
+    tid, ids = fixture["team"], fixture["ids"]
+    checks.test(f"{label} U1 로비 단계 정책 disabled", lambda:
+                (open_panel(team, "city"), disabled_policies(team))[1])
+    advance(host, team, 1, "plan")
+    checks.test(f"{label} U1 #lg-bar 도시 버튼", lambda: shown(team, '#lg-bar [data-panel="city"]'))
+    checks.test(f"{label} U1 도시 서랍 열기", lambda: (open_panel(team, "city"), shown(team, "#lg-city"))[1])
+    checks.test(f"{label} U1 서랍 도시 탭", lambda: shown(team, '.lg-ptabs [data-ptab="city"]'))
+    groups = team.evaluate("() => Object.keys(KCP.ECON_DATA.groups)")
+    checks.test(f"{label} U1 .lg-grp[data-g] 정확히 6개", lambda:
+                team.locator('#lg-city .lg-grp[data-g]').count() == 6 and
+                sorted(team.locator('#lg-city .lg-grp[data-g]').evaluate_all(
+                    "nodes => nodes.map(n => n.dataset.g)")) == sorted(groups) and
+                all(shown(team, f'#lg-city .lg-grp[data-g="{key}"]') for key in groups))
+    checks.test(f"{label} U1 정책 항목은 정확히 4종", lambda:
+                sorted(team.locator('#lg-city [data-pol]').evaluate_all(
+                    "nodes => [...new Set(nodes.map(n => n.dataset.pol))]")) == sorted(POLICIES))
+    for key in POLICIES:
+        checks.test(f"{label} U1 정책 {key} 표시·활성", lambda key=key:
+                    shown(team, f'#lg-city [data-pol="{key}"]') and
+                    not team.locator(f'#lg-city [data-pol="{key}"]').first.is_disabled())
+        checks.test(f"{label} U1 정책 {key} → 진행자 econPol", lambda key=key:
+                    change_policy(team, host, tid, key))
+    speed = host.evaluate("() => KCP.leagueCore.publicView(KCP.league.state().S, Date.now()).econ.eduSpeed")
+    checks.test(f"{label} U1 배속 ×{speed}", lambda: shown(team, "#lg-city") and bool(re.search(
+        r"×\s*" + re.escape(str(speed)) + r"(?![\d.])", team.locator("#lg-city").inner_text())))
+    checks.test(f"{label} U4 첫 달 #lg-crit", lambda: shown(team, "#lg-crit"))
+    checks.test(f"{label} U4 crit 객체 키·칩·숫자만 전송", lambda: choose_crit(team, host, tid))
+    overflow(checks, team, label + " 계획 도시 서랍")
+    overflow(checks, host, label + " 계획 진행자")
+    screenshot(checks, team, f"econui-{label}-team-plan.png")
+    # 허용된 규칙 엔진 fixture. solo.py에서는 이런 상태/계획 주입을 하지 않는다.
+    team.evaluate(automatic_plan())
+    team.evaluate(PLAN_JS)
+    host.wait_for_function("id => !!KCP.league.state().S.teams[id].plan", arg=tid)
+    migration_months = 0
+    for month in range(1, 13):
+        if month > 1:
+            advance(host, team, month, "plan")
+        advance(host, team, month, "review")
+        checks.test(f"{label} U4 {month}달 결과 .lg-ask ≤ 1", lambda:
+                    team.locator('.lg-ask').count() <= 1)
+        checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda: disabled_policies(team))
+        state = host.evaluate(HOST_JS)
+        flows = [flow for flow in state["results"][-1]["econ"]["flows"]["pop"] if flow["n"] > 0]
+        if flows:
+            migration_months += 1
+            checks.test(f"{label} U2 {month}달 이주 화살표 설명", lambda flows=flows:
+                        migration_caption(host, flows))
+        if month == 1:
+            checks.test(f"{label} U1 지난달 #lg-fiscal", lambda: shown(team, '#lg-fiscal') and
+                        all(word in team.locator('#lg-fiscal').inner_text() for word in ('세입', '세출')))
+            rank_checks(checks, host, ids, label)
+            checks.test(f"{label} U2 #lg-ticker 표시", lambda: shown(host, '#lg-ticker'))
+            for title in ("LNG", "환율", "수출", "해운"):
+                checks.test(f"{label} U2 국제 지수 {title}", lambda title=title: shown(host, '#lg-ticker') and bool(re.search(
+                    re.escape(title) + r"[^\d]{0,30}\d+(?:\.\d+)?", host.locator('#lg-ticker').inner_text())))
+            overflow(checks, host, label + " 결과 진행자")
+            overflow(checks, team, label + " 결과 도시 서랍")
+            screenshot(checks, host, f"econui-{label}-host-review.png")
+            screenshot(checks, team, f"econui-{label}-team-review.png")
+    checks.ok(migration_months > 0, f"{label} U2 이주 있는 달을 실제로 검사")
+    advance(host, team, 12, "end")
+    for selector in ('#lg-debrief', '#lg-wsim'):
+        checks.test(f"{label} U4 끝 {selector}", lambda selector=selector: shown(host, selector))
+    checks.test(f"{label} U1 끝 정책 disabled", lambda: disabled_policies(team))
+    overflow(checks, host, label + " 끝 진행자")
+    overflow(checks, team, label + " 끝 팀")
+    screenshot(checks, host, f"econui-{label}-host-end.png")
+
+
+def seasonal(checks, context, base, label, pages):
+    host, team, _ = setup_pair(context, base, 0, pages)
+    stages = [("lobby", 0)] + [(phase, round_number) for round_number in range(1, 5)
+                                for phase in ("plan", "review")] + [("end", 4)]
+    for phase, round_number in stages:
+        if phase != "lobby":
+            advance(host, team, round_number, phase)
+        for page, role in ((host, "진행자"), (team, "팀")):
+            for selector in ('[data-panel="city"]', '#lg-rank', '#lg-ticker', '#lg-crit'):
+                checks.test(f"{label} 계절 {round_number}턴 {phase} {role} {selector} 없음/hidden",
+                            lambda page=page, selector=selector: absent_or_hidden(page, selector))
+            overflow(checks, page, f"{label} 계절 {round_number}턴 {phase} {role}")
+    screenshot(checks, host, f"econui-{label}-season-host.png")
+    screenshot(checks, team, f"econui-{label}-season-team.png")
+
+
+def main():
+    checks = Checks()
+    try:
+        base = local_address(sys.argv)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            for width, height in ((1280, 900), (390, 844)):
+                for scheme in ("light", "dark"):
+                    label = f"{width}x{height}-{scheme}"
+                    for name, scenario in (("경제", economic), ("계절", seasonal)):
+                        context, external = context_for(browser, base, width, height, scheme)
+                        pages = []
+                        try:
+                            scenario(checks, context, base, label, pages)
+                        except Exception as exc:
+                            checks.ok(False, f"{label} {name} 진행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+                            for page, _, role in pages:
+                                screenshot(checks, page, f"econui-{label}-{name}-{role}-failure.png")
+                        finally:
+                            for _, events, role in pages:
+                                diagnostics(checks, events, f"{label} {name} {role}")
+                            checks.ok(not external, f"{label} {name} 외부 연결 시도 0: {external}")
+                            context.close()
+            browser.close()
+    except Exception as exc:
+        checks.ok(False, f"검사 실행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+    return checks.finish()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
