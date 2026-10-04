@@ -158,6 +158,10 @@
     });
     return out;
   }
+  function groupParts(c) {
+    const p = k => KCP.ECON_DATA.params[k].v, clamp = x => Math.max(0, Math.min(100, x));
+    return Object.assign({}, c.lagL, { A: c.A, out: clamp(100 * (c.out - p("outMin")) / (p("outMax") - p("outMin"))), taxI: clamp(p("taxBase") - p("taxPoints") * c.policy.taxInd), ren: clamp(100 * c.renS / p("reTarget")), co2: clamp(100 * Math.exp(-(c.co2pc || 0) / p("scoreCo2Ref"))) });
+  }
   // 경제 요약(도시마다 주민·산업·현금·지지율·정책·집단 만족 + 국제 지수 + 진행 중 기업 제안 + 시간 기록)
   function econView(S) {
     const E = S.econ;
@@ -165,16 +169,17 @@
     const cities = {};
     E.order.forEach(id => {
       const c = E.cities[id];
-      cities[id] = { name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, approval: Math.round(c.approval), L: Math.round(c.L), A: Math.round(c.A), policy: c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, Math.round(c.groups[g].sat)])), hist: (c.hist || []).slice(-36) };
+      cities[id] = { name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
     });
-    return { year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, offers: E.offers.map(o => ({ id: o.id, name: o.name, sector: o.sector, workers: o.workers, mw: o.mw, rePct: o.rePct, unsMax: o.unsMax, until: o.until })), score: KCP.econ ? KCP.econ.score(E) : null };
+    const report = S.econRep || null;
+    return { year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, co2pc: c.co2pc, approval: c.approval, unsS: c.unsS }]; })), totals: E.totals } };
   }
   // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
   function publicView(S, now) {
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
-      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };
+      teams[id] = { seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, crit: T.crit || null, econPol: T.econPol || null, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };
     });
     // 사건의 실제 크기(x)는 그 라운드 운영이 끝난 뒤에 공개한다 — 계획 때는 예보 범위만.
     const shown = ev => ev.round < S.round || S.phase === "review" || S.phase === "end";
@@ -233,6 +238,14 @@
         if (T.hist.length > 60) T.hist.splice(0, T.hist.length - 60);
       }
       return { ok: true };
+    }
+    // D-59: 허용 목록으로 새 객체를 만든다. 이유·일지 등 자유 서술은 복사하지 않는다.
+    if (m.type === "crit") {
+      if (!S.econ || S.phase !== "plan") return err("phase");
+      const keys = Object.keys(KCP.ECON_DATA.params.wScore.v);
+      if (!Array.isArray(m.chips) || m.chips.length < 1 || m.chips.length > 2 || new Set(m.chips).size !== m.chips.length || m.chips.some(k => !keys.includes(k)) || typeof m.line !== "number" || !Number.isFinite(m.line) || !["keep", "change"].includes(m.choice)) return err("crit");
+      T.crit = { chips: m.chips.slice(), line: m.line, choice: m.choice };
+      S.rev++; return { ok: true };
     }
     if (m.type === "econ") {
       if (!S.econ || !canPlan(S)) return err("phase");
@@ -603,6 +616,12 @@
     }
     const inputs = {};
     ids.forEach(id => { inputs[id] = econInput(S, R, id, res.team[id], wk); });
+    // 화면 원인 설명용 직전 값. 학생 자유 서술은 포함하지 않는다.
+    S.econPreviousScore = KCP.econ.score(S.econ);
+    S.econBefore = Object.fromEntries(ids.map(id => {
+      const c = S.econ.cities[id];
+      return [id, { pop: c.pop, ind: c.ind, cash: c.cash, approval: c.approval, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), lagL: Object.assign({}, c.lagL), groupParts: groupParts(c) }];
+    }));
     const out = KCP.econ.monthStep(S.econ, inputs);
     S.econ = out.E;
     // 투자 기준만 확정한다. 지원금·철거 회수는 monthStep 보고서에서 이미 정산했다.
@@ -625,8 +644,26 @@
     rep.news.slice(0, 3).forEach(t => log(S, t, 0));
   }
 
+  // 혼자 하기에서도 컴퓨터 요청을 사람과 같은 reduce 경로로 검사한다.
+  function computerPlans(S, bg, player, style, repliesOnly) {
+    if (S.phase !== "plan" || !KCP.leagueAI || typeof KCP.leagueAI.plan !== "function") return [];
+    const R = regionOf(S.region), answers = [];
+    activeOf(S).filter(id => id !== player).forEach(id => {
+      const T = S.teams[id], result = KCP.leagueAI.plan(S, R, id, bg, style);
+      if (!result) return;
+      const apply = (type, extra) => { const r = reduce(S, Object.assign({ type, team: id, token: T.token }, extra), 0, bg); answers.push({ id, type, ok: r.ok, err: r.err }); };
+      if (!repliesOnly) {
+        if (result.plan) apply("plan", { rev: T.rev + 1, plan: result.plan });
+        if (result.econPol) apply("econ", result.econPol);
+      }
+      (result.ties || []).forEach(tie => { if (!repliesOnly || tie.type !== "propose") apply("tie", { op: tie.type, other: tie.other, cap: tie.cap }); });
+      apply("ready", { ready: true });
+    });
+    return answers;
+  }
+
   KCP.leagueCore = {
-    eventDef, modsFor, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
+    econView, computerPlans, eventDef, modsFor, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf,
     SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf, econInput

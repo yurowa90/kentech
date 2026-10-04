@@ -220,3 +220,73 @@
 .lg-evopt { min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--line, #b9b9b9); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .lg-evopt[aria-pressed="true"] { border-color: #d08a1c; background: color-mix(in srgb, #d08a1c 18%, var(--sheet)); font-weight: 700; }
 .lg-evopt:focus-visible { outline: 3px solid #d08a1c; outline-offset: 2px; }
+
+/* U1–U4 경제 화면: 공통 토큰은 밝음·어두움 양쪽에서 바뀐다. */
+.lg-bbtn,
+.lg-ptab,
+.lg-px,
+.lg-preset,
+.lg-kick,
+.lg-mapnav a { min-height: 44px; }
+.lg-lobby [hidden],
+.lg-host [hidden],
+.lg-bar [hidden],
+.lg-panel[hidden],
+.lg-panel [hidden] { display: none !important; }
+.lg-field select,
+.lg-field input[type="number"] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+.lg-solo-cities { display: grid; gap: 6px; }
+.lg-ptabs { flex-wrap: wrap; }
+.lg-ptab { padding: 0 9px; font-size: 13px; }
+.lg-pbody { overflow-wrap: anywhere; }
+.lg-pbody h2 { font-size: 19px; }
+.lg-pbody h4 { margin: 14px 0 6px; }
+.lg-grp { margin: 8px 0; }
+.lg-grp button { display: block; width: 100%; min-height: 44px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+.lg-grp meter,
+.lg-scoreparts meter,
+.lg-cause meter { display: block; width: 100%; min-width: 0; height: 16px; accent-color: var(--accent); }
+.lg-why { padding: 8px; border-left: 3px solid var(--accent); background: var(--paper); color: var(--ink); font-size: 14px; }
+.lg-policy { display: grid; gap: 4px; margin: 12px 0; }
+.lg-policy span { display: flex; flex-wrap: wrap; justify-content: space-between; }
+.lg-policy input { width: 100%; min-width: 0; min-height: 44px; accent-color: var(--accent); }
+.lg-policy small { color: var(--ink-2); font-size: 13px; }
+.lg-policy input:disabled { opacity: 0.6; }
+.lg-money { margin: 0; }
+.lg-money div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.lg-money dd { margin: 0; font-variant-numeric: tabular-nums; }
+.lg-offer { margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.lg-offer p { margin: 5px 0; }
+.lg-movelist { padding-left: 18px; line-height: 1.6; }
+.lg-ticker { margin: 12px 0; padding: 12px; background: var(--sheet); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
+.lg-indices { display: flex; flex-wrap: wrap; gap: 8px 16px; font-weight: 700; }
+.lg-indices span { padding: 6px; border-radius: 8px; background: var(--paper); }
+.lg-ticker p { margin: 6px 0 0; }
+.lg-rankrows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 8px; }
+.lg-rankrow { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); }
+.lg-rankrow h3 { margin: 0 0 6px; }
+.lg-rankrow p { font-size: 13px; color: var(--ink-2); }
+.lg-rankrow[data-me="true"] { border: 2px solid var(--accent); }
+.lg-rankrow small { color: var(--ink-2); }
+.lg-scoreparts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 12px; }
+.lg-scoreparts [data-leader="true"] { font-weight: 700; }
+.lg-pred,
+.lg-ask,
+.lg-cause { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.lg-cause > div { margin: 6px 0; }
+.lg-pending { display: block; padding: 4px; background: color-mix(in srgb, var(--accent) 12%, var(--sheet)); color: var(--ink-2); font-size: 12px; }
+.lg-debriefcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px; }
+.lg-debriefcards h3 { margin: 0; font-size: 15px; }
+.lg-host #lg-wsim { max-width: 600px; }
+.lg-host #lg-rank { margin: 16px 0; }
+.lg-panel .lg-mini { display: block; overflow-x: auto; max-width: 100%; }
+.lg-panel .lg-kpi > div { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .lg-bbtn { min-height: 44px; }
+  .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
+  .lg-ptabs { gap: 3px; }
+  .lg-ptab { padding: 0 7px; }
+  .lg-panel { top: calc(var(--bd-top, 120px) + 110px); }
+}
+
+.lg-panel .lg-radio { min-height: 44px; align-content: center; }
