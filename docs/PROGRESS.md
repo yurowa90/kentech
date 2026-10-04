@@ -23,7 +23,7 @@
 - 브랜치 claude/kentech-league-econ-balance(push됨): 밸런스 v1.2, 2차 보정(ECON-EVIDENCE·GAMES 반영), 화면 U1–U4, 혼자 하기(#league/solo), 컴퓨터 도시 AI(ui/league-ai.js), D-57 확정·D-59, README·HANDOFF-econ §9.
 - 마지막 통합 검사(e1d4a79 기준): econui 804/0, ai-check 3,772/0, rules·e2e·e2e2·e2e3·econint 0, balance 534/0, test-econ 791,651/0, 회귀 screens·base·regression 0. 그 이전 전체(2e7b979): 회귀 14종 0, bots36 12,322/0(연계선 4/6 도시 1위, 지배 전략 없음).
 - 남은 결함과 진행 중이던 Codex 작업(결과는 ~/.claude/codex-runs/*-<이름>/last.md, 작업 폴더에 미커밋):
-  1. debtcap(econ-fix 폴더, 명세 v1.3): 첫 달 지방채 한도가 1월 지원금 ×12로 과대(평택 972.9억) → 고친 뒤 커밋·합치기, balance.js(v1.3 단언 B17 포함, 이미 합침) 실패 0 확인.
+  1. debtcap: v1.3 구현 합침(test-econ 792,132/0). balance.js 529/24 — 남은 24개는 B7 블록의 옛 단언(1월 지원금 ×12)이라 검사 작성자(Sol)가 v1.3로 고칠 것(구현 결함 아님, B11·B17은 통과).
   2. solosave(econ-ui 폴더): 혼자 하기 저장 누락이 간헐(solo.py 4화면 중 1회 실패) → 고친 뒤 solo.py 여러 번 반복 실행으로 확인.
   3. 그 뒤 통합 검사 전체(bots36·회귀 14종), 캡처(1280·390, 밝음·어두움) 보고, HANDOFF §9 검사 결과 기입.
 - PR #1: 검토 반영 push(55dd88a), 검사 9종 0, PR 코멘트 완료 — 병합은 사용자 확인 뒤.
