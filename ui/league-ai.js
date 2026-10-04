@@ -7,32 +7,7 @@
   const KCP = window.KCP;
   if (!KCP) return;
 
-  // 통합 TODO: 소유 밖인 econ-data.js params로 이 항목들을 옮긴다.
-  // 그 키가 있으면 아래 기본값보다 우선한다. 자료나 params를 여기서 수정하지 않는다.
-  const DEFAULTS = {
-    aiStyles: { v: {
-      careful: { invest: 0.4, risk: 0, delay: 1 },
-      balanced: { invest: 0.6, risk: 0.5, delay: 0 },
-      bold: { invest: 0.85, risk: 1, delay: 0 }
-    }, grade: "G", note: "A1 투자 몫·위험 선호(0..1)·선택 투자 지연(달); 안전 공급은 지연하지 않음" },
-    aiRenewFloor: { v: 0.1, grade: "G", note: "모든 성향의 피크 대비 최소 재생 정격 목표" },
-    aiSupplyReserve: { v: 0.35, grade: "G", note: "모든 성향의 확정 공급 여유; 송전 손실·날씨·수요 증가 대비" },
-    aiSafeReserve: { v: 0.2, grade: "G", note: "신중할수록 추가하는 확정 공급 여유 × (1-risk)" },
-    aiRenewTarget: { v: 1.6, grade: "G", note: "피크 대비 재생 정격 목표 × (1-risk); 공급 보증으로 쓰지 않음" },
-    aiBoldExpansion: { v: 0.3, grade: "G", note: "선택 투자 때 공격 성향의 추가 확정 공급 목표 × risk" },
-    aiStorageShare: { v: 0.35, grade: "G", note: "재생 정격 대비 저장 출력 목표 × (1-risk)" },
-    aiLargeWeight: { v: 0.25, grade: "G", note: "risk에 따른 대형 설비 선호 가중" },
-    aiGridRenewDelay: { v: 4, grade: "G", note: "B18 재생 선택 투자 추가 지연(달) × risk; 신중은 재생·저장 우선, 공격은 확정 공급 먼저" },
-    aiGridRepairEvery: { v: 1, grade: "G", note: "B18 경제 모드 보완 주기(달); 이월되지 않는 월 접속량 안에서 분할 투자" },
-    aiRepairEvery: { v: 3, grade: "G", note: "연 계획 사이 보완 판단 주기(달)" },
-    aiRepairInvest: { v: 0.15, grade: "G", note: "보완 때 연 투자 몫에 추가로 곱할 비율" },
-    aiApprovalMargin: { v: 3, grade: "G", note: "평가 탈락 기준 위 선제 대응 여유(점)" },
-    aiCashReserveMonths: { v: 3, grade: "G", note: "공격 성향의 감세·서비스 증액 전 기본 서비스 비용 비축(달)" },
-    aiSafeCashMonths: { v: 6, grade: "G", note: "신중할수록 추가하는 기본 서비스 비용 비축(달) × (1-risk)" },
-    aiTieValue: { v: 0.04, grade: "G", note: "정전 회피 1 MWh의 계획상 가치(억); 실제 수입에 가산하지 않음" },
-    aiTieMonths: { v: 6, grade: "G", note: "대표 주 거래 편익을 남은 달수와 비교해 최대 6달까지 환산; 수입 보너스 없음" }
-  };
-  const value = key => (KCP.ECON_DATA.params[key] || DEFAULTS[key]).v;
+  const value = key => KCP.ECON_DATA.params[key].v;
   const clone = x => JSON.parse(JSON.stringify(x));
   const assets = p => ({ builds: clone(p?.builds || []), lines: clone(p?.lines || []) });
   const clampStep = x => Math.max(-1, Math.min(1, Math.round(x || 0)));
@@ -128,7 +103,9 @@
   // 호스트의 승인 순서·예약·연계선 연결 판정을 재사용한다. 원 상태와 지도 선택은 보존한다.
   function gridFor(bg, S, R, id, plan, advance = false) {
     if (!S.econ) return null;
-    const draft = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan } } };
+    const existingGrid = S.grid || Object.fromEntries(Object.keys(S.teams).map(key =>
+      [key, withMap(bg, R, key, () => KCP.leagueCore.gridStatus(S, R, bg, key))]));
+    const draft = { ...S, grid: existingGrid, teams: { ...S.teams, [id]: { ...S.teams[id], plan } } };
     return withMap(bg, R, id, () => KCP.leagueCore.gridStatus(draft, R, bg, id, advance));
   }
 
@@ -214,6 +191,8 @@
     const seed = `${S.room}:${S.round}:${id}`;
     const have = supply(bg, S, id, plan);
     const grid = gridFor(bg, S, R, id, plan);
+    const hydroLimit = (grid ? grid.peakMW : bg.peakDemand({}, false)) * value("aiHydroMaxShare");
+    let hydroMW = plan.builds.reduce((sum, b) => sum + (b.t === "hydro" ? bg.BLD[b.t].mw : 0), 0);
     // 기존 대기의 미예약 몫부터 처리한다. 같은 달 운영을 마쳤다면 처리량은 다시 주지 않는다.
     const waiting = grid ? grid.waitingMW - grid.reservedMW : 0;
     let gridRoom = grid ? grid.headroomMW - waiting : Infinity;
@@ -225,9 +204,10 @@
       const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
       const renewReady = scheduled && (!grid || age >= value("aiGridRenewDelay") * style.risk);
       const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
-      const nextVariable = viable.filter(t => bg.BLD[t].variable && bg.BLD[t].mw <= gridMonth &&
+      const hydroAllowed = t => !grid || t !== "hydro" || hydroMW + bg.BLD[t].mw <= hydroLimit;
+      const nextLimited = viable.filter(t => hydroAllowed(t) && bg.BLD[t].hostLimited && bg.BLD[t].mw <= gridMonth &&
         legal[t].some(i => !used.has(i))).map(t => bg.BLD[t].mw);
-      const nextMW = renewNeed > 0 && nextVariable.length ? Math.min(...nextVariable) : 0;
+      const nextMW = renewNeed > 0 && nextLimited.length ? Math.min(...nextLimited) : 0;
       const hostNeed = grid && value("hostEssMul") > 0 ?
         Math.max(0, nextMW - gridRoom) / value("hostEssMul") : 0;
       const storageNeed = scheduled ? Math.max(hostNeed,
@@ -236,8 +216,9 @@
       const candidates = [];
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
+        if (!hydroAllowed(t)) return;
         // 설비 일부만 예약하면 발전은 0이다. 정격 전체가 이번 달 두 한도에 들어가야 한다.
-        if (b.variable && b.mw > Math.min(gridRoom, gridMonth)) return;
+        if (b.hostLimited && b.mw > Math.min(gridRoom, gridMonth)) return;
         const need = b.cls === "disp" ? firmNeed : b.cls === "ren" ? renewNeed : storageNeed;
         if (need <= 0 || safety && b.cls !== "disp") return;
         let best = null;
@@ -259,7 +240,8 @@
       const path = route.path(best.i);
       plan.builds.push({ t: best.t, i: best.i }); used.add(best.i);
       const added = bg.BLD[best.t];
-      if (grid && added.variable) { gridRoom -= added.mw; gridMonth -= added.mw; }
+      if (best.t === "hydro") hydroMW += added.mw;
+      if (grid && added.hostLimited) { gridRoom -= added.mw; gridMonth -= added.mw; }
       if (grid && added.cls === "bat") gridRoom += added.mw * value("hostEssMul");
       const extended = path.some(i => !roots.has(i));
       addPath(plan, path); path.forEach(i => roots.add(i));

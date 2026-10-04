@@ -1,5 +1,5 @@
 "use strict";
-// ECON-BALANCE v1.4 B18 독립 검사. 계수 기대값은 명세에서 직접 옮겼다.
+// ECON-BALANCE v1.4.1 B18 독립 검사. 계수 기대값은 명세에서 직접 옮겼다.
 // ECON-EVIDENCE §11.2·11.3·11.5: 계통·제어 크기는 G, 옥외 ESS 90%는 O*.
 // 근사 전력 입력(lib.js) 대신 실제 build/league 엔진을 DOM 없이 실행한다.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
@@ -50,7 +50,7 @@ test("도시별 시작 H와 월 한도", () => {
     const g = C.gridStatus(S, R, bg, id);
     ok(JSON.stringify(S) === before, `gridStatus 입력 불변 ${id}`);
     near(g.peakMW, expectedPeak, `도시 피크 ${id}`);
-    near(g.hostMW, expectedPeak * 0.3, `시작 H=피크×0.3 ${id}`);
+    near(g.hostMW, expectedPeak * 0.4, `시작 H=피크×0.4 ${id}`);
     near(g.monthlyMW, expectedPeak * 0.1, `월 한도=피크×0.1 ${id}`);
     near(g.waitingMW, 0, `빈 계획 대기 0 ${id}`);
     S.teams[id].plan = planOf(id, ["battery"]);
@@ -60,6 +60,42 @@ test("도시별 시작 H와 월 한도", () => {
     S.teams[id].plan.policies = ["save", "dr"];
     near(C.gridStatus(S, R, bg, id).peakMW, expectedPeak, `시작 피크는 인구·정책 변경에 고정 ${id}`);
   });
+});
+
+test("v1.4.1 등급·소수력 접속·옛 저장 1회 이행", () => {
+  for (const k of ["hostCapMul", "curtailLoadMul", "curtailSlope", "curtailKnee", "curtailMax", "curtailOffSeason", "curtailLoss"])
+    ok(D.params[k].grade === "G", `${k} 게임 가정 등급`);
+  const S = game(), id = "hwaseong";
+  S.round = 3;
+  S.teams[id].plan = planOf(id, ["hydro", "solar", "solar", "solar", "solar"], true);
+  const hydroMW = bg.BLD.hydro.mw;
+  const fresh = C.gridStatus(S, R, bg, id);
+  near(fresh.connectedMW, 0, "새 게임은 즉시 접속 이행 대상 아님");
+  delete S.grid;
+  const before = JSON.stringify(S), migrated = C.gridStatus(S, R, bg, id);
+  ok(JSON.stringify(S) === before, "옛 저장 접속 조회도 입력 불변");
+  near(allocated(migrated), migrated.hostMW, "옛 설비를 H까지 즉시 배정");
+  ok(migrated.entries[0].t === "hydro" && migrated.entries[0].allocatedMW === hydroMW, "옛 소수력도 즉시 접속");
+  ok(migrated.connectedMW > migrated.monthlyMW && migrated.waitingMW > 0, "월 한도보다 큰 옛 접속 복원·H 밖 대기");
+  C.refreshGrid(S, bg);
+  const once = JSON.stringify(S.grid);
+  C.refreshGrid(S, bg);
+  ok(JSON.stringify(S.grid) === once, "저장 이행은 한 번만");
+  S.teams[id].plan.builds.shift();
+  C.refreshGrid(S, bg);
+  near(S.grid[id].connectedMW, migrated.connectedMW - hydroMW, "철거 후 빈 H를 즉시 재배정하지 않음");
+  S.round++;
+  C.refreshGrid(S, bg, true);
+  ok(allocated(S.grid[id]) <= allocated(migrated) - hydroMW + migrated.monthlyMW + 1e-8, "이행 뒤 추가 접속은 월 한도");
+
+  const edited = game(); edited.round = 3; delete edited.grid;
+  edited.teams[id].plan = planOf(id, ["hydro"], true);
+  edited.teams[id].token = "legacy-test";
+  const result = C.reduce(edited, { type: "plan", team: id, token: "legacy-test", rev: 1,
+    plan: planOf(id, ["hydro", "solar"], true) }, 0, bg);
+  ok(result.ok, "옛 저장 첫 계획 수정 승인");
+  near(edited.grid[id].connectedMW, hydroMW, "첫 수정에서도 원래 소수력만 즉시 접속");
+  near(edited.grid[id].waitingMW, 2, "이행 직후 새 태양광은 대기");
 });
 
 test("연계선은 지어진 선만 H에 가산", () => {
@@ -78,6 +114,12 @@ test("연계선은 지어진 선만 H에 가산", () => {
     S.teams[here].plan = bg.sanitize({ builds: [], lines: [{ p: route }] }, 1e9);
   }
   near(C.gridStatus(S, R, bg, id).hostMW, base + 4 * 0.5, "연결선 4 MW → H +2 MW");
+  const outage = R.events.find(e => e.effect && (e.effect.tieDown || e.effect.tieCapMul));
+  ok(!!outage, "연계선 고장·감축 사건 fixture");
+  if (outage) {
+    S.events = [{ id: outage.id, round: S.round }];
+    near(C.gridStatus(S, R, bg, id).hostMW, base + 4 * 0.5, "일시 고장에도 접속권 H 유지");
+  }
 });
 
 test("FIFO·월별 누적·중복 실행·철거", () => {
@@ -149,8 +191,9 @@ test("실제 발전: 대기 차단·강제 버림·일반잉여 분리", () => {
   select(id);
   // §11.6의 조력 포함. 현재 6도시에 합법 조력 타일이 없어 분류 계약을 확인한다.
   ok(bg.BLD.tidal.variable === true, "조력은 변동 재생 분류");
-  ok(!bg.BLD.hydro.variable && !bg.BLD.biomass.variable, "소수력·바이오매스는 변동 재생 제한 제외");
-  for (const t of ["solar", "roof", "wind", "offshore"]) {
+  ok(!bg.BLD.hydro.variable && !bg.BLD.biomass.variable, "소수력·바이오매스는 변동 재생 출력제어 제외");
+  ok(bg.BLD.hydro.hostLimited && !bg.BLD.biomass.hostLimited, "소수력 접속 제한·바이오매스 면제");
+  for (const t of ["solar", "roof", "wind", "offshore", "hydro"]) {
     const plan = planOf(id, [t], true);
     plan.season = "spring"; plan.seed = 812;
     const run = mods => bg.simulate(clone(plan), 7, { league: true, mods });
@@ -158,8 +201,8 @@ test("실제 발전: 대기 차단·강제 버림·일반잉여 분리", () => {
     ok(normal.tot.renAvail > 0, `${t} 실제 발전 fixture`);
     near(disconnected.tot.renAvail, 0, `${t} 접속 대기는 발전 안 함`);
     const curtailed = run({ curtailP: 0.036 });
-    near(curtailed.tot.curtailMWh, normal.tot.renAvail * 0.036, `${t} ESS 없을 때 강제 버림=가능 발전×3.6%`);
-    ok(curtailed.tot.curt >= 0 && curtailed.tot.curtailMWh > 0, `${t} 일반잉여·강제 버림 별도 기록`);
+    near(curtailed.tot.curtailMWh, normal.tot.renAvail * (t === "hydro" ? 0 : 0.036), `${t} 변동 재생만 강제 버림=가능 발전×3.6%`);
+    ok(curtailed.tot.curt >= 0 && (t === "hydro" ? curtailed.tot.curtailMWh === 0 : curtailed.tot.curtailMWh > 0), `${t} 일반잉여·강제 버림 별도 기록`);
     const after = run({});
     ok(JSON.stringify(after) === JSON.stringify(normal), `${t} MODS는 다음 실행에 남지 않음`);
   }
@@ -195,6 +238,26 @@ test("결과·공개·월환산과 재실행", () => {
   near(res.econ.grid[id].curtailMWh, energy.curtailMWh, "월 보고서의 제어량은 월환산 값");
   near(view.econ.cities[id].curtailMWh, energy.curtailMWh, "공개 경제 도시의 제어량은 월환산 값");
   console.log("B18 실측", D.start[id].name, JSON.stringify({ connectedMW: team.grid.connectedMW, waitingMW: team.grid.waitingMW, headroomMW: team.grid.headroomMW, curtail7dayMWh: team.curtailMWh, curtailMonthMWh: energy.curtailMWh }));
+});
+
+test("지난 결과 화면의 월환산 대체 값", () => {
+  // 브라우저 배치 대신 결과 서랍에서 실제 쓰는 계산 구간을 Node로 실행한다.
+  const source = fs.readFileSync(path.join(ROOT, "ui/league.js"), "utf8");
+  const start = source.indexOf("        const rd = C.roundsOf(V)[res.round - 1];");
+  const end = source.indexOf("        const rank =", start);
+  ok(start >= 0 && end > start, "결과 서랍의 출력제어 계산 구간");
+  const S = game(), id = ids[0]; S.round = 4;
+  const calculate = res => vm.runInNewContext(source.slice(start, end) + "curtailMWh", {
+    C, V: S, L: { team: id }, res, r: res.team[id]
+  });
+  near(calculate({ round: 3, econ: null, team: { [id]: { curtailMWh: 7 } } }), 31,
+    "지난 3월 대표 7일 7 MWh는 현재 4월과 무관하게 31 MWh");
+  near(calculate({ round: 2, team: { [id]: { curtailMWh: 7 } } }), 28,
+    "보고서 누락된 2월은 28일로 환산");
+  near(calculate({ round: 3, econ: { grid: { [id]: { curtailMWh: 0 } } },
+    team: { [id]: { curtailMWh: 7 } } }), 0, "월 보고서의 0은 대체하지 않음");
+  ok(calculate({ round: 3, econ: null, team: { [id]: {} } }) === undefined,
+    "원자료도 없으면 허위 0을 만들지 않음");
 });
 
 test("강제 버림은 연계선 판매로 되살아나지 않음", () => {
