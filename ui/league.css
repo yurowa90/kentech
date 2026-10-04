@@ -241,6 +241,14 @@
 .lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; }
 .lg-panel[data-econ="true"] .lg-pbody h2 { font-size: 19px; }
 .lg-panel[data-econ="true"] .lg-pbody h4 { margin: 14px 0 6px; }
+/* B18: 요약은 한 줄로 묶고 좁은 서랍에서는 줄바꿈한다. 팀 화면의 남색 토큰을 쓴다. */
+#lg-grid { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+#lg-grid dl { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; }
+#lg-grid dl > div { min-width: 0; }
+#lg-grid dt { font-size: 12.5px; color: var(--ink-2); }
+#lg-grid dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#lg-grid dd[data-waiting="true"] { color: var(--ui-gold); }
+#lg-grid .lg-hint { margin: 8px 0 0; }
 .lg-grp { margin: 8px 0; }
 .lg-grp button { display: block; width: 100%; min-height: 44px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--paper); color: var(--ink); font: inherit; }
 .lg-grp meter,
