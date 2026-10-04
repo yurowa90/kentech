@@ -21,7 +21,7 @@
   ];
   const store = {
     get(k) { try { return JSON.parse(window.localStorage.getItem(k)); } catch (e) { return null; } },
-    set(k, v) { try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 없이도 진행 */ } },
+    set(k, v, replacer) { try { window.localStorage.setItem(k, JSON.stringify(v, replacer)); return true; } catch (e) { return false; } },
     del(k) { try { window.localStorage.removeItem(k); } catch (e) { /* 무시 */ } }
   };
   const tab = {
@@ -56,6 +56,7 @@
   let L = null; // { role, room, net, conn, S?(진행자 상태), snap?(받은 공개 상태), team?, token?, timers[] }
   function close() {
     if (!L) return;
+    saveSolo();
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending);
     if (L.conn) L.conn.close();
@@ -142,7 +143,7 @@
     return [...priority, ...candidates.filter(k => k.startsWith("lg-r-")), "lg-p-line", "lg-p-predict", ...candidates].find(k => candidates.includes(k)) || null;
   }
   function putData(d) {
-    if (L.role === "solo") { L.interview = d; saveSolo(); }
+    if (L.role === "solo") soloMutate(() => { L.interview = d; });
     else store.set(dataKey(), d);
   }
   function monthNote() {
@@ -290,10 +291,35 @@
 
   const K_SOLO = "kcp-league-solo-v1";
   let pendingSolo = null, soloNotice = "";
-  function saveSolo() {
-    if (L?.role === "solo") store.set(K_SOLO, { v: 1, state: L.S, team: L.team, style: L.style, interview: L.interview, aiRound: L.aiRound || 0 });
+  let soloSaveFailed = false, soloSaveWarned = false;
+  function warnSoloSave() {
+    if (!soloSaveFailed || soloSaveWarned || !document.getElementById("lg-bar")) return;
+    soloSaveWarned = true;
+    BG.toast("진행을 저장하지 못했습니다. 브라우저 저장 공간·설정을 확인하세요.");
   }
+  function writeSolo(save) {
+    // JSON은 -0을 0으로 쓴다. 경제 보고서의 원본 값도 맞춰 저장·복원 비교가 같게 한다.
+    if (!store.set(K_SOLO, save, function (key, value) {
+      if (Object.is(value, -0)) { this[key] = 0; return 0; }
+      return value;
+    })) soloSaveFailed = true;
+    warnSoloSave();
+  }
+  function saveSolo() {
+    if (L?.role === "solo") writeSolo({ v: 1, state: L.S, team: L.team, style: L.style, interview: L.interview, aiRound: L.aiRound || 0 });
+  }
+  // 실패 응답·예외·중첩 요청에서도 마지막 상태를 저장한다. 멀티는 기존 경로를 그대로 쓴다.
+  function soloMutate(fn) {
+    const session = L;
+    if (session?.role !== "solo") return fn();
+    session.mutating = (session.mutating || 0) + 1;
+    try { return fn(); }
+    finally { if (--session.mutating === 0 && L === session) saveSolo(); }
+  }
+  window.addEventListener("pagehide", saveSolo);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) saveSolo(); });
   function startSolo(app, fresh) {
+    let validSave = false;
     try {
       const save = fresh || pendingSolo || store.get(K_SOLO);
       pendingSolo = null;
@@ -303,58 +329,69 @@
         && actT(save.state).some(t => t.id === save.team) && object(save.interview)
         && object(save.state.econ?.cities) && Object.hasOwn(save.state.econ.cities, save.team) && object(save.state.econ.cities[save.team]);
       if (!valid) throw new Error("solo-save");
+      validSave = true;
       if (L?.role !== "solo") {
         close();
         L = { role: "solo", room: save.state.room, S: save.state, team: save.team, style: save.style || "balanced", token: save.state.teams[save.team].token, timers: [], snap: null, rev: 0, planT: 0, skew: 0, interview: save.interview || { docs: {}, journal: {} }, aiRound: save.aiRound || 0 };
         const listeners = {}, session = L;
         L.conn = { kind: "solo", status: () => "open", close() {}, on(ev, fn) { listeners[ev] = fn; }, onStatus(fn) { fn("open"); }, send(ev, m) {
-          if (ev !== "req") return;
-          const result = C.reduce(L.S, m, 0, BG);
-          if (!result.ok) { listeners.nack?.({ ...m, err: result.err }); return; }
-          if (m.type === "tie" && L.S.phase === "plan") C.computerPlans(L.S, BG, L.team, L.style, true);
-          BG.selectPack(C.teamDef(R(), L.team).pack, "league");
-          saveSolo();
-          queueMicrotask(() => { if (L === session) listeners.snap?.(C.publicView(L.S, Date.now())); });
+          if (ev !== "req" || L !== session) return;
+          soloMutate(() => {
+            const result = C.reduce(L.S, m, 0, BG);
+            if (!result.ok) { listeners.nack?.({ ...m, err: result.err }); return; }
+            if (m.type === "tie" && L.S.phase === "plan") C.computerPlans(L.S, BG, L.team, L.style, true);
+            BG.selectPack(C.teamDef(R(), L.team).pack, "league");
+            queueMicrotask(() => { if (L === session) soloMutate(() => listeners.snap?.(C.publicView(L.S, Date.now()))); });
+          });
         } };
         L.conn.on("snap", onSnap); L.conn.on("nack", nack);
       }
       L.app = app;
-      if (L.S.phase === "lobby") { C.host(L.S, "next", 0); L.S.ends = null; }
-      soloComputers();
-      L.snap = C.publicView(L.S, Date.now());
-      mountCity(app); saveSolo();
-      if (L.S.phase === "end" || L.S.phase === "review") openPanel("result");
-      else if (curRound().month === 1) openPanel("journal");
+      soloMutate(() => {
+        if (L.S.phase === "lobby") { C.host(L.S, "next", 0); L.S.ends = null; }
+        soloComputers();
+        L.snap = C.publicView(L.S, Date.now());
+        mountCity(app);
+        if (L.S.phase === "end" || L.S.phase === "review") openPanel("result");
+        else if (curRound().month === 1) openPanel("journal");
+      });
+      warnSoloSave();
     } catch (e) {
-      close(); pendingSolo = null; store.del(K_SOLO);
-      soloNotice = "저장값을 읽지 못해 지웠습니다. 새로 시작하세요.";
+      close(); pendingSolo = null;
+      // 정상 저장을 읽은 뒤의 컴퓨터 계산·화면 오류는 진행 기록을 지우지 않는다.
+      if (validSave) soloNotice = "혼자 하기 화면을 열지 못했습니다. 저장된 진행은 유지됩니다.";
+      else { store.del(K_SOLO); soloNotice = "저장값을 읽지 못해 지웠습니다. 새로 시작하세요."; }
       if (location.hash !== "#league") location.hash = "#league"; else lobby(app);
     }
   }
   function soloComputers() {
     if (L.S.phase !== "plan" || L.aiRound === L.S.round) return;
-    if (KCP.leagueAI?.plan) {
-      C.computerPlans(L.S, BG, L.team, L.style, false);
-      // 뒤 도시가 보낸 제안에도 앞 도시가 답할 수 있도록 응답을 한 번 더 통과시킨다.
-      C.computerPlans(L.S, BG, L.team, L.style, true);
-      L.aiRound = L.S.round;
-    }
-    BG.selectPack(C.teamDef(R(), L.team).pack, "league");
+    soloMutate(() => {
+      if (KCP.leagueAI?.plan) {
+        C.computerPlans(L.S, BG, L.team, L.style, false);
+        // 뒤 도시가 보낸 제안에도 앞 도시가 답할 수 있도록 응답을 한 번 더 통과시킨다.
+        C.computerPlans(L.S, BG, L.team, L.style, true);
+        L.aiRound = L.S.round;
+      }
+      BG.selectPack(C.teamDef(R(), L.team).pack, "league");
+    });
   }
   function soloNext() {
     if (L.busy || L.S.phase === "end") return;
     L.busy = true;
     try {
-      clearTimeout(L.planT);
-      if (L.S.phase === "plan") {
-        sendPlan(); soloComputers(); C.computerPlans(L.S, BG, L.team, L.style, true);
-        C.reduce(L.S, { type: "ready", team: L.team, token: L.token, ready: true }, 0, BG);
-        C.run(L.S, BG, 0);
-        const { d, n } = monthNote(); n.big = n.big || largeDecision(); putData(d);
-      } else C.host(L.S, "next", 0);
-      L.S.ends = null; soloComputers();
-      BG.selectPack(C.teamDef(R(), L.team).pack, "league");
-      saveSolo(); onSnap(C.publicView(L.S, Date.now()));
+      soloMutate(() => {
+        clearTimeout(L.planT);
+        if (L.S.phase === "plan") {
+          sendPlan(); soloComputers(); C.computerPlans(L.S, BG, L.team, L.style, true);
+          C.reduce(L.S, { type: "ready", team: L.team, token: L.token, ready: true }, 0, BG);
+          C.run(L.S, BG, 0);
+          const { d, n } = monthNote(); n.big = n.big || largeDecision(); putData(d);
+        } else C.host(L.S, "next", 0);
+        L.S.ends = null; soloComputers();
+        BG.selectPack(C.teamDef(R(), L.team).pack, "league");
+        onSnap(C.publicView(L.S, Date.now()));
+      });
     } finally { L.busy = false; }
   }
   function readyAction(skip) {
@@ -524,7 +561,7 @@
       if (!check.ok) { errEl.textContent = check.err; return; }
       const state = C.newState(code(6), REGION, 0, check.ids, { turns: +$("#lg-solo-turns").value });
       check.ids.forEach(id => C.reduce(state, { type: "claim", team: id, token: `solo-city-${id}` }, 0, BG));
-      close(); pendingSolo = { v: 1, state, team: player, style: $("#lg-solo-style").value, interview: { docs: {}, journal: {} } }; store.set(K_SOLO, pendingSolo);
+      close(); pendingSolo = { v: 1, state, team: player, style: $("#lg-solo-style").value, interview: { docs: {}, journal: {} } }; writeSolo(pendingSolo);
       location.hash = "#league/solo";
     });
     $("#lg-solo-reset")?.addEventListener("click", () => { store.del(K_SOLO); lobby(app); });
@@ -1070,25 +1107,27 @@
   }
   function onSnap(V) {
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
-    const prev = L.snap;
-    L.snap = V; L.skew = V.now - Date.now();
-    if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
-    const me = V.teams[L.team];
-    if (prev && prev.round !== V.round) L.pendingCrit = null;
-    const pending = L.pendingCrit, crit = me?.crit;
-    if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
-    if (prev && (prev.phase !== V.phase || prev.round !== V.round)) L.awaitReady = false;
-    if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
-    if (!L.app || !L.app.isConnected || !document.getElementById("lg-bar")) return;
-    // 내 도시를 다른 기기에서 처음 여는 경우: 진행자에게 남은 계획을 가져온다.
-    if (me.plan && me.rev > L.rev && L.rev === 0 && isEmptyDoc()) adoptPlan(me);
-    const rd = curRound();
-    BG.setSeason(rd.season);
-    BG.refresh();
-    if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
-    else if (!prev && V.econ && V.phase === "plan" && curRound().month === 1) openPanel("journal");
-    renderBar();
-    if (L.panel) renderPanel();
+    return soloMutate(() => {
+      const prev = L.snap;
+      L.snap = V; L.skew = V.now - Date.now();
+      if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
+      const me = V.teams[L.team];
+      if (prev && prev.round !== V.round) L.pendingCrit = null;
+      const pending = L.pendingCrit, crit = me?.crit;
+      if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
+      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) L.awaitReady = false;
+      if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
+      if (!L.app || !L.app.isConnected || !document.getElementById("lg-bar")) return;
+      // 내 도시를 다른 기기에서 처음 여는 경우: 진행자에게 남은 계획을 가져온다.
+      if (me.plan && me.rev > L.rev && L.rev === 0 && isEmptyDoc()) adoptPlan(me);
+      const rd = curRound();
+      BG.setSeason(rd.season);
+      BG.refresh();
+      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
+      else if (!prev && V.econ && V.phase === "plan" && curRound().month === 1) openPanel("journal");
+      renderBar();
+      if (L.panel) renderPanel();
+    });
   }
   // 턴 이름: 달 턴이면 "2027년 3월 (3/12)", 계절 라운드면 "2 / 4라운드 · 여름"
   function turnLabel(rd, n, tot, short) {
@@ -1143,7 +1182,9 @@
       season: () => curRound().season,
       onChange: () => {
         if (L.snap?.econ) { const { d, n } = monthNote(); n.confirmed = false; n.research = (BG.current()?.builds || []).some(b => ["uni", "lab"].includes(b.t) && !(L.snap.teams[L.team].base || []).some(item => item.k === C.itemKey("b", b))); putData(d); }
-        L.rev++; const z = tdata(); z.rev = L.rev; putData(z); clearTimeout(L.planT); L.planT = setTimeout(sendPlan, 400); },
+        L.rev++; const z = tdata(); z.rev = L.rev; putData(z); clearTimeout(L.planT);
+        // 혼자 하기는 같은 탭에서 즉시 반영한다. 이탈 때 취소되는 전송 타이머를 기다리지 않는다.
+        if (L.role === "solo") sendPlan(); else L.planT = setTimeout(sendPlan, 400); },
       onMount: root => { addBar(root); window.dispatchEvent(new Event("resize")); }
     });
     send("claim");
