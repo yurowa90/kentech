@@ -17,6 +17,18 @@ const sum = xs => xs.reduce((s, x) => s + x, 0);
 const mean = xs => sum(xs) / xs.length;
 const finite = Number.isFinite;
 const fmt = x => finite(x) ? x.toFixed(3) : String(x);
+function annualDebtRevenue(rows, id) {
+  const recurring = rows.map(R => {
+    const rev = R.fiscal?.[id]?.rev;
+    return rev?.resTax + rev?.indTax;
+  });
+  const subsidies = rows.map(R => R.fiscal?.[id]?.rev?.subsidy);
+  // v1.3: 12달 전에는 반복 세입 달 평균×12 + 올해 1월 지원금 1회분.
+  // 12달부터는 최근 12달 세금·지원금 합계. 차익·거래·사건·회수 수입은 제외한다.
+  const annual = rows.length < 12 ? mean(recurring) * 12 + subsidies[0] :
+    sum(recurring) + sum(subsidies);
+  return { recurring, subsidies, annual };
+}
 let pass = 0, fail = 0;
 let section = "";
 const counts = {}, failures = [];
@@ -261,11 +273,11 @@ block("B7", () => {
         const rev = R.fiscal?.[id]?.rev;
         return rev?.resTax + rev?.indTax + rev?.subsidy;
       });
-      const want = mean(eligible) * 12 * D.params.debtCapRatio?.v;
+      const want = annualDebtRevenue(rows, id).annual * D.params.debtCapRatio?.v;
       const control = baseline.states[m].cities[id].debtCap;
-      // v1.2 우선: B11 — 관측 달 평균×12를 갱신하며 월 20% 제한은 적용하지 않는다.
+      // v1.3: 반복 세입만 평균×12, 지원금은 1회분. 월 20% 제한은 적용하지 않는다.
       ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
-        `${id} ${m + 1}달 debtCap=${fmt(cap)}, 세금·지원금 평균 연환산 목표=${fmt(want)}`);
+        `${id} ${m + 1}달 debtCap=${fmt(cap)}, 반복 세입 연환산·지원금1회 목표=${fmt(want)}`);
       ok(finite(cap) && finite(control) && Math.abs(cap - control) <= Math.max(0.1, control * 0.001),
         `${id} 거래 제외 한도=${fmt(cap)}, 무거래=${fmt(control)} (같은 세입)`);
     }
@@ -281,14 +293,11 @@ block("B7", () => {
     }
     for (const m of [0, 5]) {
       const rows = r.reports.slice(0, m + 1);
-      const annual = mean(rows.map(R => {
-        const rev = R.fiscal?.[id]?.rev;
-        return rev?.resTax + rev?.indTax + rev?.subsidy;
-      })) * 12;
+      const { annual } = annualDebtRevenue(rows, id);
       const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * annual;
-      // v1.2 우선: B11 — 지원금도 수령 월 세입으로 포함해 매달 관측 평균 갱신.
+      // v1.3: 반복 세입 달 평균만 연환산하고 올해 1월 지원금은 한 번만 더한다.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
-        `${id} ${m + 1}달 관측 평균 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (지원금은 수령 월에 포함)`);
+        `${id} ${m + 1}달 관측 평균 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (지원금은 1회분)`);
     }
   }));
 });
@@ -446,15 +455,8 @@ block("B11", () => {
     for (const [label, r] of [["보통", baseline], ["첫달 원가3배", spike]]) IDS.forEach(id => {
       for (const m of [...Array.from({ length: 11 }, (_, i) => i), 11, 23]) {
         const rows = r.reports.slice(Math.max(0, m - 11), m + 1);
-        // v1.3: 첫 12달 전에는 반복 세입만 달 평균×12, 올해 1월 지원금은 한 번만 더한다.
-        // 12달부터는 최근 12달 세금·지원금 합계. 차익·거래·사건·회수 수입은 제외한다.
-        const recurring = rows.map(R => {
-          const rev = R.fiscal?.[id]?.rev;
-          return rev?.resTax + rev?.indTax;
-        });
-        const subsidies = rows.map(R => R.fiscal?.[id]?.rev?.subsidy);
-        const annual = rows.length < 12 ? mean(recurring) * 12 + r.reports[0].fiscal?.[id]?.rev?.subsidy :
-          sum(recurring) + sum(subsidies);
+        // v1.3: B7과 같은 독립 기대식을 사용한다.
+        const { recurring, subsidies, annual } = annualDebtRevenue(rows, id);
         const want = annual * D.params.debtCapRatio?.v;
         const cap = r.reports[m].fiscal?.[id]?.debtCap;
         ok(recurring.every(finite) && subsidies.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
@@ -571,7 +573,10 @@ block("B17", () => {
       S.cities[id].ind === start.cities[id].ind &&
       JSON.stringify(S.cities[id].policy) === JSON.stringify(ins[id].policy));
     ok(fixed, `${id} 13달 정책·인구·종사자 고정`);
-    console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%`);
+    // v1.3: 기존 상한·변동률 단언을 유지하고 공통 기대식의 한도도 함께 측정한다.
+    const firstWant = annualDebtRevenue(reports.slice(0, 1), id).annual * data.params.debtCapRatio?.v;
+    const laterWant = annualDebtRevenue(reports.slice(1, 13), id).annual * data.params.debtCapRatio?.v;
+    console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%, 목표=${fmt(firstWant)}/${fmt(laterWant)}`);
     ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && first <= cash0 * 1.5,
       `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (≤${fmt(cash0 * 1.5)})`);
     ok(fixed && finite(first) && first > 0 && finite(later) && finite(delta) && delta <= 0.3,
