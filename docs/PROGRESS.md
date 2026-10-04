@@ -18,6 +18,18 @@
    - 로컬 결과(2026-10-03): 두 PR 모두 기본 검사 8종(regression·base·screens·routine·probe·peer·drill·integration) 문제 0, PR #2 모형 검산 5종 통과(시멘트 773·섬 92,805·은여울 1,482·셔틀 1,253·변이 3,837건). 단, 그때 tests/run.sh 기본 목록에 창작 게임 검사 6종(originals와 게임 5종)이 빠져 있어 돌지 않았다. 지금은 목록에 넣었다. PR #2는 `tests/run.sh originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal`을 다시 돌릴 것. Opus 독립 검토는 끝나기 전에 세션이 넘어갔으면 opus-reviewer로 다시 돌린다.
 
 
+
+## 이어받을 곳(2026-10-04 오후, 사용량 한도로 중단)
+- 브랜치 claude/kentech-league-econ-balance(push됨): 밸런스 v1.2, 2차 보정(ECON-EVIDENCE·GAMES 반영), 화면 U1–U4, 혼자 하기(#league/solo), 컴퓨터 도시 AI(ui/league-ai.js), D-57 확정·D-59, README·HANDOFF-econ §9.
+- 마지막 통합 검사(e1d4a79 기준): econui 804/0, ai-check 3,772/0, rules·e2e·e2e2·e2e3·econint 0, balance 534/0, test-econ 791,651/0, 회귀 screens·base·regression 0. 그 이전 전체(2e7b979): 회귀 14종 0, bots36 12,322/0(연계선 4/6 도시 1위, 지배 전략 없음).
+- 남은 결함과 진행 중이던 Codex 작업(결과는 ~/.claude/codex-runs/*-<이름>/last.md, 작업 폴더에 미커밋):
+  1. debtcap(econ-fix 폴더, 명세 v1.3): 첫 달 지방채 한도가 1월 지원금 ×12로 과대(평택 972.9억) → 고친 뒤 커밋·합치기, balance.js(v1.3 단언 B17 포함, 이미 합침) 실패 0 확인.
+  2. solosave(econ-ui 폴더): 혼자 하기 저장 누락이 간헐(solo.py 4화면 중 1회 실패) → 고친 뒤 solo.py 여러 번 반복 실행으로 확인.
+  3. 그 뒤 통합 검사 전체(bots36·회귀 14종), 캡처(1280·390, 밝음·어두움) 보고, HANDOFF §9 검사 결과 기입.
+- PR #1: 검토 반영 push(55dd88a), 검사 9종 0, PR 코멘트 완료 — 병합은 사용자 확인 뒤.
+- PR #2: 3차 수정 push(42cecaa), 검사 19종 0. 최종 Opus 확인은 중단됨 → 다시 돌린 뒤 PR 코멘트.
+- 사용자 결정: 팀 기준 칩 전송 허용(D-59). 다음 큰 일: 다른 해 기출 재정비.
+
 ## 이어받을 곳(2026-10-03 밤, 사용량 한도로 중단)
 - 사용자 목표(/goal): 싱글플레이(혼자 하기 vs 컴퓨터 도시, docs/ECON-UI.md U3)와 멀티플레이 모두 완성. 실제 자료·연구로 인과 모형(단순하게), 기후·에너지 레퍼런스, 켄텍 면접 문항 연결. 끝나면 다른 해 기출 재정비.
 - 밸런스 B1–B10(docs/ECON-BALANCE.md) 구현 끝(Codex gpt-6-astra) — 미커밋. node 검사: balance.js 234/0(Sol 독립 작성), test-econ 738,496/0, review 1번 2,484,102/0. startMix 0.2→0.9 수용(명세 v1.1로 고침). **브라우저 검사(rules·e2e·e2e2·e2e3·econint)·bots36·회귀 14종은 test-runner가 돌리던 중 — 결과 미확인, 다시 돌릴 것.** econint.py '예산=현금' 단언은 B7(지방채 포함)로 갱신 필요.
