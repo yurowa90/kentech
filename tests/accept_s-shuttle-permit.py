@@ -24,6 +24,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 ID = "s-shuttle-permit"
@@ -31,7 +32,7 @@ KEY = "kcp:v1:" + ID
 ORDER = ("clear", "rain", "fog")
 ROOT = Path(__file__).resolve().parents[1]
 # 검토 반영: 확정 뒤 질문은 7장(공통 2 + 개별 3 + 반문·발산). sp-hum은 확정 전 일반 질문에만 남고,
-# 사람 운전자와의 비교는 R1의 인증·책임 카드 보조 질문으로 옮겼다.
+# 결함 8: 사람 운전자·인증 기준 비교는 모든 정책에서 읽을 수 있는 성찰로 옮겼다.
 FIXED = ["sp-c1", "sp-c2"]
 UNLOCKED = FIXED + ["sp-hum", "sp-prep"]
 END = ["sp-counter", "sp-div"]
@@ -117,6 +118,7 @@ def _snapshot(c):
 def _questions(c, keys, aid):
     _flush(c)
     r = _snapshot(c)
+    assert_single_request(c, r["qs"])
     c.eq([q["k"] for q in r["qs"]], keys, f"{aid} 질문 키와 순서")
     c.eq(len({q["k"] for q in r["qs"]}), len(keys), f"{aid} 중복 질문 키 없음")
     c.expect(all("src" not in q for q in r["qs"]), f"{aid} 질문에 출처 속성 없음")
@@ -388,7 +390,9 @@ def t_12_2_excluded_positive_redecision(c: Ctx):
     r = _snapshot(c)
     c.eq(len(r["game"]["tests"]), 6, "SP-12.2-19 시험6회 유지")
     c.eq(r["game"]["decisions"], 2, "SP-12.2-19 결정 횟수2")
-    c.expect(r["qs"][3]["q"].startswith("앞선 결정의 1년 결과를 본 뒤 계획을 바꾸었습니다. 무엇을 보고 바꾸었나요? "),
+    # 명세 12.3·수정 기록 idx 19: 현재 증거 분기의 키 유지. 변경 후에는 빠진 기록이 없고 맑음에 시험 6회가 집중되어 sp-evidence다.
+    c.eq([r["qs"][3]["k"], r["qs"][3]["tag"]], ["sp-evidence", "개별 · 재결정"], "N4 변경 재결정 키·태그")
+    c.expect(r["qs"][3]["q"] == "앞선 결정의 1년 결과를 본 뒤 계획을 바꾸었습니다. 무엇을 보고 바꾸었나요?",
              "SP-12.2-19 계획을 바꾼 재결정 문장")
 
 
@@ -546,7 +550,7 @@ def t_12_3_case_c_values(c: Ctx):
                        "chosen-remaining": "0.69건/년", "default-remaining": "0.69건/년",
                        "zero-reduced": "0.00건/년", "zero-remaining": "0.00건/년",
                        # 시험 3개월 ÷ 12 × 대안 이동 위험(검토 반영 비교 행).
-                       "chosen-wait": "0.38건", "zero-wait": "0.00건", "default-wait": "0.38건"}.items():
+                       "chosen-wait": "0.20건", "zero-wait": "0.00건", "default-wait": "0.20건"}.items():
         _eqtext(c, "#sp-cmp-" + suffix, val, "SP-12.3-03")
     _sensitivity(c, ["90.0%", "1.44", "100.0%", "21.60", "21.60"], "SP-12.3-03")
     c.expect(c.page.locator("#sp-lock").is_hidden(), "SP-12.3-04 확정 버튼 숨김")
@@ -557,9 +561,9 @@ def t_12_3_case_c_values(c: Ctx):
         c.expect(loc.is_disabled(), f"SP-12.3-04 잠금 대상 {loc.get_attribute('id')} disabled")
     c.eq(c.page.locator("#sp-reason").get_attribute("readonly") is not None, True, "SP-12.3-04 판단 이유 readOnly")
     c.expect(c.page.locator("#sp-memo").is_editable(), "SP-12.3-04 메모는 편집 가능")
-    c.eq(c.page.locator("#sp-alt-compare tbody th .chip").all_text_contents(), ["근거 없는 가정"] * 3,
+    c.eq(c.page.locator("#sp-alt-compare tbody th .chip").all_text_contents(), ["근거 없는 가정"] * 4,
          "SP-12.3-03 대안 이동 가정 행에 근거 없는 가정 표시")
-    for phrase in ("이동 편익 지수", "대안 이동 예상 사고 감소", "시험 기간 중 대안 이동 예상 사고"):
+    for phrase in ("이동 편익 지수", "대안 이동 예상 사고 감소", "시험 기간에 셔틀이 줄일 수 있었던 대안 이동 사고 상한"):
         c.expect(phrase not in _text(c, "#sp-dependent"), f"SP-12.3-04 의존 결과에 {phrase} 없음")
         _has(c, "#sp-compare", phrase, "SP-12.3-04")
     for suffix in ("share", "expected", "actual", "public", "operator", "comp"):
@@ -600,12 +604,14 @@ def t_12_3_case_c_save_redecision(c: Ctx):
     c.eq(_state(c)["game"]["decisions"], 1, "SP-12.3-06 해제는 횟수 증가 안 함")
     _lock(c)
     _output(c, {"actual": "1건"}, "SP-12.3-06")
+    # 명세 12.3(932행)·idx 19: 같은 계획 재확정은 개별 2 질문의 k를 유지한다.
     r = _questions(c, C_KEYS, "SP-12.3-06")
     c.eq(r["game"]["decisions"], 2, "SP-12.3-06 재확정2회")
     c.expect(any(x["t"] == "상태" and x["d"] == "허가 결정 확정 · 2번째 결정" for x in r["recap"]),
              "SP-12.3-06 recap 결정 횟수")
     # 검토 반영: 계획을 바꾸지 않고 다시 확정하면 '바꾸었다'고 묻지 않는다.
-    c.expect(r["qs"][3]["q"].startswith("앞선 결정의 1년 결과를 본 뒤에도 같은 계획으로 다시 결정했습니다. 무엇을 보고 그대로 두었나요? "),
+    # N1: 뒤에 증거 질문을 덧붙이지 않으므로 끝 공백 없이 전문을 비교한다.
+    c.expect(r["qs"][3]["q"] == "앞선 결정의 1년 결과를 본 뒤에도 같은 계획으로 다시 결정했습니다. 무엇을 보고 그대로 두었나요?",
              "SP-12.3-06 계획을 유지한 재결정 선행 문장")
     c.expect("계획을 바꾸었습니다" not in str(r["qs"]), "SP-12.3-06 바꾸지 않은 계획에 변경 질문 없음")
 
@@ -639,14 +645,15 @@ def t_12_4_case_b(c: Ctx):
     _output(c, dict(share="65.0%", expected="0.52건/년", actual="0건", operator="6.24 가상 비용단위/년"), "SP-12.4-03")
     _has(c, "#sp-results", "올해 관측한 보상률은 계산하지 않음", "SP-12.4-03")
     c.eq(c.page.locator("#sp-out-tail").count(), 0, "SP-12.4-03 실현 0건이면 꼬리 확률 문장 없음")
-    _eqtext(c, "#sp-cmp-chosen-wait", "1.25건", "SP-12.4-03")
+    _eqtext(c, "#sp-cmp-chosen-wait", "0.49건", "SP-12.4-03")
 
 
 def t_12_4_case_a(c: Ctx):
     _case(c, "A")
     r = _questions(c, FIXED + ["sp-fog-ban", "sp-evidence", "sp-governance-R1-L1"] + END, "SP-12.4-04")
     q = r["qs"][3]["q"]
-    for phrase in ("추가 시험을 하지 않았습니다.", "증거가 없는 조건", "시험을 시작할 기준"):
+    # N1: 단일 요청으로 줄이며 삭제한 시험 시작 기준 보조 질문은 요구하지 않는다.
+    for phrase in ("추가 시험을 하지 않았습니다.", "증거가 없는 조건", "어떻게 다루었나요?"):
         c.expect(phrase in q, f"SP-12.4-04 전면금지 자료선택 질문 {phrase}")
     c.expect(not re.search(r"0개월|기다림의 비용|더 늦어졌", q), "SP-12.4-04 시험0회의 지연 비용 단정 없음")
     _output(c, dict(share="0.0%", expected="0.00건/년", actual="0건"), "SP-12.4-04")
@@ -661,8 +668,11 @@ def t_12_4_case_d(c: Ctx):
     _output(c, dict(share="65.0%", expected="0.52건/년", actual="0건", operator="15.60 가상 비용단위/년"), "SP-12.4-04")
     _eqtext(c, "#sp-cmp-default-reduced", "0.59건/년", "SP-12.4-04")
     _eqtext(c, "#sp-cmp-default-remaining", "0.92건/년", "SP-12.4-04")
-    # 시험 10개월 ÷ 12 × 1.50 = 1.25건: 셔틀 첫해 예상 0.52건/년과 나란히 보이는 기다림의 비용.
-    for column, value in (("chosen", "1.25건"), ("zero", "0.00건"), ("default", "1.25건")):
+    _eqtext(c, "#sp-cmp-chosen-waitShuttle", "0.43건", "SP-12.4-04")
+    _eqtext(c, "#sp-cmp-chosen-waitNet", "0.05건", "SP-12.4-04")
+    _eqtext(c, "#sp-cmp-zero-waitNet", "-0.43건", "SP-12.4-04")
+    # 결함 5: 1.50×0.6×0.65×10/12=0.4875, 셔틀 0.52×10/12=0.433333, 순감소 0.054167.
+    for column, value in (("chosen", "0.49건"), ("zero", "0.00건"), ("default", "0.49건")):
         _eqtext(c, f"#sp-cmp-{column}-wait", value, "SP-12.4-04")
 
 
@@ -740,6 +750,11 @@ def t_12_4_reflection_gate(c: Ctx):
     c.page.locator("#before-" + ID).fill("이동 접근성보다 사전 안전 증거를 무겁게 두었다.")
     c.page.locator("#openEx").click()
     c.expect(c.page.locator("#exwrap #sp-reflect").is_visible(), "SP-12.4-07 공통 관문 뒤 내용 표시")
+    # N7: 면접에서 성찰로 옮긴 두 질문은 관문을 연 뒤 실제로 표시되어야 한다.
+    for phrase in ("사람 운전자의 위험도가 추정치라는 점", "12개월 재심사로도 남는 것은 무엇인가요?"):
+        prompt = c.page.locator("#sp-reflect .sp-reflect-prompt").filter(has_text=phrase)
+        c.eq(prompt.count(), 1, f"N7 성찰 질문 한 번 표시: {phrase}")
+        c.expect(prompt.is_visible(), f"N7 성찰 질문 보임: {phrase}")
     details = c.page.locator("#sp-reflect details.reveal")
     c.eq(details.count(), 5, "SP-12.4-07 details.reveal 5개")
     for loc in details.all():
@@ -759,13 +774,17 @@ def t_12_4_reflection_gate(c: Ctx):
     for phrase in ("2억 7,500만 마일", "Kalra·Paddock, 2016", "약 17%", "상한 5.26", "Kalra·Groves, 2017",
                    "μ≈0.41~0.56", "레이더", "센서 융합", "제동력이 최대에 이르는 시간"):
         c.expect(phrase in science, f"SP-12.4-07 과학 해설 {phrase}")
+    # 결함 11: 안개를 허가한 두 예시에 같은 기저율 한계를 표시한다.
+    for suffix in ("mobility", "staged"):
+        body = c.page.locator("#sp-example-" + suffix).text_content()
+        c.expect("3.5는 비교 기준 3.0" in body, f"결함 11 {suffix} 안개 위험 한계")
     limits = c.page.locator("#sp-model-limits").text_content()
     for phrase in ("½mv²", "같은 무게로 셉니다", "어느 속도에서도 안개의 숨은 위험 상황률이 기준 아래로 내려가지 않습니다",
                    "운행가능영역(ODD", "레벨 4", "2025년 3월 20일", "이 문장은 실제 법 제도의 해설이 아닙니다",
                    "결정 전에도", "셔틀에서만 뽑고"):
         c.expect(phrase in limits, f"SP-12.4-07 숨은 설정 해설 {phrase}")
-    c.expect("시험 10개월 동안의 대안 이동 예상 사고는 1.25건" in c.page.locator("#sp-example-proof").text_content(),
-             "SP-12.4-07 사전 입증 예시에 기다림의 비용")
+    c.expect("시험 10개월 동안 줄일 수 있었던 대안 이동 사고 상한은 0.49건" in c.page.locator("#sp-example-proof").text_content(),
+             "SP-12.4-07 사전 입증 예시의 기간 일치 상한")
     c.expect(c.page.evaluate("id=>!('afterReflect' in KCP.games[id])", ID), "SP-12.4-07 자체 afterReflect 없음")
     c.check("SP-12.1-01 열린 성찰 예시")
 

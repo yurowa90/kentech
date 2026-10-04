@@ -12,6 +12,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 
@@ -113,7 +114,7 @@ def _game(c):
 
 
 def _qs(c):
-    return c.page.evaluate("KCP.games['s-cement-carbon'].questions(KCP.load('s-cement-carbon'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-cement-carbon'].questions(KCP.load('s-cement-carbon'))"))
 
 
 def _recap(c):
@@ -348,7 +349,7 @@ def t_12_2_d_ui_and_shell(c: Ctx):
     cards = c.page.locator(".qdeck .qcard")
     c.expect(6 <= cards.count() <= 7, f"{aid} 면접 카드6~7개")
     c.eq(cards.count(), 7, f"{aid} D 면접 카드7개")
-    c.eq(sum("핵심" in t for t in cards.locator(".who").all_text_contents()), 2, f"{aid} 핵심 습관 카드2개 표시")
+    c.eq(sum("기준 먼저" in t or "고침·유지와 이유" in t for t in cards.locator(".who").all_text_contents()), 2, f"{aid} 핵심 습관 카드2개 표시")
     c.expect(all("연습용 질문" in s and "보고서 문항" not in s for s in cards.all_text_contents()),
              f"{aid} 모든 질문에 연습용 표시·보고서 표시 없음")
     c.check(f"{aid} 면접실")
@@ -527,7 +528,8 @@ def t_12_3_prediction_snapshot(c: Ctx):
     final = _red(_reference(dict(PLANS["G0"], acct=50), "delay")["reduction"])
     c.expect(expected != final, f"{aid} 비교 fixture의 예측값·최종값은 서로 다름")
     question = _qs(c)[2]["q"]
-    c.expect(f"예측 당시 계획의 장부상 감축률은 {expected}%" in question and f"최종 계획의 기술 지연 값은 {final}%" in question,
+    # 명세 8절 cc-c3: 예측 당시 계획과 최종 계획의 감축률을 구분한다(수치 기대값은 독립 계산).
+    c.expect(f"예측 당시 계획의 장부상 감축률은 {expected}%" in question and f"최종 계획을 기술 지연 상황에 적용한 장부상 감축률은 {final}%" in question,
              f"{aid} predicted와 final을 각각 계산")
     recap = next(x["d"] for x in _recap(c) if x["t"] == "예측 확인")
     c.expect(f"예측 당시 기술 지연 장부상 감축률 {expected}%" in recap and f"최종 계획 {final}%" in recap,
@@ -583,8 +585,11 @@ def t_12_3_recovery(c: Ctx):
         c.expect(c.page.locator("#cc-root").is_visible(), f"{aid} {label}에서 준비실 렌더")
         c.eq(len(c.rec["pageerrors"]), errors, f"{aid} {label} 페이지 오류 없음")
         # renderPrep 정규화 결과는 사용자 입력의 save를 거쳐 저장 계약으로 확인한다.
-        c.page.locator("#cc-memo").fill("가상 보존 메모 ")
-        c.wait_saved(400)
+        # N1: 고정 시간 뒤 저장을 추측하지 않고 메모 입력이 반영된 저장 완료를 기다린다.
+        recovery_memo = f"가상 보존 메모 — {label}"
+        c.page.evaluate("() => new Promise(resolve => setTimeout(resolve, 0))")
+        c.page.locator("#cc-memo").fill(recovery_memo)
+        c.page.wait_for_function("([key, memo]) => JSON.parse(localStorage.getItem(key)).memo === memo", arg=[KEY, recovery_memo])
         saved = c.ls(KEY)
         c.eq(saved["game"]["plan"], plan, f"{aid} {label} 필드별 기본값 복구")
         c.eq(saved["game"]["step"], step, f"{aid} {label} 단계 복구")
@@ -723,7 +728,8 @@ def t_12_3_question_fixtures(c: Ctx):
                                ("price", "가격 부담", "과", "을"), ("risk", "기술 위험 분산", "과", "을"),
                                ("honest", "장부와 실제의 일치", "와", "를")):
         other = "price" if key == "sure" else "sure"
-        for criteria, suffix in (([key, other], wa), ([other, key], ul)):
+        # 명세 8절 cc-c1·12.3의 다섯 기준 조사 검증 + 요청 하나 개정: 둘째는 병렬 명사구 뒤 “가운데”.
+        for criteria, suffix in (([key, other], wa), ([other, key], " 가운데 어떤 기준을 앞세웠는지 먼저 밝히고")):
             qs = c.page.evaluate("s=>KCP.games['s-cement-carbon'].questions(s)", _snapshot(PLANS["A"], criteria=criteria))
             c.expect(title + "’" + suffix in qs[0]["q"], f"{aid} 실제 KCP.josa {key} {'첫째' if criteria[0] == key else '둘째'}")
 
@@ -823,6 +829,7 @@ def t_12_3_reflect_gate_examples(c: Ctx):
         lengths.append(sum(len(p) for p in paragraphs))
         bodies.append(" ".join(paragraphs))
         styles.append(ex.evaluate("e=>{const s=getComputedStyle(e);return [s.fontSize,s.fontWeight,s.backgroundColor,s.borderColor,s.padding];}"))
+    # N1·N2: 예시 B의 중복 원단위 문장 삭제 후 실제 본문 길이. 비율 계약 1.05는 유지한다.
     c.eq(lengths, [906, 928, 890], f"{aid} 태그 제외 본문 글자 수")
     c.expect(max(lengths) / min(lengths) <= 1.05, f"{aid} 해설 길이 비중")
     c.expect(styles[0] == styles[1] == styles[2], f"{aid} 동일한 예시 타이포·배경·테두리")
@@ -834,7 +841,9 @@ def t_12_3_reflect_gate_examples(c: Ctx):
     c.expect("0.311·0.316·0.271 TWh/년" in bodies[0] and "0.047·0.079·0.095 Mt/년" in bodies[0], f"{aid} 포집 예시 전력·간접 배출")
     c.expect("0.690 대 0.703 Mt/년" in bodies[1] and "t당 고정비" in bodies[1], f"{aid} 수요 예시 경계 역전·가격 누락")
     limits = c.page.locator("#exwrap .cc-limits").text_content() or ""
-    c.expect("0.703 Mt/년" in limits and "0.690 Mt/년" in limits and "순위가 뒤집히므로" in limits, f"{aid} 한계에 경계별 순위 역전")
+    # 결함 2: 생산량이 다른 총량 비교와 같은 수요·원단위 비교를 구분한다.
+    c.expect(all(v in limits for v in ("2.000 Mt", "1.400 Mt", "0.482 Mt/년", "0.352", "0.493")), f"{aid} 생산량·원단위 비교")
+    c.expect("0.703 Mt/년" in limits and "0.690 Mt/년" in limits and "총량인지 원단위인지" in limits, f"{aid} 한계에 경계별 순위 역전")
     c.expect("t당 고정비" in limits and "43%" in limits, f"{aid} 한계에 가격 누락·재탄산화 규모")
     reflect = c.page.locator("#exwrap .cc-reflect").text_content() or ""
     c.expect("계획(C)" not in reflect and "G0·G1" not in reflect, f"{aid} 내부 검사 이름 노출 없음")
