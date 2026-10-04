@@ -71,6 +71,7 @@
 | #6 | claude/kentech-ui-v2-grid-tycoon | 건설·운영 시뮬레이션 시안 #build(D-50) | 초안, 열림(기준: #5 브랜치) |
 | #9 | claude/kentech-ui-v2-league | 멀티플레이 리그 1차 #league(D-54) | 초안, 열림(기준: #6 브랜치) |
 | #10 | claude/gpt-bridge | GPT 교차 검토 통로(GitHub Actions → GitHub Models/OpenAI) | 초안, 열림(기준: main, 합칠 목적 아님) |
+| #12 | claude/kentech-league-econ-balance | 경제 층 마무리(밸런스 B1–B18, 근거 자료, 경제 화면, 혼자 하기·컴퓨터 도시) | 초안, 열림(기준: #11 브랜치) |
 | #11 | claude/kentech-league-econ | 리그 2차(D-55)·3차(D-56)·경제 층(D-57, 작업 중) | 초안, 열림(기준: #9 브랜치) — **맥 세션이 이어받을 브랜치** |
 
 ## 현재 상태(브랜치 claude/kentech-ui-v2-prototype, 푸시 완료, PR #3)
