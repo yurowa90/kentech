@@ -228,10 +228,11 @@
       const partners = other && current[other] === key && states[other].joint[key]?.other === id && connectedTie(S, R, bg, id, other) ? [id, other] : [id];
       if (other && partners.length === 1) return; // 끊긴 공동 연구는 진척·실증비 모두 대기
       const eff = partners.reduce((sum, who) => sum + states[who].eff, 0);
-      if (!eff) return;
       const need = c.need * (rs.licensedFrom[key] ? tp("licenseNeed") : 1);
       let progress = Math.max(...partners.map(who => states[who].prog[key] || 0));
       const boosted = KCP.TECH_DATA && partners.some(who => !states[who].eureka.includes(key) && eurekaMet(S, R, bg, who, key, states[who], res.team[who]));
+      // T2: 조건을 채운 달의 유레카는 즉시 진척한다. 인력은 정규 연구량에만 적용한다.
+      if (!eff && !boosted) return;
       if (boosted) {
         progress += Math.max(0, need - progress) * tp("eurekaFrac");
         partners.forEach(who => { if (!states[who].eureka.includes(key)) states[who].eureka.push(key); log(S, `유레카! ${teamDef(R, who).name}: ${c.name} 연구가 빨라졌습니다`, now); });
