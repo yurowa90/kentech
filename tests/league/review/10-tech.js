@@ -105,6 +105,8 @@ test("기술 이전·사용료 보존과 상한", () => {
   ok(!request(S, b, { type: "license", other: a, card: "hvdc" }).ok, "미도입 도시에서 이전 거부");
   adopt(S, a, ["hvdc"]);
   ok(request(S, b, { type: "license", other: a, card: "hvdc" }).ok, "도입 도시에서 이전 승인");
+  near(C.royaltyLedger(S)[a].income, 0, "인력 없는 대기 연구 사용료 없음");
+  S.teams[b].plan = { ...planOf(b, ["lab"]), rq: ["hvdc"] };
   near(C.royaltyLedger(S)[a].income, 0.5, "이전 월 사용료 0.5억");
   near(C.royaltyLedger(S)[b].expense, 0.5, "이전 지출과 수입 일치");
   const rs = S.teams[b].research;
@@ -113,14 +115,15 @@ test("기술 이전·사용료 보존과 상한", () => {
   rs.royaltyMonths.hvdc = 0; rs.stage.hvdc = "done"; near(C.royaltyLedger(S)[a].income, 0, "연구 완료 뒤 지급 중단");
   const cap = game();
   for (const id of ids.slice(1)) {
-    const r = adopt(cap, id, []); r.queue = ["hvdc", "sic"]; r.licensedFrom = { hvdc: a, sic: a };
+    const r = adopt(cap, id, []); r.queue = ["hvdc", "sic"]; r.licensedFrom = { hvdc: a, sic: a }; r.stage = { hvdc: "demo", sic: "demo" };
     cap.teams[id].plan = { builds: [], lines: [], rq: r.queue };
   }
   const before = JSON.stringify(cap), ledger = C.royaltyLedger(cap);
-  near(ledger[a].income, 3, "10건 청구도 수입 상한 3억");
+  near(ledger[a].income, 3, "저장 상태의 실증 10건 청구도 수입 상한 3억");
   near(sum(Object.values(ledger).map(x => x.income)), sum(Object.values(ledger).map(x => x.expense)), "상한 적용 뒤 지출=수입");
   ok(JSON.stringify(cap) === before, "사용료 조회 입력 불변");
   const run = game(); adopt(run, a, ["hvdc"]); request(run, b, { type: "license", other: a, card: "hvdc" });
+  run.teams[b].plan = { ...planOf(b, ["lab"]), rq: ["hvdc"] };
   const base = clone(run); base.teams[b].research.licensedFrom = {}; base.teams[b].rs = base.teams[b].research;
   const plain = month(base, 1), paid = month(run, 1);
   near(paid.team[b].cost.research - plain.team[b].cost.research, 0.5, "실제 월 비용 사용료 0.5억");

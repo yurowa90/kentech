@@ -20,6 +20,10 @@
         { id: "asan", pack: "asan", prov: "충남", name: "아산", color: "#d4664f", real: { twh: 11.0, note: "2012, 지역 보도(오래된 값)", est: true } },
         { id: "cheonan", pack: "cheonan", prov: "충남", name: "천안", color: "#3aa6a0", real: { twh: 8.73, note: "2023, 보도(자립도 3.4%)", est: false } }
       ],
+      kinds: {
+        metro_south: ["hwaseong", "pyeongtaek", "anseong"],
+        chungcheong: ["dangjin", "asan", "cheonan"]
+      },
       // 참가 도시 2~6곳: 평택은 꼭 들어가고, 고른 도시끼리 육상·만 횡단 연계선으로 이어져야 한다. 인원별 추천 조합.
       must: ["pyeongtaek"],
       presets: {
