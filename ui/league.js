@@ -152,6 +152,34 @@
     d.interview.months[rd] = d.interview.months[rd] || {};
     return { d, n: d.interview.months[rd] };
   }
+  function curtailEvents(V, round, id) {
+    const reg = C.regionOf(V.region || REGION);
+    return (V.events || []).filter(ev => ev.round === round && ev.id === "light_load_curtailment")
+      .map(ev => ({ ev, E: C.eventDef(reg, ev.id) }))
+      .filter(({ E }) => E && (!id || C.hits(reg, E, id)));
+  }
+  function curtailHTML(V, res, id, monthMWh) {
+    if (!V.econ) return "";
+    if (!res?.team[id]) return `<section class="lg-curtail"><h4>버린 재생 전기</h4><p class="lg-hint">첫 운영 뒤에 표시됩니다.</p></section>`;
+    const r = res.team[id], rd = C.roundsOf(V)[res.round - 1];
+    // B18 결과는 대표 일수, 경제 보고서는 월 MWh. 월 값 0도 그대로 우선한다.
+    const mwh = monthMWh ?? res.econ?.grid?.[id]?.curtailMWh ??
+      (r.curtailMWh == null ? undefined : r.curtailMWh * (rd.mdays || rd.days) / rd.days);
+    const events = curtailEvents(V, res.round, id);
+    const eventText = events.map(({ ev, E }) => {
+      const o = (E.opts || []).find(o => o.id === V.teams[id]?.resp?.[res.round + ":" + E.id]);
+      const dv = o && typeof o.dev === "number" && (!o.knobs || o.knobs.includes("solarMul")) ? o.dev : 1;
+      const mul = Math.max(0, 1 + (E.effect.solarMul - 1) * (typeof ev.x === "number" ? ev.x : 1) * dv);
+      return `<div><dt>출력제어 사건</dt><dd>${esc(`사건: 태양광 ${pct((mul - 1) * 100)}%`)}${typeof ev.x === "number" ? "" : " (기본 크기)"}</dd><small>현상 <span class="tag-official">${esc(E.grade || "G")}</span> · 크기 <span class="tag-mine">G</span></small></div>`;
+    }).join("");
+    // renPct는 수요 대비 재생 공급(배터리 포함)의 반올림 값이라 발전량 분모로 쓰지 않는다. 대신 그 달 수요 대비 비율을 보인다.
+    const demMonth = r.dem > 0 ? r.dem * (rd.mdays || rd.days) / rd.days : 0;
+    const share = demMonth > 0 && typeof mwh === "number" ? `그 달 전기 수요의 ${fmt(100 * mwh / demMonth, 2)}%` : "–";
+    return `<section class="lg-curtail" aria-label="버린 재생 전기"><h4>버린 재생 전기</h4><p class="lg-hint">${esc(resLabel(res))} · 월 기준</p>
+      <dl><div><dt>계통 접속 출력제어</dt><dd>${esc(fmt(mwh, 2))} MWh</dd><small>${esc(share)} · <span class="tag-mine">G</span></small></div>
+      ${eventText || `<div><dt>출력제어 사건</dt><dd>이번 달 사건 없음</dd></div>`}</dl>
+      <p class="lg-hint">전력망 접속 여유가 모자라거나 전기가 남는 봄·가을에는 재생 전기를 버립니다. 배터리와 연계선이 있으면 덜 버려요.</p></section>`;
+  }
   function cityHTML(V) {
     const E = V.econ, c = E.cities[L.team], rep = E.report, f = rep?.fiscal[L.team], g = rep?.groups[L.team];
     const h = c.hist, prev = E.before?.[L.team], dp = rep?.cities[L.team]?.dPop || 0, di = rep?.cities[L.team]?.dInd || 0;
@@ -164,7 +192,7 @@
     const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(vals || {}).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시 <span class="tag-official">시작값: 공식 통계</span></h3>
       <dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>${c.cash < 0 ? "지방채" : "현금"}</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤 · 통과 ≥ ${esc(fmt(c.approval0 - params("approvalDrop"), 1))}%</small></div></dl>
-      <section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div><div><dt>지난달 출력제어</dt><dd>${esc(fmt(c.curtailMWh, 2))} MWh</dd></div></dl><p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전합니다. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">O* · ESS 충전 상한</span></p></section>
+      <section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team)}<p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전합니다. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">O* · ESS 충전 상한</span></p></section>
       <h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.why ? `<p class="lg-why">왜? ${esc(g.why.text)}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
       <section id="lg-econpol"><h4>정책 <span class="tag-mine">G</span></h4>${[["taxRes", "주민 세율", "세입↑ / 주민 매력↓"], ["taxInd", "산업 세율", "세입↑ / 기업 매력↓"], ["service", "공공서비스", "생활 만족↑ / 지출↑"], ["incentive", "기업 유치 보조", "기업 매력↑ / 지출↑"]].map(([k, name, help]) => `<label class="lg-policy"><span>${name} <output>${esc(fmt(pol[k] || 0, 1))}${k === "incentive" ? "억/달" : "단계"}</output></span><input type="range" data-pol="${k}" min="${k === "incentive" ? 0 : -2}" max="${k === "incentive" ? 20 : 2}" step="1" value="${esc(pol[k] || 0)}" ${open ? "" : "disabled"}><small>얻는 것 / 잃는 것: ${help}</small></label>`).join("")}</section>
       <section id="lg-fiscal"><h4>지난달 돈</h4>${f ? `${money("세입", f.rev, revenues)}${money("세출", f.exp, expenses)}<p>운영 수지(건설 제외) ${esc(signed(f.revTotal - f.expTotal + f.exp.capex, 2))}억</p><p class="lg-hint">연료 ${esc(fmt((V.results.at(-1)?.team[L.team]?.cost.fuel || 0) * (rep.weekMul || 1), 2))}억(전기요금 차익에 이미 반영). 총 전기 매출(참고) ${esc(fmt(f.tariffGross, 2))}억</p>` : `<p class="lg-hint">첫 운영 뒤에 표시됩니다.</p>`}</section>
@@ -189,9 +217,11 @@
       return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 전체의 성장을 빼고 본 변화: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${Object.keys(SCORE_NAMES).map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 1위(동점 포함)" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
     }).join("")}</div>${nearby ? `<p class="lg-hint">내 도시와 바로 위·아래 도시의 이름을 보여 줍니다.</p>` : ""}</section>`;
   }
-  function tickerHTML(E) {
+  function tickerHTML(V) {
+    const E = V.econ;
     const I = E.intl || {}, exports = Object.values(I.export || {}), ex = exports.length ? exports.reduce((a, x) => a + x, 0) / exports.length : 1;
-    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">지수 1 = 기준</p>${(E.intlActive || []).map(x => `<p>${esc((KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x).name || x.id)}</p>`).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
+    const curtail = curtailEvents(V, V.round).length ? `<p class="lg-curtail-news">출력제어: 남는 재생 전기를 버렸어요 — 저장·연계선이 있으면 덜 버립니다 <small>현상 <span class="tag-official">O</span> · 크기·대응 <span class="tag-mine">G</span></small></p>` : "";
+    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">지수 1 = 기준</p>${curtail}${(E.intlActive || []).map(x => `<p>${esc((KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x).name || x.id)}</p>`).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
   }
   function criterionDraft(V) {
     const { n } = monthNote(), firstYear = curRound().year === C.roundsOf(V)[0].year;
@@ -702,7 +732,7 @@
             <button type="button" class="v2-btn primary" id="lg-next"></button>
             <button type="button" class="v2-btn" id="lg-link">참가 링크 복사</button>
           </header>
-          ${V.econ ? `<div id="lg-host-ticker">${tickerHTML(V.econ)}</div>` : ""}
+          ${V.econ ? `<div id="lg-host-ticker">${tickerHTML(V)}</div>` : ""}
           <section class="lg-evbox" id="lg-evbox" aria-live="polite"></section>
           <section class="lg-hgrid">
             <figure class="lg-mapbox">${R().board ? `<canvas class="lg-map lg-mapc" id="lg-mapc" role="img" aria-label="광역 지도: 여섯 도시 지도를 합친 지도와 연계선"></canvas><nav class="lg-mapnav" aria-label="도시 지도 보기">${actT(S).map(t => `<a href="#league/view/${t.id}" style="--c:${t.color}">${esc(t.name)}</a>`).join("")}</nav>` : `<svg class="lg-map" id="lg-map" viewBox="0 0 600 470" role="img" aria-label="지역 지도와 연계선"></svg>`}
@@ -743,7 +773,7 @@
     $("#lg-results").innerHTML = res ? resultsTable(S, res) : `<p class="lg-hint">라운드를 운영하면 여기에 도시별 결과가 나옵니다. 팀은 <b>방 코드 ${esc(L.room)}</b>로 들어옵니다.</p>`;
     if (V.econ) {
       const ticker = $("#lg-host-ticker"), rank = $("#lg-host-rank"), debrief = $("#lg-host-debrief");
-      if (ticker) ticker.innerHTML = tickerHTML(V.econ);
+      if (ticker) ticker.innerHTML = tickerHTML(V);
       if (rank) rank.innerHTML = rankHTML(V.econ, false);
       if (debrief && S.phase === "end" && !debrief.querySelector("#lg-debrief")) {
         debrief.innerHTML = debriefHTML(V.econ);
@@ -1275,7 +1305,7 @@
     let body = "";
     if (!V) body = `<p class="lg-hint">진행자 연결을 기다리는 중입니다.</p>`;
     else if (tab === "city" && V.econ) body = cityHTML(V);
-    else if (tab === "rank" && V.econ) body = tickerHTML(V.econ) + rankHTML(V.econ, L.role !== "solo");
+    else if (tab === "rank" && V.econ) body = tickerHTML(V) + rankHTML(V.econ, L.role !== "solo");
     else if (tab === "deal") {
       const me = V.teams[L.team], open = V.phase === "lobby" || V.phase === "plan";
       const nbs = reg.ties.filter(D => (D.a === L.team || D.b === L.team) && V.teams[D.a] && V.teams[D.b]);
@@ -1312,8 +1342,9 @@
             <div><dt>사 온 전기 / 판 전기</dt><dd class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)} MWh</dd><small>거래 수지 ${fmt(r.earn - r.pay, 2)}억</small></div>
             <div><dt>CO₂ 생산 / 소비 기준</dt><dd class="num">${fmt(r.co2Prod)} / ${fmt(r.co2Cons)} t</dd></div>
             <div><dt>이번 라운드 돈</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>새 투자 ${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} + 운영 ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}(연료·정책·대응${r.cost.research ? "·연구소" : ""}·거래) · 누적 투자 ${fmt(r.cost.stock != null ? r.cost.stock : r.cost.capex, 1)}</small></div>
-            <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>${V.econ ? `<div><dt>출력제어(버린 재생 전기)</dt><dd class="num">${esc(fmt(curtailMWh, 2))} MWh</dd><small>월 합계 · <span class="tag-mine">G</span></small></div>` : ""}
+            <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>
           </dl>
+          ${curtailHTML(V, res, L.team, curtailMWh)}
           ${res.events && res.events.length ? `<div class="lg-evres">${evCards(V, res.round, L.team)}</div>` : ""}${res.tieDown ? `<p class="lg-warn">고장 난 연계선: ${res.tieDown.split("~").map(teamName).map(esc).join("–")}</p>` : ""}
           ${r.unlinked.length ? `<p class="lg-warn">연계선이 있어도 연결점까지 선이 없어 거래 못 함: ${r.unlinked.map(teamName).map(esc).join(", ")}</p>` : ""}
           <p class="lg-goals"><span data-ok="${res.region.ok.uns}">지역 정전 ${fmt(res.region.unsPct, 2)}%</span><span data-ok="${res.region.ok.co2}">지역 CO₂ ${fmt(res.region.co2)} t / ${fmt(g.co2)} t</span></p></section>
