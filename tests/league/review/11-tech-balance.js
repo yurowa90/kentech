@@ -75,7 +75,16 @@ function focalPlan(S, id, strategy) {
     if (!to || !B.BLD[to] || !rs.adopted.includes(B.BLD[to].tech)) continue;
     const old = b.t; b.t = to; if (!affordable(S, id, p)) b.t = old;
   }
-  if (strategy === "smr" && rs.adopted.includes("smr") && !p.builds.some(b => b.t === "smr")) p = add(S, id, p, "smr");
+  // T5의 특화 전략은 해금 뒤 착공 자금을 먼저 확보한다. 지금 착공할 수 없을 때만
+  // 연구 설비를 합법 철거해 회수액·절약한 유지비를 모은다. 세입·지방채 한도는 그대로다.
+  if (strategy === "smr" && saving && rs.adopted.includes(target)) {
+    const next = add(S, id, p, target);
+    if (next !== p) p = next;
+    else {
+      p.builds = p.builds.filter(b => !["lab", "uni"].includes(b.t));
+      p = add(S, id, p, target);
+    }
+  }
   if (strategy === "hydrogen" && rs.adopted.includes("h2store") && !p.builds.some(b => b.t === "h2store")) p = add(S, id, p, "h2store");
   if (rs.adopted.includes("vpp")) p.policies = ["dr"];
   return { plan: p, econPol: answer.econPol };

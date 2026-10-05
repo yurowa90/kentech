@@ -468,10 +468,22 @@
     return { tg, parts, contrib };
   }
   const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
-  function whyOf(C, causes, data) {
-    const group = Object.keys(C.groups).sort((a, b) => C.groups[a].sat - C.groups[b].sat)[0], cause = causes[0];
-    return { group, key: cause ? cause.key : null, part: cause ? cause.key : null,
-      text: cause ? `${cause.label}: 이번 달 지지율 ${cause.delta > 0 ? "+" : ""}${r3(cause.delta)}점` : "이번 달 지지율 변화 없음" };
+  function approvalChangeCause(causes) {
+    const cause = causes[0];
+    return { scope: "city-month-change", key: cause ? cause.key : null, part: cause ? cause.key : null,
+      delta: cause ? cause.delta : 0,
+      text: cause ? `${cause.label}: 이번 달 도시 전체 지지율 ${cause.delta > 0 ? "+" : ""}${r3(cause.delta)}%p` : "이번 달 지지율 변화 없음" };
+  }
+  function lowestGroupDissatisfaction(C, data) {
+    const group = Object.keys(C.groups).sort((a, b) => C.groups[a].sat - C.groups[b].sat)[0];
+    const w = pv(data, "groupW")[group], z = sum(Object.values(w)) || 1, terms = C.groupContrib[group];
+    // 현재 만족 수준의 부족분: 가중 항은 만점 기여 대비, 별도 감점은 0 대비.
+    // 월 변화량이 아니므로 계속되는 정전·민원을 공기 개선과 혼동하지 않는다.
+    const deficits = Object.keys(terms).map(key => [key, Math.max(0, 100 * (w[key] || 0) / z - terms[key])])
+      .filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const [key, deficit] = deficits[0] || [null, 0];
+    return { scope: "lowest-group-level", group, key, deficit, satisfaction: C.groups[group].sat,
+      text: key ? `${GW[key] || key}: 현재 만족도 부족 ${r3(deficit)}점(모형 추정)` : "현재 별도 불만 요인 없음" };
   }
 
   /* ---------- 한 달 ---------- */
@@ -601,7 +613,10 @@
         news.push(`${c.name} 시위 — 지지율이 회복되면 멈춰요`);
       }
       const sats = {}; Object.keys(c.groups).forEach(k => { sats[k] = r1(c.groups[k].sat); });
-      groups[id] = { sat: sats, approval: r1(c.approval), why: whyOf(c, causes[id], data) };
+      const change = approvalChangeCause(causes[id]);
+      groups[id] = { sat: sats, approval: r1(c.approval), approvalChangeCause: change,
+        lowestGroupDissatisfaction: lowestGroupDissatisfaction(c, data),
+        why: change }; // 옛 클라이언트 호환: 도시 전체 월 변화만. group 필드는 두지 않는다.
     });
     // 8) 기업 이전 희망
     E.offers = E.offers.filter(o => o.until > E.t);
@@ -641,7 +656,7 @@
       flows: { pop: fp, ind: fi }, net, fiscal, groups, cities,
       intl: Object.assign(clone(I), { started, fossilMWh: r3(fossil), fossilEstimated: ids.some(id => ins[id].energy.fossilMWh == null), fossilBase: r3(fossilBase), nextMarketLng: E.intl.nextMarketLng }), offers, review, news, totals: clone(E.totals)
     };
-    // 지역 실적은 월 MWh/t, 연계선 분담은 누적 투자 억. 감축은 보통 배출계수 대비(음수도 보존).
+    // 지역 실적은 월 MWh/t, 연계선 분담은 누적 투자 억. 감축은 실제 공급량 × 보통 배출계수 − 소비 배출(수입 포함, 음수 보존).
     const goal = inputs.region && inputs.region.goal || { uns: P("coopUnsGoal"), co2: P("coopCo2Goal") * weekMul(E.year, E.month) };
     const demand = sum(ids.map(id => ins[id].energy.demMWh || 0));
     const uns = sum(ids.map(id => Math.max(0, (ins[id].energy.demMWh || 0) - servedOf(ins[id].energy))));
@@ -649,7 +664,7 @@
     report.region = { unsPct: demand > 0 ? 100 * uns / demand : 0, co2, goal: clone(goal), met: { uns: demand > 0 && 100 * uns / demand <= goal.uns, co2: co2 <= goal.co2 } };
     report.contrib = Object.fromEntries(ids.map(id => {
       const e = ins[id].energy;
-      return [id, { exportMWh: e.exportMWh, importMWh: e.importMWh, co2Cut: P("normalCo2") * (e.demMWh || 0) - fin(e.co2Local, 0), tieCost: e.tieCost }];
+      return [id, { exportMWh: e.exportMWh, importMWh: e.importMWh, co2Cut: P("normalCo2") * servedOf(e) - fin(e.co2, fin(e.co2Local, 0)), tieCost: e.tieCost }];
     }));
     E.coop = report.region.met.uns && report.region.met.co2 ? P("coopBonus") : 0;
     // 다음 달로

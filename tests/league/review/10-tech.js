@@ -2,7 +2,7 @@
 // 독립 계약 검사: ECON-TECH-SPEC T1–T3/T5 우선, 수치 근거 ECON-TECH §3·§7.
 // G: 4주/달, 유레카 남은 need/3, 이전 50%·0.5억×6달·수입 3억 상한,
 // HVDC 1.2%·비용×1.3, 초전도 ×1.5·손실×0.5·월0.5억, 12달 5~7장.
-// 효과 크기는 계약의 교육용 G, 원근거 SiC P·탠덤/배터리 O*·혼소 M·수소 왕복 P.
+// 효과 크기는 계약의 교육용 G, 원근거 SiC P·탠덤/배터리 P(기업 발표 보조)·혼소 M·수소 왕복 P.
 // 구현 params에서 기대값을 가져오지 않는다. 지도 좌표와 기존 설비 기본값만 fixture로 읽는다.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const ROOT = path.resolve(__dirname, "../../..");
@@ -278,7 +278,8 @@ test("기존 사건×기술 피해 완화", () => {
   S.events = [{ id: "finedust_coal_cap", round: 1 }]; adopt(S, a, []);
   const dust = C.modsFor(S, R, a).coalCapMul;
   adopt(S, a, ["ccu"]); const ccu = C.modsFor(S, R, a).coalCapMul;
-  ok(ccu / 0.85 > dust && ccu <= 0.85, "CCU 자체 출력 손실을 제외하면 계절관리제 제한 완화");
+  // 최종 검증 verify 13 / ECON-SPEC §13 정정: CO₂ 포집은 미세먼지 제한 완화 근거가 아니다.
+  near(ccu / 0.85, dust, "CCU 자체 출력 손실을 제외하면 계절관리제 제한은 동일");
   const storm = R.events.find(e => e.id === "typhoon_coast"), [left, right] = storm.effect.tieDown.split("~");
   const B = game(false); connect(B, left, right); B.events = [{ id: storm.id, round: 1 }];
   const safe = clone(B); adopt(safe, left, ["hvdc", "scable"]);

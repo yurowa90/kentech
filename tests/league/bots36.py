@@ -250,6 +250,63 @@ JS = r"""
     }
     return candidate;
   };
+  // ESS는 발전원이 아니다. 연결된 확정 공급을 먼저 남겨 피크 수요를 확보한다.
+  // ECON-SPEC §12.1의 AI 공급 원칙과 동일한 공개 G 계수를 사용한다.
+  const firmSupply = (S, id, plan) => {
+    const city = S.econ.cities[id], params = KCP.ECON_DATA.params;
+    const growth = Math.max(city.pop / city.pop0, city.ind / city.ind0);
+    const target = BG.peakDemand({}, false) * growth * (1 + params.aiSupplyReserve.v +
+      params.aiSafeReserve.v * (1 - params.aiStyles.v.balanced.risk));
+    const firm = sum(BG.network(plan).nodes.filter(n => n.live && !["import", "town"].includes(n.kind))
+      .map(n => n.cap || (BG.BLD[n.kind]?.cls === "disp" && n.kind !== "smr" ? BG.BLD[n.kind].mw : 0)));
+    return {firm, target};
+  };
+  const storagePlan = (S, id, original) => {
+    select(id);
+    let plan = assets(original);
+    const changes = [], supply = firmSupply(S, id, plan), city = S.econ.cities[id];
+    if (city.cash < -city.debtCap || supply.firm < supply.target) return {plan, changes};
+    // 같은 G 목표를 사용하되 균형 AI의 (1-risk) 할인 없이 재생에 맞는 저장을 확보한다.
+    const target = sum(plan.builds.filter(b => BG.BLD[b.t]?.cls === "ren").map(b => BG.BLD[b.t].mw)) *
+      KCP.ECON_DATA.params.aiStorageShare.v;
+    const spill = candidate => {
+      const draft = {...S, teams: {...S.teams, [id]: {...S.teams[id], plan: candidate}}};
+      const forecast = C.simTeam(BG, R, id, candidate,
+        {...C.roundsOf(S)[S.round - 1], seed: X.hashStr(`${S.room}:${S.round}:storage`)},
+        C.budget(S, id), C.trialMods(draft, R, id));
+      select(id);
+      // build.simulate의 C.RB는 출력제어분도 기존 ESS에 먼저 넣고 잔여 g.cut만
+      // curtailMWh로 기록한다. 그 버린 양은 새 ESS를 추가할 때 포착 가능한 충전원이다.
+      return forecast.k.curt + (forecast.curtailMWh || 0);
+    };
+    const types = Object.keys(BG.BLD).filter(t => BG.BLD[t].cls === "bat" &&
+      (!BG.BLD[t].tech || C.techOf(S, id).includes(BG.BLD[t].tech)))
+      .sort((a, b) => BG.BLD[a].cost / BG.BLD[a].mw - BG.BLD[b].cost / BG.BLD[b].mw);
+    let available = essMW(plan) < target ? spill(plan) : 0;
+    while (essMW(plan) < target && available > 1e-6) {
+      let next = null, nextSpill = available, chosen = null;
+      for (const type of types) {
+        const candidate = placeTypes(plan, [type]);
+        if (!candidate || C.spendOf(BG, S, R, id, candidate) > C.budget(S, id) + 1e-6) continue;
+        const clean = C.cleanPlan(BG, R, id, candidate,
+          C.budget(S, id) - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, candidate));
+        select(id);
+        if (!same(candidate, assets(clean))) continue;
+        const remaining = spill(candidate);
+        // 실제 시간별 모형에서 버림이 줄어야 충전 가능한 추가 저장으로 인정한다.
+        if (available - remaining <= 1e-6) continue;
+        next = candidate; nextSpill = remaining; chosen = type; break;
+      }
+      if (!next) break;
+      const capturedMWh = available - nextSpill;
+      ok(capturedMWh > 0 && firmSupply(S, id, next).firm >= supply.target,
+        `B18 storage ${id} ${S.round}달 확정 공급 유지·추가 저장으로 버림 ${capturedMWh}MWh 감소`);
+      changes.push({removed: [], added: [chosen], mw: 0, addedMW: 0,
+        storageMW: BG.BLD[chosen].mw, chargeSourceMWh: available, capturedMWh});
+      plan = next; available = nextSpill;
+    }
+    return {plan, changes};
+  };
   const transform = (S, id, strategy, original) => {
     select(id);
     const city = S.econ?.cities?.[id], changes = [];
@@ -274,9 +331,6 @@ JS = r"""
           if (count > 0 && Math.abs(count * BG.BLD[t].mw - mw) < 1e-6)
             recipes.push(Array(count).fill(t));
         }
-      } else if (strategy === "storage") {
-        for (const b of storage) recipes.push(Array(Math.ceil(mw / BG.BLD[b].mw)).fill(b));
-        recipes.sort((a, b) => sum(a.map(t => BG.BLD[t].cost)) - sum(b.map(t => BG.BLD[t].cost)));
       } else {
         // 설비는 쪼갤 수 없으므로 원 화력 MW 이상인 최소 기수의 재생+저장을 묶는다.
         for (const r of renew) for (const b of storage) {
@@ -316,7 +370,7 @@ JS = r"""
       if (replacement) {
         const addedMW = sum(recipe.filter(t => BG.BLD[t].cls !== "bat").map(t => BG.BLD[t].mw));
         const storageMW = sum(recipe.filter(t => BG.BLD[t].cls === "bat").map(t => BG.BLD[t].mw));
-        ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : strategy === "storage" ? addedMW === 0 && storageMW >= mw : addedMW >= mw && storageMW >= mw,
+        ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : addedMW >= mw && storageMW >= mw,
           `${strategy} ${id} ${S.round}달 전환 ${mw}MW → 발전${addedMW}/저장${storageMW}MW`);
         changes.push({removed: clone(pending), added: recipe, mw, addedMW, storageMW});
         if (strategy === "renew") {
@@ -351,7 +405,8 @@ JS = r"""
     const answer = KCP.leagueAI.plan(planning, R, id, BG, "balanced");
     const original = assets(answer.plan);
     if (strategy === "dm") original.policies = ["dr", "save"];
-    return ["diesel", "renew", "storage"].includes(strategy) ? transform(S, id, strategy, original) :
+    if (strategy === "storage") return storagePlan(S, id, original);
+    return ["diesel", "renew"].includes(strategy) ? transform(S, id, strategy, original) :
       {plan: original, changes: []};
   };
   test("B18 renew 접속·유지 경계", () => {
@@ -501,6 +556,10 @@ JS = r"""
       const operating = sum(first.map(f => f.revTotal - (f.expTotal - f.exp.capex)));
       const bonuses = sum(first.map(f => f.eventBonus ?? 0));
       const uns = run.hist.map(h => h.energy[id].unsPct);
+      // B18 실용성 기준은 운영 전략마다, 각 도시의 전체 기간 평균에 적용한다.
+      // 건설하지 않는 nothing만 대조군이며 높은 정전을 검증에서 숨기지 않는다.
+      if (assignment[id] !== "nothing") ok(sum(uns) / uns.length <= 5,
+        `B18 ${assignment[id]} ${id} 운영 평균 정전 ${(sum(uns) / uns.length).toFixed(3)}% ≤5%`);
       const waiting = run.hist.map(h => h.energy[id].grid?.waitingMW);
       const curtailed = run.hist.map(h => h.energy[id].curtailMWh * C.roundsOf(S)[h.month - 1].mdays / 7);
       const co2 = run.hist.map(h => h.energy[id].co2Cons * C.roundsOf(S)[h.month - 1].mdays / 7);
@@ -523,6 +582,12 @@ JS = r"""
     const cities = out.runs.flatMap(r => r.rows).filter(r => r.strategy === strategy).map(r => r.id);
     ok(cities.length === 6 && new Set(cities).size === 6, `${strategy} 모든 도시 1회 배정 ${cities.join(",")}`);
   });
+  if (rotations === strategies.length) {
+    const added = out.runs.flatMap(r => r.planRequests).filter(p => p.strategy === "storage")
+      .flatMap(p => p.changes);
+    ok(added.length > 0 && sum(added.map(c => c.capturedMWh)) > 0,
+      `B18 storage 실제 ESS 추가 ${added.length}회·충전으로 버림 감소 ${sum(added.map(c => c.capturedMWh))}MWh`);
+  }
   return out;
 }
 """
@@ -626,6 +691,7 @@ def main():
     parser.add_argument("--months", type=int, choices=(12, 24, 36), default=36)
     parser.add_argument("--node", action="store_true", help="브라우저 없이 같은 전략 JS를 Node에서 실행")
     parser.add_argument("--quick", action="store_true", help="12달·회전 2개")
+    parser.add_argument("--output-dir", type=Path, help="결과 파일 저장 경로(기본 tests/results)")
     args = parser.parse_args()
     months, rotations = (12, 2) if args.quick else (args.months, 9)
     out = {"months": months, "rotations": rotations, "strategies":
@@ -662,7 +728,7 @@ process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotatio
         out["checks"].append([len(summary["completeCities"]) == len(out["ids"]), "D61 모든 도시 전략 비교"])
         for strategy, wins in summary["firstCounts"].items():
             out["checks"].append([wins < len(out["ids"]), f"D61 {strategy} 도시별 1위 {wins}/{len(out['ids'])}: 독식 없음"])
-    result_dir = Path(__file__).resolve().parents[1] / "results"
+    result_dir = args.output_dir or Path(__file__).resolve().parents[1] / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
     report = markdown(out)
     (result_dir / "bots36.json").write_text(json.dumps(out, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")

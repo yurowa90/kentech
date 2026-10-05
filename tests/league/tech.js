@@ -101,9 +101,16 @@
     H.ok(cards.length === 15 && equal(cards.map(c => c.id).sort(), [...IDS].sort()), "T1 정확한 카드 15장·기존 id 유지");
     H.ok(branches.length === 6 && new Set(branches.map(b => b.id)).size === 6, "T1 갈래 6개·중복 없음");
     BRANCHES.forEach(name => H.ok(branches.some(b => (b.name || b.label || b.id).includes(name)), `T1 갈래 이름 ${name}`));
-    // 명세는 12개 이름을 열거하지 않는다. 철자 일치 검사는 외부 문서 없이 할 수 없다.
-    H.ok(cards.length === 15 && cards.every(c => text(c.field) && /[가-힣]/.test(c.field)) &&
-      new Set(cards.map(c => c.field)).size === 12, "T1 field: 비어 있지 않은 연구분야 이름 12종");
+    // verify 11 / ECON-TECH §1 정정: 카드마다 서로 다른 12분야를 강제하면 오배치를 만든다.
+    // 공식 목록 12개와 카드의 연구분야·융합전공 대응을 각각 검증한다.
+    H.ok(Array.isArray(D.fields) && D.fields.length === 12 && new Set(D.fields).size === 12 &&
+      cards.every(c => c.fieldGrade === "O" && c.mappingGrade === "G" &&
+        (c.fieldCategory === "research" ? D.fields.includes(c.field) :
+          c.fieldCategory === "concentration" && D.concentrations.includes(c.field))),
+      "T1 공식 연구분야 12개·카드별 연구분야/융합전공 대응 등급");
+    // verify 13: CO₂ 포집과 미세먼지 제한 사이의 근거 없는 인과를 카드·계수에서 제거한다.
+    H.ok(!Object.hasOwn(D.params || {}, "dustDamage") && !(D.eventHints?.finedust_coal_cap?.cards || []).includes("ccu"),
+      "T2 CCU에 미세먼지 출력 제한 완화 계수·안내 없음");
     IDS.forEach(id => {
       const c = by[id];
       H.ok(!!c && ["branch", "field", "name", "need", "demo", "req", "eff", "why", "grade", "sources"]

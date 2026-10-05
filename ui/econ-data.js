@@ -123,6 +123,7 @@
       normalCost: p(0.012, G, "시작 보정 전력 원가 억/MWh"),
       normalCo2: p(0.4, G, "시작 보정 t/MWh"),
       normalRen: p(15, G, "시작 보정 재생 비중"),
+      smrFuelMul: p(1.25, G, "달 모형 SMR 운영 단가 배수: 0.002→0.0025억/MWh. 실제 원가 추정이 아닌 T5 전략 균형 보정; 착공 보장 뒤 드러난 6도시 독식 완화"),
       // 컴퓨터 도시: 공개 수요·재정·접속 여유로 판단하는 게임 가정.
       aiStyles: { v: {
         careful: { invest: 0.4, risk: 0, delay: 1 },
@@ -286,7 +287,7 @@
     city.src = {
       pop0: { year: "2025.12", source: "행정안전부 주민등록인구", grade: "O*", unit: "명" },
       ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사" : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명" },
-      fsr0: { year: 2025, source: "지방재정365" + (id === "hwaseong" ? " · 두 도시 예산 가중 계산" : ""), grade: id === "hwaseong" ? "M" : "O*", unit: "비율" }
+      fsr0: { year: 2025, source: "지방재정365" + (id === "hwaseong" ? " · 두 도시 예산 가중 계산" : ""), grade: id === "hwaseong" ? "M" : "O*", unit: "%" }
     };
   });
   // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.

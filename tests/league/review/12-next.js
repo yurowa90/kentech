@@ -165,6 +165,8 @@ test("사건의 음수 지원금·양 끝 응답·없는 선 무효", () => {
   const ends = event.effect.tieDown.split("~"), option = event.opts.find(o => o.cancel).id;
   for (const id of ends) {
     const S = game(); S.events = [{ id: event.id, round: 1, x: 1 }]; S.econ.cities[id].cash = 10000;
+    // verify 4 / ECON-SPEC §14: 대응 가능성은 실제로 존재하는 대상 선에서 검사한다.
+    S.ties = [{ a: ends[0], b: ends[1], cap: 4, st: "built" }];
     near(C.bonusOf(S, R, id, 1), event.scope === `team:${id}` ? -5 : 0,
       `${id} 응답 허용 확대가 원래 사건 지원금 적용 범위를 바꾸지 않음`);
     const reply = C.reduce(S, { type: "respond", team: id, token: "next-fixture", ev: event.id, opt: option }, 1, B);
