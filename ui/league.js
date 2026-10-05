@@ -57,6 +57,7 @@
   function close() {
     if (!L) return;
     saveSolo();
+    L.regionObserver?.disconnect();
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending);
     if (L.conn) L.conn.close();
@@ -417,7 +418,7 @@
     });
   }
   function soloNext() {
-    if (L.busy || L.S.phase === "end") return;
+    if (L.away || L.busy || L.S.phase === "end") return;
     L.busy = true;
     try {
       soloMutate(() => {
@@ -435,6 +436,7 @@
     } finally { L.busy = false; }
   }
   function readyAction(skip) {
+    if (L.away) return;
     const V = L.snap;
     if (!V) return;
     const { d, n } = monthNote();
@@ -1122,6 +1124,7 @@
     if (!L.team) seatPicker(app); else mountCity(app);
   }
   function send(type, extra) {
+    if (L.away && !["hello", "claim"].includes(type)) return;
     if (type === "crit") L.pendingCrit = { chips: extra.chips.slice(), line: extra.line, choice: extra.choice };
     L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}));
   }
@@ -1143,6 +1146,7 @@
   }
   function nack(m) {
     if (m.type === "claim" || m.err === "seat") {
+      L.regionObserver?.disconnect(); L.away = null; L.home = null;
       L.team = null; L.claiming = false; teamSave();
       if (L.app && L.app.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); const e = L.app.querySelector("#lg-err"); if (e) e.textContent = m.err === "taken" ? "다른 기기가 이미 그 팀을 맡았습니다." : "자리가 비워졌습니다. 다시 고르세요."; }
       return;
@@ -1166,6 +1170,11 @@
       if (pendingPol && econPol && ["taxRes", "taxInd", "service", "incentive"].every(k => pendingPol[k] === econPol[k])) L.pendingPol = null;
       if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
       if (!L.app || !L.app.isConnected || !document.getElementById("lg-bar")) return;
+      if (L.away) {
+        if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
+        updateTeamAway();
+        return;
+      }
       // 내 도시를 다른 기기에서 처음 여는 경우: 진행자에게 남은 계획을 가져온다.
       if (me.plan && me.rev > L.rev && L.rev === 0 && isEmptyDoc()) adoptPlan(me);
       const rd = curRound();
@@ -1201,28 +1210,32 @@
     if (V.phase === "plan" && V.econ) {
       const { d, n } = monthNote(); n.startPolicy = V.teams[L.team].econPol || V.econ.cities[L.team].policy; putData(d);
     }
+    if (L.away) return; // 알림만 갱신하고 돌아갈 서랍은 유지한다.
     if (V.phase === "review" || V.phase === "end") openPanel("result");
     else if (V.phase === "plan" && V.econ && curRound().month === 1) openPanel("journal");
     else if (V.phase === "plan" && evn.length) openPanel("deal");
   }
   function lockMsg() {
+    if (L?.away) return "관전 중 · 읽기 전용 — 우리 도시로 돌아가 편집하세요";
     const V = L && L.snap;
     if (!V) return "";
     return V.phase === "lobby" || V.phase === "plan" ? "" : V.phase === "end" ? "리그가 끝났습니다" : "지금은 운영·결과 단계 — 다음 라운드 계획 때 지을 수 있어요";
   }
-  function mountCity(app) {
+  function mountCity(app, resume) {
     teamSave();
     const reg = R(), t = C.teamDef(reg, L.team), s = tdata();
     const raw = s.docs[t.pack];
     // 건설 화면의 저장 문서 모양({v, map, maps, journal ...})을 이 도시 하나로 쓴다.
     BG.selectPack(t.pack, "league");
-    const st = BG.sanitize(raw && raw.maps ? raw.maps[t.pack] : null, 1e9);
-    L.doc = { v: 2, map: t.pack, maps: { [t.pack]: st }, runs: raw && Number.isInteger(raw.runs) ? raw.runs : 0, jAuto: true, journal: raw && Array.isArray(raw.journal) ? raw.journal : [] };
-    L.rev = Math.max(L.rev, s.rev || 0);
+    if (!resume) {
+      const st = BG.sanitize(raw && raw.maps ? raw.maps[t.pack] : null, 1e9);
+      L.doc = { v: 2, map: t.pack, maps: { [t.pack]: st }, runs: raw && Number.isInteger(raw.runs) ? raw.runs : 0, jAuto: true, journal: raw && Array.isArray(raw.journal) ? raw.journal : [] };
+      L.rev = Math.max(L.rev, s.rev || 0);
+    }
     BG.mount(app, {
       packs: [t.pack], league: true,
       load: () => L.doc,
-      save: doc => { const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
+      save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
       // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
       budget: () => { const me = L.snap && L.snap.teams[L.team]; return me ? me.budget - (me.fixed || 0) - C.lossOf(me.base, BG.current()) : C.budget({ round: 1, ties: [], region: REGION }, L.team); },
       research: () => { const me = L.snap && L.snap.teams[L.team]; return (me && me.rs) || { prog: {}, stage: {}, adoptR: {} }; },
@@ -1231,21 +1244,185 @@
       season: () => curRound().season,
       leagueRound: curRound,
       onChange: () => {
+        if (L.away) return;
         if (L.snap?.econ) { const { d, n } = monthNote(); n.confirmed = false; n.research = (BG.current()?.builds || []).some(b => ["uni", "lab"].includes(b.t) && !(L.snap.teams[L.team].base || []).some(item => item.k === C.itemKey("b", b))); putData(d); }
         L.rev++; const z = tdata(); z.rev = L.rev; putData(z); clearTimeout(L.planT);
         // 혼자 하기는 같은 탭에서 즉시 반영한다. 이탈 때 취소되는 전송 타이머를 기다리지 않는다.
         if (L.role === "solo") sendPlan(); else L.planT = setTimeout(sendPlan, 400); },
       onMount: root => { addBar(root); window.dispatchEvent(new Event("resize")); }
     });
+    if (resume) return;
     send("claim");
     sendPlan();
     if (L.snap?.econ && L.snap.phase === "plan" && curRound().month === 1 && !L.panel) openPanel("journal");
   }
   function sendPlan() {
-    const st = BG.current();
+    if (!L || L.away) return;
+    const st = L.doc?.maps[L.doc.map];
     if (!st || !L.team) return;
     send("plan", { rev: L.rev, plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, missions: st.missions, seed: st.seed, season: st.season, rq: st.rq || [] } });
   }
+  // U5: 편집 문서는 L.doc에만 보관한다. BG.current는 관전 전용 사본일 수 있다.
+  function leaveTeamCity() {
+    if (L.away) return;
+    const panel = document.getElementById("lg-panel"), root = document.getElementById("bd-root");
+    L.home = { panel, scroll: panel?.scrollTop || 0, phase: L.snap?.phase, round: L.snap?.round,
+      tool: root?.dataset.mode, group: root?.querySelector('[data-group][aria-expanded="true"]')?.dataset.group,
+      layer: root?.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer,
+      drawer: root?.querySelector('#bd-pm')?.getAttribute("aria-expanded") === "true",
+      tab: root?.querySelector('[data-tab][aria-pressed="true"]')?.dataset.tab };
+    panel?.remove(); // 입력값·선택·스크롤과 리스너까지 그대로 보존한다.
+    clearTimeout(L.planT); L.planT = 0;
+    L.away = "region";
+    mountTeamPeek(L.team); // 실행 중인 시험 운전도 정리하고 읽기 전용 사본으로 전환한다.
+  }
+  function awayBar(root, peek) {
+    const bar = document.createElement("header");
+    bar.id = "lg-bar"; bar.className = peek ? "lg-bar lg-awaybar" : "lg-awaybar";
+    bar.innerHTML = `<strong>${peek ? `${esc(teamName(L.away))} 관전 중 · 읽기 전용` : "지역 지도"}</strong>
+      <div class="lg-awaystatus"><span id="lg-bround"></span><span id="lg-bphase"></span><b class="lg-timer" id="lg-timer"></b></div>
+      <div class="lg-awayactions">${peek ? '<button type="button" class="lg-bbtn" id="lg-peek-region">지역 지도로</button>' : ""}
+      <button type="button" class="lg-bbtn" id="${peek ? "lg-peek-back" : "lg-region-back"}">우리 도시로</button>
+      <button type="button" class="lg-bbtn" id="lg-ready" disabled>준비</button></div>
+      <p class="lg-awaylive" id="lg-live" role="status" aria-live="polite"></p>`;
+    root.prepend(bar);
+    bar.querySelector(peek ? "#lg-peek-back" : "#lg-region-back").onclick = returnTeamCity;
+    bar.querySelector("#lg-peek-region")?.addEventListener("click", teamRegion);
+    updateAwayStatus();
+  }
+  function updateAwayStatus() {
+    const V = L.snap;
+    if (!V) return;
+    const round = document.getElementById("lg-bround"), phase = document.getElementById("lg-bphase");
+    if (round) round.textContent = turnLabel(curRound(), V.round, C.roundsOf(V).length, true);
+    if (phase) phase.textContent = PHASE_NAME[V.phase];
+    tickTimer();
+  }
+  function mountTeamPeek(id) {
+    const t = C.teamDef(R(), id);
+    BG.selectPack(t.pack, "league");
+    const st = BG.sanitize(L.snap?.teams[id]?.plan || {}, 1e9);
+    BG.mount(L.app, { packs: [t.pack], league: true,
+      load: () => ({ v: 2, map: t.pack, maps: { [t.pack]: st }, runs: 0, jAuto: true, journal: [] }),
+      save: () => {}, locked: () => "관전 중 · 읽기 전용", season: () => curRound().season, leagueRound: curRound,
+      onMount: root => {
+        root.classList.add("lg-peek");
+        const peek = document.createElement("section"); peek.id = "lg-peek";
+        root.append(peek); awayBar(peek, true);
+        // 건설 도구·정책·시험 운전은 관전에서 접근하지 않는다. 지도 확대·드래그는 유지한다.
+        root.querySelectorAll("#bd-dock, #bd-drawer").forEach(el => {
+          el.inert = true; el.querySelectorAll("button, input, select").forEach(control => { control.disabled = true; });
+        });
+        window.dispatchEvent(new Event("resize"));
+      }
+    });
+  }
+  function teamPeek(id) {
+    if (!L.snap?.teams[id]) return;
+    if (id === L.team) { returnTeamCity(); return; }
+    leaveTeamCity(); L.regionObserver?.disconnect(); L.away = id;
+    mountTeamPeek(id);
+    document.getElementById("lg-peek-back")?.focus();
+  }
+  function teamRegion() {
+    if (!boardInfo() || !L.snap) return;
+    leaveTeamCity(); L.away = "region";
+    L.regionObserver?.disconnect();
+    document.getElementById("lg-region")?.remove();
+    const root = document.getElementById("bd-root");
+    root.hidden = true; root.inert = true;
+    root.querySelector("#lg-bar")?.remove();
+    const region = document.createElement("main"); region.id = "lg-region"; region.className = "lg-region";
+    region.innerHTML = `<div class="lg-regiontools"><button type="button" class="lg-bbtn" data-region-zoom="1" aria-label="지역 지도 확대">＋</button>
+      <button type="button" class="lg-bbtn" data-region-zoom="-1" aria-label="지역 지도 축소">−</button><span>확대 후 드래그로 이동 · 아래 도시 버튼으로도 관전</span></div>
+      <div class="lg-regionviewport"><div class="lg-regionboard"><canvas id="lg-regionmap" class="lg-mapc" role="img" aria-label="도시별 설비·송전선·거래·이주 지도" aria-describedby="lg-regioncap"></canvas><div class="lg-regionlabels"></div></div></div>
+      <p id="lg-regioncap" class="lg-regioncap"></p><nav class="lg-regioncities" aria-label="관전할 도시">${actT(L.snap).map(t => `<button type="button" class="lg-regioncity" data-region-city="${esc(t.id)}" style="--c:${esc(t.color)}"><b>${esc(t.name)}${t.id === L.team ? " · 우리 도시" : ""}</b><span></span></button>`).join("")}</nav>`;
+    L.app.append(region); awayBar(region, false);
+    region.querySelectorAll("[data-region-city]").forEach(b => b.onclick = () => teamPeek(b.dataset.regionCity));
+    const viewport = region.querySelector(".lg-regionviewport"), cv = region.querySelector("canvas");
+    L.regionZoom = 1;
+    let drag = null;
+    region.querySelectorAll("[data-region-zoom]").forEach(b => b.onclick = () => {
+      L.regionZoom = Math.max(1, Math.min(3, L.regionZoom + Number(b.dataset.regionZoom) * 0.5));
+      updateTeamRegion();
+    });
+    viewport.addEventListener("pointerdown", e => {
+      if (e.button !== 0) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop, moved: false };
+      viewport.setPointerCapture(e.pointerId);
+    });
+    viewport.addEventListener("pointermove", e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.moved ||= Math.hypot(dx, dy) > 6;
+      viewport.scrollLeft = drag.left - dx; viewport.scrollTop = drag.top - dy;
+    });
+    viewport.addEventListener("pointerup", e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const moved = drag.moved; drag = null;
+      viewport.releasePointerCapture(e.pointerId);
+      if (!moved) teamPeek(boardHit(cv, e));
+    });
+    viewport.addEventListener("pointercancel", () => { drag = null; });
+    L.regionObserver = new ResizeObserver(() => { if (L?.away === "region") updateTeamRegion(); });
+    L.regionObserver.observe(viewport);
+    updateTeamRegion(); document.getElementById("lg-region-back").focus();
+  }
+  function regionSummary(V, id) {
+    const v = V.teams[id], r = V.results.at(-1)?.team[id], c = V.econ?.cities[id];
+    return `설비 ${fmt(v.plan?.builds?.length || 0)}개 · 정전 ${r ? fmt(r.unsPct, 1) + "%" : "결과 대기"}${c ? ` · 지지율 ${fmt(c.approval, 1)}% · 주민 ${signed(V.econ.report?.cities[id]?.dPop || 0)}명` : ""}`;
+  }
+  function updateTeamRegion() {
+    const region = document.getElementById("lg-region"), V = L.snap, G = boardInfo();
+    if (!region || !V) return;
+    const viewport = region.querySelector(".lg-regionviewport");
+    region.querySelector(".lg-regionboard").style.width = `${Math.min(viewport.clientWidth, viewport.clientHeight * G.W / G.H) * L.regionZoom}px`;
+    renderBoard(region.querySelector("canvas"), V, V.results.at(-1), false);
+    region.querySelector(".lg-regionlabels").innerHTML = actT(V).map(t => {
+      const xy = G.cen[t.id];
+      return `<span class="lg-regionlabel" style="left:${esc(xy[0] / G.W * 100)}%;top:${esc(xy[1] / G.H * 100)}%;--c:${esc(t.color)}">${esc(regionSummary(V, t.id))}</span>`;
+    }).join("");
+    region.querySelectorAll("[data-region-city]").forEach(b => { b.querySelector("span").textContent = regionSummary(V, b.dataset.regionCity); });
+    const moves = (V.econ?.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter);
+    region.querySelector("#lg-regioncap").textContent = moves.map(f => `${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${f.why || ""}`).join(" · ");
+  }
+  function updateTeamAway() {
+    updateAwayStatus();
+    if (L.away === "region") { updateTeamRegion(); return; }
+    const t = C.teamDef(R(), L.away), st = BG.current();
+    if (!t || !st) return;
+    BG.selectPack(t.pack, "league");
+    Object.assign(st, BG.sanitize(L.snap.teams[L.away]?.plan || {}, 1e9));
+    BG.setSeason(curRound().season); BG.refresh();
+    document.querySelectorAll(".lg-peek #bd-drawer button, .lg-peek #bd-drawer input").forEach(el => { el.disabled = true; });
+  }
+  function returnTeamCity() {
+    if (!L.away) return;
+    const home = L.home;
+    L.regionObserver?.disconnect(); L.away = null; L.home = null;
+    // mountCity는 저장본으로 덮거나 claim/plan을 보내지 않고 같은 L.doc를 다시 연결한다.
+    mountCity(L.app, true);
+    if (home?.panel) {
+      document.getElementById("lg-panel")?.replaceWith(home.panel);
+      home.panel.scrollTop = home.scroll;
+      if (home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); home.panel.scrollTop = home.scroll; }
+    }
+    const root = document.getElementById("bd-root"), pack = KCP.BUILD_MAPS[L.doc.map];
+    if (home?.layer) root.querySelector(`[data-layer="${home.layer}"]`)?.click();
+    if (home?.tool) {
+      const group = pack.groups?.find(g => g.tools.includes(home.tool));
+      if (group) root.querySelector(`[data-group="${group.id}"]`)?.click();
+      root.querySelector(`[data-tool="${home.tool}"]`)?.click();
+    }
+    if (home?.group && root.querySelector(`[data-group="${home.group}"]`)?.getAttribute("aria-expanded") !== "true") root.querySelector(`[data-group="${home.group}"]`)?.click();
+    if (home?.drawer) root.querySelector("#bd-pm")?.click();
+    if (home?.tab) root.querySelector(`[data-tab="${home.tab}"]`)?.click();
+    document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.panel === L.panel)));
+    document.querySelector('[data-panel="region"]')?.focus();
+    // 관전 중 취소한 내 계획만 복귀 후 재전송한다. 관전 사본은 절대 보내지 않는다.
+    if (L.snap?.teams[L.team]?.rev < L.rev && !lockMsg()) sendPlan();
+  }
+
   function addBar(root) {
     // 새로고침 뒤 도시 지도가 두 번 붙으면 막대·서랍이 겹친다 — 붙이기 전에 예전 것을 지운다.
     for (const id of ["lg-bar", "lg-panel"]) document.getElementById(id)?.remove();
@@ -1259,6 +1436,7 @@
       <span class="lg-bphase" id="lg-bphase"></span><b class="lg-timer num" id="lg-timer"></b>
       <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>
       <button type="button" class="lg-bbtn" data-panel="deal">이웃·거래<b class="lg-badge" id="lg-badge" hidden></b></button>
+      <button type="button" class="lg-bbtn" data-panel="region">지역 지도</button>
       <button type="button" class="lg-bbtn" data-panel="result">결과</button>
       <button type="button" class="lg-bbtn" data-panel="journal">일지</button>
       ${L.snap?.econ ? `<button type="button" class="lg-bbtn" data-panel="city">도시</button><button type="button" class="lg-bbtn" data-panel="rank">순위</button>` : ""}
@@ -1275,6 +1453,7 @@
     root.append(panel);
     bar.addEventListener("click", e => {
       const p = e.target.closest("[data-panel]");
+      if (p?.dataset.panel === "region") { teamRegion(); return; }
       if (p) { L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return; }
       if (e.target.closest("#lg-ready")) readyAction(false);
       if (e.target.closest("#lg-solo-restart")) restartSolo();
@@ -1336,6 +1515,7 @@
     return N.nodes.some(n => n.kind === "import" && (BG.SITES[n.si].to || []).includes(other) && n.comp >= 0 && n.att.length > 0 && N.comps.some(Cc => Cc.disp.includes(n) && (Cc.towns.length || Cc.ren.length || Cc.disp.length > 1)));
   }
   function renderPanel() {
+    if (L.away) return;
     const p = document.getElementById("lg-panel");
     if (!p || !L.panel) return;
     const active = document.activeElement;
