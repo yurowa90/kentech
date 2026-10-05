@@ -1237,6 +1237,8 @@
     send("plan", { rev: L.rev, plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, missions: st.missions, seed: st.seed, season: st.season, rq: st.rq || [] } });
   }
   function addBar(root) {
+    // 새로고침 뒤 도시 지도가 두 번 붙으면 막대·서랍이 겹친다 — 붙이기 전에 예전 것을 지운다.
+    for (const id of ["lg-bar", "lg-panel"]) document.getElementById(id)?.remove();
     const bar = document.createElement("div");
     bar.className = "lg-bar";
     bar.dataset.econ = String(!!L.snap?.econ);

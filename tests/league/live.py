@@ -24,7 +24,9 @@ SUMMARY_JS = """() => {
   const V = L?.S ? KCP.leagueCore.publicView(L.S, Date.now()) : L?.snap;
   return V && {rev:V.rev, round:V.round, phase:V.phase, econ:V.econ};
 }"""
-SYNC_JS = """expected => {
+SYNC_JS = """raw => {
+  // wait_for_function은 객체 속성의 None을 undefined로 넘겨 null 키가 사라진다 — JSON 문자열로 받는다.
+  const expected = JSON.parse(raw);
   const V = KCP.league.state()?.snap;
   // 실서버 키 정렬: 중첩 객체의 키 순서는 무시하고 배열 순서는 유지한다.
   const canon = x => JSON.stringify(x, (_, value) =>
@@ -247,7 +249,7 @@ def sync_all(checks, host, teams, label):
     expected = host.evaluate(SUMMARY_JS)
     checks.require(bool(expected and expected["econ"]), label + " 경제 요약 존재")
     for tid, (page, _) in teams.items():
-        page.wait_for_function(SYNC_JS, arg=expected)
+        page.wait_for_function(SYNC_JS, arg=json.dumps(expected))
         checks.require(page.evaluate(SUMMARY_JS) == expected,
                        f"{label} {tid} rev·round·phase·econ 일치")
         checks.ok(page.evaluate(OVERFLOW_JS) <= 0, f"{label} {tid} 가로 스크롤 0")
@@ -334,10 +336,13 @@ def scenario(checks, host, teams, base, project, key, markers):
             checks.stage = f"{month}달 {tid} 일지 입력"
             panel(page, "journal")
             page.fill('textarea[data-j="why"]', journal_mark)
-            page.fill('textarea[data-note="critReason"]', reason_mark)
+            # ECON-UI U4: 기준 이유 칸은 첫 달·새해 기준 변경 때만 보인다 — 있을 때만 입력한다.
+            has_reason = page.locator('textarea[data-note="critReason"]').count() > 0
+            if has_reason:
+                page.fill('textarea[data-note="critReason"]', reason_mark)
             page.wait_for_timeout(400)  # tests.md: 저장 대기 250ms 뒤 확인.
             local = page.evaluate(LOCAL_JS, [room, tid, month])
-            checks.require(local["journal"] == journal_mark and local["reason"] == reason_mark,
+            checks.require(local["journal"] == journal_mark and (not has_reason or local["reason"] == reason_mark),
                            f"{month}달 {tid} 일지·기준 이유 표식 로컬 저장")
             # 계획 변경은 실제 팀 전송 API를 사용. 같은 자산을 유지해 철거 손실 방지.
             prior_rev = page.evaluate("() => KCP.league.state().rev")
@@ -372,20 +377,23 @@ def scenario(checks, host, teams, base, project, key, markers):
             checks.require(host.evaluate(STATE_JS)["teams"][tid]["econPol"]["taxRes"] == tax,
                            f"{month}달 {tid} 정책 econ 반영")
             sync_all(checks, host, teams, f"{month}달 {tid} 정책 후")
+            checks.stage = f"{month}달 {tid} 기준 입력"
             panel(page, "journal")
-            line = 40 + month
-            page.fill("#lg-crit-line", str(line))
-            # 매달 다른 칩을 추가하여 항상 click → crit 요청 생성(최대 2개).
-            chip = ("pop", "rel", "co2")[month - 1]
-            timed(checks, host, page, wire, f"{month}달 {tid} crit", "crit",
-                  lambda: page.click(f'[data-crit="{chip}"]'),
-                  lambda v: (v["teams"][tid].get("crit") or {}).get("line") == line and
-                  chip in (v["teams"][tid].get("crit") or {}).get("chips", []),
-                  lambda m: m.get("line") == line and chip in m.get("chips", []))
-            crit = host.evaluate(STATE_JS)["teams"][tid]["crit"]
-            checks.require(set(crit) == {"chips", "line", "choice"} and crit["line"] == line,
-                           f"{month}달 {tid} 기준 칩·숫자·선택만 반영")
-            sync_all(checks, host, teams, f"{month}달 {tid} 기준 후")
+            # ECON-UI U4: 기준 칸은 1월 계획 단계에만 그려진다 — 칸이 있을 때만 기준 요청을 검사한다.
+            if page.locator("#lg-crit-line").count():
+                line = 40 + month
+                page.fill("#lg-crit-line", str(line))
+                # 매달 다른 칩을 추가하여 항상 click → crit 요청 생성(최대 2개).
+                chip = ("pop", "rel", "co2")[month - 1]
+                timed(checks, host, page, wire, f"{month}달 {tid} crit", "crit",
+                      lambda: page.click(f'[data-crit="{chip}"]'),
+                      lambda v: (v["teams"][tid].get("crit") or {}).get("line") == line and
+                      chip in (v["teams"][tid].get("crit") or {}).get("chips", []),
+                      lambda m: m.get("line") == line and chip in m.get("chips", []))
+                crit = host.evaluate(STATE_JS)["teams"][tid]["crit"]
+                checks.require(set(crit) == {"chips", "line", "choice"} and crit["line"] == line,
+                               f"{month}달 {tid} 기준 칩·숫자·선택만 반영")
+                sync_all(checks, host, teams, f"{month}달 {tid} 기준 후")
         # 매달 아직 연결되지 않은 인접 쌍: 총 3개의 연계선.
         a, b = (("pyeongtaek", "dangjin"), ("pyeongtaek", "asan"),
                 ("asan", "dangjin"))[month - 1]
@@ -474,12 +482,12 @@ def report_wires(checks, pages):
                   f"{label} 프레임 검사 예외·예상 밖 HTTP 요청 0")
         if label != "진행자":
             checks.ok(wire.nacks == 0, f"{label} 요청 거부 {wire.nacks} (기대 0)")
-            checks.ok(all(wire.requests[k] >= 3 for k in ("plan", "econ", "crit", "ready")) and
+            checks.ok(all(wire.requests[k] >= 3 for k in ("plan", "econ", "ready")) and wire.requests["crit"] >= 1 and
                       wire.requests["tie"] >= 2,
                       f"{label} 3달 plan·econ·crit·ready 및 연계선 요청 관찰")
         samples.extend(wire.latencies)
     if pages:
-        checks.ok(len(samples) >= 42, f"지연 표본 {len(samples)} (3팀×4요청×3달 + 제안/수락 6)")
+        checks.ok(len(samples) >= 27, f"지연 표본 {len(samples)} (3팀×(2요청×3달+기준 1) + 제안/수락 6)")
         if samples:
             print(f"latency n={len(samples)} median={statistics.median(samples):.1f} ms "
                   f"max={max(samples):.1f} ms", flush=True)
