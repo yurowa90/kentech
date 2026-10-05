@@ -231,12 +231,155 @@
     const rows = ["pop", "ind"].flatMap(k => (rep?.flows[k] || []).filter(f => !id || f.from === id || f.to === id).map(f => ({ ...f, kind: k })));
     return rows.length ? `<ul class="lg-movelist">${rows.map(f => `<li>${esc(teamName(f.from))} → ${esc(teamName(f.to))} ${esc(fmt(f.n))}명(${f.kind === "pop" ? "주민" : "종사자"}): ${esc(f.why)}</li>`).join("")}</ul>` : `<p class="lg-hint">지난달 보고된 흐름이 없습니다.</p>`;
   }
+  // 기술 표시는 공개 연구 상태를 그대로 읽는다. 칭호는 점수에 더하지 않는다.
+  // T2 화면 연출 시간(게임 계수 아님): 0.8초. CSS의 lg-tech-reveal과 일치한다.
+  const TECH_FLIP_MS = 800;
+  const techData = () => KCP.TECH_DATA;
+  const techCard = id => techData()?.cards.find(c => c.id === id);
+  const techResearch = (V, id) => V.teams?.[id]?.research || V.econ?.cities?.[id]?.research || V.teams?.[id]?.rs || {};
+  function techTitlesHTML(rs) {
+    return (rs.titles || []).map(id => techData()?.titles.find(t => t.id === id)).filter(Boolean)
+      .map(t => `<span class="lg-tech-title" title="칭호는 점수에 더하지 않습니다">◇ ${esc(t.name)}</span>`).join("");
+  }
+  function techIconsHTML(rs) {
+    return (rs.adopted || []).map(techCard).filter(Boolean).map(c => `<span class="lg-tech-icon" data-tech-adopted="${esc(c.id)}" title="${esc(c.name)}"><span aria-hidden="true">◆</span> ${esc(c.name)}</span>`).join("");
+  }
+  function techNewsHTML(V) {
+    const res = V.results?.at(-1);
+    return actT(V).flatMap(t => (res?.team[t.id]?.research?.completed || []).map(techCard).filter(Boolean)
+      .map(c => `<p class="lg-tech-news">${esc(t.name)}, ${esc(c.name)} 개발 · 다음 턴 도입</p>`)).join("");
+  }
+  function techState(V, id, c) {
+    const rs = techResearch(V, id), queue = rs.queue || V.teams[id].plan?.rq || [];
+    const other = techData().pairs.find(pair => pair.includes(c.id))?.find(k => k !== c.id);
+    const selected = [...(rs.adopted || []), ...queue, ...Object.keys(rs.stage || {}).filter(k => rs.stage[k]), ...Object.keys(rs.adoptR || {})];
+    if (rs.adopted?.includes(c.id)) return { key: "adopted", text: "도입", blocked: true };
+    if (rs.stage?.[c.id] === "done" || rs.adoptR?.[c.id] > V.round) return { key: "pending", text: "다음 턴 도입", blocked: true };
+    if (rs.stage?.[c.id] === "demo") return { key: "demo", text: "실증 중", blocked: true };
+    if (queue.includes(c.id)) return { key: rs.current === c.id || (!rs.current && queue[0] === c.id) ? "progress" : "queued", text: rs.current === c.id || (!rs.current && queue[0] === c.id) ? "진행 중" : "연구 대기", blocked: false };
+    if (other && selected.includes(other)) return { key: "locked", text: "잠김", why: `${techCard(other)?.name || other} 선택 · 둘 중 하나`, blocked: true };
+    const req = c.req || [], adopted = rs.adopted || [];
+    if (req.length && !(c.id === "mass" ? req.some(k => adopted.includes(k)) : req.every(k => adopted.includes(k))))
+      return { key: "locked", text: "잠김", why: `${req.map(k => techCard(k)?.name || k).join(c.id === "mass" ? " 또는 " : " · ")} 도입 필요`, blocked: true };
+    if (c.id === "re100" && (V.results?.at(-1)?.team[id]?.renPct || 0) < techData().params.re100Need.v)
+      return { key: "locked", text: "잠김", why: `직전 운영 재생 비중 ${fmt(techData().params.re100Need.v)}% 이상 필요`, blocked: true };
+    const donors = actT(V).filter(t => t.id !== id && techResearch(V, t.id).adopted?.includes(c.id));
+    return { key: donors.length ? "transfer" : "available", text: donors.length ? "다른 도시 도입 · 이전 가능" : "가능", blocked: false };
+  }
+  function techScaleHTML(c) {
+    // 배속을 새로 가정하지 않는다. 효과의 현실 대비 축소 설명은 등급 있는 자료의 note에서 읽는다.
+    const keys = { hvdc: "hvdcLoss", scable: "scableCap", sic: "sicOutput", tandem: "tandemOutput", nbat: "nbatCapacity", mass: "massCost", h2store: "h2Efficiency", h2mix: "h2Co2", ccu: "ccuCo2", smr: "smrTurns", vpp: "drEffect" };
+    const p = techData()?.params[keys[c.id]];
+    return `<p class="lg-tech-scale">교육용 배속 · 효과 크기: ${esc(p?.note || "현실 대비 효과 비율은 미제공 · 게임 가정")}${p ? ` (${esc(p.grade)})` : " (G)"}. 연구·실증 시간은 턴 단위로 압축합니다(G).</p>`;
+  }
+  function techDetailHTML(V, c) {
+    const rs = techResearch(V, L.team), state = techState(V, L.team, c), queue = rs.queue || [], open = !lockMsg() && !L.techPending;
+    const donors = actT(V).filter(t => t.id !== L.team && techResearch(V, t.id).adopted?.includes(c.id));
+    const peers = actT(V).filter(t => t.id !== L.team && !techState(V, t.id, c).blocked);
+    const peer = peers.find(t => t.id === rs.joint?.[c.id]?.other) || peers.find(t => t.id === L.techPeer) || peers[0];
+    const license = rs.licensedFrom?.[c.id], joint = rs.joint?.[c.id], p = techData().params;
+    const pair = techData().pairs.find(pair => pair.includes(c.id));
+    const source = (c.sources || []).filter(s => typeof s === "string");
+    const links = source.map(s => /^(https?:\/\/|docs\/)[^\s]+$/.test(s) ? `<a href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(s.startsWith("docs/") ? s.split("/").at(-1) : new URL(s).hostname)}</a>` : esc(s));
+    const unlocked = (c.unlock?.builds || []).map(k => BG.BLD[k]?.name || k);
+    if (c.unlock?.tie) unlocked.push("HVDC 연계선");
+    if (c.unlock?.policy) unlocked.push("RE100 산단 정책");
+    return `<article class="lg-tech-detail" id="lg-tech-detail" data-tech-detail="${esc(c.id)}" aria-label="기술 상세">
+      <h3>${esc(c.name)}</h3><p>켄텍 12대 연구분야: <b>${esc(c.field)}</b></p>
+      <p class="lg-tech-effect">효과: ${esc(c.eff)} <span class="tag-paper">${esc(c.grade)}</span></p>${techScaleHTML(c)}
+      <p>${esc(c.why)}</p><p class="lg-tech-source">출처: ${links.join(" · ")} · 분야 이름은 공식 목록(O)</p>
+      <p>필요 연구량 ${esc(fmt(c.need))} · 실증비 ${esc(fmt(c.demo))}억${c.numbers?.demo ? ` (${esc(c.numbers.demo.grade)})` : ""}</p>
+      <p>유레카: ${esc(techData().eureka[c.id])}${rs.eureka?.includes(c.id) ? " · 달성" : ` · 남은 연구량의 ${esc(fmt(p.eurekaFrac.v * 100, 1))}% 추가 진척(G)`}</p>
+      ${pair ? `<p>둘 중 하나: ${pair.map(k => esc(techCard(k)?.name || k)).join(" / ")}</p>` : ""}
+      ${state.why ? `<p>${esc(state.why)}</p>` : ""}${unlocked.length ? `<p>해금: ${unlocked.map(esc).join(" · ")} · 도입 후 건설 도구에서 선택</p>` : ""}
+      ${license ? `<p>이전 원 개발 도시: ${esc(teamName(license))}</p>` : ""}
+      ${joint ? `<p>공동 연구: ${esc(teamName(joint.other))} · ${joint.active ? "함께 진행(연결이 끊기면 대기)" : "상대 도시의 같은 카드 요청 대기"}</p>` : ""}
+      <div class="lg-tech-actions"><button type="button" data-tech-action="research" data-card="${esc(c.id)}" ${open && !state.blocked && !queue.includes(c.id) ? "" : "disabled"}>연구 순서에 넣기</button>
+      <label>이전 도시<select id="lg-tech-donor" ${open && donors.length && !state.blocked && !joint && !license ? "" : "disabled"}>${donors.length ? donors.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("") : `<option value="">도입 도시 없음</option>`}</select></label>
+      <button type="button" data-tech-action="license" data-card="${esc(c.id)}" ${open && donors.length && !state.blocked && !joint && !license ? "" : "disabled"}>기술 이전</button>
+      <label>공동 연구 도시<select id="lg-tech-peer" ${open && peers.length && !state.blocked && !license ? "" : "disabled"}>${peers.length ? peers.map(t => `<option value="${esc(t.id)}" ${t.id === peer?.id ? "selected" : ""}>${esc(t.name)}</option>`).join("") : `<option value="">대상 도시 없음</option>`}</select></label>
+      <button type="button" data-tech-action="joint" data-card="${esc(c.id)}" ${open && peers.length && !state.blocked && !license ? "" : "disabled"}>공동 연구</button></div>
+      <p class="lg-hint">기술 이전: 필요 연구량 ${esc(fmt(p.licenseNeed.v * 100))}% · 사용료 ${esc(fmt(p.royalty.v, 1))}억/${V.econ ? "달" : "턴"}, 최대 ${esc(fmt(p.royaltyMonths.v))}${V.econ ? "달" : "턴"} · 도시별 수입 상한 ${esc(fmt(p.royaltyCap.v))}억(G).</p>
+      <p class="lg-hint">공동 연구는 양쪽 도시의 내부 전력망까지 이어진 연계선과 같은 카드 요청이 필요합니다. 합산 인력으로 진행하고 실증비는 ${esc(fmt(p.jointShare.v * 100))}%씩 부담합니다(G). 서버가 조건과 예산을 확인합니다.</p>
+      ${lockMsg() ? `<p>${esc(lockMsg())}</p>` : ""}</article>`;
+  }
+  function techHTML(V) {
+    const data = techData();
+    if (!data) return `<p class="lg-hint">연구 자료가 없습니다.</p>`;
+    const rs = techResearch(V, L.team), builds = V.teams[L.team].plan?.builds || [], queue = rs.queue || [];
+    const chosen = techCard(L.techCard) || techCard(rs.current) || data.cards[0];
+    const progress = id => Math.max(0, Math.min(100, rs.progress?.[id] || 0));
+    return `<section id="lg-tech" class="lg-tech-panel"><h2>연구 기술 트리</h2>
+      <p class="lg-tech-staff">연구 인력: 대학 ${esc(fmt(builds.filter(b => b.t === "uni").length))}곳 · 연구소 ${esc(fmt(builds.filter(b => b.t === "lab").length))}곳 · 인력 ${esc(fmt(rs.staff))}명 · 유효 인력 ${esc(fmt(rs.eff))}명</p>
+      <p class="lg-hint">새 대학은 운영을 마친 뒤 인력에 반영됩니다. ${V.econ ? "한 달" : "한 턴"}에 인력당 ${esc(fmt(rs.stepsPerTurn))}주치 진척 · 연구 예약 비용 ${esc(fmt(rs.reservedCost, 1))}억. 인력이 없으면 진척이 멈춥니다.</p>
+      <div class="lg-tech-titles">${techTitlesHTML(rs)}</div><p class="lg-tech-queue">연구 순서: ${queue.length ? queue.map((k, i) => `${esc(i + 1)}. ${esc(techCard(k)?.name || k)}`).join(" → ") : "아직 없음"}</p>
+      <p class="lg-hint">근거 등급: O 공식 원문 · O* 공식 자료의 검색 요약 · P 논문·보고서 · M 모형 계산 · G 게임 가정.</p>
+      <p class="lg-hint">트리 안에서 좌우로 스크롤해 여섯 갈래를 볼 수 있습니다. 카드를 눌러 상세를 확인하세요.</p>
+      <div class="lg-tech-scroll" tabindex="0" role="region" aria-label="여섯 갈래 기술 트리, 좌우 스크롤"><div class="lg-tech-tree">${data.branches.map(b => `<section class="lg-tech-branch" data-branch="${esc(b.id)}"><h3>${esc(b.name)}</h3>${data.cards.filter(c => c.branch === b.id).map(c => {
+        const state = techState(V, L.team, c), pair = data.pairs.find(pair => pair.includes(c.id));
+        return `<button class="lg-tech-card" type="button" data-tech-card="${esc(c.id)}" data-state="${esc(state.key)}" aria-pressed="${c.id === chosen.id}"><strong>${esc(c.name)}</strong><span>${state.key === "locked" ? "🔒 " : state.key === "adopted" ? "◆ " : ""}${esc(state.text)}</span>${["progress", "queued", "demo", "pending"].includes(state.key) ? `<progress max="100" value="${esc(progress(c.id))}" aria-label="${esc(c.name)} 진척"></progress><small>${esc(fmt(progress(c.id), 1))}%${state.key === "demo" ? " · 효과 도입 전 실증" : ""}</small>` : ""}${c.req?.length ? `<small>↑ ${c.req.map(k => esc(techCard(k)?.name || k)).join(c.id === "mass" ? " 또는 " : " · ")}</small>` : ""}${pair ? `<small>둘 중 하나 · ${esc(techCard(pair.find(k => k !== c.id))?.name)}</small>` : ""}</button>`;
+      }).join("")}</section>`).join("")}</div></div>
+      <p id="lg-tech-status" class="lg-tech-status" role="status">${esc(L.techError || (L.techPending ? "연구 요청을 확인하는 중입니다." : ""))}</p>${techDetailHTML(V, chosen)}</section>`;
+  }
+  function techResultHTML(V) {
+    const res = V.results?.at(-1), rs = res?.team[L.team]?.research;
+    if (!rs) return "";
+    const completed = (rs.completed || []).map(techCard).filter(Boolean), eureka = (rs.eurekaNow || []).map(techCard).filter(Boolean);
+    const key = `${res.round}:${completed.map(c => c.id).join(",")}`;
+    // 같은 결과를 다시 그려도 시작 시각을 보존해 반복해서 뒤집지 않는다.
+    if (completed.length && L.techReveal?.key !== key) L.techReveal = { key, at: Date.now() };
+    const elapsed = Math.max(0, Date.now() - (L.techReveal?.at || 0));
+    const animate = completed.length && elapsed < TECH_FLIP_MS;
+    return `<section class="lg-tech-results" aria-label="이번 턴 연구 소식">${completed.map(c => `<article class="lg-tech-complete ${animate ? "lg-tech-flip" : ""}" data-tech-completed="${esc(c.id)}"${animate ? ` style="animation-delay:-${esc(elapsed)}ms"` : ""}><p>연구 완료 · 다음 턴 도입</p><h3>${esc(c.name)}</h3><p>${esc(c.eff)} <span class="tag-paper">${esc(c.grade)}</span></p><p>켄텍 연구분야: ${esc(c.field)}</p></article>`).join("")}${eureka.map(c => `<p class="lg-tech-eureka" role="status">유레카! ${esc(c.name)} 연구가 빨라졌습니다 · ${esc(techData().eureka[c.id])}</p>`).join("")}</section>`;
+  }
+  function techErrorText(error) {
+    const text = { exclusive: "둘 중 하나만 선택할 수 있습니다. 연구 순서를 확인하세요.", renewable: `직전 운영의 재생 비중이 ${fmt(techData()?.params.re100Need.v)}% 이상이어야 합니다.`, research: "이미 실증·도입한 카드이거나 연구 순서가 올바르지 않습니다.", license: "상대 도시의 도입 여부와 공동 연구 여부를 확인하세요. 원 개발 도시는 자기 기술을 이전받을 수 없습니다.", joint: "공동 연구를 시작할 수 없습니다. 양쪽 내부 전력망까지 연결된 연계선, 같은 카드 요청, 상대 도시의 연구 상태를 확인하세요.", phase: "지금 단계에서는 연구를 바꿀 수 없습니다.", stale: "턴이나 단계가 바뀌었습니다. 현재 화면에서 다시 요청하세요." };
+    if (String(error).startsWith("prerequisite:")) return `${techCard(String(error).split(":")[1])?.name || "이 카드"}의 선행 기술을 먼저 도입해야 합니다.`;
+    if (String(error).startsWith("budget:")) return `${teamName(String(error).slice(7))} 예산이 모자랍니다. 실증비와 사용료 예약액을 확인하세요.`;
+    return text[error] || `연구 요청을 처리하지 못했습니다 (${String(error)}).`;
+  }
+  function techClick(e) {
+    const card = e.target.closest("[data-tech-card]");
+    if (card) { L.techCard = card.dataset.techCard; renderPanel(); return true; }
+    const button = e.target.closest("[data-tech-action]");
+    if (!button) return false;
+    if (button.disabled || lockMsg() || L.techPending) return true;
+    const type = button.dataset.techAction, key = button.dataset.card, rs = techResearch(L.snap, L.team);
+    const other = document.getElementById(type === "license" ? "lg-tech-donor" : "lg-tech-peer")?.value;
+    if (type !== "research" && !other) return true;
+    // 미전송 건설 계획을 먼저 보내고, 승인된 rq를 로컬 계획에도 반영한다.
+    clearTimeout(L.planT); sendPlan();
+    const extra = type === "research" ? { queue: [...(rs.queue || []).filter(k => k !== key), key] } : { other, card: key };
+    L.techPending = { type, extra, rev: L.rev, round: L.snap.round, phase: L.snap.phase };
+    L.techPeer = type === "joint" ? other : L.techPeer; L.techError = "";
+    send(type, extra); renderPanel();
+    return true;
+  }
+  function syncTechQueue(V, me) {
+    if (!me || !techData()) return;
+    const pending = L.techPending, rs = techResearch(V, L.team), queue = me.plan?.rq || rs.queue || [];
+    const accepted = pending && (pending.type === "research" ? JSON.stringify(queue) === JSON.stringify(pending.extra.queue) :
+      pending.type === "license" ? !!rs.licensedFrom?.[pending.extra.card] : rs.joint?.[pending.extra.card]?.other === pending.extra.other);
+    if (pending && !accepted && (pending.round !== V.round || pending.phase !== V.phase)) {
+      L.techPending = null; L.techError = "턴이나 단계가 바뀌었습니다. 연구 순서를 확인하세요.";
+    }
+    if (pending && !accepted && L.techPending) return;
+    const st = L.away ? L.doc?.maps[L.doc.map] : BG.current();
+    if (accepted || me.rev >= L.rev) {
+      if (st) st.rq = queue.slice();
+      // 승인 대기 중 편집도 새 서버 판본보다 앞서야 다음 plan 요청이 무시되지 않는다.
+      const edits = accepted ? Math.max(0, L.rev - pending.rev) : 0;
+      L.rev = Math.max(L.rev, me.rev + edits);
+      if (accepted) { L.techPending = null; L.techError = "연구 요청이 반영되었습니다."; }
+      if (edits && !L.away) sendPlan();
+    }
+  }
   function rankHTML(E, nearby) {
     const rows = E.score?.rank || [], own = rows.findIndex(r => r.id === L.team), prev = E.previousScore?.by || {};
     const leaders = Object.fromEntries(SCORE_KEYS.map(k => [k, Math.max(...rows.map(r => r.parts[k]))]));
     return `<section id="lg-rank" class="lg-sec"><h2>${L.snap?.phase === "end" ? "최종 순위" : "도시 순위"} <span class="tag-mine">모형 점수 · G</span></h2><div class="lg-rankrows">${rows.map((r, i) => {
       const shown = !nearby || Math.abs(i - own) <= 1, delta = prev[r.id] ? prev[r.id].rank - r.rank : 0;
-      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 전체의 성장을 빼고 본 변화: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${SCORE_KEYS.map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 1위(동점 포함)" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
+      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `${techTitlesHTML(E.cities[r.id].research || {})}<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 전체의 성장을 빼고 본 변화: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${SCORE_KEYS.map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 1위(동점 포함)" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
     }).join("")}</div>${nearby ? `<p class="lg-hint">내 도시와 바로 위·아래 도시의 이름을 보여 줍니다.</p>` : ""}</section>`;
   }
   function tickerHTML(V) {
@@ -244,7 +387,7 @@
     const I = E.intl || {}, exports = EXPORT_KEYS.filter(k => Object.hasOwn(I.export || {}, k)).map(k => I.export[k]), ex = exports.length ? exports.reduce((a, x) => a + x, 0) / exports.length : 1;
     const curtailDef = curtailEvents(V, V.round).map(x => x.E);
     const curtail = curtailDef.length ? `<p class="lg-curtail-news">출력제어: 남는 재생 전기를 버렸어요 — 저장·연계선이 있으면 덜 버립니다 <small>현상 <span class="tag-official">${esc([...new Set(curtailDef.map(e => e?.grade || "G"))].join("·"))}</span> · 크기·대응 <span class="tag-mine">G</span></small></p>` : "";
-    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">1 = 2026년 수준 · 가상 변동(G)</p>${curtail}${(E.intlActive || []).map(x => `<p>${esc((KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x).name || x.id)}</p>`).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
+    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">1 = 2026년 수준 · 가상 변동(G)</p>${curtail}${techNewsHTML(V)}${(E.intlActive || []).map(x => `<p>${esc((KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x).name || x.id)}</p>`).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
   }
   function criterionDraft(V) {
     const { n } = monthNote(), firstYear = curRound().year === C.roundsOf(V)[0].year;
@@ -1078,6 +1221,11 @@
       if (!V.econ || $("#lg-host-details").open && cv.closest("details").open) thumb(cv, cv.dataset.thumb, V.teams[cv.dataset.thumb].plan);
     });
     $("#lg-results").innerHTML = res ? resultsTable(S, res) : `<p class="lg-hint">라운드를 운영하면 여기에 도시별 결과가 나옵니다. 팀은 <b>방 코드 ${esc(L.room)}</b>로 들어옵니다.</p>`;
+    if (!V.econ && techData()) {
+      let news = $("#lg-tech-host-news");
+      if (!news) { news = document.createElement("section"); news.id = "lg-tech-host-news"; news.className = "lg-tech-host-news"; $("#lg-results").before(news); }
+      news.innerHTML = techNewsHTML(V);
+    }
     if (V.econ) {
       const ticker = $("#lg-host-ticker"), rank = $("#lg-host-rank"), debrief = $("#lg-host-debrief");
       if (ticker) ticker.innerHTML = tickerHTML(V);
@@ -1129,7 +1277,7 @@
       <header><h3>${esc(t.name)}</h3><span class="lg-seat" data-s="${!v.seated ? "empty" : v.online ? "on" : "off"}">${st}</span>${v.ready ? `<span class="lg-ready">준비 ✓</span>` : ""}</header>
       <p class="lg-tline"><span>${S.econ ? "남은 돈" : "예산"} <b class="num">${fmt(S.econ ? v.left : v.budget)}억</b></span><span>판매 단가 <b class="num">${fmt(v.price, 3)}</b></span><span>송전선 <b class="num">${plan.lines.length}</b></span></p>
       ${S.econ ? `<p class="lg-tline">주민 ${esc(signed(S.econRep?.cities[t.id]?.dPop || 0))}명 · 지지율 ${esc(fmt(S.econ.cities[t.id].approval, 1))}%</p><div class="lg-chips">${v.crit?.chips?.length ? v.crit.chips.map(k => `<span class="lg-chip">기준: ${esc(SCORE_NAMES[k])}</span>`).join("") : `<span class="lg-chip">기준 미선택</span>`}</div>` : ""}
-      <div class="lg-chips">${items}</div>
+      <div class="lg-chips">${items}</div><div class="lg-tech-icons">${techIconsHTML(v.research || {})}</div>
       ${r ? `<p class="lg-tline lg-tres"><span>정전 <b class="num" data-bad="${r.unsPct > (S.econ ? C.goalsOf(S).unsPct : 0.5)}">${fmt(r.unsPct, 2)}%</b></span><span>${S.econ ? "CO₂(이번 달 운영)" : "CO₂"} <b class="num">${fmt(r.co2Prod * mul)} t</b></span><span>수입/수출 <b class="num">${fmt(r.imp * mul, 1)}/${fmt(r.exp * mul, 1)}</b></span></p>` : ""}
       ${v.seated ? `<button type="button" class="lg-kick" data-kick="${t.id}">자리 비우기</button>` : ""}
     </article>`;
@@ -1304,7 +1452,7 @@
         : !me && X.teams && opts.length ? (() => { const who = actT(X).map(({ id }) => { const o = opts.find(q => q.id === (X.teams[id].resp || {})[round + ":" + E.id]); return o ? `${teamName(id)} ${o.name}` : ""; }).filter(Boolean); return `<small class="lg-evnote">대응: ${esc(who.join(" · ") || "아직 없음")}</small>`; })() : "";
       return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(E.text || "")}</span>
         ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}
-        ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${choose}${picked}
+        ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${techData()?.eventHints?.[E.id] && mine !== false ? `<small class="lg-tech-event-hint">${esc(techData().eventHints[E.id].text)}</small>` : ""}${choose}${picked}
         <small>${esc(who)}${mine === true ? " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${E.grade === "P" ? "tag-paper" : E.grade === "G" ? "tag-mine" : "tag-official"}" title="O: 공식 원문 · O*: 공식 통계 검색 요약 · P: 논문·보고서 · G: 게임 가정. 크기와 대응 효과는 G">근거 ${esc(E.grade || "G")}·크기 G</abbr></small></li>`;
     }).join("")}</ul>`;
   }
@@ -1604,6 +1752,7 @@
         if (!me) return;
         if (me.rev < L.rev) sendPlan();
         if (L.snap.phase === "plan") {
+          if (L.techPending) send(L.techPending.type, L.techPending.extra);
           if (L.pendingPol) send("econ", L.pendingPol);
           if (L.pendingCrit && validCritLine(L.pendingCrit.line) && L.pendingCrit.chips.length && L.pendingCrit.choice) send("crit", L.pendingCrit);
         }
@@ -1648,6 +1797,10 @@
       if (L.app && L.app.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); const e = L.app.querySelector("#lg-err"); if (e) e.textContent = m.err === "taken" ? "다른 기기가 이미 그 팀을 맡았습니다." : "자리가 비워졌습니다. 다시 고르세요."; }
       return;
     }
+    if (["research", "license", "joint"].includes(m.type)) {
+      L.techPending = null; L.techError = techErrorText(m.err); renderPanel();
+      BG.toast(L.techError); return;
+    }
     if (m.type === "crit") {
       // 늦게 도착한 이전 요청의 거절이 새 편집값을 지우지 않게 한다.
       if (m.rid != null && m.rid !== L.pendingCrit?.rid) return;
@@ -1664,6 +1817,7 @@
       L.snap = V; L.skew = V.now - Date.now();
       if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
       const me = V.teams[L.team];
+      syncTechQueue(V, me);
       const pending = L.pendingCrit, crit = me?.crit;
       if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
       if (prev && (prev.phase !== V.phase || prev.round !== V.round)) { L.pendingCrit = null; L.pendingPol = null; L.awaitReady = false; L.wantReady = null; }
@@ -1702,7 +1856,7 @@
   function isEmptyDoc() { const d = L.doc, st = d && d.maps[d.map]; return !st || (!st.builds.length && !st.lines.length); }
   function adoptPlan(me) {
     const st = L.doc.maps[L.doc.map];
-    Object.assign(st, { builds: me.plan.builds || [], lines: me.plan.lines || [], policies: me.plan.policies || [], shed: me.plan.shed || "home", fab2: !!me.plan.fab2 });
+    Object.assign(st, { builds: me.plan.builds || [], lines: me.plan.lines || [], policies: me.plan.policies || [], shed: me.plan.shed || "home", fab2: !!me.plan.fab2, rq: (me.plan.rq || []).slice() });
     L.rev = me.rev;
     mountCity(L.app);
   }
@@ -1753,6 +1907,7 @@
     BG.selectPack(t.pack, "league");
     if (!resume) {
       const st = BG.sanitize(raw && raw.maps ? raw.maps[t.pack] : null, 1e9);
+      if (techData() && L.snap?.teams[L.team]?.plan) st.rq = (L.snap.teams[L.team].plan.rq || []).slice();
       L.doc = { v: 2, map: t.pack, maps: { [t.pack]: st }, runs: raw && Number.isInteger(raw.runs) ? raw.runs : 0, jAuto: true, journal: raw && Array.isArray(raw.journal) ? raw.journal : [] };
       L.rev = Math.max(L.rev, s.rev || 0);
     }
@@ -1763,7 +1918,7 @@
       save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
       // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
       budget: () => { const me = L.snap && L.snap.teams[L.team]; return me ? me.budget - (me.fixed || 0) - C.lossOf(me.base, BG.current()) : C.budget({ round: 1, ties: [], region: REGION }, L.team); },
-      research: () => { const me = L.snap && L.snap.teams[L.team]; return (me && me.rs) || { prog: {}, stage: {}, adoptR: {} }; },
+      research: () => { const me = L.snap && L.snap.teams[L.team]; return (me && (me.research || me.rs)) || { prog: {}, stage: {}, adoptR: {} }; },
       salvage: key => { const me = L.snap && L.snap.teams[L.team]; return me && (me.base || []).some(x => x.k === key) ? C.SALV : 1; },
       locked: lockMsg,
       season: () => curRound().season,
@@ -1785,6 +1940,7 @@
     if (L.snap?.econ && L.snap.phase === "plan" && curRound().month === 1 && !L.panel) openPanel("journal");
   }
   function sendPlan() {
+    if (L?.techPending) return; // 승인 전에 예전 rq로 연구 요청을 덮어쓰지 않는다.
     if (!L || L.away) return;
     const st = L.doc?.maps[L.doc.map];
     if (!st || !L.team) return;
@@ -2002,6 +2158,7 @@
       <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>
       <button type="button" class="lg-bbtn" data-panel="deal">이웃·거래<b class="lg-badge" id="lg-badge" hidden></b></button>
       <button type="button" class="lg-bbtn" data-panel="region">지역 지도</button>
+      <button type="button" class="lg-bbtn" data-panel="tech">연구</button>
       <button type="button" class="lg-bbtn" data-panel="result">결과</button>
       <button type="button" class="lg-bbtn" data-panel="journal">일지</button>
       ${L.snap?.econ ? `<button type="button" class="lg-bbtn" data-panel="city">도시</button><button type="button" class="lg-bbtn" data-panel="rank">순위</button>` : ""}
@@ -2092,10 +2249,12 @@
     }
     L.panelDirty = false;
     const V = L.snap, reg = R(), tab = L.panel;
-    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-pclose", "id"].find(k => focused.hasAttribute(k)) : null;
+    const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
+    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
     if (!V) body = `<p class="lg-hint">진행자 연결을 기다리는 중입니다.</p>`;
+    else if (tab === "tech") body = techHTML(V);
     else if (tab === "city" && V.econ) body = cityHTML(V);
     else if (tab === "rank" && V.econ) body = tickerHTML(V) + rankHTML(V.econ, L.role !== "solo");
     else if (tab === "deal") {
@@ -2157,7 +2316,10 @@
       }
       if (tab === "journal") body = previousNoteHTML(V) + critHTML(V) + predictionHTML(V) + body.replace('<button type="button" class="v2-btn" id="lg-jcopy">', quarterHTML(V) + '<button type="button" class="v2-btn" id="lg-jcopy">');
     }
-    p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    if (tab === "result" && V) body = techResultHTML(V) + body;
+    p.classList.toggle("lg-tech-drawer", tab === "tech");
+    p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    const tree = p.querySelector(".lg-tech-scroll"); if (tree) tree.scrollLeft = techScroll;
     restorePanelFocus(p, focusKey, focusValue, cursor);
   }
   function restorePanelFocus(p, key, value, cursor) {
@@ -2167,6 +2329,7 @@
   }
   function onPanelClick(e) {
     if (e.target.closest("#lg-panel-fold")) { L.panelFolded = !L.panelFolded; document.getElementById("lg-panel").dataset.folded = String(L.panelFolded); renderPanel(); return; }
+    if (techClick(e)) return;
     if (econClick(e)) return;
     const t = e.target.closest("[data-ptab]"), x = e.target.closest("[data-pclose]"), tie = e.target.closest("[data-tie]");
     if (x) { closePanel(); return; }
