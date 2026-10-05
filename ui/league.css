@@ -458,3 +458,28 @@
   .lg-regioncities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lg-regionlabel { font-size: 11px; padding: 2px 3px; transform: translate(-50%, 12px); }
 }
+
+/* ECON-NEXT §2: 팀 탐색은 막대 한 곳, 서랍은 접어서 지도를 더 보이게 한다. */
+#lg-panel { width: min(360px, calc(100vw - 16px)); }
+#lg-panel[data-folded="true"] { bottom: auto; }
+#lg-panel .lg-ptabs { align-items: center; }
+#lg-panel .lg-ptabs strong { flex: 1; }
+#lg-panel .lg-ptabs .lg-bbtn { color: var(--ink); border-color: var(--line); }
+#lg-panel [hidden] { display: none; }
+.lg-team-map .bd-banner[data-kind]:not([data-kind="city"]):not([data-kind="city_l"]):not([data-kind="city_m"]):not([data-kind="port"]):not([data-kind="factory_big"]):not([data-kind="plant"]):not([data-kind="gridpt"]) { visibility: hidden; }
+.lg-team-map[data-line-tool="true"] .bd-banner[data-kind] { visibility: visible; }
+.lg-team-map[data-line-tool="false"] .bd-banner[data-state="off"] [data-bv] { display: none; }
+.lg-team-map[data-line-tool="true"] .bd-banner[data-state="off"] { outline: 2px solid var(--ui-danger, #c0392b); }
+.lg-team-map[data-line-tool="true"] .bd-banner[data-state="ok"] { outline: 2px solid var(--ui-cyan, #2e8b57); }
+.lg-bmoney { white-space: nowrap; font-variant-numeric: tabular-nums; }
+#lg-evidence button { text-align: left; }
+#lg-previous-note { padding: 8px; border-left: 3px solid var(--accent); background: var(--paper); }
+#lg-learning-mission { font-weight: 700; }
+@media (max-width: 760px) {
+  #lg-panel { top: auto; max-height: 52dvh; }
+  #lg-panel[data-folded="true"] { top: auto; bottom: calc(var(--bd-dock, 90px) + 8px); }
+  .lg-bar { width: calc(100vw - 16px); box-sizing: border-box; gap: 4px; }
+  .lg-bar .lg-bbtn { padding: 0 8px; font-size: 13px; }
+}
+
+.tag-paper { display: inline-block; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-2); font-size: 12px; }

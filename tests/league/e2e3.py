@@ -25,11 +25,11 @@ with sync_playwright() as pw:
         p.goto(BASE + "#league"); p.fill("#lg-code", room); p.click("#lg-join")
         p.wait_for_selector(f'[data-seat="{t}"]:not([disabled])', timeout=10000); p.click(f'[data-seat="{t}"]'); p.wait_for_selector("#lg-bar", timeout=10000)
     P = tp["pyeongtaek"]
-    # 평택: 태양광·배터리 + 대학·연구소, 연구 순서
+    # 내 도시: 태양광·배터리 + 대학·연구소, 연구 순서
     P.evaluate("""() => KCP.league.plan(st => { const BG = KCP.buildGame; const T = BG.TILES; const free = t => T.filter(x => !x.out && x.site < 0 && !BG.siteRule(t, x)).map(x => x.i);
       const s = free('solar'), u = free('uni'); st.builds = [{ t: 'solar', i: s[0] }, { t: 'solar', i: s[1] }, { t: 'battery', i: s[2] }, { t: 'uni', i: u[30] }, { t: 'lab', i: u[50] }]; st.rq = ['bms']; })""")
     h.evaluate("() => KCP.league.next()"); h.wait_for_timeout(500)
-    # 사건 강제: 폭염(평택·당진 해당)
+    # 사건 강제: 폭염(참가 도시 해당)
     h.evaluate("() => { const S = KCP.league.state().S; S.events = [{ id: 'heatwave_peak', round: S.round, x: 1.3 }]; S.rev++; }")
     h.wait_for_timeout(5000)
     panel(P, "deal"); P.wait_for_selector(".lg-evopt", timeout=10000)
@@ -43,6 +43,10 @@ with sync_playwright() as pw:
     panel(P, "deal"); P.wait_for_selector(".lg-left b")
     left1 = P.inner_text(".lg-left b")
     ok(left0 != left1, f"budget left changed {left0} → {left1}")
+    P.click('#lg-ready')
+    P.wait_for_selector('#lg-predict', timeout=10000)
+    ok(P.locator('#lg-evidence').count() == 1, "event response opens criterion / evidence gate")
+    ok(P.locator('#lg-predict-skip').count() == 0, "team learning loop has no solo skip")
     ok("수요반응 계약" in h.inner_text("#lg-evbox"), "host shows team responses")
     P.screenshot(path=f"{SH}/v3-1-team-event.png")
     h.screenshot(path=f"{SH}/v3-2-host-event.png", full_page=True)
@@ -51,7 +55,9 @@ with sync_playwright() as pw:
     panel(P, "result")
     P.wait_for_selector(".lg-kpi", timeout=10000)
     rt = P.inner_text(".lg-pbody")
-    ok("실제" in rt and "수요 +18%" in rt, "actual size revealed (+18% after review? x=1.3 → 15.6% ×0.5 response shown as base actual)") if False else ok("실제" in rt, "actual size revealed after run")
+    ok("확정" in rt, "confirmed size revealed after run")
+    ok(P.locator('.lg-ask[data-question="lg-f-event"]').count() == 1, "event month uses lg-f-event")
+    ok(P.locator('.lg-ask [data-answer]').count() == 2, "event follow-up has revise / keep controls")
     ok("새 투자" in rt and "누적 투자" in rt, "cash-flow KPI shown")
     rs = h.evaluate("() => KCP.league.state().S.teams.pyeongtaek.rs")
     ok(rs and rs["prog"].get("bms") == 3, f"research progressed in round 1 (lab only) {rs}")

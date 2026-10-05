@@ -209,6 +209,13 @@ def play(checks, page, base, label):
     screenshot(checks, page, f"econui-solo-{label}-lobby.png")
     observation = start(page)
     state = observation["S"]
+    initial_fingerprint = fingerprint(state)
+    initial_room = state["room"]
+    close_drawer(page)
+    with page.expect_dialog() as dialog_info:
+        page.locator("#lg-solo-restart").click()
+    dialog_info.value.dismiss()
+    checks.ok(fingerprint(read(page)["S"]) == initial_fingerprint, f"{label} 처음부터 취소 → 진행 보존")
     checks.ok(state.get("econ") is not None and len(state.get("rounds") or []) == 12,
               f"{label} U3 시작은 경제 모드 12달")
     checks.ok(observation["player"] in observation["active"] and
@@ -267,6 +274,15 @@ def play(checks, page, base, label):
     rank_checks(checks, page, observation["active"], label + " U3 최종")
     overflow(checks, page, label + " 끝")
     screenshot(checks, page, f"econui-solo-{label}-end.png")
+    open_panel(page, "result")
+    page.locator('#lg-solo-same').click()
+    page.wait_for_function("""() => KCP.league.state()?.S?.phase === 'plan' && KCP.league.state()?.S?.round === 1""")
+    replay = read(page)
+    checks.ok(replay['S']['room'] == initial_room and replay['S']['active'] == observation['active'],
+              f"{label} 같은 조건으로 다시 → 씨앗·참가 도시 보존")
+    checks.ok(fingerprint(replay['S']) == initial_fingerprint,
+              f"{label} 같은 조건으로 다시 → 첫 달 경제·계획·연계선 동일")
+    overflow(checks, page, label + ' 같은 조건 재시작')
 
 
 def main():
