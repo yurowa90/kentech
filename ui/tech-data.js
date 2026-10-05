@@ -66,7 +66,7 @@
     numbers: { need: p(need, "G", "필요 연구량; 기존 3종은 보존"), demo: p(demo, "G", "실증비 억, 실증 한 턴 뒤 도입") }
   });
   const cards = [
-    card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "송전 손실 1.5→1.0%/칸", "M·G", "기존 손실 개선 유지"),
+    card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "기존 손실 개선 유지"),
     card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], "연계선 손실 2→1.2%, 새 선 건설비 ×1.3", "P·G", "짧은 거리에서는 변환소 비용 부담이 크다"),
     card("scable", "grid", "원자핵 에너지 시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "O*·G", "저항은 작아져도 냉각 전력과 비용이 든다"),
     card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄인다"),
@@ -82,6 +82,11 @@
     card("vpp", "ai", "인공지능 기반 응용", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "실측 VPP 효과 대신 수업용 가정"),
     card("re100", "ai", "에너지 화학공학", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생이 부족하면 산업 매력도 낮아진다; 에너지정책 융합전공 연계")
   ];
+  // build.js가 나중에 로드된다. 표시할 때 현재 PK.lossPerHex에서 읽는다.
+  Object.defineProperty(cards.find(c => c.id === "grid"), "eff", {
+    enumerable: true,
+    get: () => KCP.buildGame?.gridEffectText?.() || "현재 지도의 송전 손실을 ⅔로"
+  });
   cards.forEach(c => {
     c.unlock = ({ hvdc: { tie: "hvdc" }, tandem: { builds: ["tandem", "tandem_roof"] },
       nbat: { builds: ["nbat"] }, h2store: { builds: ["h2store"] }, smr: { builds: ["smr"] }, re100: { policy: "re100" } })[c.id] || null;
