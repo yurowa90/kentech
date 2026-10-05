@@ -85,7 +85,7 @@
     const old = C.policy, step = (x, d) => Math.round(num(x, -2, 2, d));
     const policy = { taxRes: step(po.taxRes, old.taxRes), taxInd: step(po.taxInd, old.taxInd), service: step(po.service, old.service), incentive: num(po.incentive, 0, 1e4, old.incentive) };
     const assets = {
-      uni: num(as.uni, 0, 20, S.uni || 0), lab: num(as.lab, 0, 20, S.lab || 0),
+      uni: num(as.uni, 0, 20, S.univ0 || 0), lab: num(as.lab, 0, 20, S.lab0 || 0),
       port: as.port == null ? !!S.port : !!as.port, site: as.site == null ? !!S.site : !!as.site,
       houseCap: has(as, "houseCap") && as.houseCap > 0 ? as.houseCap : null,
       indCap: has(as, "indCap") && as.indCap > 0 ? as.indCap : null
@@ -106,7 +106,9 @@
       avgCost: supplied > 0 ? costs / supplied : null,
       taxResAvg: sum(ids.map(id => ins[id].policy.taxRes)) / Math.max(1, ids.length),
       taxIndAvg: sum(ids.map(id => ins[id].policy.taxInd)) / Math.max(1, ids.length),
-      jobsAvg: popT > 0 ? indT / popT : 0.42,
+      jobsAvg: indT / Math.max(1, popT),
+      jobsAvg0: E.totals.ind0 / Math.max(1, E.totals.pop0),
+      popGrowth: popT / Math.max(1, E.totals.pop0),
       popAvg: popT / Math.max(1, ids.length),
       youthAvg: sum(ids.map(id => C[id].pop * C[id].groups.youth.share)) / Math.max(1, popT)
     };
@@ -133,14 +135,17 @@
   function livability(city, ctx) {
     const data = ctx.data || DATA(), P = k => pv(data, k), e = ctx.inp.energy, as = ctx.inp.assets, pol = city.policy, reg = ctx.reg;
     const pop = Math.max(1, city.pop);
+    // REF 3.7: 현재와 시작 모두 활성 지역 평균 대비 비율로 비교한다.
+    const jobs = (city.ind / pop) / Math.max(1e-6, reg.jobsAvg);
+    const jobs0 = (city.ind0 / Math.max(1, city.pop0)) / Math.max(1e-6, reg.jobsAvg0);
     const parts = {
       rel: c100(100 * (1 - e.unsPct / P("unsZeroL")) - (e.hospH > 0 ? P("hospPen") : 0)),
       price: priceScore(e, reg, data, city.lagL && city.lagL.price),
       air: e.co2Local == null ? P("airDefault") : c100(100 * Math.exp(-(e.co2Local / (pop / 1e4)) / P("airRef"))),
-      jobs: c100(P("neutralScore") + P("neutralScore") * Math.tanh(P("jobsSlope") * ((city.ind / pop) / Math.max(1e-6, reg.jobsAvg) - 1))),
+      jobs: c100(P("neutralScore") + P("jobsJ") * 100 * Math.log(Math.max(1e-6, jobs) / Math.max(1e-6, jobs0))),
       svc: c100(P("neutralScore") + P("serviceCurve")[pol.service + 2] + Math.min(P("eduMax"), P("eduUni") * as.uni + P("eduLab") * as.lab)),
       tax: c100(P("taxBase") - P("taxPoints") * (pol.taxRes - fin(reg.taxResAvg, 0))),
-      crowd: crowdScore(pop / (as.houseCap || city.pop0 * P("crowdCapMul")), data)
+      crowd: c100(P("neutralScore") - P("crowdK") * 100 * (pop / Math.max(1, city.pop0) - reg.popGrowth))
     };
     const w = P("wL");
     return { score: wsum(parts, w), parts, w };
@@ -353,7 +358,9 @@
   }
 
   /* ---------- 이동 ---------- */
-  const WHY_L = { rel: "정전이 잦아서", price: "전기요금이 비싸서", air: "공기가 나빠서", jobs: "일자리가 적어서", svc: "공공서비스가 부족해서", tax: "세금이 무거워서", crowd: "집이 비좁아서" };
+  const WHY_L = { rel: "정전이 잦아서", price: "전기요금이 비싸서", air: "공기가 나빠서", jobs: "일자리가 적어서", svc: "공공서비스가 부족해서", tax: "세금이 무거워서", crowd: "집값이 올라서" };
+  // REF 3.3·3.5·3.7–3.12: 방향 근거와 점수 크기 등급을 구분한다.
+  const WHY_L_GRADE = { rel: "G", price: "G", air: "G", jobs: "M", svc: "M", tax: "M", crowd: "G" };
   const WHY_A = { rel: "전력이 불안해서", price: "전기값이 비싸서", re: "재생에너지가 모자라서", labor: "인력이 부족해서", talent: "인재가 적어서", logi: "물류가 불편해서", tax: "세금이 무거워서", inc: "유치 보조가 적어서", land: "산업 용지가 모자라서", carbon: "전력 탄소가 많아서" };
   // 실효 매력 = 지금 − anchor × 기준(시작 차이 상쇄)
   const effOf = (C, which, w, data) => {
@@ -379,7 +386,9 @@
       const d = w[k] * ((lagT[k] - a * bT[k]) - (lagF[k] - a * bF[k]));
       if (d > bv) { bv = d; best = k; }
     });
-    return { part: best, why: (which === "L" ? WHY_L : WHY_A)[best] || "" };
+    const grade = which === "L" ? WHY_L_GRADE[best] : null;
+    const why = (which === "L" ? WHY_L : WHY_A)[best] || "";
+    return { part: best, why: grade && why ? `${why} (${grade})` : why, ...(grade ? { grade } : {}) };
   }
 
   /* ---------- 기업 이전 희망 ---------- */
@@ -467,7 +476,7 @@
     });
     return { tg, parts, contrib };
   }
-  const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
+  const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값 (G)", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
   function approvalChangeCause(causes) {
     const cause = causes[0];
     return { scope: "city-month-change", key: cause ? cause.key : null, part: cause ? cause.key : null,
@@ -537,8 +546,8 @@
     const popNew = Math.round(E.totals.pop0 * Math.pow(1 + P("gpYear"), mo / 12));
     const indNew = Math.round(E.totals.ind0 * Math.pow(1 + P("giYear"), mo / 12));
     const before = {}; ids.forEach(id => { before[id] = { pop: C[id].pop, ind: C[id].ind }; });
-    const mp = move(E, "pop", ids.map(id => Lr[id].eff), P("betaPopReal") * P("eduSpeed"), P("kappaPop"), popNew, data);
-    const mi = move(E, "ind", ids.map(id => Ar[id].eff), P("betaIndReal") * P("eduSpeed"), P("kappaInd"), indNew, data);
+    const mp = move(E, "pop", ids.map(id => Lr[id].eff), P("betaPopReal"), P("kappaPopReal") * P("eduSpeed"), popNew, data);
+    const mi = move(E, "ind", ids.map(id => Ar[id].eff), P("betaIndReal"), P("kappaIndReal") * P("eduSpeed"), indNew, data);
     E.totals.pop = popNew; E.totals.ind = indNew;
     const wL = P("wL");
     const fp = pairFlows(ids, mp.mig).map(f => Object.assign(f, causeOf(C[f.from], C[f.to], "L", wL, data)));
@@ -558,7 +567,8 @@
         trade: 0, policy: r3(polCost[id])
       };
       const revT = sum(Object.values(rev)), expT = sum(Object.values(exp));
-      c.cash = cashBefore[id] + revT - expT;
+      // 선지급과 같은 덧셈 순서: 지원금을 먼저 더해 부동소수 오차로 두 경로가 갈리지 않는다.
+      c.cash = (cashBefore[id] + rev.subsidy) + sum(Object.entries(rev).filter(([key]) => key !== "subsidy").map(([, value]) => value)) - expT;
       const recurring = own.resTax + own.indTax;
       c.standardRevenueHistory = c.standardRevenueHistory || [];
       c.standardRevenueHistory.push(c.pop * P("resTax") + c.ind * P("indTax") * Math.pow(o.v, P("indTaxK")));

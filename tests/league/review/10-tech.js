@@ -180,7 +180,7 @@ test("유레카 남은 양의 1/3·한 번", () => {
 
 test("연계선·설비·MODS 수치", () => {
   const S = game(false), tie = { a, b, cap: 4 };
-  near(C.effectiveTie(S, tie).loss, 0.02, "기본 연계선 손실2%");
+  near(C.effectiveTie(S, tie).loss, 0.01, "RECAL-SPEC §1.3 기본 연계선 손실1%");
   adopt(S, a, ["hvdc"]); near(C.effectiveTie(S, tie).loss, 0.012, "HVDC 손실1.2%");
   adopt(S, a, ["hvdc", "scable"]);
   near(C.effectiveTie(S, tie).cap, 6, "초전도 용량4×1.5=6MW");
@@ -188,9 +188,9 @@ test("연계선·설비·MODS 수치", () => {
   const scableLoss = C.effectiveTie(S, tie).loss;
   adopt(S, a, ["sic", "ccu", "h2mix", "vpp"]); const mods = C.modsFor(S, R, a);
   near(mods.renewOutput, 1.015, "SiC 출력 배수"); near(mods.co2Mul.coal, 0.4, "CCU 석탄 CO2 배수");
-  near(mods.coalCapMul, 0.85, "CCU 석탄 출력 배수"); near(mods.co2Mul.lng, 0.88, "수소 혼소 LNG CO2 배수");
+  near(mods.coalCapMul, 0.79, "CCU 석탄 출력 배수"); near(mods.co2Mul.lng, 0.88, "수소 혼소 LNG CO2 배수");
   near(mods.drEffect, 1.5, "VPP 수요반응 효과"); near(mods.drCost, 0.5, "VPP 수요반응 비용");
-  select(a); near(bg.BLD.tandem.cost / bg.BLD.solar.cost, 1.15, "탠덤 건설비 배수");
+  select(a); near(bg.BLD.tandem.cost / bg.BLD.solar.cost, 1.2, "RECAL-SPEC §1.3 탠덤 건설비 배수");
   near(bg.BLD.nbat.mwh / bg.M.batMWh, 1.25, "차세대 배터리 용량 배수");
   near(bg.BLD.smr.mw, 20, "SMR 정격20MW"); near(bg.BLD.smr.cost, 150, "SMR 건설150억 G");
   const p = planOf(a, ["solar"], true); p.seed = 982; p.season = "spring";
@@ -199,7 +199,7 @@ test("연계선·설비·MODS 수치", () => {
   near(sic.tot.renAvail / original.tot.renAvail, 1.015, "실제 SiC 재생 출력");
   const tp = clone(p); tp.builds[0].t = "tandem";
   const tandem = bg.simulate(tp, 7, { league: true, mods: {} });
-  near(tandem.tot.renAvail / original.tot.renAvail, 1.15, "실제 새 탠덤 출력");
+  near(tandem.tot.renAvail / original.tot.renAvail, 1.2, "RECAL-SPEC §1.3 실제 새 탠덤 출력");
   ok(JSON.stringify(bg.simulate(clone(p), 7, { league: true, mods: {} })) === JSON.stringify(original), "MODS 후속 실행 오염 없음");
   console.log("카드 효과 실측", JSON.stringify({ hvdcLoss: 0.012, scableLoss, solarMWh: original.tot.renAvail, tandemMWh: tandem.tot.renAvail, sicMWh: sic.tot.renAvail }));
 });
@@ -247,7 +247,7 @@ test("수소 실제 충방전·왕복35% 에너지 수지", () => {
 });
 
 test("CCU·혼소 실제 발전 탄소·VPP 실제 비용", () => {
-  for (const [fuel, card, carbonRatio, outputRatio] of [["coal", "ccu", 0.4, 0.85], ["lng", "h2mix", 0.88, 1]]) {
+  for (const [fuel, card, carbonRatio, outputRatio] of [["coal", "ccu", 0.4, 0.79], ["lng", "h2mix", 0.88, 1]]) {
     const matches = s => s.kind === "plant" && (fuel === "coal" ? s.fuel === "coal" : s.fuel !== "coal");
     const id = ids.find(id => { select(id); return bg.SITES.some(matches); });
     select(id); const source = bg.SITES.find(matches), sink = bg.SITES.find(s => s.dem);
@@ -279,7 +279,7 @@ test("기존 사건×기술 피해 완화", () => {
   const dust = C.modsFor(S, R, a).coalCapMul;
   adopt(S, a, ["ccu"]); const ccu = C.modsFor(S, R, a).coalCapMul;
   // 최종 검증 verify 13 / ECON-SPEC §13 정정: CO₂ 포집은 미세먼지 제한 완화 근거가 아니다.
-  near(ccu / 0.85, dust, "CCU 자체 출력 손실을 제외하면 계절관리제 제한은 동일");
+  near(ccu / 0.79, dust, "CCU 자체 출력 손실을 제외하면 계절관리제 제한은 동일");
   const storm = R.events.find(e => e.id === "typhoon_coast"), [left, right] = storm.effect.tieDown.split("~");
   const B = game(false); connect(B, left, right); B.events = [{ id: storm.id, round: 1 }];
   const safe = clone(B); adopt(safe, left, ["hvdc", "scable"]);

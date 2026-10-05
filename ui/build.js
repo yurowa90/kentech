@@ -191,10 +191,12 @@
    * ===================================================================== */
   const M = {
     solarMW: 2, rated: 12, cutout: 25, cutin: 3,
-    batMW: 4, batMWh: 16, batEff: 0.95, socFloor: 0.1,
+    // P · 왕복 85%의 √값 0.922 [I13][I14] · REF 8.6
+    batMW: 4, batMWh: 16, batEff: 0.922, socFloor: 0.1,
     lossPerHex: 0.015, taxPerT: 0.005 / 0.75,
     drCost: 0.05, shareCost: 0.1, save: 0.05,
-    wxSun: [1, 0.45, 0.2], tidalPeriod: 12.42, pr: 0.8
+    // M · 경사면 이득 포함 실적 수율 0.8×14.2/12.4≈0.92 [S22][S31] · REF 8.1
+    wxSun: [1, 0.45, 0.2], tidalPeriod: 12.42, pvYield: 0.92
   };
   // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
   const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
@@ -244,7 +246,8 @@
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
-  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.006, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.46 }
+  // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂ O: 법정 0.4567 [L14] REF 9.4.
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.4567 }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
   const CLEAR_COST = 2;
@@ -324,7 +327,7 @@
         const dec = 23.44 * Math.sin(2 * Math.PI * (284 + doy + 1) / 365) * Math.PI / 180, lat = C.lat * Math.PI / 180;
         day.dayLen = (2 / 15) * Math.acos(clamp(-Math.tan(lat) * Math.tan(dec), -1, 1)) * 180 / Math.PI;
         const ew = PW[m][0] * M.wxSun[0] + PW[m][1] * M.wxSun[1] + PW[m][2] * M.wxSun[2];
-        day.eDay = C.ghi_kwh_m2_day[m] * M.pr * M.wxSun[w] / ew;
+        day.eDay = C.ghi_kwh_m2_day[m] * M.pvYield * M.wxSun[w] / ew;
       } else day.hot = r3 < (w === 0 ? 0.5 : w === 1 ? 0.15 : 0);
       for (let h = 0; h < 24; h++) day.noise.push(1 + (rnd() * 2 - 1) * 0.15);
       out.push(day);
@@ -666,7 +669,8 @@
     });
     for (let d = 0; d < days; d++) {
       const wx = W[d];
-      if (techDay.bms === d) { bEff = 0.955; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * 0.05; }); }
+      // G · 설계 선택: BMS 왕복 85→87%, 한 방향 0.933 [I13][I14] · REF 8.6
+      if (techDay.bms === d) { bEff = 0.933; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * 0.05; }); }
       if (techDay.fcst === d) fcst = true;
       // 예측: 그날 아침에 오늘 저녁(17–22시) 부족분(수요 − 재생 − 화력 용량)을 미리 계산해 배터리마다 그만큼(여유 10%) 남길 몫을 정한다.
       // 이 모형의 날씨·수요는 정해진 값이라 예측이 맞는다 — 실제 예측에는 오차가 있다(한계).

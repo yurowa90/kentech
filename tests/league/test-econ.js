@@ -233,7 +233,7 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   // v1.3 동일 조건 목표. 검사 복제본에서만 성장·이동·국제 변동을 0으로 고정한다.
   // 게임 계수 변경이 아니며, 여섯 도시의 실제 시작 인구·산업·현금과 정책 0은 유지한다.
   const fixed = clone(D);
-  ["gpYear", "giYear", "kappaPop", "kappaInd"].forEach(k => { fixed.params[k].v = 0; });
+  ["gpYear", "giYear", "kappaPopReal", "kappaIndReal"].forEach(k => { fixed.params[k].v = 0; });
   Object.keys(fixed.intl.sigma).forEach(k => { fixed.intl.sigma[k] = 0; });
   fixed.intl.eventP = 0; fixed.intl.schedule = [];
   let same = X.initCities(IDS, fixed, { seed: "v1.3-fixed", months: 24 });
@@ -243,13 +243,15 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
     IDS.forEach(id => ok(same.cities[id].pop === initial.cities[id].pop && same.cities[id].ind === initial.cities[id].ind && same.cities[id].out === 1, `동일 인구·산업·산출 ${t + 1}달 ${id}`));
     caps.push(Object.fromEntries(IDS.map(id => [id, same.cities[id].debtCap])));
   }
-  console.log("\nv1.3 동일 조건: 도시 | cash0 | 첫 달 한도 | cash0×1.5 | 13달 한도 | 차이/첫 달");
+  console.log("\nv1.3 동일 조건: 도시 | cash0 | 첫 달 한도 | 연 세입×0.88 | 13달 한도 | 차이/첫 달");
   IDS.forEach(id => {
     const cash0 = initial.cities[id].cash0, first = caps[0][id], thirteenth = caps[12][id];
     const diff = Math.abs(thirteenth - first) / first;
-    ok(first <= cash0 * 1.5, `첫 달 한도 ≤ cash0×1.5 ${id}`);
+    // RECAL-SPEC §1.1·§8 #6: 한도는 투자재원 cash0가 아닌 연 세입 기준.
+    const expected = roundedCap(initial.cities[id].revYear);
+    ok(first === expected, `첫 달 한도 = 연 세입×0.88 ${id}`);
     ok(diff <= 0.3, `첫 달·13달 한도 차이 ≤ 30% ${id}`);
-    console.log(`${D.start[id].name} | ${cash0.toFixed(1)} | ${first.toFixed(1)} | ${(cash0 * 1.5).toFixed(1)} | ${thirteenth.toFixed(1)} | ${(diff * 100).toFixed(2)}%`);
+    console.log(`${D.start[id].name} | ${cash0.toFixed(1)} | ${first.toFixed(1)} | ${expected.toFixed(1)} | ${thirteenth.toFixed(1)} | ${(diff * 100).toFixed(2)}%`);
   });
 }
 

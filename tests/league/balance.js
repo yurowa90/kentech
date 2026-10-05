@@ -97,9 +97,9 @@ function param(key, grade, expected) {
 
 block("B1", () => {
   param("betaPopReal", "M");
-  // v1.2 우선: B15 — 산업 탄력은 주민 값 준용이므로 독립 추정(M)이 아닌 G.
-  param("betaIndReal", "G");
-  param("eduSpeed", "G"); param("startMix", "G");
+  // RECAL-SPEC §1.1·F01: 법인세 고용 탄력과 짝지은 산업 탄력(M).
+  param("betaIndReal", "M");
+  param("eduSpeed", "G"); param("startMix", "P");
   // ECON-BALANCE B1(v1.1): startMix 값은 회복·안정 목표로 정한다(0.2 고정 → 0..1 범위). 행동 목표는 아래 단언이 판정.
   ok(D.params.startMix && D.params.startMix.v >= 0 && D.params.startMix.v <= 1, `params.startMix 0..1 (${D.params.startMix && D.params.startMix.v})`);
   const stable = SEEDS.map(seed => run(36, undefined, seed));
@@ -249,8 +249,8 @@ block("B5", () => {
     ok(finite(c?.fin) && c.fin <= 60, `${id} 한도50% 부채 fin=${c?.fin} (목표 ≤60)`);
   }));
   const w = D.params.wScore?.v;
-  ok(finite(w?.fin) && w.fin > 0 && w.fin < 0.15 && !Object.hasOwn(w || {}, "cash"),
-    `점수 가중 ${JSON.stringify(w)} (fin>0,<0.15, cash 제거)`);
+  ok(["pop", "ind", "fin", "co2", "appr", "rel"].every(k => finite(w?.[k]) && Math.abs(w[k] - 1 / 6) < 1e-9) && !Object.hasOwn(w || {}, "cash"),
+    `점수 가중 ${JSON.stringify(w)} (RECAL-SPEC §1.1: 각 1/6, cash 제거)`);
 });
 
 block("B6", () => {
@@ -540,17 +540,25 @@ block("B14", () => {
 });
 
 block("B15", () => {
-  const speed = D.params.eduSpeed?.v, kappa = D.params.kappaPop?.v, beta = D.params.betaPopReal?.v;
-  // 공개 β_game 별도 필드가 없는 계약: 현실 탄력×교육 배속을 게임 탄력으로 읽는다.
-  const betaGame = finite(D.params.betaPop?.v) ? D.params.betaPop.v : beta * speed;
-  const evidenceRate = 0.0008, declaredRate = speed * evidenceRate, gameRate = kappa * betaGame;
-  const err = Math.abs(gameRate / declaredRate - 1);
-  ok([speed, kappa, betaGame, declaredRate, gameRate, err].every(finite) && speed > 0 && err <= 0.1,
-    `eduSpeed=${speed}, κ_game=${kappa}, β_game=${betaGame}, 표시속도=${declaredRate}, 게임속도=${gameRate}, 상대오차=${fmt(err * 100)}% (≤10%)`);
-  // 명세가 '주민 값 준용'으로 지목한 산업 탄력은 숫자가 같아도 직접 측정치(M)가 아니다.
-  const p = D.params.betaIndReal;
-  ok(p?.grade === "G" && finite(p?.v) && typeof p.note === "string" && p.note.length > 0,
-    `주민 값 준용 params.betaIndReal=${JSON.stringify(p)} (G·유한값·note)`);
+  // RECAL-SPEC §7.2·§7.3: 실제 move 진입 인자를 계측해 β 불변·κ 시간 압축 확인.
+  const fs = require("node:fs"), vm = require("node:vm"), calls = [];
+  const source = fs.readFileSync(path.resolve(__dirname, "../../ui/econ.js"), "utf8")
+    .replace("function move(E, key, eff, beta, kappa, totNew, data) {",
+      "function move(E, key, eff, beta, kappa, totNew, data) { recordMove(key, beta, kappa);");
+  const sandbox = { window: { KCP: { ECON_DATA: D } }, recordMove: (key, beta, kappa) => calls.push({ key, beta, kappa }) };
+  vm.runInNewContext(source, sandbox);
+  for (const speed of [1, 4.4]) {
+    const data = clone(D); data.params.eduSpeed.v = speed;
+    const engine = sandbox.window.KCP.econ, E = engine.initCities(IDS, data);
+    calls.length = 0; engine.monthStep(E, inputs(E), data);
+    for (const [key, beta, real] of [["pop", 0.12, 0.009], ["ind", 0.08, 0.005]]) {
+      const call = calls.find(c => c.key === key);
+      ok(call && Math.abs(call.beta - beta) < 1e-9 && Math.abs(call.kappa - real * speed) < 1e-9,
+        `${key} eduSpeed=${speed}: β=${call?.beta}, κ=${call?.kappa} (β=${beta}, κ=${real * speed})`);
+    }
+  }
+  param("eduSpeed", "G", 4.4);
+  param("betaIndReal", "M", 0.08);
 });
 
 block("B17", () => {
@@ -574,12 +582,12 @@ block("B17", () => {
       S.cities[id].ind === start.cities[id].ind &&
       JSON.stringify(S.cities[id].policy) === JSON.stringify(ins[id].policy));
     ok(fixed, `${id} 13달 정책·인구·종사자 고정`);
-    // v1.3: 기존 상한·변동률 단언을 유지하고 공통 기대식의 한도도 함께 측정한다.
+    // RECAL-SPEC §1.1·§8 #6: cash0 상한을 새 연 세입 비율의 정확한 기대값으로 교체한다.
     const firstWant = annualDebtRevenue(reports.slice(0, 1), id).annual * data.params.debtCapRatio?.v;
     const laterWant = annualDebtRevenue(reports.slice(1, 13), id).annual * data.params.debtCapRatio?.v;
     console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%, 목표=${fmt(firstWant)}/${fmt(laterWant)}`);
-    ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && first <= cash0 * 1.5,
-      `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (≤${fmt(cash0 * 1.5)})`);
+    ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && Math.abs(first - Math.round(firstWant * 10) / 10) < 1e-9,
+      `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (연 세입×0.88=${fmt(firstWant)})`);
     ok(fixed && finite(first) && first > 0 && finite(later) && finite(delta) && delta <= 0.3,
       `${id} 첫달/13달째 한도=${fmt(first)}/${fmt(later)}, 첫달 대비 차이=${fmt(delta * 100)}% (≤30%)`);
   }));

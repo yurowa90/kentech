@@ -10,8 +10,10 @@
   const KCP = window.KCP;
   if (!KCP) return;
   const PHASES = ["lobby", "plan", "run", "review", "end"];
-  const PRICE = { min: 0.005, max: 0.05, def: 0.015 };
-  const TIE_LOSS = 0.02, LOG_MAX = 40, GROW = 0.25;
+  // M · LNG 0.008·SMP/LNG 0.91, 월 변동 범위 [S16][S18][S19] · REF 7.11
+  const PRICE = { min: 0.004, max: 0.025, def: 0.009 };
+  // G · 설계 선택: 전국 송변전 손실 1.57%보다 작은 한 구간 1% [S20] · REF 8.10
+  const TIE_LOSS = 0.01, LOG_MAX = 40, GROW = 0.25;
   // 지난 라운드까지 운영한 설비·선을 철거하면 건설비의 30%만 돌려받는다(게임 가정 G). 이번 라운드에 놓은 것은 되돌리기라 전액.
   const SALV = 0.3;
   const PLAN_MS = 8 * 60 * 1000, REVIEW_MS = 5 * 60 * 1000;
@@ -319,15 +321,15 @@
   }
 
   const goalsOf = S => S.goals || regionOf(S.region).goals;
-  // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 절반 폭으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
+  // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 0.7배 폭(P, 예측 NRMSE 30.6% 감소 [P101] · REF 12.7)으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
   function fcxOf(S, id) {
     if (!techOf(S, id).includes("fcst")) return null;
     const R = regionOf(S.region), out = {};
     (S.events || []).filter(ev => ev.round === S.round && typeof ev.x === "number").forEach(ev => {
       const E = eventDef(R, ev.id), fc = (E && E.fc) || 0;
       if (!fc) return;
-      const u = (hashStr(S.room + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc / 2) * (u - 0.5);
-      out[ev.id] = [r3(Math.max(1 - fc, c - fc / 2)), r3(Math.min(1 + fc, c + fc / 2))];
+      const u = (hashStr(S.room + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc * 0.7) * (u - 0.5);
+      out[ev.id] = [r3(Math.max(1 - fc, c - fc * 0.7)), r3(Math.min(1 + fc, c + fc * 0.7))];
     });
     return out;
   }
@@ -706,7 +708,8 @@
       const dm = KCP.econ.demandMul(S.econ.cities[id]), I = S.econ.intl && S.econ.intl.cur;
       if (Math.abs(dm.res - 1) > 1e-3) M.demandRes = dm.res;
       if (Math.abs(dm.ind - 1) > 1e-3) M.demandInd = dm.ind;
-      if (I && Math.abs(I.fuelMul - 1) > 1e-3) M.fuelMul = { lng: I.fuelMul, diesel: I.fuelMul, coal: r3(Math.sqrt(I.fuelMul)) };
+      // M · 연료비 로그회귀 탄력 석탄 0.644·유류 0.598 [S16] · REF 7.3
+      if (I && Math.abs(I.fuelMul - 1) > 1e-3) M.fuelMul = { lng: I.fuelMul, diesel: Math.pow(I.fuelMul, 0.6), coal: Math.pow(I.fuelMul, 0.6) };
       if (tech.includes("smr")) M.fuelMul = { ...M.fuelMul, smr: P.smrFuelMul.v };
     }
     (S.events || []).filter(x => x.round === S.round).forEach(ev => {
@@ -1068,10 +1071,12 @@
     // 시작 지도·첫 달 달력만 사용한다. 학생 계획·정책·사건은 기준을 바꾸지 않는다.
     const rd = roundsOf(S)[0], wk = rd.mdays / rd.days, P = KCP.ECON_DATA.params, base = {};
     preserveMap(bg, () => activeOf(S).forEach(id => {
-      const dem = simTeam(bg, R, id, {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k.dem * wk;
-      base[id] = { energy: { unsPct: 0, hospH: 0, costPerMWh: P.normalCost.v,
-        opex: P.normalCost.v * dem, co2Local: P.normalCo2.v * dem, co2: P.normalCo2.v * dem,
-        renPct: P.normalRen.v, demMWh: dem, servedMWh: dem }, policy: {}, assets: {} };
+      const dem = simTeam(bg, R, id, {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k.dem;
+      // F05: 월 입력과 같은 자산 경로. 시작 보정에는 학생 건설·정책을 포함하지 않는다.
+      const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
+      base[id] = econInput(initial, R, id, { dem, uns: 0, unsPct: 0, hospH: 0,
+        co2Prod: P.normalCo2.v * dem, co2Cons: P.normalCo2.v * dem, renPct: P.normalRen.v,
+        exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: P.normalCost.v * dem, policy: 0 } }, wk);
     }));
     S.econ = KCP.econ.calibrate(S.econ, base); S.econCal = true;
   }
@@ -1082,7 +1087,7 @@
         tradeNet: r2((r.earn - r.pay) * wk + (r.technologyCost?.income || 0)), opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: { ...(S.teams[id].econPol || {}), save: (plan.policies || []).includes("save"), share: (plan.policies || []).includes("share") },
-      assets: Object.assign({ uni: n("uni"), lab: n("lab") }, extra || {})
+      assets: Object.assign({ uni: (KCP.ECON_DATA.start[id].univ0 || 0) + n("uni"), lab: (KCP.ECON_DATA.start[id].lab0 || 0) + n("lab") }, extra || {})
     };
   }
   function econMonth(S, R, bg, res) {

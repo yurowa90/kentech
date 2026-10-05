@@ -64,7 +64,7 @@ test("도시별 시작 H와 월 한도", () => {
 
 test("v1.4.1 등급·소수력 접속·옛 저장 1회 이행", () => {
   for (const k of ["hostCapMul", "curtailLoadMul", "curtailSlope", "curtailKnee", "curtailMax", "curtailOffSeason", "curtailLoss"])
-    ok(D.params[k].grade === "G", `${k} 게임 가정 등급`);
+    ok(D.params[k].grade === (["hostCapMul", "curtailSlope", "curtailKnee"].includes(k) ? "M" : "G"), `${k} RECAL-SPEC §1.1 근거/게임 가정 등급`);
   const S = game(), id = "hwaseong";
   S.round = 3;
   S.teams[id].plan = planOf(id, ["hydro", "solar", "solar", "solar", "solar"], true);
