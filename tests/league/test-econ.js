@@ -305,6 +305,35 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   ok(!request(season, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok && JSON.stringify(season.teams[id].resp) === old, "계절 모드: 초과 예산 유료 선택 거부·선택 복원 유지");
 }
 
+// ECON-TECH-SPEC T1 RE100: 산업 매력 재생 항 가중 ×1.5(G),
+// 재생 점수가 낮으면 불리하고 높으면 유리해야 한다. 다른 항과 입력은 불변.
+{
+  const E = X.initCities(IDS, D, { seed: "re100-independent", months: 12 });
+  const before = JSON.stringify(E);
+  for (const ren of [0, 100]) {
+    const raw = Object.fromEntries(IDS.map(id => [id, { energy: energyOf(id, 30, { ren }), policy: {} }]));
+    const inputs = Object.fromEntries(IDS.map(id => [id, X.cleanInput(raw[id], E.cities[id], D.start[id])]));
+    const reg = X.regionCtx(E, inputs, D);
+    for (const id of IDS) {
+      const baseCtx = X.ctxOf(E, inputs, D, id, reg), ctxBefore = JSON.stringify(baseCtx);
+      const plain = X.industryAttract(E.cities[id], baseCtx);
+      const enabledCtx = { ...baseCtx, inp: { ...baseCtx.inp, policy: { ...baseCtx.inp.policy, re100: true } } };
+      const enabledBefore = JSON.stringify(enabledCtx), enabled = X.industryAttract(E.cities[id], enabledCtx);
+      ok(Math.abs(enabled.w.re - plain.w.re * 1.5) < 1e-10, `RE100 재생 가중 정확히 1.5배 ${id}`);
+      ok(Object.keys(plain.w).filter(k => k !== "re").every(k => enabled.w[k] === plain.w[k]), `RE100 다른 산업 가중 불변 ${id}`);
+      ok(JSON.stringify(enabled.parts) === JSON.stringify(plain.parts), `RE100 부분 점수 불변 ${id}`);
+      ok(ren === 0 ? enabled.score < plain.score : enabled.score > plain.score, `RE100 재생 ${ren}% 양날 효과 ${id}`);
+      ok(JSON.stringify(baseCtx) === ctxBefore && JSON.stringify(enabledCtx) === enabledBefore, `RE100 산업 매력 입력 불변 ${id}`);
+    }
+    const enabledRaw = JSON.parse(JSON.stringify(raw));
+    IDS.forEach(id => { enabledRaw[id].policy.re100 = true; });
+    const rawBefore = JSON.stringify(enabledRaw), stepped = X.monthStep(E, enabledRaw, D);
+    ok(JSON.stringify(E) === before && JSON.stringify(enabledRaw) === rawBefore, `RE100 월 계산 E·입력 불변 ${ren}%`);
+    ok(IDS.every(id => stepped.E.cities[id].policy.re100 === true), `RE100 정책 월 상태 보존 ${ren}%`);
+    checkStep(E, stepped, `RE100 ${ren}%`);
+  }
+}
+
 Math.random = realRandom;
 console.log(`\n시험: ${passes} 통과, ${fails} 실패\n`);
 

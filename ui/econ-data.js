@@ -80,6 +80,7 @@
       }
     },
     params: {
+      re100PolicyWeight: p(1.5, G, "ECON-TECH-SPEC T1: RE100 산단 선택 시 산업 매력 재생 항 가중, 낮은 재생에도 적용"),
       neutralScore: p(50, G, "중립 부분 점수"),
       airDefault: p(60, G, "배출 자료가 없을 때 대기 점수"),
       jobsSlope: p(1.5, G, "일자리 비율 민감도"),
@@ -269,6 +270,10 @@
       { id: "cbam", text: "EU CBAM: 2026년 본격 시행, 철강·시멘트·알루미늄 등. 게임에선 2028년 1월부터(G)." }
     ]
   };
+  // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.
+  if (KCP.TECH_DATA) Object.entries(KCP.TECH_DATA.params).forEach(([key, record]) => {
+    KCP.ECON_DATA.params["tech_" + key] = record;
+  });
   Object.keys(KCP.ECON_DATA.sectors).forEach(k => {
     KCP.ECON_DATA.sectors[k].re100 = KCP.ECON_DATA.params.sectorRe100.v[k];
   });

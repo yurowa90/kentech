@@ -343,7 +343,7 @@
     if (MODS && MODS.demandMul && (!MODS.demandHours || inR(MODS.demandHours[0], MODS.demandHours[1]))) v *= MODS.demandMul;
     // 경제(리그 달 턴): 주민 수·산업 규모가 바뀐 만큼 마을·산업 수요가 따라 바뀐다.
     if (MODS && (MODS.demandRes || MODS.demandInd)) v *= IND_KIND[W.kind] ? MODS.demandInd || 1 : MODS.demandRes || 1;
-    if (D.dr && pol.dr && inR(18, 21)) v = Math.max(0.1 * v, v - (D.dr === true ? 1.5 : D.dr));
+    if (D.dr && pol.dr && inR(18, 21)) v = Math.max(0.1 * v, v - (D.dr === true ? 1.5 : D.dr) * (MODS && MODS.drEffect || 1));
     if (pol.save) v *= 1 - M.save;
     return v;
   }
@@ -354,13 +354,14 @@
   const stepMul = T => (T.out ? Infinity : T.t === "sea" || T.t === "lake" ? 3 : T.t === "mount" || T.t === "river" ? 2 : 1);
   const buildCost = (t, i) => BLD[t].cost + (TILES[i].t === "forest" ? CLEAR_COST : 0);
   function lineCost(p) { let s = 0; for (let k = 1; k < p.length; k++) s += lineUnit() * stepMul(TILES[p[k]]); return s; }
-  const capex = st => st.builds.reduce((a, b) => a + buildCost(b.t, b.i), 0) + st.lines.reduce((a, L) => a + lineCost(L.p), 0);
-  const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools);
+  const capex = st => st.builds.reduce((a, b) => a + (LG && Number.isFinite(b.paidCost) ? b.paidCost : buildCost(b.t, b.i)), 0) + st.lines.reduce((a, L) => a + lineCost(L.p), 0);
+  const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools).concat(LG && KCP.TECH_DATA ? Object.keys(BLD).filter(k => BLD[k].tech) : []);
   // 이 타일에 이 발전원을 지을 수 있나(예산 제외)
   function siteRule(type, T) {
     const B = BLD[type];
     if (!B || !toolsOf().includes(type)) return "못 지음";
-    if (T.out) return "평택 밖";
+    if (T.out) return "지도 밖";
+    if (type === "smr" && T.t !== "river" && T.t !== "beach") return "냉각수: 해안·하천만";
     if (B.sea) return (B.sea === "offshore" ? T.offshore : T.tidal) ? "" : B.sea === "tidal" ? "조력: 아산만 연안 바다만" : "해상풍력: 연안 2칸 바다만";
     if (T.t === "sea") return "바다에는 못 지음";
     if (T.site >= 0) { const k = SITES[T.site].kind; return B.roof && k !== "plant" && k !== "gridpt" && T.t === "urban" ? "" : "시설 자리"; }
@@ -443,7 +444,7 @@
       if (!comps.has(n.comp)) comps.set(n.comp, { towns: [], ren: [], bat: [], disp: [] });
       const C = comps.get(n.comp);
       if (n.kind === "town") C.towns.push(n);
-      else if (n.kind === "battery") C.bat.push(n);
+      else if (isStorage(n)) C.bat.push(n);
       else if (n.kind === "lng" || n.kind === "coal" || n.kind === "import" || BLD[n.kind] && BLD[n.kind].cls === "disp") C.disp.push(n);
       else C.ren.push(n);
     });
@@ -527,17 +528,18 @@
   function renOut(g, day, h, k) {
     const v0 = renOut0(g, day, h, k);
     if (!MODS) return v0;
-    const m = g.kind === "solar" || g.kind === "roof" ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
+    const m = ["solar", "roof", "tandem", "tandem_roof"].includes(g.kind) ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
     let v = typeof m === "number" ? v0 * m : v0;
     // B18 손잡이가 없으면 기존 계산·반환 자료를 그대로 유지한다.
     if (MODS.reCap && BLD[g.kind] && BLD[g.kind].hostLimited) {
       v *= clamp((MODS.reCap[g.kind + ":" + g.tile] || 0) / BLD[g.kind].mw, 0, 1);
     }
+    if (MODS.renewOutput) v *= MODS.renewOutput;
     return v;
   }
   function renOut0(g, day, h, k) {
     const T = TILES[g.tile], B = BLD[g.kind], C = PK.climate, vMul = day.mult * day.noise[h];
-    if (g.kind === "solar" || g.kind === "roof") {
+    if (["solar", "roof", "tandem", "tandem_roof"].includes(g.kind)) {
       if (!C) { const sp = h >= 6 && h < 18 ? Math.max(0, Math.sin(Math.PI * (h + 0.5 - 6) / 12)) : 0; return B.mw * sp * M.wxSun[day.w] * T.sun; }
       const N = day.dayLen, rise = 12 - N / 2, x = (h + 0.5 - rise) / N;
       if (x <= 0 || x >= 1) return 0;
@@ -561,6 +563,13 @@
     MODS = opt && opt.mods ? opt.mods : null;
     try { return simulate0(st, days, opt); } finally { MODS = null; }
   }
+  const isStorage = g => !!(BLD[g.kind] && BLD[g.kind].cls === "bat");
+  const storedMWh = g => BLD[g.kind].mwh || M.batMWh;
+  const storedMW = g => BLD[g.kind].mw || M.batMW;
+  const storedStart = g => g.kind === "h2store" ? 0 : storedMWh(g) * 0.5;
+  const storedFloor = g => g.kind === "h2store" ? 0 : storedMWh(g) * M.socFloor;
+  const storedCeiling = g => storedMWh(g) * (g.kind !== "h2store" && MODS && MODS.essCap != null ? clamp(MODS.essCap, 0, 1) : 1);
+  const storedEff = (g, eff) => g.kind === "h2store" ? Math.sqrt(KCP.TECH_DATA.params.h2Efficiency.v) : eff;
   function simulate0(st, days, opt) {
     const N = network(st), W = weather(st.seed, st.season), H = days * 24, pol = polOf(st), NT = TOWNS.length;
     const lgOut = !!(opt && opt.league);
@@ -592,16 +601,19 @@
     let dk = 0;
     gens.forEach(g => {
       g.runH = 0;
-      if (g.kind === "battery") { g.soc = Math.min(batCeiling, M.batMWh * 0.5); g.floor = M.batMWh * M.socFloor; }
+      if (isStorage(g)) { g.soc = Math.min(storedCeiling(g), storedStart(g)); g.floor = storedFloor(g); }
       if (SMOKY[g.kind]) g.dk = dk++;
-      const D = g.kind === "lng" || g.kind === "coal" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
+      const D = g.kind === "smr" ? { cap: KCP.TECH_DATA.params.smrMW.v, min: KCP.TECH_DATA.params.smrMW.v * KCP.TECH_DATA.params.smrMin.v, fuel: KCP.TECH_DATA.params.smrFuel.v, co2: 0 } : g.kind === "lng" || g.kind === "coal" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
       if (D) {
         if (g.kind === "lng" || g.kind === "coal") D.cap = g.cap;
         if (g.kind === "coal") D.min = 0.3 * g.cap;
         if (MODS && g.kind === "coal" && MODS.coalCapMul != null) { D.cap *= MODS.coalCapMul; D.min = Math.min(D.min, D.cap); }
         if (MODS && g.kind === "lng" && MODS.lngCapMul != null) D.cap *= MODS.lngCapMul;
         if (g.kind === "biomass" && TILES[g.tile].livestock) D.fuel = 0.012;
+        if (MODS && MODS.co2Mul && MODS.co2Mul[g.kind]) D.co2 *= MODS.co2Mul[g.kind];
+        if (MODS && (MODS.disabledBuilds || []).includes(g.kind + ":" + g.tile)) { D.cap = 0; D.min = 0; }
         g.D = D;
+        if (g.kind === "smr") tot.by.smr = 0;
         // 국제 연료 가격 지수(경제 모드): MODS.fuelMul = {lng, diesel, coal}
         g.mc = D.fuel * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
       }
@@ -629,7 +641,7 @@
     });
     for (let d = 0; d < days; d++) {
       const wx = W[d];
-      if (techDay.bms === d) { bEff = 0.955; gens.forEach(g => { if (g.kind === "battery") g.floor = M.batMWh * 0.05; }); }
+      if (techDay.bms === d) { bEff = 0.955; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * 0.05; }); }
       if (techDay.fcst === d) fcst = true;
       // 예측: 그날 아침에 오늘 저녁(17–22시) 부족분(수요 − 재생 − 화력 용량)을 미리 계산해 배터리마다 그만큼(여유 10%) 남길 몫을 정한다.
       // 이 모형의 날씨·수요는 정해진 값이라 예측이 맞는다 — 실제 예측에는 오차가 있다(한계).
@@ -653,7 +665,7 @@
         hrWind[k] = wx.mult * wx.noise[h];
         gens.forEach(g => {
           g.av = 0;
-          if (g.kind === "battery") { g.chg = 0; g.dis = 0; return; }
+          if (isStorage(g)) { g.chg = 0; g.dis = 0; return; }
           if (g.D) { g.out = 0; g.w = 0; return; }
           g.av = renOut(g, wx, h, k);
           if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
@@ -671,10 +683,10 @@
           if (curtail) {
             for (const P of C.RB) {
               const g = P.g, b = P.l;
-              const room = Math.min(M.batMW - b.chg, (batCeiling - b.soc) / bEff);
+              const room = Math.min(storedMW(b) - b.chg, (storedCeiling(b) - b.soc) / storedEff(b, bEff));
               if (g.cut <= 0 || room <= 0) continue;
               const give = Math.min(g.cut * P.eff, room), sent = give / P.eff;
-              g.cut -= sent; b.chg += give; b.soc += give * bEff;
+              g.cut -= sent; b.chg += give; b.soc += give * storedEff(b, bEff);
               tot.loss += sent - give; tot.ren += sent; tot.curtailCapturedMWh += sent; addFlow(P, sent, k);
             }
             C.ren.forEach(g => { tot.curtailMWh += Math.max(0, g.cut); });
@@ -689,10 +701,10 @@
           for (const P of C.RB) {
             const g = P.g, b = P.l;
             if (g.av <= 1e-6) continue;
-            const room = Math.min(M.batMW - b.chg, (batCeiling - b.soc) / bEff);
+            const room = Math.min(storedMW(b) - b.chg, (storedCeiling(b) - b.soc) / storedEff(b, bEff));
             if (room <= 1e-6) continue;
             const give = Math.min(g.av * P.eff, room), sent = give / P.eff;
-            g.av -= sent; b.chg += give; b.soc += give * bEff; tot.loss += sent - give; tot.ren += sent; addFlow(P, sent, k);
+            g.av -= sent; b.chg += give; b.soc += give * storedEff(b, bEff); tot.loss += sent - give; tot.ren += sent; addFlow(P, sent, k);
           }
           C.ren.forEach(g => { tot.curt += Math.max(0, g.av); });
           for (const P of C.BL) {
@@ -700,10 +712,10 @@
             if (rem[ti] <= 1e-6 || b.chg > 0) continue;
             // 예측 도입 뒤: 낮(6–16시)에는 오늘 저녁 예상 부족분만큼 남겨 둔다.
             const keep = fcst && h >= 6 && h < 17 && C.keep ? Math.max(b.floor, C.keep) : b.floor;
-            const can = Math.min(M.batMW - b.dis, (b.soc - keep) * bEff);
+            const can = Math.min(storedMW(b) - b.dis, (b.soc - keep) * storedEff(b, bEff));
             if (can <= 1e-6) continue;
             const give = Math.min(can * P.eff, rem[ti]), sent = give / P.eff;
-            b.dis += sent; b.soc -= sent / bEff; rem[ti] -= give; deliv += give; tot.loss += sent - give; tot.batOut += sent; addFlow(P, sent, k);
+            b.dis += sent; b.soc -= sent / storedEff(b, bEff); rem[ti] -= give; deliv += give; tot.loss += sent - give; tot.batOut += sent; addFlow(P, sent, k);
           }
           for (const P of C.DL) {
             const u = P.g, ti = P.l.ti;
@@ -733,7 +745,7 @@
           G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
           // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
           let dq = 0, dm = 0, dc = 0;
-          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2; });
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2; });
           G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0;
         });
         rem.forEach((r, ti) => {
@@ -754,7 +766,10 @@
     tot.diesel = tot.by.diesel;
     // 배터리 시작·끝 잔량(MWh). 시작보다 덜 남았으면 그만큼은 이 기간 발전이 아니라 처음 채워 둔 전기로 쓴 것이다.
     tot.batStart = 0; tot.batEnd = 0;
-    gens.forEach(g => { if (g.kind === "battery") { tot.batStart += Math.min(batCeiling, M.batMWh * 0.5); tot.batEnd += g.soc; } });
+    gens.forEach(g => {
+      if (g.kind === "h2store") { tot.h2End = (tot.h2End || 0) + g.soc; }
+      else if (isStorage(g)) { tot.batStart += Math.min(storedCeiling(g), storedStart(g)); tot.batEnd += g.soc; }
+    });
     // 배터리는 전기를 만들지 않는다: 끝 잔량이 시작보다 적으면 그 차이를 다시 채우는 값(디젤 연료비·CO₂, 충전 효율 반영)을 이 기간에 물린다.
     tot.batDebt = Math.max(0, tot.batStart - tot.batEnd);
     if (tot.batDebt > 1e-6) { const D = dispOf("diesel"), e = tot.batDebt / bEff; tot.fuel += e * D.fuel; tot.co2 += e * D.co2; }
@@ -763,7 +778,7 @@
     const cost = {
       capex: capex(st),
       fuel: tot.fuel,
-      policy: days * ((pol.dr ? M.drCost : 0) + (pol.share ? M.shareCost : 0))
+      policy: days * ((pol.dr ? M.drCost * (MODS && MODS.drCost || 1) : 0) + (pol.share ? M.shareCost : 0))
     };
     cost.research = RR ? RR.cost.total : 0;
     cost.total = cost.capex + cost.fuel + cost.policy + cost.research;
@@ -919,7 +934,7 @@
       if (!b || !Object.hasOwn(BLD, b.t) || !Number.isInteger(b.i) || !TILES[b.i]) return;
       if (used.has(b.i) || siteRule(b.t, TILES[b.i])) return;
       used.add(b.i);
-      st.builds.push({ t: b.t, i: b.i });
+      st.builds.push({ t: b.t, i: b.i, ...(LG && Number.isFinite(b.paidCost) && b.paidCost >= 0 ? { paidCost: b.paidCost } : {}) });
     });
     (Array.isArray(o.lines) ? o.lines : []).forEach(L => {
       const p = L && Array.isArray(L.p) ? L.p : null;
@@ -935,7 +950,7 @@
     if (SHED_OPTS.some(x => x.id === o.shed)) st.shed = o.shed;
     if (SEASONS.some(x => x.id === o.season)) st.season = o.season;
     st.fab2 = o.fab2 === true;
-    st.rq = (Array.isArray(o.rq) ? o.rq : []).filter((id, k, a) => TECHS.some(T => T.id === id) && a.indexOf(id) === k);
+    st.rq = (Array.isArray(o.rq) ? o.rq : []).filter((id, k, a) => (LG && KCP.TECH_DATA ? KCP.TECH_DATA.cards : TECHS).some(T => T.id === id) && a.indexOf(id) === k);
     while (capex(st) > lim + 1e-9 && (st.lines.length || st.builds.length)) { if (st.lines.length) st.lines.pop(); else st.builds.pop(); }
     return st;
   }
@@ -956,6 +971,14 @@
   function bldFor(P) {
     const out = {};
     Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); });
+    if (LG && KCP.TECH_DATA) {
+      const v = k => KCP.TECH_DATA.params[k].v;
+      out.tandem = { ...out.solar, name: "탠덤 태양광", spec: `${out.solar.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.solar.mw * v("tandemOutput"), cost: out.solar.cost * v("tandemCost") };
+      out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${out.roof.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
+      out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: "4 MW/20 MWh" };
+      out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: "4 MW/200 MWh · 왕복 35%" };
+      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: "20 MW · 건설 6턴" };
+    }
     return out;
   }
   function selectPack(id, mode) { const P = usePack(id, mode); BLD = bldFor(P); if (KCP.buildGame) KCP.buildGame.BLD = BLD; return P; }
