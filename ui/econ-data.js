@@ -262,7 +262,7 @@
         { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, text: "LNG·디젤 연료비가 크게 올라요" },
         { id: "export_boom", name: "반도체 수출 호황", dur: [4, 8], fx: { export: { semi: 0.25, display: 0.1 } }, text: "반도체 도시 산출이 늘어요" },
         { id: "auto_slump", name: "자동차 수출 둔화", dur: [3, 6], fx: { export: { auto: -0.2 } }, text: "자동차 도시 산출이 줄어요" },
-        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, text: "철강 수출 도시는 전력이 더러울수록 산출이 깎여요" }
+        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, text: "철강 수출 도시는 쓰는 전력의 탄소 배출이 많을수록 산출이 깎여요" }
       ],
       // 정해진 때 오는 사건(t = 몇 번째 턴, 0부터)
       schedule: [{ t: 12, id: "cbam" }]

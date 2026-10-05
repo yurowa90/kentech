@@ -379,7 +379,7 @@ def economic(checks, context, base, label, pages):
     checks.test(f"{label} 팀 탐색 버튼 중복 없음", lambda:
                 team.locator('#lg-bar [data-panel="city"]').count() == 1 and
                 team.locator('[data-panel="city"]').count() == 1 and
-                team.locator('.lg-ptabs, #lg-panel [data-ptab]').count() == 0)
+                team.locator('.lg-ptabs [data-ptab], #lg-panel [data-ptab]').count() == 0)  # ECON-UI v1.2: 금지 대상은 서랍 안 '탭 버튼'(서랍 머리 상자의 class 이름은 무관)
     checks.test(f"{label} 팀 서랍 접기", lambda:
                 (team.locator('#lg-panel-fold').click(), absent_or_hidden(team, '#lg-panel .lg-pbody'))[1])
     checks.test(f"{label} 팀 서랍 펼치기", lambda:
