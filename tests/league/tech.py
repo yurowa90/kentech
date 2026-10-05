@@ -236,7 +236,8 @@ def open_tech(team):
         raise AssertionError('T4 #lg-bar data-panel="tech" 버튼 한 개 필요')
     if button.get_attribute("aria-expanded") != "true":
         button.click()
-    if team.locator('.lg-ptabs, #lg-panel [data-ptab]').count() != 0:
+    # 서랍 머리 줄(.lg-ptabs: 제목·접기·닫기)은 남아 있다. 금지 대상은 탭 버튼이다(econui.py와 같은 기준).
+    if team.locator('.lg-ptabs [data-ptab], #lg-panel [data-ptab]').count() != 0:
         raise AssertionError('ECON-UI v1.2 서랍 안 탭 줄은 없어야 함')
     return team.locator("#lg-panel")
 
