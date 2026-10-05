@@ -479,6 +479,10 @@
       const el = document.getElementById("lg-crit-line"); if (el) crit.line = el.valueAsNumber;
       if (!validCritLine(crit.line)) { BG.toast("지킬 선은 0~100점으로 적으세요"); return true; }
       L.pendingCrit = crit; n.crit = crit; putData(d);
+      const panel = document.getElementById("lg-panel");
+      panel.querySelectorAll("[data-crit]").forEach(b => b.setAttribute("aria-pressed", String(crit.chips.includes(b.dataset.crit))));
+      panel.querySelectorAll("[data-crit-choice]").forEach(b => b.setAttribute("aria-pressed", String(crit.choice === b.dataset.critChoice)));
+      if (el) el.parentElement.firstChild.textContent = `${SCORE_NAMES[crit.chips[0]] || "선택 첫 항목"} 지킬 선(점 이상)`;
       if (crit.chips.length && crit.choice) send("crit", crit);
       renderPanel(); return true;
     }
@@ -1277,7 +1281,28 @@
     });
     panel.addEventListener("click", onPanelClick);
     panel.addEventListener("change", onPanelChange);
-    panel.addEventListener("input", e => { if (e.target.matches("#lg-crit-line, [data-note], [data-pred], [data-end], [data-weight]")) econChange(e); if (e.target.matches("[data-j]")) onPanelChange(e); const r = e.target.closest("#lg-price"); if (r) { const o = document.getElementById("lg-price-v"); if (o) o.textContent = (+r.value).toFixed(3); } });
+    panel.addEventListener("input", e => {
+      if (e.target.matches("#lg-crit-line, [data-note], [data-pred], [data-end], [data-weight]")) econChange(e);
+      if (e.target.matches("[data-j]")) onPanelChange(e);
+      const pol = e.target.closest("[data-pol]");
+      if (pol) {
+        const output = pol.closest("label").querySelector("output");
+        if (output) output.textContent = `${fmt(+pol.value, 1)}${pol.dataset.pol === "incentive" ? "억/달" : "단계"}`;
+      }
+      const r = e.target.closest("#lg-price");
+      if (r) { const o = document.getElementById("lg-price-v"); if (o) o.textContent = (+r.value).toFixed(3); }
+    });
+    panel.addEventListener("focusout", () => {
+      const session = L;
+      // 다음 포커스와 change 처리가 끝난 뒤 갱신한다. 다른 입력으로 옮기면 계속 미룬다.
+      setTimeout(() => {
+        if (L !== session || !panel.isConnected || !session?.panelDirty) return;
+        // 서랍 버튼을 누르려고 옮긴 포커스라면 pointerup·click 전에 버튼을 없애지 않는다.
+        const active = document.activeElement;
+        if (active && panel.contains(active) && active.matches("button")) return;
+        renderPanel();
+      }, 0);
+    });
     renderBar();
   }
   function renderBar() {
@@ -1313,8 +1338,15 @@
   function renderPanel() {
     const p = document.getElementById("lg-panel");
     if (!p || !L.panel) return;
+    const active = document.activeElement;
+    // 포커스를 복원해도 빠른 키 입력·IME 조합·드래그 도중의 요소 교체는 복구할 수 없다.
+    if (active && p.contains(active) && active.matches("input, textarea, select, button[data-pol], button[data-crit], button[data-crit-choice]")) {
+      L.panelDirty = true;
+      return;
+    }
+    L.panelDirty = false;
     const V = L.snap, reg = R(), tab = L.panel;
-    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "id"].find(k => focused.hasAttribute(k)) : null;
+    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-pclose", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
     if (!V) body = `<p class="lg-hint">진행자 연결을 기다리는 중입니다.</p>`;
