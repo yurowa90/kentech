@@ -2952,8 +2952,24 @@
   KCP.buildGame.tileXY = (c, r) => (S ? tileTop(TILES[tix(c, r)]) : null);
   KCP.buildGame.active = () => !!S;
 
+  // 화면의 일시 상태만 복사한다. 건설 문서·시뮬레이션 상태에는 손대지 않는다.
+  function saveView() {
+    if (!S) return null;
+    return { map: S.doc.map, zoom: V.zoom, panX: V.panX, panY: V.panY, tool: S.tool,
+      lineStart: S.lineStart, pending: S.pending ? { ...S.pending, p: S.pending.p.slice() } : null, sel: S.sel };
+  }
+  function restoreView(view) {
+    if (!S || !view || view.map !== S.doc.map) return;
+    V.zoom = view.zoom; V.panX = view.panX; V.panY = view.panY;
+    S.tool = view.tool; S.lineStart = view.lineStart; S.sel = view.sel;
+    S.pending = view.pending ? { ...view.pending, p: view.pending.p.slice() } : null;
+    S.preview = null;
+    S.root.dataset.mode = S.tool || "";
+    renderTools(); showConfirm(); S.dirtyLayout = true; request();
+  }
+
   // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
-  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤
+  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
   function mount(app, opts) {
     opts = opts || {};
     teardown();
@@ -3045,6 +3061,7 @@
     placeBannerValues();
     updateAria();
     setLayer("map");
+    if (opts.view) restoreView(opts.view);
     layout();
     request();
     if (opts.onMount) opts.onMount(root);
@@ -3052,7 +3069,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    mount,
+    mount, saveView, restoreView,
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },

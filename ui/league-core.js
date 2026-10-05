@@ -337,9 +337,16 @@
       return { ok: true, quiet: !fresh };
     }
     if (T.token !== m.token) return err("seat");
+    // 식별자가 없는 옛 클라이언트와 claim·hello는 기존 규약을 유지한다.
+    if (["plan", "econ", "crit", "ready", "tie"].includes(m.type) &&
+        ((Object.hasOwn(m, "rd") && m.rd !== S.round) || (Object.hasOwn(m, "ph") && m.ph !== S.phase))) return err("stale");
     T.online = now;
     if (m.type === "hello") return { ok: true, quiet: true };
-    if (m.type === "ready") { T.ready = m.ready === true; S.rev++; return { ok: true }; }
+    if (m.type === "ready") {
+      const ready = m.ready === true;
+      if (T.ready === ready) return { ok: true, quiet: true };
+      T.ready = ready; S.rev++; return { ok: true };
+    }
     if (m.type === "price") {
       if (!canPlan(S)) return err("phase");
       T.price = r3(num(m.price, PRICE.min, PRICE.max, PRICE.def)); S.rev++; return { ok: true };
@@ -443,7 +450,8 @@
     if (m.type === "crit") {
       if (!S.econ || S.phase !== "plan") return err("phase");
       const keys = Object.keys(KCP.ECON_DATA.params.wScore.v);
-      if (!Array.isArray(m.chips) || m.chips.length < 1 || m.chips.length > 2 || new Set(m.chips).size !== m.chips.length || m.chips.some(k => !keys.includes(k)) || typeof m.line !== "number" || !Number.isFinite(m.line) || m.line < 0 || m.line > 100 || !["keep", "change"].includes(m.choice)) return err("crit");
+      if (!Array.isArray(m.chips) || m.chips.length < 1 || m.chips.length > 2 || new Set(m.chips).size !== m.chips.length || m.chips.some(k => !keys.includes(k)) || !Number.isInteger(m.line) || m.line < 0 || m.line > 100 || !["keep", "change"].includes(m.choice)) return err("crit");
+      if (T.crit && T.crit.line === m.line && T.crit.choice === m.choice && T.crit.chips.length === m.chips.length && T.crit.chips.every((k, i) => k === m.chips[i])) return { ok: true, quiet: true };
       T.crit = { chips: m.chips.slice(), line: m.line, choice: m.choice };
       S.rev++; return { ok: true };
     }
