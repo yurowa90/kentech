@@ -154,6 +154,9 @@
     const types = Object.keys(bg.BLD).filter(t => ["ren", "disp", "bat"].includes(bg.BLD[t].cls) && (!bg.BLD[t].tech || C.techOf(S, id).includes(bg.BLD[t].tech)));
     const used = new Set(plan.builds.map(b => b.i));
     const legal = Object.fromEntries(types.map(t => [t, bg.TILES.filter(x => !bg.siteRule(t, x)).map(x => x.i)]));
+    // 실제 비용과 별도로 입지 민원을 가상 비용으로 비교한다. 계절 AI는 기존 판단을 유지한다.
+    const complaintCost = Object.fromEntries(types.map(t => [t, Object.fromEntries(legal[t].map(i =>
+      [i, S.econ ? bg.complaints({ builds: [{ t, i }], policies: [], lines: [] }, null).items.reduce((sum, c) => sum + c.pts, 0) * value("aiComplaintCost") : 0]))]));
     const viable = types.filter(t => legal[t].some(i => !used.has(i)));
     if (!viable.length) return plan;
     const reserve = Math.min(...viable.filter(t => bg.BLD[t].cls !== "bat").map(t => bg.BLD[t].cost));
@@ -213,7 +216,7 @@
       const storageNeed = scheduled ? Math.max(hostNeed,
         have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage, 0) : 0;
       if (!safety && (!scheduled || firmNeed + renewNeed + storageNeed <= 0)) break;
-      const candidates = [];
+      const candidates = [], buildBudget = (safety ? cap : choiceCap) - bg.capex(plan);
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
         if (!hydroAllowed(t)) return;
@@ -225,12 +228,14 @@
         legal[t].forEach(i => {
           if (used.has(i) || !Number.isFinite(route.dist[i])) return;
           const cost = bg.capex({ builds: [{ t, i }], lines: [] }) + route.dist[i];
+          if (cost > buildBudget) return;
           const rank = KCP.econ.hashStr(`${seed}:${t}:${i}`);
-          if (!best || cost < best.cost || cost === best.cost && rank < best.rank) best = { t, i, cost, rank };
+          const socialCost = cost + complaintCost[t][i];
+          if (!best || socialCost < best.socialCost || socialCost === best.socialCost && rank < best.rank) best = { t, i, cost, socialCost, rank };
         });
         if (!best || bg.capex(plan) + best.cost > (safety ? cap : choiceCap)) return;
         const capacity = Math.min(need, b.mw);
-        best.score = capacity * (1 + style.risk * value("aiLargeWeight") * b.mw / maxMW) / best.cost;
+        best.score = capacity * (1 + style.risk * value("aiLargeWeight") * b.mw / maxMW) / best.socialCost;
         best.storage = battery && storageNeed > 0;
         candidates.push(best);
       });

@@ -3,6 +3,7 @@ import argparse
 import ast
 import json
 import math
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -11,7 +12,7 @@ JS = r"""
 ({months, rotations}) => {
   const C = KCP.leagueCore, BG = KCP.buildGame, X = KCP.econ;
   const R = C.regionOf("south"), ids = R.teams.map(t => t.id);
-  const strategies = ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh"];
+  const strategies = ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh", "dm", "storage"];
   const hasAI = typeof KCP.leagueAI?.plan === "function";
   const out = {checks: [], runs: [], strategies, ids,
     names: Object.fromEntries(R.teams.map(t => [t.id, t.name])), months, rotations,
@@ -28,7 +29,7 @@ JS = r"""
   });
   const empty = () => ({builds: [], lines: [], policies: [], missions: [], shed: "home", fab2: false});
   const newGame = room => C.newState(room, "south", 0, ids, {turns: 36});
-  ok(ids.length === 6 && strategies.length === 7, `south 팀 ${ids.length}, 전략 ${strategies.length}`);
+  ok(ids.length === 6 && strategies.length === 9, `south 팀 ${ids.length}, 전략 ${strategies.length}`);
 
   // B9: 방 이름 200개 × 12달. drawEvents는 상태에 사건 이력을 남기므로 같은 S를 이어 쓴다.
   test("B9 달 사건 표본", () => {
@@ -273,6 +274,9 @@ JS = r"""
           if (count > 0 && Math.abs(count * BG.BLD[t].mw - mw) < 1e-6)
             recipes.push(Array(count).fill(t));
         }
+      } else if (strategy === "storage") {
+        for (const b of storage) recipes.push(Array(Math.ceil(mw / BG.BLD[b].mw)).fill(b));
+        recipes.sort((a, b) => sum(a.map(t => BG.BLD[t].cost)) - sum(b.map(t => BG.BLD[t].cost)));
       } else {
         // 설비는 쪼갤 수 없으므로 원 화력 MW 이상인 최소 기수의 재생+저장을 묶는다.
         for (const r of renew) for (const b of storage) {
@@ -312,7 +316,7 @@ JS = r"""
       if (replacement) {
         const addedMW = sum(recipe.filter(t => BG.BLD[t].cls !== "bat").map(t => BG.BLD[t].mw));
         const storageMW = sum(recipe.filter(t => BG.BLD[t].cls === "bat").map(t => BG.BLD[t].mw));
-        ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : addedMW >= mw && storageMW >= mw,
+        ok(strategy === "diesel" ? Math.abs(addedMW - mw) < 1e-6 : strategy === "storage" ? addedMW === 0 && storageMW >= mw : addedMW >= mw && storageMW >= mw,
           `${strategy} ${id} ${S.round}달 전환 ${mw}MW → 발전${addedMW}/저장${storageMW}MW`);
         changes.push({removed: clone(pending), added: recipe, mw, addedMW, storageMW});
         if (strategy === "renew") {
@@ -335,9 +339,19 @@ JS = r"""
       return {plan: annual ? legacyPlan(S, id, strategy) : clone(S.teams[id].plan || empty()), changes: []};
     }
     // 반환 계약 {plan:{builds,lines}, econPol, ties}. 이 비교는 건설 기반만 공유하고 정책0을 기본으로 둔다.
-    const answer = KCP.leagueAI.plan(S, R, id, BG, "balanced");
+    let planning = S;
+    if (strategy === "dm") {
+      select(id);
+      // 같은 확정 공급 여유율에 실제 카드의 피크 수요 감소를 먼저 반영해 덜 짓는다.
+      const ratio = BG.peakDemand({dr: true, save: true}, false) / BG.peakDemand({}, false);
+      planning = clone(S);
+      planning.econ.cities[id].pop *= ratio; planning.econ.cities[id].ind *= ratio;
+      planning.teams[id].plan = { ...(planning.teams[id].plan || empty()), policies: ["dr", "save"] };
+    }
+    const answer = KCP.leagueAI.plan(planning, R, id, BG, "balanced");
     const original = assets(answer.plan);
-    return strategy === "diesel" || strategy === "renew" ? transform(S, id, strategy, original) :
+    if (strategy === "dm") original.policies = ["dr", "save"];
+    return ["diesel", "renew", "storage"].includes(strategy) ? transform(S, id, strategy, original) :
       {plan: original, changes: []};
   };
   test("B18 renew 접속·유지 경계", () => {
@@ -457,6 +471,8 @@ JS = r"""
       const res = C.run(S, BG, at + 50), rep = res?.econ;
       ok(!!rep?.fiscal, `회전${rotation} ${m}달 econ report 계약`);
       if (!rep) throw new Error(`${m}달 econ 보고서 없음`);
+      const coop = X.score(S.econ);
+      ok(ids.every(id => coop.by[id].coop === coop.by[ids[0]].coop), `D61 회전${rotation} ${m}달 같은 공동 보너스`);
       ids.forEach(id => {
         const f = rep.fiscal?.[id], r = res.team?.[id];
         if (prior) ok(finite(prior[id]?.cashAfter) && finite(f?.cashBefore) && Math.abs(prior[id].cashAfter - f.cashBefore) < 1e-6,
@@ -583,7 +599,7 @@ def markdown(out):
                 f"({summary['best']} − {summary['worst']})." if gap is not None else
                 "전략 평균 점수 차이(nothing 제외): 미측정.")
     lines += ["", gap_line, "",
-              f"도시 1위는 같은 도시의 7전략 비교이며 공동1위도 센다. 완전 비교 도시 {len(summary['completeCities'])}/6; "
+              f"도시 1위는 같은 도시의 9전략 비교이며 공동1위도 센다. 완전 비교 도시 {len(summary['completeCities'])}/6; "
               "부분 실행에서는 1위 횟수가 전체 판정이 아니다.", ""]
     lines += [f"B16 strategy-dominance: {s} 1위 {summary['firstCounts'][s]}/6" for s in out.get("strategies", [])]
     lines += ["", "## 도시×전략 점수", "",
@@ -608,47 +624,44 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("url", nargs="?", default="http://127.0.0.1:9430/index.html")
     parser.add_argument("--months", type=int, choices=(12, 24, 36), default=36)
+    parser.add_argument("--node", action="store_true", help="브라우저 없이 같은 전략 JS를 Node에서 실행")
     parser.add_argument("--quick", action="store_true", help="12달·회전 2개")
     args = parser.parse_args()
-    months, rotations = (12, 2) if args.quick else (args.months, 7)
+    months, rotations = (12, 2) if args.quick else (args.months, 9)
     out = {"months": months, "rotations": rotations, "strategies":
-           ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh"],
+           ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh", "dm", "storage"],
            "ids": [], "names": {}, "runs": [], "checks": []}
     errors = []
     try:
-        parsed = urlsplit(args.url)
-        if parsed.scheme not in ("http", "https") or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
-            raise ValueError("외부 네트워크 전송 금지: 로컬 서버 주소만 허용")
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch()
-            try:
-                page = browser.new_page(service_workers="block")
-                # 외부 폰트·API 등도 전송 전에 차단한다.
-                def local_only(route):
-                    url = urlsplit(route.request.url)
-                    if url.hostname in ("127.0.0.1", "localhost", "::1") or url.scheme in ("data", "blob"):
-                        route.continue_()
-                    elif url.hostname == "fonts.googleapis.com" and route.request.resource_type == "stylesheet":
-                        # 외부 요청 없이 빈 스타일시트를 제공해 시스템 폰트로 계산한다.
-                        route.fulfill(status=200, content_type="text/css", body="")
-                    else:
-                        route.abort()
-                page.route("**/*", local_only)
-                page.on("pageerror", lambda e: errors.append(f"페이지 오류: {e}"))
-                page.on("console", lambda m: errors.append(f"콘솔 {m.type}: {m.text}")
-                        if m.type in ("error", "warning") else None)
-                page.goto(args.url.split("#")[0] + "#home")
-                page.wait_for_function("!!(window.KCP && KCP.leagueCore && KCP.buildGame && KCP.econ)")
-                page.evaluate(load_auto())
-                out = page.evaluate(JS, {"months": months, "rotations": rotations})
-            finally:
-                browser.close()
+        if args.node:
+            root = Path(__file__).resolve().parents[2]
+            runner = r"""
+const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+const arg = JSON.parse(fs.readFileSync(0, 'utf8'));
+const ctx = vm.createContext({console, document:{documentElement:{}}, KCP:{route(){},on(){},esc:x=>x}});
+ctx.window=ctx;
+vm.runInContext('Math.random=()=>{throw new Error("unseeded random");}',ctx);
+for (const f of ['build-maps','tech-data','build','econ-data','econ','league-data','league-core','league-ai'])
+  vm.runInContext(fs.readFileSync(path.join(arg.root,'ui',f+'.js'),'utf8'),ctx,{filename:f});
+vm.runInContext(arg.auto,ctx);
+const run = vm.runInContext(arg.js,ctx);
+process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotations})));
+"""
+            result = subprocess.run(["node", "-e", runner], input=json.dumps({"root": str(root), "js": JS,
+                "months": months, "rotations": rotations, "auto": load_auto()}), text=True, capture_output=True, check=True)
+            out = json.loads(result.stdout)
+        else:
+            out = browser_run(args.url, months, rotations, errors)
     except Exception as exc:
         errors.append(f"실행 예외: {exc}")
     out["checks"].extend([[False, message] for message in errors])
-    out["url"] = args.url
+    out["url"] = "node (no network)" if args.node else args.url
     out["strategySummary"] = strategy_summary(out)
+    if rotations == len(out["strategies"]):
+        summary = out["strategySummary"]
+        out["checks"].append([len(summary["completeCities"]) == len(out["ids"]), "D61 모든 도시 전략 비교"])
+        for strategy, wins in summary["firstCounts"].items():
+            out["checks"].append([wins < len(out["ids"]), f"D61 {strategy} 도시별 1위 {wins}/{len(out['ids'])}: 독식 없음"])
     result_dir = Path(__file__).resolve().parents[1] / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
     report = markdown(out)
@@ -658,6 +671,38 @@ def main():
     failed = sum(not passed for passed, _ in out["checks"])
     print(f"checks {len(out['checks'])} fail {failed}")
     return 1 if failed else 0
+
+
+def browser_run(url, months, rotations, errors):
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+        raise ValueError("외부 네트워크 전송 금지: 로컬 서버 주소만 허용")
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page(service_workers="block")
+            # 외부 폰트·API 등도 전송 전에 차단한다.
+            def local_only(route):
+                url = urlsplit(route.request.url)
+                if url.hostname in ("127.0.0.1", "localhost", "::1") or url.scheme in ("data", "blob"):
+                    route.continue_()
+                elif url.hostname == "fonts.googleapis.com" and route.request.resource_type == "stylesheet":
+                    # 외부 요청 없이 빈 스타일시트를 제공해 시스템 폰트로 계산한다.
+                    route.fulfill(status=200, content_type="text/css", body="")
+                else:
+                    route.abort()
+            page.route("**/*", local_only)
+            page.on("pageerror", lambda e: errors.append(f"페이지 오류: {e}"))
+            page.on("console", lambda m: errors.append(f"콘솔 {m.type}: {m.text}")
+                    if m.type in ("error", "warning") else None)
+            page.goto(url.split("#")[0] + "#home")
+            page.wait_for_function("!!(window.KCP && KCP.leagueCore && KCP.buildGame && KCP.econ)")
+            page.evaluate(load_auto())
+            out = page.evaluate(JS, {"months": months, "rotations": rotations})
+        finally:
+            browser.close()
+    return out
 
 
 if __name__ == "__main__":
