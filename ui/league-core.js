@@ -60,12 +60,16 @@
     const tw = id => (teamDef(R, id).real || { twh: 1 }).twh, share = V.ids.reduce((a, id) => a + tw(id), 0) / ALL(R).reduce((a, id) => a + tw(id), 0);
     const goals = { unsPct: R.goals.unsPct, co2: Math.round(R.goals.co2 * share / 10) * 10 };
     const S = { v: 2, room, region: R.id, created: now || 0, rev: 1, round: 0, phase: "lobby", ends: null, active: V.ids, goals, teams, ties: [], results: [], events: [], log: [] };
+    S.seedMode = opt?.seedMode === "room" ? "room" : "fixed";
+    S.salt = S.seedMode === "room" ? hashStr(String(room)) : 0;
+    // 명시한 모드는 모든 난수를 같은 판 소금으로 묶는다. 옛 호출·저장본의 씨앗은 보존한다.
+    if (["room", "fixed"].includes(opt?.seedMode)) S.seedKey = String(S.salt);
     if (opt && [12, 24, 36].includes(opt.turns)) {
       S.rounds = monthRounds(opt.turns, opt.year || 2027, 1);
       // 경제 층(ui/econ.js): 주민·산업·현금·지지율. 시작 현금 = 도시 지도 예산.
       if (KCP.econ && KCP.ECON_DATA) {
         const cash = {}; V.ids.forEach(id => { cash[id] = baseBudget(R, id); });
-        S.econ = KCP.econ.initCities(V.ids, KCP.ECON_DATA, { seed: room, months: opt.turns, cash });
+        S.econ = KCP.econ.initCities(V.ids, KCP.ECON_DATA, { seed: S.seedKey ?? room, months: opt.turns, cash });
         S.econRep = null; S.econCal = false; S.grid = {};
         if (KCP.buildGame) { calibrateStart(S, R, KCP.buildGame); refreshGrid(S, KCP.buildGame); }
       }
@@ -352,7 +356,7 @@
     (S.events || []).filter(ev => ev.round === S.round && typeof ev.x === "number").forEach(ev => {
       const E = eventDef(R, ev.id), fc = (E && E.fc) || 0;
       if (!fc) return;
-      const u = (hashStr(S.room + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc / 2) * (u - 0.5);
+      const u = (hashStr((S.seedKey ?? S.room) + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc / 2) * (u - 0.5);
       out[ev.id] = [r3(Math.max(1 - fc, c - fc / 2)), r3(Math.min(1 + fc, c + fc / 2))];
     });
     return out;
@@ -373,7 +377,7 @@
     const report = S.econRep || null;
     return { year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
   }
-  // 공개 상태: 자리 토큰만 감춘다(누가 자리에 있는지는 보인다).
+  // 공개 상태는 허용한 필드만 내보낸다. 키·서명·내부 자리 식별자·순번은 제외한다.
   function publicView(S, now) {
     const teams = {};
     Object.keys(S.teams).forEach(id => {
@@ -382,19 +386,25 @@
       teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
         entries: S.grid[id].entries.map(({ key, allocatedMW }) => ({ key, allocatedMW }))
-      } : null } : {}), left, seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, crit: T.crit || null, econPol: T.econPol || null, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, research: researchView(S, id), fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };
+      } : null } : {}), left, seatVersion: T.seatVersion || 0, seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, crit: T.crit || null, econPol: T.econPol || null, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, research: researchView(S, id), fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };
     });
     // 사건의 실제 크기(x)는 그 라운드 운영이 끝난 뒤에 공개한다 — 계획 때는 예보 범위만.
     const shown = ev => ev.round < S.round || S.phase === "review" || S.phase === "end";
     const events = (S.events || []).map(ev => shown(ev) ? ev : { id: ev.id, round: ev.round });
-    // 결과의 경제 보고서는 마지막 것만 싣는다(달 턴이 길어져도 상태가 커지지 않게).
-    const results = S.results.map((x, i) => (x.econ && i < S.results.length - 1 ? Object.assign({}, x, { econ: null }) : x));
-    return { ...(S.econ ? { grid: Object.fromEntries(activeOf(S).map(id => [id, gridView(S.grid && S.grid[id])])) } : {}), v: S.v, room: S.room, region: S.region, rounds: S.rounds || null, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results, events, econ: econView(S), log: S.log.slice(-12) };
+    // 화면은 최근 두 달을 비교한다. 그 이전에는 끝 성찰(누적 정전·도움)과 로그용 요약만 필요하다.
+    // 진행자의 S.results와 혼자 하기 저장에는 모든 결과를 그대로 보관한다.
+    const results = S.results.map((x, i) => i < S.results.length - 2 ? {
+      round: x.round, month: x.month, year: x.year, season: x.season, days: x.days, region: x.region,
+      team: Object.fromEntries(Object.entries(x.team).map(([id, t]) => [id, { outH: t.outH, imp: t.imp, unsPct: t.unsPct }])), econ: null
+    } : (x.econ && i < S.results.length - 1 ? { ...x, econ: null } : x));
+    return { ...(S.econ ? { grid: Object.fromEntries(activeOf(S).map(id => [id, gridView(S.grid && S.grid[id])])) } : {}), v: S.v, sid: S.sid, room: S.room, region: S.region, rounds: S.rounds || null, rev: S.rev, round: S.round, phase: S.phase, ends: S.ends, now, active: activeOf(S), goals: goalsOf(S), teams, ties: S.ties, results, events, econ: econView(S), log: S.log.slice(-12) };
   }
 
   const canPlan = S => S.phase === "lobby" || S.phase === "plan";
   const err = e => ({ ok: false, err: e });
 
+  // 내부 요청만 받는다. 네트워크 요청은 leagueNet.receiver에서 서명을 검증한 뒤 들어온다.
+  // token은 검증된 공개 키 지문(혼자 하기·컴퓨터 도시는 내부 자리 식별자)이다.
   // 팀 요청 하나를 반영한다. 반환: {ok, err?, quiet?}  quiet = 공개 상태가 안 바뀜(접속 표시만)
   function reduce(S, m, now, bg) {
     const R = regionOf(S.region);
@@ -404,6 +414,7 @@
       if (T.token && T.token !== m.token) return err("taken");
       const fresh = !T.token;
       T.token = m.token; T.online = now;
+      if (m.publicKey) T.publicKey = m.publicKey;
       if (fresh) { log(S, `${teamDef(R, m.team).name} 팀 입장`, now); S.rev++; }
       return { ok: true, quiet: !fresh };
     }
@@ -606,7 +617,11 @@
   // 진행자만 하는 일
   function host(S, op, now, arg) {
     const R = regionOf(S.region);
-    if (op === "kick" && isTeam(R, arg, S)) { S.teams[arg].token = null; S.teams[arg].ready = false; log(S, `${teamDef(R, arg).name} 자리 비움`, now); S.rev++; return true; }
+    if (op === "kick" && isTeam(R, arg, S)) {
+      const T = S.teams[arg];
+      if (T.token) { T.retired ||= {}; T.retired[T.token] = Math.max(T.retired[T.token] || 0, T.lastN || 0); }
+      delete T.receipts;
+      S.teams[arg].token = null; delete S.teams[arg].publicKey; delete S.teams[arg].lastN; S.teams[arg].seatVersion = (S.teams[arg].seatVersion || 0) + 1; S.teams[arg].ready = false; log(S, `${teamDef(R, arg).name} 자리 비움`, now); S.rev++; return true; }
     if (op === "extend" && S.ends) { S.ends += 60000; S.rev++; return true; }
     if (op === "next") {
       if (S.phase === "lobby" || S.phase === "review") {
@@ -665,7 +680,7 @@
   function drawEvents(S, R) {
     const rd = roundsOf(S)[S.round - 1], act = activeOf(S);
     const pool = (R.events || []).filter(E => (!S.rounds || !(S.events || []).some(ev => ev.round === S.round - 1 && ev.id === E.id)) && (E.seasons || []).includes(rd.season) && act.some(id => scopeHits(R, E, id)) && eventValid(S, R, E));
-    const rnd = rng(hashStr(S.room + ":" + S.round)), out = [];
+    const rnd = rng(hashStr((S.seedKey ?? S.room) + ":" + S.round)), out = [];
     const pick = () => { const list = pool.filter(E => !out.includes(E)), w = list.reduce((a, E) => a + (E.weight || 1), 0); let u = rnd() * w; for (const E of list) { u -= E.weight || 1; if (u <= 0) return E; } return list[list.length - 1]; };
     if (S.rounds) {
       if (pool.length && rnd() < KCP.ECON_DATA.params.monthEventP.v) out.push(pick());
@@ -957,7 +972,7 @@
   function runRound(S, bg) {
     const R = regionOf(S.region), rd = roundsOf(S)[S.round - 1];
     if (S.econ) refreshGrid(S, bg, true);
-    const rnd = { season: rd.season, days: rd.days, seed: 7000 + S.round * 13 };
+    const rnd = { season: rd.season, days: rd.days, seed: (7000 + S.round * 13 + (S.salt || 0)) >>> 0 };
     const sims = {}, price = {};
     const act = R.teams.filter(t => Object.hasOwn(S.teams, t.id));
     act.forEach(t => {
@@ -973,7 +988,7 @@
     let built = S.ties.filter(T => T.st === "built").map(T => effectiveTie(S, T, TM.mul));
     if (TM.down.length && built.length) {
       const named = TM.down.filter(x => x !== "*");
-      const victim = named.find(x => built.some(T => T.id === x || T.id === x.split("~").reverse().join("~"))) || (TM.down.includes("*") ? built[hashStr(S.room + S.round) % built.length].id : null);
+      const victim = named.find(x => built.some(T => T.id === x || T.id === x.split("~").reverse().join("~"))) || (TM.down.includes("*") ? built[hashStr((S.seedKey ?? S.room) + S.round) % built.length].id : null);
       if (victim) {
         const reverse = victim.split("~").reverse().join("~");
         const causes = (S.events || []).filter(e => e.round === S.round).filter(ev => {

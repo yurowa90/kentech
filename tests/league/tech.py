@@ -183,7 +183,7 @@ def baseline_check(checks, ctx, current, pages):
     return True
 
 
-SEED_UI = r"""kind => {
+SEED_UI = r"""async kind => {
   const H = KCPTechChecks, {K, C, R} = H.context(), {S, ids} = H.fixture({staff:true});
   const [team, other] = ids;
   if (kind === 'adopted') S.teams[team].research = H.research(
@@ -201,12 +201,19 @@ SEED_UI = r"""kind => {
     const step = RS.roundSteps * Math.min(2*RS.labStaff + RS.uniStaff, 2*RS.labSeats);
     S.teams[team].research.prog.grid = Math.max(0, H.number(card.need)-step);
   }
-  const net = {kind:'local'}, room = S.room;
+  const N = K.leagueNet, identity = await N.createIdentity(), hostIdentity = await N.createIdentity();
+  S.seedKey ??= S.room;
+  const binding = await N.hostBinding(hostIdentity.publicKey), room = S.room = binding.room;
+  S.sid = N.sessionId();
+  S.teams[team].publicKey = identity.publicKey;
+  S.teams[team].token = await N.fingerprint(identity.publicKey);
+  S.teams[team].lastN = 0;
+  const net = {kind:'local'};
   // 날짜 기반 타이머를 검사 fixture의 가상 시각에서 분리한다.
   S.ends = Date.now() + 600000;
   localStorage.setItem('kcp-league-net-v1', JSON.stringify(net));
-  localStorage.setItem('kcp-league-host-v1', JSON.stringify({room, net, state:S}));
-  return {team, other, room, net, token:H.token(team),
+  localStorage.setItem('kcp-league-host-v1', JSON.stringify({room, net, state:S, identity:hostIdentity, fingerprint:binding.fingerprint}));
+  return {team, other, room, net, identity, fingerprint:binding.fingerprint,
     teamName:R.teams.find(t=>t.id===team).name};
 }"""
 

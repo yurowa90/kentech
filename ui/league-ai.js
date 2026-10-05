@@ -194,7 +194,7 @@
     connected.nodes.filter(n => anchor && n.comp === anchor.comp && n.comp >= 0)
       .forEach(n => n.att.forEach(([i]) => roots.add(i)));
     const maxMW = Math.max(...viable.map(t => bg.BLD[t].mw));
-    const seed = `${S.room}:${S.round}:${id}`;
+    const seed = `${S.seedKey ?? S.room}:${S.round}:${id}`;
     const have = supply(bg, S, id, plan);
     const grid = gridFor(bg, S, R, id, plan);
     const hydroLimit = (grid ? grid.peakMW : bg.peakDemand({}, false)) * value("aiHydroMaxShare");
@@ -286,7 +286,7 @@
         const mods = S.econ ? withMap(bg, R, key, () => C.modsFor({ ...S, events: [],
           grid: { ...S.grid, [key]: grid } }, R, key)) : {};
         sims[key] = withMap(bg, R, key, () => C.simTeam(bg, R, key, p,
-          { ...rd, seed: KCP.econ.hashStr(`${S.room}:${S.round}:trade`) },
+          { ...rd, seed: KCP.econ.hashStr(`${S.seedKey ?? S.room}:${S.round}:trade`) },
           Math.max(C.budget(S, key), bg.capex(p)), mods));
         prices[key] = S.teams[key].price;
       }
