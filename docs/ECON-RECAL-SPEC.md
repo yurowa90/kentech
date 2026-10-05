@@ -1,0 +1,369 @@
+# 경제 층 근거 재보정 구현 명세(2026-10-06)
+
+[ECON-REFERENCES.md](ECON-REFERENCES.md)(이하 REF)의 근거를 엔진에 옮기는 계약이다. 엔진 담당은 이 문서만 보고 구현한다. 근거·계산 과정은 REF의 해당 절에 있고, 표의 '근거' 열은 REF 절 번호다. 이 문서가 [ECON-BALANCE](ECON-BALANCE.md)의 수치와 어긋나면 이 문서를 따르되, ECON-BALANCE의 목표(B1·B2·B3·B9·B16 등)는 §7의 방식으로 유지한다.
+
+## 0. 범위와 순서
+
+**원칙.** 값은 근거를 우선한다. 기존 검사가 옛 값을 단언해서 깨지는 경우는 검사를 고친다. 불변 조건(총량 보존·현금 항등식·결정성·유한값·범위)은 반드시 지킨다. 밸런스(한 전략이 6도시를 독식하지 않음)는 G 손잡이로만 맞춘다. 근거 값을 밸런스 때문에 되돌려야 하면 되돌리지 말고 §8 충돌 목록에 적고 총괄에게 보고한다.
+
+**단계.**
+- **R1 — 값만 바꿈.** 식은 그대로, params·상수만. 각 행이 독립이며 바로 검사할 수 있다.
+- **R2 — 식 바꿈.** `ui/econ.js`·`ui/league-core.js`·`ui/build.js`의 함수. 이주·살기 좋음 묶음(§2의 F01~F05)은 함께 넣어야 검산값이 성립한다.
+- **R3 — 호스트 입력이나 자료가 더 필요함.** 연료별 발전량 전달, 도시별 자료 필드, 큰 물리 변경.
+- **결정 필요(§9).** 근거는 있으나 게임 규칙의 의미가 바뀌어 새 D-번호가 필요한 것. 기본 구현에 넣지 않는다.
+
+**순서.** R1 → 검사 → R2 이주 묶음 → 검사 → R2 나머지 → 검사 → R3. 단계마다 §10의 명령을 돌리고, R2·R3 끝에 전략 봇 36달을 돌린다.
+
+## 1. 바꿀 계수
+
+### 1.1 `ui/econ-data.js` params — 값·등급을 바꾸는 키
+
+| 키 | 이전 | 새 값 | 등급 | 근거 | 단계 |
+|---|---|---|---|---|---|
+| betaPopReal | 0.02 (M) | 0.12, eduSpeed를 곱하지 않음 | M | REF 2.3 | R2(F01) |
+| eduSpeed | 4.8 (G), β에 곱함 | 4.4, 주민·산업 κ에만 곱함 | G | 2.4 | R2(F01) |
+| betaIndReal | 0.02 (G) | 0.08, eduSpeed를 곱하지 않음 | M | 2.7 | R2(F01) |
+| startMix | 0.9 | 1 | P | 2.5 | R1 |
+| anchor | 0.9 | 1 | P | 2.6 | R1 |
+| gpYear | 0.01 (M) | 0.01 (note만) | M | 2.9 | R1 |
+| giYear | 0.012 (G) | 0.012 (note만) | M | 2.10 | R1 |
+| wL | {rel .26, price .08, air .12, jobs .22, svc .10, tax .10, crowd .12} | {rel .26, price .08, air .04, jobs .30, svc .09, tax .04, crowd .19} | M | 3.2 | R2(F02와 함께) |
+| serviceCurve | [−30, −12, 0, 10, 16] | [−27, −20, 0, 10, 14] | M | 3.8 | R1 |
+| taxPoints | 10 (G) | 10 (note: L 가중 0.04와 짝, A는 β_ind 0.08과 짝) | M | 3.10, 4.6 | R1 |
+| unsZeroA | 3 (G) | 3 (note: u₀ = 0.6 × 요금/VoLL = 1.8~4.0%) | M | 4.1 | R1 |
+| priceWeightBase | 0.5 | 0.1 | M | 4.3 | R2(F07과 함께) |
+| sectorRe100 | {semi .5, display .4, auto .3, bio .2, chem .15, steel .15, other .1} | {semi .29, display .29, auto .29, chem .17, steel .17, bio .17, other .10} | G | 4.4 | R1 |
+| reWeightBase | 0.3 | 0.1 | G | 4.4 | R1 |
+| seekRate | 0.05 (G) | 0.05 (note 근거 식) | M | 4.10 | R1 |
+| normalCo2 | 0.4 | 0.4567 | O | 9.7 | R1 |
+| co2IntRef | 0.45 | 0.4567 | O | 9.7 | R1 |
+| co2IntDef | 0.45 | 0.4567 | O | 9.7 | R1 |
+| normalCost | 0.012 | 0.008 | M | 7.11 | R1 |
+| outRel | 0.006 (M) | 0.006 (note 출처 교체) | M | 5.1 | R1 |
+| indTaxK | 3 | 1.7 | M | 5.3 | R1 |
+| subRevenueRate | 0.8 (O\*) | 0.8 | O | 6.5 | R1 |
+| taxStep | 0.4 | 0.25 | O | 6.4 | R1 |
+| svcCost | 3.3e-5 | 3.0e-5(주민 몫, 노령 몫은 새 키) | M | 6.11 | R2(F12) |
+| svcStep | 0.5 | 0.25 | M | 6.11 | R1 |
+| fsrRef | 0.6 | 0.486 | G(값은 O) | 6.7 | R1 |
+| debtRate | 0.003 | 0.0024 | M | 6.13 | R1 |
+| debtCapRatio | 0.5 | 0.88 | M | 6.12 | R1 |
+| fxExport | 0.1 (M) | 0.1 (note 출처 교체) | M | 7.12 | R1 |
+| carbonWeight | 0.3 | 0(실제 CBAM). 가상 사건 eu_indirect 때만 0.3 | O | 7.15 | R2(F16) |
+| curtailKnee | 0.72 | 0.64 | M | 8.13 | R1 |
+| curtailSlope | 1.7 | 1.3 | M | 8.13 | R1 |
+| hostCapMul | 0.4 (G) | 0.4 (note: 국가 계통 최저/최고 비율) | M | 8.11 | R1 |
+| hostEssMul | 1 (G) | 1 (note: 4시간형 흡수 물리) | M | 8.11 | R1 |
+| essCap | 0.9 (O\*) | 0.9 (note 정정) | O\* | 8.8 | R1 |
+| groupW.worker | {rel .35, jobs .10, price .05, tax .25, svc .20, crowd .05} | {rel .35, jobs .25, price .05, tax .15, svc .15, crowd .05} | G | 11.3 | R1 |
+| groupW.youth | {rel .30, jobs .15, crowd .10, svc .25, tax .15, air .05} | {rel .30, jobs .25, crowd .10, svc .15, tax .15, air .05} | G | 11.3 | R1 |
+| approvalWindow | 12 (G) | 12 (note) | P | 11.7 | R1 |
+| reviewEvery | 12 (G) | 12 (note: 임기 4년 × 1/4) | O | 11.8 | R1 |
+| wScore | {pop .20, ind .20, fin .10, co2 .15, appr .15, rel .20} | 각 1/6 | G | 13.1 | R1 |
+
+### 1.2 `ui/econ-data.js` params — 새 키
+
+| 새 키 | 값 | 등급 | 근거 | 대체하는 키 | 단계 |
+|---|---|---|---|---|---|
+| kappaPopReal | 0.009/달 | M | 2.2 | kappaPop(삭제) | R2(F01) |
+| kappaIndReal | 0.005/달 | M | 2.8 | kappaInd(삭제) | R2(F01) |
+| jobsJ | 3(점/1%) | M | 3.7 | jobsSlope(삭제) | R2(F02) |
+| crowdK | 3.5(점/1%) | G | 3.11 | crowdCapMul(삭제, 주민 혼잡만) | R2(F03) |
+| hospPenHours | 8(시간) | G | 5.6 | — | R2(F08) |
+| priceSteelMul | 4 | M | 4.3 | — | R2(F07) |
+| taxGain | 8(점/단계) | G | 11.4 | taxCurve(삭제) | R2(F09) |
+| lossAversion | 1.955 | P | 3.8, 11.4 | — | R2(F09) |
+| taxYardstick | 0.5 | G | 11.4 | — | R2(F09) |
+| approvalMemoryReal | 0.038/달 | P | 11.6 | — | R2(F10) |
+| eduMemory | 4 | G | 11.6 | — | R2(F10) |
+| svcCostSenior | 2.0e-5 억/노령인구·월 | M | 6.11 | — | R2(F12) |
+| fiscalTargetRev | 0.5(× 시작 연 세입) | G | 6.10 | fiscalTarget(삭제) | R2(F13) |
+| debtWarnRatio | 0.55 | M | 6.12 | — | R2(F14) |
+| indTaxLag | 12(달) | O(구조) | 5.3 | — | R2(F11) |
+| cbamEuShare | 0.154 | M | 7.13 | cbamRate(삭제) | R2(F16) |
+| cbamDrop | 0.046 | P | 7.13 | — | R2(F16) |
+| cbamPhase | {2026: .025, 2027: .05, 2028: .10, 2029: .225, 2030: .485, 2031: .61, 2032: .735, 2033: .86, 2034: 1} | O | 7.13 | — | R2(F16) |
+| eduCbam | 5 | G | 7.13 | — | R2(F16) |
+| scoreUnsZero | 16 | G | 5.10 | 점수의 unsZeroL 재사용 | R2(F18) |
+| scoreCo2Worst | 0.82 t/MWh | M | 13.5 | scoreCo2Ref(삭제) | R2(F19) |
+| scoreCo2Best | 0.274 t/MWh(= 0.4567 × 0.6) | M | 13.5 | — | R2(F19) |
+| coopCo2Cut | 0.40(2030, 2018 대비) | O | 13.6 | coopCo2Goal(삭제) | R2(F20) |
+| coopEase | 1.0으로 시작(봇으로 정함) | G | 13.6 | — | R2(F20) |
+| hazardFreq | 0.1 | G | 13.7 | — | R2(F21) |
+| connPerMonthReal | 0.00375 | M | 8.12 | connPerMonth(삭제, 곱으로 계산) | R2(F22) |
+| eduConn | 27 | G | 8.12 | — | R2(F22) |
+| curtailLossReal | 0.018 | M | 8.14 | curtailLoss(삭제, 곱으로 계산) | R2(F22) |
+| eduCurtail | 3.3 | G | 8.14 | — | R2(F22) |
+| aiVollMul | 5 | M | 5.8 | aiTieValue(삭제, aiVollMul × normalCost) | R2(F23) |
+| budgetToRevenue | 2.2(실제 예산 ÷ (게임 연 세입 × moneyScale)) | M | 6.12 | F14 식의 2.2 | R2(F14) |
+| moneyScale | 28 | M | 6.1 | — | R1(정보용, 화면·환산) |
+| airBase | 80 | G | 9.10 | airDefault(삭제) | R3(H01) |
+| airSlope | 29(점/㎍·m⁻³) | M | 9.10 | airRef(삭제) | R3(H01) |
+| kPM | 7e-6(㎍·m⁻³/게임 MWh·월) | M | 9.10 | — | R3(H01) |
+| pmFuelW | {coal 1, diesel 0.8, biomass 0.8, lng 0.05} | M | 9.10 | — | R3(H01) |
+| airSpill | 0.6 | M | 9.11 | — | R3(H01) |
+| eduAir | 4 | G | 9.10 | — | R3(H01) |
+
+삭제하는 키(15개): kappaPop, kappaInd, jobsSlope, taxCurve, crowdCapMul, airRef, airDefault, cbamRate, fiscalTarget, scoreCo2Ref, sat0, coopCo2Goal, connPerMonth, curtailLoss, aiTieValue. 산업 용지가 쓰는 crowdKnee·crowdBase·crowdSlope와 landCapMul(도시별 값이 없을 때의 기본값)은 남긴다. 삭제한 키를 읽는 검사는 새 키나 곱으로 고친다.
+
+### 1.3 다른 파일의 상수·자료
+
+| 파일·위치 | 이전 | 새 값 | 등급 | 근거 | 단계 |
+|---|---|---|---|---|---|
+| `ui/build.js` dispOf coal fuel | 0.006 | 0.0045 | M | 7.1 | R1 |
+| `ui/build.js` dispOf import co2 | 0.46 | 0.4567 | O | 9.4 | R1 |
+| `ui/build.js` dispOf biomass co2 | 0.1 | 0, 바이오 CO₂는 정보 항목으로 따로 집계·표시 | O | 9.5 | R2(F17) |
+| `ui/build.js` M.pr | 0.8 | 0.92(이름 pvYield) | M | 8.1 | R1 |
+| `ui/build.js` M.batEff | 0.95 | 0.922(√0.85) | P | 8.6 | R1 |
+| `ui/build.js` TECHS.bms 효율 | 0.955 | 0.933 | G | 8.6 | R1 |
+| `ui/league-core.js` TIE_LOSS | 0.02 | 0.01 | G | 8.10 | R1 |
+| `ui/league-core.js` PRICE | {min .005, max .05, def .015} | {min .004, max .025, def .009} | M | 7.11 | R1 |
+| `ui/league-core.js` modsFor fuelMul 탄력 | coal √, diesel 1 | coal·diesel 모두 ^0.6 | M | 7.3 | R1 |
+| `ui/league-core.js` 예측 기술 사건 예보 범위 | ½ | 0.7 | P | 12.7 | R1 |
+| `ui/league-data.js` coldwave_heating demandMul | 1.10 | 1.15 | M | 8.17 | R1 |
+| `ui/league-data.js` light_load_curtailment 문구 | '약 30회, 호남·제주 주 대상' | '봄철 경부하기 93일 중 30일(제주 제외 비중앙 태양광), 태양광 밀집 지역일수록 잦음' | — | 8.15 | R1 |
+| `ui/league-data.js` regional_tariff | budgetAdd +10, 등급 P, 법무법인 뉴스레터 출처 | §2 F24 효과, 등급 O\*, 뉴스레터 출처 삭제·[L09]·[X14] | O\* | 7.17 | R2(F24) |
+| `ui/econ-data.js` intl.events ship_red | fx {ship −0.3, lng 0.1} | {ship −0.3} | M | 7.9 | R1 |
+| `ui/econ-data.js` intl.schedule | [{t: 12, id: cbam}] | [{t: 0, id: cbam}] | O | 7.14 | R2(F16과 함께) |
+| `ui/econ-data.js` intl.events cbam text | '철강 수출 도시는 쓰는 전력의 탄소 배출이 많을수록…' | '철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)' | — | 7.14 | R1 |
+| `ui/econ-data.js` intl.theta | 0.15(하나) | {lng 0.03, fx 0.015, ship 0.15, export 0.05} | M(ship G) | 7.5–7.7 | R2(F15) |
+| `ui/econ-data.js` intl.sigma | {lng .05, fx .02, ship .03, export .04} | {lng .07, fx .019, ship .012, export .025}(표준화 잡음 기준) | M(ship·export G) | 7.5–7.7 | R2(F15) |
+| `ui/econ-data.js` start.* | — | natShare(화성·평택·안성 0, 아산·천안 0.45, 당진 0.65), landCapMul(충남 1.3, 화성·평택 1.15, 안성 1.1), univ0·lab0(실제 대학·연구소 수, 기존 uni·lab에서 이름 변경) | O·G·O\* | 4.7, 4.9, 4.8 | R2 |
+| `ui/league-data.js` 지역 | scale 문자열('게임 1 MW ≈ 실제 약 230 MW')만 | 숫자 필드 mwScale 230 추가 | G(지도 설계) | 5.9, 6.14 | R3(H03·H04) |
+| `ui/tech-data.js` tandemOutput | 1.15 | 1.2 | P | 12.2 | R1 |
+| `ui/tech-data.js` tandemCost | 1.15 | 1.2 | G | 12.2 | R1 |
+| `ui/tech-data.js` h2Cost | 40 | 28 | M | 12.4 | R1 |
+| `ui/tech-data.js` ccuOutput | 0.85 | 0.79 | M | 12.5 | R1 |
+| `ui/tech-data.js` sicOutput | 1.015 (G) | 1.015(note: 현실 1.01 × 배속 1.5) | P | 12.3 | R1 |
+| `ui/tech-data.js` smrCost·smrTurns·smrFuel | 150·6·0.002 (G) | 값 유지, note·등급(M·P·M) | M·P·M | 12.6 | R1 |
+| `ui/tech-data.js` roundSteps | 4 | 4.35 | M | 12.7 | R2(정수 가정 검사 확인) |
+
+### 1.4 params 등급 집계(구현 뒤 예상)
+
+| 자료 | 키 수 | O | O\* | P | M | G |
+|---|---|---|---|---|---|---|
+| `econ-data.js` params 지금 | 145 | 0 | 2 | 0 | 4 | 139(96%) |
+| `econ-data.js` params 재보정 뒤 | 168 | 10 | 1 | 6 | 40 | 111(66%) |
+| `tech-data.js` params 지금 | 46 | 0 | 0 | 1 | 1 | 44 |
+| `tech-data.js` params 재보정 뒤 | 46 | 0 | 0 | 4 | 6 | 36 |
+
+남는 G는 컴퓨터 도시 성향(ai\*), 교육용 배속(edu\*), 표시 문턱, 카드·연구 체계 같은 설계 선택이 대부분이다(REF §16). 항목 기준 집계는 REF §14.
+
+## 2. 바꿀 식
+
+이주·살기 좋음 묶음 F01~F05는 함께 넣는다. 나머지는 독립이다.
+
+| ID | 함수(파일) | 이전 | 새 꼴 | 근거 |
+|---|---|---|---|---|
+| F01 | `monthStep()` 이동 단계(econ.js) | `move(E,"pop",…, betaPopReal*eduSpeed, kappaPop, …)`, 산업도 같은 꼴 | `move(E,"pop",…, betaPopReal, kappaPopReal*eduSpeed, …)`, 산업은 `betaIndReal`, `kappaIndReal*eduSpeed`. publicView의 배속 표시는 새 정의(시간) | REF 2.2–2.4, 2.7–2.8 |
+| F02 | `livability()` jobs(econ.js) | 50 + 50·tanh(jobsSlope·(j − 1)), j = (ind/pop)/지역 평균 | clamp(50 + jobsJ·100·ln(j/j₀)), j₀ = (ind0/pop0)/(시작 지역 ind0 합/pop0 합). 시작 지역 평균은 initCities에서 E.totals로 저장. `regionCtx()`의 대체값 0.42 삭제 | 3.7 |
+| F03 | `livability()` crowd(econ.js) | crowdScore(pop/(houseCap ‖ pop0 × crowdCapMul)) | clamp(50 − crowdK·100·(pop/pop0 − popT/popT0)). popT0는 활성 도시 시작 인구 합. 산업 land는 기존 crowdScore 유지 | 3.11 |
+| F04 | 이주 이유 문구(econ.js WHY_L·GW) | crowd '집이 비좁아서', GW '집값·혼잡' | crowd '집값이 올라서', 이유 옆에 근거 등급(REF 기준) | 3.11, 3.12 |
+| F05 | 대학·연구소 자산 기준(league-core.js `econInput()`·첫 달 보정) | 보정은 자료의 시작 수, 달 입력은 지은 수만 | 달 입력 assets.uni = univ0 + 지은 대학 수, assets.lab = lab0 + 지은 연구소 수. 보정도 같은 함수로 만든 입력을 쓴다 | 3.9, 4.8 |
+| F06 | `industryAttract()` talent·svc 교육 가산 | 위 결함의 영향 | F05로 해결(식 변경 없음) | 4.8 |
+| F07 | `industryAttract()` w.price | wA.price × (priceWeightBase + steel + semi + chem) | wA.price × (priceWeightBase + priceSteelMul × steel) | 4.3 |
+| F08 | `livability()` rel·`groupTargets()` hospital | 병원 정전 > 0이면 −hospPen, 노년 −seniorHosp | −hospPen × min(1, hospH/hospPenHours), 노년 −seniorHosp × min(1, hospH/hospPenHours). hospRel 분리 계산도 같은 꼴 | 5.6 |
+| F09 | `taxSatisfaction()`(econ.js) | taxBase + taxCurve[step + 2] | Δ = step − taxYardstick × 참가 도시 평균 단계, g = −Δ(Δ ≤ 0) 또는 −lossAversion·Δ(Δ > 0), 값 = c100(taxBase + taxGain·g). 주민세(taxRes)·산업세(taxInd) 각각. 함수 인자에 지역 평균 추가 | 11.4 |
+| F10 | `monthStep()` 7단계 집단 만족 지연(econ.js) | sat += lambdaFast·(목표 − sat), 기여 분해도 lambdaFast | 목표 < sat이면 sat = 목표(λ_on = 1), 아니면 sat += λ_off·(목표 − sat), λ_off = approvalMemoryReal × eduMemory = 0.152. 기여 분해(groupContrib)도 같은 규칙으로. 부분 점수 지연(lagRate)은 그대로 | 11.6 |
+| F11 | `ownRev()` indTax·standardRevenueHistory(econ.js) | out^indTaxK(같은 달) | 도시별 out 이력(최대 indTaxLag달)을 저장하고 그 평균^indTaxK. 이력이 없으면 out 1 | 5.3 |
+| F12 | 서비스 비용(econ.js 6단계) | pop × svcCost × (1 + svcStep × 단계) | (pop × svcCost + pop × 노년 비중 × svcCostSenior) × (1 + svcStep × 단계) | 6.11 |
+| F13 | `equalizeOf()`·`setBase()` | 보통 조건 연 운영 수지 목표 = fiscalTarget × cash0 | 목표 = fiscalTargetRev × 시작 연 세입(12 × (pop0 × resTax + ind0 × indTax) + 시작 지원금) | 6.10 |
+| F14 | 지방채 한도·재정 점수(econ.js) | debtCap = debtCapRatio × revYear(매달 연환산), fin = 100 × (1 + cash/debtCap) | revYear: 첫해 = 12 × 표준세입 + 연 지원금으로 고정, 매년 1월 직전 12달 세금·지원금으로 한 번 갱신. debtCap = debtCapRatio × revYear(새 건설·유료 대응 금지), debtWarn = debtWarnRatio × revYear(뉴스). fin: d = max(0, −cash)/(budgetToRevenue × revYear), d ≤ 0.10이면 100, 0.10~0.25 직선 100→50, 0.25~0.40 직선 50→0 | 6.12, 6.13, 13.4 |
+| F15 | `intlStep()`(econ.js) | n = R() + R() − 1, rev(x, m, σ) = x + θ(m − x) + σn, θ 하나, lng 범위 [0.4, 3] | n = (R() + R() − 1) × √6, θ를 계열별로(D.theta[k]), lng 범위 [0.4, 2.5]. 씨앗·호출 순서는 유지(결정성) | 7.5–7.7 |
+| F16 | `outIdx()` cbam·`industryAttract()` w.carbon·intl 사건 | 0.02 × steel × xs × (co2Int/0.45), CBAM이면 w.carbon += 0.3 × steelX | cbam = steel × xs × cbamEuShare × cbamDrop × cbamPhase[연도] × eduCbam(연도 키가 없으면 가장 가까운 값). 실제 CBAM에서 w.carbon = wA.carbon(가중 추가 없음). 가상 사건 eu_indirect(이름 'EU, 철강 간접배출 포함 결정(가상)', sched 아님, 기본 꺼짐 또는 진행자 선택)일 때만 carbonWeight × steelX를 더하고 전력 탄소 연동을 켠다 | 7.13–7.15 |
+| F17 | 바이오매스 CO₂(build.js·league-core.js) | 0.1t/MWh를 co2에 합산 | co2에는 0, 별도 bioCo2(정보 항목)로 집계해 화면에 '바이오 CO₂(국가 총량 밖)' | 9.5 |
+| F18 | `score()` rel(econ.js) | 100 × (1 − unsS/unsZeroL) | 100 × (1 − unsS/scoreUnsZero) | 5.10 |
+| F19 | `score()` co2·`groupTargets()` co2(econ.js) | 100 × exp(−co2pc/scoreCo2Ref) | I = 소비 CO₂/공급 MWh(λslow 지연, 공급 0인 달은 직전 값 유지), 값 = clamp(100 × (scoreCo2Worst − I)/(scoreCo2Worst − scoreCo2Best)). co2pc는 화면용으로 남겨도 된다 | 13.5 |
+| F20 | 지역 CO₂ 목표(econ.js `monthStep()` region, league-core.js `goalsOf()`) | 대표 7일 3,000t × 달 일수/7(호스트는 실제 TWh 몫으로 축소) | goal = 지역 수요 MWh(demMWh 합) × normalCo2 × (1 − coopCo2Cut × min(1, (연도 − 2018)/12)) × coopEase. 2027년 계수 0.70. 호스트 goalsOf와 단독 기본값이 같은 식을 쓴다 | 13.6 |
+| F21 | 사건 추첨(league-core.js) | monthEventP로 0/1개를 정한 뒤 weight로 고름. finedust_coal_cap은 겨울 무작위, typhoon은 tieDown 선이 있는 방에서만 | 두 단계 추첨은 유지하고, 기상 사건의 weight를 '함의 빈도 = monthEventP × w_e ÷ Σw(그 계절 유효 사건) = P_real × hazardFreq'가 되게 다시 정한다: 태풍 여름 0.056·가을 0.026, 황사 봄 0.077(P_real 0.56·0.26·0.77). P_real이 없는 사건은 지금 weight 유지. finedust_coal_cap은 12·1·2·3월 확정 일정(추첨·B9 집계에서 제외). typhoon은 선이 없어도 발생하고 tieDown 효과만 선이 있을 때 | 13.7, 9.13 |
+| F22 | 접속·출력제어(league-core.js) | connPerMonth, curtailLoss 키 | connPerMonthReal × eduConn, curtailLossReal × eduCurtail. 경제 모드에서는 light_load_curtailment를 추첨하지 않는다 | 8.12, 8.14, 8.15 |
+| F23 | AI 연계선 판단(league-ai.js) | aiTieValue | aiVollMul × normalCost | 5.8 |
+| F24 | regional_tariff 사건(league-data.js·league-core.js) | 충남 3개 시 예산 +10억 | 사건 기간 충남 3개 시 산업 매력 price 계산의 원가를 × 0.92(경기 3개 시 변화 없음). 대상 도시는 자료의 도(prov) 필드로 고른다(이름 직접 쓰지 않음) | 7.17 |
+| F25 | `ownRev()` tariff·`regionCtx()`(econ.js) | 지역 평균 원가(자기 포함) | 자기 도시를 뺀 공급량 가중 평균. 다른 활성 도시가 없으면 normalCost | 7.16 |
+| F26 | 지원금 지급(econ.js `yearStart()`·`monthStep()` 1단계) | 1월 연액 일시 지급 | 1월에 연액 결정·공지, 1·4·7·10월에 1/4씩 지급. paidYear 가드는 분기별로 | 6.9 |
+| F27 | 국비 매칭(econ.js 6단계) | exp.incentive = 보조 전액 | 보조 × (1 − start.natShare) | 4.7 |
+| F28 | 산업 용지(econ.js `industryAttract()`) | ind0 × landCapMul(공통) | ind0 × (start.landCapMul ‖ landCapMul) | 4.9 |
+| F29 | `co2IntOf()`(econ.js) | co2/demMWh | co2/servedMWh(공급 0이면 co2IntDef) | 9.8 |
+| F30 | 연계선 CO₂ 귀속(league-core.js settle) | 구매자 co2In = 받은 양 × co2i | 보낸 양 × co2i(손실분도 구매자) | 9.9 |
+| F31 | 이익공유 범위(econ.js `groupTargets()`, build.js `complaints()`) | terms.share = −terms.complaint × shareRelief(모든 민원) | cpList 항목에 src(설비 종류) 추가. share = shareRelief × min(complaintCap, complaintScale × Σ 소음·경관 중 src ∈ {wind, offshore, solar}) | 10.4 |
+| F32 | 민원 수용자(build.js) | TOWNS 전체 | 주거지(village·town_s·city·city_m·city_l)와 hospital·school. farm·livestock은 소음·경관만 | 10.3 |
+| F33 | 민원 거리·크기(build.js `complaints()`) | REF 10.1 현재 | 풍력 경관 5 → 3, 태양광 경관: 인접 주거지가 city 계열이면 2, 그 밖 4, 해상풍력 경관: 해안 주거지 d ≤ 3에서 2, 디젤·바이오매스 매연: d ≤ 3 × w(d) = 1·0.6·0.3, 디젤 '동쪽 마을' 조건 삭제, 숲 훼손: 설비당 한 번 3점 | 10.1, 10.2, 10.8 |
+| F34 | 병원 정전 판정(build.js:778·league-core.js:912) | 부족 > 0.0001MW | 부족 > max(0.005, 병원 수요의 2%) | 5.7 |
+| F35 | 조력·소수력 출력(build.js `renOut0()`) | 조력 정격 × \|sin\|, 소수력 정격 × 날씨 배수 | 조력 정격 × 0.31 × \|sin\|. 소수력 정격 × min(1, 0.25 × q_m × f_w), q_m = 0.5 + 0.5 × 월 강수/연평균 강수(climate에 월 강수 표 추가), f_w = 지금 날씨 배수 ÷ 그 달 평균 배수 | 8.4, 8.5 |
+| F36 | 화면 세금 부분 점수(league-core.js groupParts) | 독자 선형식 | 엔진 report.groups 기여 분해를 그대로 읽음 | 11.5 |
+| F37 | 평가·시위 판정(econ.js 7·9단계) | approval < approval0 − approvalDrop | rel = (approval − approval0) − 활성 도시 평균(approval_j − approval0_j). 시위 시작 rel < −approvalDrop, 종료 rel ≥ −unrestOffDrop, 연말 평가 pass = rel ≥ −approvalDrop. 도시 하나뿐이면 지금 식 | 11.7 |
+| F38 | SMR 유레카·sat0(tech-data.js·league-core.js·econ.js) | 절대 지지율 ≥ 55, sat0 미사용 | approval ≥ approval0 − 5 또는 시위 없음(G). sat0 삭제(initCities는 neutralScore로 초기화 후 setBase) | 11.8 |
+| F39 | 점수 집계(econ.js `score()`) | wsum(가중 산술평균) + coop | S = exp(Σ w_k·ln max(1, x_k))(가중 합 1로 정규화). 화면 이름 '균형 점수', 식 공개 | 13.2 |
+| F40 | 성장 눈금(econ.js `score()`) | K = 500 공통 | K_pop(L), K_ind(L) 표(L = 게임 길이 12·24·36). 임시값: 12달 pop 1000·ind 3300, 24달 pop 700·ind 2000, 36달 pop 500·ind 1250. R2 묶음 뒤 bots36에서 \|g\|의 97.5 백분위 B로 K = 50/B를 다시 산출해 교체 | 13.3 |
+| F41 | HVDC·초전도 적용 범위(league-core.js `effectiveTie()`) | 양 끝 중 한 도시라도 도입하면 기존 선 전체 | hvdc 손실은 kind === 'hvdc'인 선만. scable은 결정 전까지 지금 동작 유지(§9 D2) | 12.1 |
+| F42 | 수소 혼소(league-core.js 기술 효과) | 도입하면 LNG 전체 CO₂ × 0.88 | 그 달 수소 탱크 방전량(또는 저장 잔량)이 있을 때만, 혼소 가능량만큼 적용 | 9.12 |
+| F43 | heatDamage 조건(league-core.js) | 예측 또는 VPP | VPP만 | 12.8 |
+
+## 3. 호스트 입력·자료 추가(R3)
+
+| ID | 무엇 | 위치 | 내용 | 근거 |
+|---|---|---|---|---|
+| H01 | 대기 점수 PM2.5 증분 | `econInput()` energy, econ.js `livability()`·`groupTargets()` | energy.genMWh = {coal, lng, diesel, biomass}(그 달, 생산 기준, × wk). ΔPMᵢ = kPM × Σ pmFuelW_f × genMWh_f, 인접 도시(league-data 연계선 후보 쌍의 a·b)는 airSpill × ΔPM을 더함. L의 air = clamp(airBase − airSlope × ΔPM). 집단 만족의 air = clamp(airBase − eduAir × airSlope × ΔPM). airRef·airDefault 삭제 | REF 9.10, 9.11 |
+| H02 | fossilMWh 전달 | `econInput()` | energy.fossilMWh = coal + lng + diesel(H01과 같은 값)으로 lngMarket 대리값을 없앤다 | 7.18 |
+| H03 | 지역자원시설세 | econ.js 6단계 rev, 새 항목 rev.facility | rev.facility = 0.65 × (coal 0.7 · lng 0.6 · smr 1.0원/kWh) × genMWh × mwScale × 1,000 ÷ 1e8 ÷ moneyScale. mwScale은 league-data 지역의 새 숫자 필드(230). 세율 단계 대상 아님 | 6.14 |
+| H04 | 정전 피해 추정 표시 | 도시 서랍·결과 화면 | 미공급 게임 MWh × 230 × 1,000 × [주거 몫 × 3,564 + 산업 몫 × 452~1,033]원, 범위로 표시, 현금 미반영 | 5.9 |
+| H05 | 계절 수요 | build.js `demand()` | 폭염·겨울 규칙 대신 v ×= 1 + 0.04·max(0, T − 18) + 0.012·max(0, 15 − T)(T = 월평균기온). 극값은 사건으로. 리그·혼자 하기 지도 모두. 큰 변경이므로 단독 커밋 | 8.16 |
+| H06 | 육상풍력 | build.js `renOut0()`·`weather()`, build-maps climate | 날마다 배수 = √(−(4/π)·ln(1 − u))(레일리), 허브 평균 = WS50M(월, climate에 표 추가) × 1.088 × siteF(평지·도시 0.8, 해안·언덕 1.0, 능선 1.1, G). 풍력이 실제 선택지가 되므로 단독 커밋·봇 재확인 | 8.2 |
+| H07 | 이격 조례 정책 | 정책 카드·build.js 입지 규칙 | 켜면 풍력은 주거지 d ≤ 1 건설 금지, 이익공유 카드·지붕형 면제 | 10.6 |
+| H08 | 송전선 민원·연계선 공사 | build.js `complaints()`, league-core.js 연계선 | 선이 주거지 칸을 지나면 경관 4, 인접하면 2(G). 연계선 공사 기간 = ceil(T_real ÷ 5)달, T_real 3달(G) → 1달. 공사 중 반대 사건 확률 0.15/달(G), 발생하면 완공 +2달, 주민 협의를 고르면 확률 × 0.9 | 10.7 |
+| H09 | 이익공유 비용 | build.js shareCost, `econInput()` costPerMWh | shareCost = 0.03 × normalCost × E_elig(월 MWh), opex에만 넣고 costPerMWh 계산에서 뺀다 | 10.5 |
+| H10 | 집단 비중 원자료 | econ-data start.*.groups | 청년 19~34세·농어가·사업체·임금근로자 비중을 KOSIS로 채움(지금은 G) | 11.1 |
+
+## 4. 남기는 것(바꾸지 않음)
+
+근거를 확인했지만 값이 맞아 바꾸지 않는 것: outRel 0.006, unsZeroL 16, priceFloor 0.5, priceSlopeA, fxExport 0.1, gpYear 0.01, giYear 0.012, lossPerHex(리그 0.005), 석탄 최소출력 30%, CO₂ 원단위(석탄 0.82·LNG 0.37·디젤 0.75), 디젤 연료비 0.016, 수입 단가 0.012, outageSatThreshold·Penalty, lambdaFast(부분 점수), lambdaSlow, h2Efficiency 0.35, h2Co2 0.88(F42 조건만), essCap 0.9, hostTieMul 0.5, curtailMax·curtailOffSeason, 해상풍력 표, spring_dust 0.85, finedust 석탄 0.8, coopUnsGoal 0.5. 이유는 REF 각 절.
+
+보류(근거가 보조 자료 하나뿐이거나 결정이 필요): 만족용 정전 문턱 분리(REF 5.4), 교부세 수요 구조 전면 교체(6.7), 이주 주민:종사자 비 1.96(2.12), priceSlopeA 250(4.3).
+
+## 5. 교육용 배속: 분리와 화면 표시
+
+현실 값과 배속을 한 숫자에 섞지 않는다. 배속 키는 `edu` 접두사(또는 hazardFreq·mapScale처럼 성격이 드러나는 이름)로 params에 두고, publicView(`econ.speeds`)에 아래 표를 실어 디브리핑 화면과 도시 서랍에 보인다. 문구는 '무엇을 · 몇 배 · 빠르게/드물게/크게 · 왜'.
+
+| 키 | 값 | 종류 | 화면 문구 | 근거 |
+|---|---|---|---|---|
+| eduSpeed | 4.4 | 시간 압축 | 주민·기업 이동 시간 ×4.4(게임 1달 ≈ 현실 약 4.4달) | REF 2.4 |
+| eduMemory | 4 | 시간 압축 | 지지율 회복 기억 4배속(임기 4년 → 게임 12달) | 11.6 |
+| reviewEvery | 12 | 시간 압축 | 주민 평가는 12턴마다(현실 임기 4년) | 11.8 |
+| eduAir | 4 | 크기 확대(집단 만족만) | 대기 영향 ×4(교육용, 이주에는 미적용) | 9.10 |
+| eduCbam | 5 | 크기 확대 | CBAM 효과 ×5(교육용) | 7.13 |
+| eduConn | 27 | 속도 확대 | 재생 접속 속도는 현실보다 약 27배 빠름 | 8.12 |
+| eduCurtail | 3.3 | 크기 확대 | 출력제어 손실 ×3.3(교육용) | 8.14 |
+| hazardFreq | 0.1 | 빈도 축소 | 기상 사건은 현실보다 약 10배 드물게 | 13.7 |
+| (표시만) LNG 급등 빈도 | 약 3 | 빈도 확대 | LNG 급등은 현실보다 약 3배 자주 | 7.8 |
+| (표시만) 정전 눈금 | 정전 1% = 연 87.6시간 | 크기 확대 | 한국 평균 정전은 연 0.04시간(2019) | 3.3 |
+| (표시만) 섬 지도 손실 | ×3 | 크기 확대 | 섬 연습 지도의 송전 손실은 리그의 3배 | 8.9 |
+| (표시만) SMR 공사 | ×9 | 시간 압축 | 현실 약 55개월 → 게임 6달 | 12.6 |
+| (표시만) 연구 기간 | 수십 배 | 시간 압축 | 현실 10~30년 → 게임 수 달 | 12.8 |
+| (표시만) 민원 정치 효과 | 약 50~200배 | 크기 확대 | 마을 민원이 도시 전체 집단 만족에 걸림(교육용 확대) | 10.8 |
+| (표시만) 기술 효과 | sicOutput ×1.5, scableCap ×0.1 | 크기 조정 | 현실 효과 대비 배율 | 12.3, 12.8 |
+
+화면 규칙은 D-60(실제 자료 값만 출처와 함께, 표시 없는 계수는 G)을 따른다. 배속은 'G'가 아니라 '교육용 배속'으로 별도 줄에 보인다.
+
+## 6. params note에 넣는 출처 문자열 형식
+
+`p(v, grade, note)`의 note는 아래 형식을 따르고, 선택 인자 `refs`(REF §1의 번호 배열)를 추가한다. 화면의 출처 줄은 refs를 REF §1의 기관·연도로 풀어 보인다(D-63: 공공기관·공기업·언론 이름 허용, 민간 기업명 금지).
+
+```
+p(값, 등급, "<무엇> · <근거 요지와 수치> · 계산: <식(있으면)> · 배속: <키 또는 없음> · REF <절>", ["<번호>", ...])
+```
+
+- 근거 요지에는 기관·저자와 연도, 그 출처의 수치를 그대로 적는다. 추측이나 해석은 '가정'으로 표시한다.
+- 등급이 G인 키는 '근거 없음: <이유>' 또는 '설계 선택: <설계 근거>'로 시작한다.
+- 120자 안팎. 길면 REF 절 번호로 넘긴다.
+
+예시
+
+```js
+kappaPopReal: p(0.009, M, "주민 이동 현실 속도 · 김현우·이두헌 2021 첫해 0.095, Amior–Manning DP1357 10년 0.66 · 계산: 1−e^(−12κ)=0.095→0.0083, 1−e^(−120κ)=0.66→0.0090 · 배속: eduSpeed · REF 2.2", ["P06", "P07", "P08"]),
+taxStep: p(0.25, "O", "세율 단계당 세입 변화 · 지방세법 §92②·§103의20② 표준세율의 100분의 50 범위 가감 · 계산: ±2단계 = ±50% · 배속: 없음 · REF 6.4", ["L01"]),
+crowdK: p(3.5, G, "설계 선택: 지역 성장 대비 초과 인구 1%당 집값·혼잡 −3.5점 · 방향 Saiz 2007(유입 1% → 임대료 약 1%) · 배속: 없음 · REF 3.11", ["P21", "P16"]),
+eduSpeed: p(4.4, G, "교육용 배속(시간 압축): 게임 κ 0.0396 ÷ 현실 κ 0.009 · κ에만 곱함 · REF 2.4", []),
+```
+
+`ui/tech-data.js`의 `p(v, grade, note, sources)`는 이미 네 번째 인자가 있으므로 sources에 URL 대신 REF 번호를 넣거나 둘 다 넣는다.
+
+## 7. 수용 기준
+
+### 7.1 반드시 유지하는 불변 조건
+- `node tests/league/test-econ.js` 전부 통과: 주민·종사자 총량 보존(정수), 현금 항등식 cashBefore + revTotal − expTotal = cashAfter와 다음 달 연결, 같은 씨앗 같은 결과, 모든 값 유한, 점수·부분 점수 0~100.
+- `tests/league/review/` 1-invariants, 2-extremes, 3-policy-grid, 4-drift, 5-exploits, 6-ind-jump, 7-fiscal-approval, 8-offers, 9-grid, 10-tech, 11-tech-balance, 12-next, 13-confirmed: 불변 조건 단언은 통과해야 한다. 옛 값(예: taxStep 0.4, debtCapRatio 0.5, eduSpeed 4.8)을 직접 단언하는 줄만 새 값으로 고친다.
+- `node tests/league/next.js`, `node tests/league/tech.js` 통과(같은 원칙).
+- 국제 지수 걷기는 씨앗·R() 호출 순서를 바꾸지 않는다(F15는 잡음 크기만).
+
+### 7.2 근거 목표(새 검사로 `tests/league/balance.js`에 추가)
+검산 절차는 REF §0·§2와 같다: `tests/league/review/lib.js` 근사 입력, 씨앗 3개, 첫 달 보정 뒤. '현실 모드'는 eduSpeed = 1·eduMemory = 1로 바꾼 데이터 사본.
+
+| 검사 | 방법 | 기준(현실 모드) | 기준(게임) | 근거 |
+|---|---|---|---|---|
+| 일자리 고리 | 한 도시 종사자 +1% 영구(다른 도시 비례 차감, 산업 이동 끔), 주민 로그 변화 ÷ ln 1.01 | 12달 0.07~0.13(목표 0.095, 검산 0.100) | 12달 > 현실 12달 × 2 | REF 2.3 |
+| 정전 교차 점검 | 한 도시 정전 100% 12달, 주민 몫 변화 | −1.3%~−3.9%(검산 −2.08%) | B1 −3~−8%(검산 −6.69%) | 2.3, B1 |
+| 정전 5% | 12달 | — | B1 −0.5~−2.5%(검산 −2.20%) | B1 |
+| 회복 | 정전 100% 6달 뒤 18달 정상 | — | B1 회복 ≥ 40%(검산 89%) | B1 |
+| 무변화 표류 | 모든 도시 보통 조건 36달 | 최대 몫 변화 ≤ 0.1% | ≤ 0.6%(검산 0.00%) | 2.6, B1 |
+| 세금 고리 순서 | 주민 세율 +1단계 12달 몫 변화 | \|세율 1단계\| < \|일자리 1%\| | 같음 | 3.10 |
+| 산업 세금 | 산업세 −1단계, 산업 몫 장기값(κ_ind를 0.05로 올려 수렴) | +0.15~+0.45%(검산 +0.24%) | — | 2.7, 4.6 |
+| 요금 업종 차 | 원가 −10%, 산업 몫 장기값 | 철강 비중 큰 도시 > 저집약 도시의 5배(검산 0.90% 대 0.06%) | — | 4.3 |
+| 배속 정의(B15 교체) | params | eduSpeed × kappaPopReal = 실제 move에 쓴 κ(±1e-9), β에는 eduSpeed가 곱해지지 않음 | — | 2.4 |
+| 세율 범위 | ownRev | taxRes ±2에서 resTax가 기준의 50~150% | — | 6.4 |
+| 재정 점수 문턱 | fin | 예산 환산 채무비율 0.10 → 100, 0.25 → 50, 0.40 → 0 | — | 13.4 |
+| 지원금 분기 지급 | 12달 | 1·4·7·10월에 연액의 1/4씩, 합 = 연액 | — | 6.9 |
+| 대학 자산 | '아무것도 안 함' 36달 | 대학 도시의 svc·talent 부분 점수가 시작값에서 ±1 안 | — | 3.9, 4.8 |
+| 정전 시 대기 | H01 뒤, 전면 정전 달 | air 상승 ≤ airSlope × 시작 ΔPM | — | 9.10 |
+| CBAM | 2027년 | cbam 산출 감소 > 0, 전력 탄소집약도를 바꿔도 cbam 불변 | — | 7.13 |
+
+### 7.3 기존 밸런스 목표의 처리
+
+| 목표 | 처리 |
+|---|---|
+| B1(이주 속도·회복·표류) | 유지. 위 7.2로 검산했다. balance.js B1 단언은 그대로 통과해야 한다 |
+| B2(지지율이 원인을 보이게: 정전 5%+세율 +2+서비스 −2+재생 0% 12달 탈락, 보통 조건 통과) | 유지. F10(악화 즉시)·F37(야드스틱)로 탈락은 더 쉬워진다. 보통 조건 도시 통과는 반드시 확인(다른 도시가 모두 보통이면 rel = 자기 변화 − 평균) |
+| B3(세율 −2·서비스 +2면 모든 도시 연 운영 수지 < 0) | 유지 목표. taxStep 0.25·svcStep 0.25에서 F13(fiscalTargetRev)으로 맞춘다. 깨지면 fiscalTargetRev만 조정(G). taxStep을 0.4로 되돌리지 않는다 |
+| B5(현금 비축 점수 아님) | 단언을 F14의 새 fin 식으로 바꾼다 |
+| B7·v1.3(지방채 한도 연환산) | F14로 대체. 옛 '1월 지원금 한 번만' 단언은 지운다 |
+| B9(달 사건 평균 0.4~0.6) | 계절관리제는 확정 일정이라 집계에서 뺀다. 기상 사건 빈도가 바뀌면 monthEventP를 조정해 0.4~0.6 유지 |
+| B11(공급량 기준 원가·차익) | F25(자기 제외 평균)로 Σ차익 = 총원가 × 0.02 단언은 성립하지 않는다. '도시마다 tariff = 공급량 × (남의 평균 × 1.02 − 자기 원가)' 단언으로 바꾼다 |
+| B12·B13·B14 | 유지 |
+| B15(배속 표기) | 7.2 '배속 정의'로 교체 |
+| B16(전략 봇: 한 전략이 6도시 독식 금지) | 유지. 아래 7.4 |
+| B18(접속·출력제어) | 유지. connPerMonth·curtailLoss 값은 같고 키만 곱으로 |
+
+### 7.4 전략 봇 36달
+- `tests/.venv/bin/python tests/league/bots36.py --months 36`(README 리그 절의 정확한 명령). R2 묶음 뒤와 R3 뒤 각각.
+- 기준: 6도시 각각의 1위 전략이 한 전략으로 모두 같지 않다. 정전 0% 전략의 평균 점수가 '아무것도 안 함'보다 높다(F39 기하평균에서 특히 확인). 연료 가격 위험이 커졌으므로(F15) 디젤·LNG 의존 전략의 점수 분산을 함께 보고한다.
+- 독식이 생기면 G 손잡이만 조정한다: wScore, coopEase·coopBonus, smrFuelMul, monthEventP, aiStyles, 연구 카드 need·demo, eduAir·eduCbam. 근거 키(O·P·M)는 건드리지 않고 §8에 적는다.
+- F40의 성장 눈금 K를 이 결과로 다시 산출해 넣고 봇을 한 번 더 돌린다.
+
+### 7.5 화면·문구
+- `econui.py`·`solo.py`·`ai-check.py`·rules·e2e3·econint 문제 0, 콘솔 오류 0, 가로 스크롤 0, 1280×900·390×844 × 밝음·어두움 캡처.
+- 배속 문구 '×4.8'을 단언하는 검사는 새 문구로 고친다.
+- §5 배속표가 디브리핑과 도시 서랍에 보인다. 사건 문구(CBAM·경부하 출력제어·지역 요금·계절관리제)가 REF 정정 내용과 같다.
+
+## 8. 충돌 목록(근거 반영과 기존 설계·검사)
+
+| # | 충돌 | 근거 쪽 | 기존 쪽 | 처리 |
+|---|---|---|---|---|
+| 1 | 장기 일자리 탄력 | [P07] 10년 0.66 | 모형 10년 0.36(일자리 비율 꼴의 자기 희석) | 한국 첫해 값([P06])을 우선, 미달로 남김 |
+| 2 | 요금 탄력 크기 | [P25] 철강 몫 × −0.64~−0.85 → 당진 −0.35~−0.47 | 점수 포화로 −0.09 | 미달로 남김. priceSlopeA 250이면 −0.28이나 점수 절벽 — 결정 사항 |
+| 3 | 돈 눈금 | 연료비 기준 1:41(230MW 축척) | 세입 기준 1:28 | moneyScale 28을 공식값으로 두고 에너지 원가는 현행. 두 계정을 직접 비교하는 화면 문구를 피한다. 통일은 후속 |
+| 4 | CBAM 효과 | 법정 단계 도입이면 2027년 당진 영향 ≈ 0.01% | CBAM 사건이 수업에서 보였음 | 근거대로 작게. 보이고 싶으면 가상 사건 eu_indirect(G) |
+| 5 | 바이오매스 CO₂ 0 | IPCC 인벤토리 기준 | 바이오매스가 '무료 탄소'가 됨 | 근거대로. 독식이 생기면 바이오매스 연료비·축산 칸 제약(G)으로 조정 |
+| 6 | 지방채 한도 0.88 | 재정위기 40% 문턱의 환산 | 건설 여력이 커짐 | 근거대로. 봇에서 과잉 건설이 보이면 debtWarn 뉴스·fin 감점(이미 있음)을 확인하고 보고 |
+| 7 | 세율 단계 0.25 | 법정 ±50% | B3 정책 격자 | fiscalTargetRev로 맞춤(§7.3) |
+| 8 | 국제 변동 확대 | 현실 월 변동 7%·36달 폭 0.64~1.55 | 화석 전략의 점수 분산 증가 | 근거대로, 봇 보고에 분산 추가 |
+| 9 | 석탄 연료비 인하 | EPSIS 0.54~0.59 | 석탄 보유 도시(당진) 원가 하락 | 근거대로, 봇 확인 |
+| 10 | 육상풍력 실용화(H06) | 전국 이용률 19.2% | 지금 풍력은 사실상 무용 | R3 단독 커밋, 봇 확인 |
+| 11 | 계절 수요 ±30%(H05) | EPSIS 월 비율 | 공급 계획 전반이 달라짐 | R3 단독 커밋, 정전율·봇 확인 |
+| 12 | 지지율 악화 즉시(F10) | 재해 직후 지지 하락 | 시위가 더 자주 켜질 수 있음 | 야드스틱(F37)으로 공통 충격은 상쇄. 시위 빈도를 봇 보고에 추가 |
+| 13 | 자기 제외 평균 차익(F25) | 야드스틱 | B11 단언 | B11 단언 교체 |
+| 14 | HVDC 손실 | 짧은 선에서는 HVDC가 더 손실 | 연구 카드 효과 | §9 D2 결정 전까지 값 유지, 적용 범위만 고침 |
+| 15 | 공동 보너스 | 집단 간 경쟁 없는 협력이 낫다([P108]) | D-61 공동 보너스 +2 | §9 D3 결정 |
+| 16 | eduSpeed 문서 5·코드 4.8 | — | ECON-EVIDENCE·B15 | 4.4로 재정의, ECON-EVIDENCE·ECON-BALANCE B15 문구는 총괄이 정리 |
+| 17 | 탄소중립기본법 §8① | 헌법불합치 주석(효력 미확인) | 40% 목표를 공동목표·점수 상한에 사용 | 시행령 40%를 쓰되 화면 출처에 '개정 중' 표시 |
+
+## 9. 결정이 필요한 항목(새 D-번호 후보)
+
+| 후보 | 내용 | 근거 | 기본 구현 |
+|---|---|---|---|
+| D1 | 배속 재정의(β → κ 시간 압축)와 배속표 공개 | REF 2.4, 13.8 | 이 명세대로 구현(B15 문구 교체 포함) — 총괄이 D-번호로 기록 |
+| D2 | HVDC 카드 의미(장거리·해저 전용 또는 송전량 제어), 초전도의 기존 선 자동 적용 → 선 교체 행동 | REF 12.1, 12.8 | 적용 범위만 고침(F41), 의미는 보류 |
+| D3 | 공동 보너스(D-61) → 학급 공동 판정 또는 기여 조건부 | REF 13.6 | coopBonus 2 유지, CO₂ 목표 경로만 바꿈(F20) |
+| D4 | 점수 기하평균·동일 가중 | REF 13.1, 13.2 | 구현(F39·wScore), 봇 결과로 확정 |
+| D5 | RE100 산단 → 에너지산업융복합단지(수도권 제외)로 이름·효과 맞추기 | REF 4.5 | 보류 |
+| D6 | CCU를 CCS로 바꿀지(ccuCo2 0.4 대 0.13) | REF 12.5 | 0.4 유지, r = 0.69를 화면에 표시 |
+| D7 | 교부세 수요 구조 전면 교체(법 산식) | REF 6.7 | 자료 확보 뒤 |
+
+## 10. 구현 순서와 검사 명령
+
+1. R1(§1.1 R1 행, §1.3 R1 행) → `node tests/league/test-econ.js`, `node tests/league/balance.js`, `node tests/league/next.js`, `node tests/league/tech.js`, `cd tests/league/review && for f in *.js; do [ "$f" = lib.js ] || node "$f"; done`.
+2. R2 이주 묶음 F01~F06 → 같은 node 검사 + §7.2 새 검사.
+3. R2 나머지(F07~F43, 파일별로 나눠 커밋) → node 검사, 브라우저 검사(`python3 tests/srv.py 9430 .` 띄우고 `tests/.venv/bin/python tests/league/{rules,e2e3,econint,econui,solo}.py http://127.0.0.1:9430/index.html`, `ai-check.py`).
+4. 전략 봇 36달, F40 성장 눈금 재산출, 봇 재실행.
+5. R3(H01~H10, 각각 단독 커밋) → node·브라우저·봇.
+6. 회귀 14종(`tests/run.sh`) 기준선 비교, 캡처 보고, ECON-BALANCE·HANDOFF-econ·PROGRESS 갱신(총괄).
+
+보고에는 단계마다 바뀐 키, 검사 결과(통과/실패 수), §7.2 표의 실제 값, 봇 결과표, §8에 새로 생긴 충돌을 적는다.
