@@ -190,7 +190,7 @@
     const E = V.econ, c = E.cities[L.team], rep = E.report, f = rep?.fiscal[L.team], g = rep?.groups[L.team];
     const h = c.hist, prev = E.before?.[L.team], dp = rep?.cities[L.team]?.dPop || 0, di = rep?.cities[L.team]?.dInd || 0;
     const groups = GROUP_KEYS.filter(k => Object.hasOwn(c.groups, k)), low = lowestGroup(c.groups);
-    const pol = V.teams[L.team].econPol || c.policy || {}, open = V.phase === "plan";
+    const pol = L.pendingPol || V.teams[L.team].econPol || c.policy || {}, open = V.phase === "plan";
     const every = params("reviewEvery"), remaining = every - E.t % every;
     const grid = c.grid || V.grid?.[L.team];
     const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", tariff: "전기요금 차익", trade: "전력 판매", bonus: "사건 지원금", salvage: "철거 회수" };
@@ -497,6 +497,7 @@
     if (habit) { d.interview.habits = d.interview.habits || {}; d.interview.habits[habit.dataset.habit] = habit.checked; putData(d); return true; }
     if (pol) {
       const policy = Object.fromEntries([...document.querySelectorAll("#lg-econpol [data-pol]")].map(el => [el.dataset.pol, +el.value]));
+      L.pendingPol = policy;
       n.big = true; n.policy = true; n.confirmed = false; putData(d); send("econ", policy); return true;
     }
     if (line) {
@@ -1142,6 +1143,7 @@
       if (L.app && L.app.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); const e = L.app.querySelector("#lg-err"); if (e) e.textContent = m.err === "taken" ? "다른 기기가 이미 그 팀을 맡았습니다." : "자리가 비워졌습니다. 다시 고르세요."; }
       return;
     }
+    if (m.type === "econ") { L.pendingPol = null; renderPanel(); }
     const msg = { phase: "지금 단계에서는 바꿀 수 없습니다.", built: "이미 연결된 연계선입니다.", noprop: "제안이 없습니다.", notie: "이웃이 아닙니다.", noev: "이번 라운드 우리 도시 사건이 아닙니다.", noopt: "없는 대응입니다." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자랍니다.` : "요청을 처리하지 못했습니다.");
     BG.toast(msg);
   }
@@ -1155,7 +1157,9 @@
       if (prev && prev.round !== V.round) L.pendingCrit = null;
       const pending = L.pendingCrit, crit = me?.crit;
       if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
-      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) L.awaitReady = false;
+      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) { L.pendingPol = null; L.awaitReady = false; }
+      const pendingPol = L.pendingPol, econPol = me?.econPol;
+      if (pendingPol && econPol && ["taxRes", "taxInd", "service", "incentive"].every(k => pendingPol[k] === econPol[k])) L.pendingPol = null;
       if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
       if (!L.app || !L.app.isConnected || !document.getElementById("lg-bar")) return;
       // 내 도시를 다른 기기에서 처음 여는 경우: 진행자에게 남은 계획을 가져온다.
