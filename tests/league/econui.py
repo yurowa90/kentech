@@ -359,6 +359,10 @@ def choose_crit(team, host, team_id):
 
 
 def migration_caption(host, flows):
+    details = host.locator("#lg-host-details")
+    if not details.evaluate("el => el.open"):
+        details.locator("summary").click()
+    host.wait_for_selector("#lg-mapcap")
     text = host.locator("#lg-mapcap").inner_text()
     names = host.evaluate("() => Object.fromEntries(Object.entries(KCP.ECON_DATA.start).map(([k,v]) => [k,v.name]))")
     top = sorted(flows, key=lambda flow: flow["n"], reverse=True)[:3]
@@ -370,6 +374,10 @@ def migration_caption(host, flows):
 def economic(checks, context, base, label, pages):
     host, team, fixture = setup_pair(context, base, 12, pages)
     tid, ids = fixture["team"], fixture["ids"]
+    checks.test(f"{label} 진행자 상세 지도·도시 카드 기본 접힘", lambda:
+                shown(host, "#lg-host-details > summary") and
+                not host.locator("#lg-host-details").evaluate("el => el.open") and
+                absent_or_hidden(host, "#lg-mapcap"))
     checks.test(f"{label} U1 로비 단계 정책 disabled", lambda:
                 (open_panel(team, "city"), disabled_policies(team))[1])
     advance(host, team, 1, "plan")

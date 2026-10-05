@@ -1,5 +1,6 @@
 """온라인(Supabase Realtime 규약) 연결 검사: 가짜 Phoenix 서버 + 서로 다른 브라우저 컨텍스트 3개(진행자, 평택, 천안)."""
 import json, sys, subprocess, time, urllib.request, os
+from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
 D = os.path.dirname(os.path.abspath(__file__))
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9400/index.html"
@@ -38,7 +39,7 @@ try:
                 url = host.evaluate("() => { const L = KCP.league.state(); return null; }")
                 jl = host.evaluate("""() => { const s = JSON.parse(localStorage.getItem('kcp-league-host-v1')); const n = {kind:'supabase', url: s.net.url, key: s.net.key};
                    const b = btoa(unescape(encodeURIComponent(JSON.stringify({r: s.room, n})))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); return location.pathname + '#league/j=' + b; }""")
-                p.goto("http://127.0.0.1:9400" + jl); p.wait_for_selector("#lg-code")
+                p.goto(urljoin(BASE, jl)); p.wait_for_selector("#lg-code")
                 ok(p.input_value("#lg-code") == room and p.is_checked('input[name=lg-net][value=supabase]'), "join link pre-fills room and online settings")
             else:
                 online(p); p.fill("#lg-code", room)
@@ -56,7 +57,7 @@ try:
         host.wait_for_timeout(1500)
         ok(host.evaluate("() => KCP.league.state().S.ties.filter(T => T.st === 'built').length") == 1, "tie built over websocket")
         host.click("#lg-next"); host.wait_for_timeout(500); host.click("#lg-next")
-        teams["cheonan"].wait_for_selector(".lg-kpi", timeout=10000)
+        teams["cheonan"].wait_for_selector("#lg-result-heading", timeout=10000)
         imp = host.evaluate("() => { const S = KCP.league.state().S; return S.results[0].team.cheonan.imp; }")
         ok(imp > 0, f"cheonan imported over tie ({imp} MWh)")
         stats = json.loads(urllib.request.urlopen("http://127.0.0.1:9310/stats").read())

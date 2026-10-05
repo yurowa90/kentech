@@ -11,7 +11,10 @@ JS = r"""
   const C = KCP.leagueCore, bg = KCP.buildGame, AI = KCP.leagueAI;
   const R = C.regionOf("south"), ids = R.teams.map(t => t.id);
   const clone = x => JSON.parse(JSON.stringify(x)), same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const empty = () => ({builds: [], lines: []});
+  const empty = () => ({builds: [], lines: [], rq: []});
+  const assets = p => ({builds: p.builds, lines: p.lines});
+  // policies는 생략 가능하지만 반환한 정책·연구 순서는 정리/승인 뒤에도 그대로여야 한다.
+  const planFields = p => ({...assets(p), rq: p.rq, policies: p.policies || []});
   const checks = [], runs = [], timings = [], snapshots = {};
   // 작업 T 수용 기준(G): 승인 직후 대기 ≤ 기준 피크 10%, 운영 뒤에는 새 대기를 남기지 않음.
   const queueLimit = 0.1, tolerance = 1e-6;
@@ -45,7 +48,16 @@ JS = r"""
     ok(before === JSON.stringify(S) && before === JSON.stringify(input) && regionBefore === JSON.stringify(region) && regionBefore === JSON.stringify(R), `${style}/${id}/${S.round} 입력 불변`);
     ok(bg.TILES === priorTiles && bg.BLD === priorBLD, `${style}/${id}/${S.round} 지도 선택 복원`);
     ok(same(Object.keys(answer).sort(), ["econPol", "plan", "ties"]), "반환 최상위 계약");
-    ok(same(Object.keys(answer.plan).sort(), ["builds", "lines"]), "반환 계획 계약");
+    const plan = answer.plan, withPolicies = Object.hasOwn(plan, "policies");
+    ok(same(Object.keys(plan).sort(), withPolicies ? ["builds", "lines", "policies", "rq"] :
+      ["builds", "lines", "rq"]), "반환 계획 계약 {builds, lines, rq[, policies]}");
+    ok(Array.isArray(plan.rq) && new Set(plan.rq).size === plan.rq.length &&
+      plan.rq.every(key => KCP.TECH_DATA.cards.some(c => c.id === key)), "rq: 유효 기술 키·중복 없는 순서");
+    ok(!withPolicies || Array.isArray(plan.policies) && plan.policies.length <= 2 &&
+      new Set(plan.policies).size === plan.policies.length &&
+      plan.policies.every(key => ["tax", "dr", "share", "save"].includes(key)), "policies: 유효 정책 키·최대 2개·중복 없음");
+    ok(!withPolicies || C.researchView(S, id).adopted.includes("vpp") && plan.policies.includes("dr"),
+      "VPP 도입 때 수요반응 정책 반환");
     ok(["taxRes", "taxInd", "service"].every(k => Number.isInteger(answer.econPol[k]) &&
       answer.econPol[k] >= -1 && answer.econPol[k] <= 1) && answer.econPol.incentive === 0, "경제 정책 −1..+1, 보조 0");
     ok(answer.ties.every(t => ["propose", "accept", "cancel"].includes(t.type) &&
@@ -73,11 +85,12 @@ JS = r"""
         const budget = C.budget(S, id), spent = C.spendOf(bg, S, R, id, answer.plan);
         const city = S.econ.cities[id], debtOver = city.cash < -city.debtCap;
         // SPEC 5절: 한도 초과 때 기존 자산 유지 예외. 새 투자에 예외를 주지 않는다.
-        ok(spent <= budget + 1e-6 || debtOver && same(answer.plan, {builds: old.builds, lines: old.lines}),
+        ok(spent <= budget + 1e-6 || debtOver && same(assets(answer.plan), assets(old)),
           `${style}/${id}/${month} 예산 ${spent}/${budget}`);
         const clean = C.cleanPlan(bg, R, id, answer.plan,
-          debtOver ? C.capexOf(bg, R, id, old) : budget - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, answer.plan));
-        ok(same(answer.plan, {builds: clean.builds, lines: clean.lines}), `${style}/${id}/${month} cleanPlan 무손실`);
+          debtOver ? C.capexOf(bg, R, id, old) : budget - C.fixedOf(S, R, id) -
+          C.lossOf(S.teams[id].base, answer.plan) - C.researchReserve(S, id, bg, answer.plan));
+        ok(same(planFields(answer.plan), planFields(clean)), `${style}/${id}/${month} cleanPlan 설비·선·rq·policies 무손실`);
         if (style !== "nothing") {
           const priorKeys = [...old.builds.map(b => C.itemKey("b", b)), ...old.lines.map(l => C.itemKey("l", l))];
           const nextKeys = new Set([...answer.plan.builds.map(b => C.itemKey("b", b)), ...answer.plan.lines.map(l => C.itemKey("l", l))]);
@@ -97,8 +110,8 @@ JS = r"""
         }
         const saved = clone(answer.plan);
         const rp = request(S, id, {type: "plan", rev: S.teams[id].rev + 1, plan: answer.plan});
-        ok(rp.ok && same(saved, {builds: S.teams[id].plan?.builds, lines: S.teams[id].plan?.lines}),
-          `${style}/${id}/${month} reduce plan: ${rp.err || "ok"}`);
+        ok(rp.ok && same(planFields(saved), planFields(S.teams[id].plan)),
+          `${style}/${id}/${month} reduce plan 설비·선·rq·policies 무손실: ${rp.err || "ok"}`);
         if (style !== "nothing") {
           const grid = S.grid[id], projected = C.gridStatus(S, R, bg, id, true);
           const sample = row.cities[id];
@@ -197,6 +210,17 @@ JS = r"""
   const legacy = clone(gridCase); delete legacy.grid;
   const legacyAnswer = calculate(legacy, gridId, "careful");
   ok(forecast(legacy, legacyAnswer).waitingMW <= tolerance, "접속 이력 없는 저장: 호스트 복원으로 대기 방지");
+  // 12달 안에 VPP가 도입되지 않아도 정책 반환·무손실 경로를 반드시 검사한다.
+  const vppCase = clone(gridCase);
+  vppCase.teams[gridId].research.adopted.push("vpp");
+  const vppAnswer = calculate(vppCase, gridId, "balanced");
+  ok(same(vppAnswer.plan.policies, ["dr"]), "VPP fixture: 수요반응 정책 1개 반환");
+  const vppClean = C.cleanPlan(bg, R, gridId, vppAnswer.plan, Number.MAX_VALUE);
+  ok(same(planFields(vppAnswer.plan), planFields(vppClean)), "VPP fixture: cleanPlan rq·policies 무손실");
+  const vppSaved = clone(vppAnswer.plan);
+  const vppReply = request(vppCase, gridId, {type:"plan", rev:vppCase.teams[gridId].rev + 1, plan:vppAnswer.plan});
+  ok(vppReply.ok && same(planFields(vppSaved), planFields(vppCase.teams[gridId].plan)),
+    `VPP fixture: reduce rq·policies 무손실 (${vppReply.err || "ok"})`);
   const queued = clone(gridCase);
   bg.selectPack(R.teams.find(t => t.id === gridId).pack, "league");
   const tile = bg.TILES.find(t => !bg.siteRule("solar", t) &&
@@ -236,7 +260,7 @@ JS = r"""
   ok(calculate(policyCase, id, "balanced").econPol.service === 1, "충분한 현금: 서비스 증가");
   policyCase.round = 1; city.cash = -city.debtCap - 1;
   answer = calculate(policyCase, id, "bold");
-  ok(same(answer.plan, {builds: policyCase.teams[id].plan.builds, lines: policyCase.teams[id].plan.lines}), "부채 한도 초과: 자산 유지");
+  ok(same(assets(answer.plan), assets(policyCase.teams[id].plan)), "부채 한도 초과: 자산 유지");
 
   // 같은 공개 재정 상태에서 성향별 정책 차이와 비축 대응을 확인한다.
   policyCase.round = 3; city.cash = 10000; city.approval = 100;
@@ -280,7 +304,7 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 global.window = global;
 global.document = {documentElement: {}};
 global.KCP = {route() {}, on() {}, esc: x => x};
-for (const name of ['build-maps', 'build', 'econ-data', 'econ', 'league-data', 'league-core', 'league-ai']) {
+for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core', 'league-ai']) {
   const file = `ui/${name}.js`;
   vm.runInThisContext(fs.readFileSync(file, 'utf8'), {filename: file});
 }

@@ -120,7 +120,12 @@ JS = r"""
   const q2 = step(2); const rs2 = JSON.parse(JSON.stringify(L7.teams.pyeongtaek.rs));
   const q3 = step(3); const rs3 = JSON.parse(JSON.stringify(L7.teams.pyeongtaek.rs));
   C.host(L7, "next", 40);
-  ok(rs1.prog.bms === 3 && rs1.eff === 1, "league r1: new uni not staffed yet (eff 1, prog 3)");
+  // 유레카는 정규 연구 전에 남은 need의 1/3을 더한다(계절·달 모드 공통).
+  const bmsNeed = (KCP.TECH_DATA?.cards || BG.TECHS).find(c => c.id === "bms").need;
+  const bmsEureka = rs1.eureka?.includes("bms") ? bmsNeed / 3 : 0;
+  const expectedBms = Math.min(bmsNeed, 3 + bmsEureka);
+  ok(Math.abs(rs1.prog.bms - expectedBms) < 1e-9 && rs1.eff === 1,
+    `league r1: new uni not staffed yet (eff 1, prog ${expectedBms} including eureka ${bmsEureka})`);
   ok(rs2.stage.bms === "demo" && rs2.eff === 3, "league r2: uni staffed → demo");
   ok(Math.abs(q2.cost.inv - (3 + 3)) < 0.05 && q2.cost.research === 3, "league r2: demo+retrofit in new investment, lab opex in opex (" + q2.cost.inv + ")");
   ok(rs3.stage.bms === "done" && rs3.adoptR.bms === 4 && C.modsFor(L7, R, "pyeongtaek").tech.includes("bms"), "league r4: BMS active");

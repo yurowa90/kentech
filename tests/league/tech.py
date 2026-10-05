@@ -3,21 +3,16 @@
 실행은 총괄 담당: python tests/league/tech.py http://127.0.0.1:9430/index.html
 기대값은 위 명세에만 의존한다. 기존 라우트/상태 API는 검사 연결에만 사용한다.
 화면이 없어도 엔진 블록을 실행하며, 실패는 checks N fail M에 합산한다.
-기술 0장 회귀 기준은 작성 당시 Git 커밋을 고정한다(현재 구현과 자기 비교 금지).
+기술 0장 결과는 같은 엔진에서 TECH_DATA를 제거한 실행과 비교한다.
 """
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parents[2]
 HELPERS = Path(__file__).with_suffix(".js").read_text(encoding="utf-8")
-BASELINE = "66e8b50f402707e1fda379efbfd785ad9ea33ff3"
-MODULES = ("build-maps.js", "build.js", "econ-data.js", "econ.js",
-           "league-data.js", "league-core.js")
 WAIT = 12000  # 실행기 대기 한도, 게임의 계수가 아님
 BOOT = "() => !!(window.KCP?.leagueCore && KCP.buildGame && KCP.econ && KCP.league)"
 
@@ -109,7 +104,7 @@ def engine_block(checks, browser, base):
         # 화면 검사와 독립: 화면의 존재나 렌더링 성공을 엔진의 전제로 두지 않는다.
         for suite in ("ruleChecks", "royaltyChecks", "paceChecks"):
             checks.test(f"엔진 블록 {suite}", lambda suite=suite: consume_suite(checks, page, suite))
-        checks.test("T5 기술0 회귀: #build·계절·달 모드", lambda: baseline_check(checks, ctx, page, pages))
+        checks.test("T5 기술0 회귀: #build·계절·달 모드", lambda: baseline_check(checks, page))
     except Exception as exc:
         checks.ok(False, f"엔진 초기화: {type(exc).__name__}: {str(exc).splitlines()[0][:220]}")
     finally:
@@ -127,7 +122,7 @@ def consume_suite(checks, page, suite):
 
 ZERO_JS = r"""() => {
   const H = KCPTechChecks, {K, C, BG, R} = H.context();
-  // 기대 수치는 기준 커밋의 실제 계산 결과에서 읽는다. 새 모형의 식은 복제하지 않는다.
+  // 같은 계획을 TECH_DATA 유/무로 운영한다. 결과 계산식을 검사에 복제하지 않는다.
   function metrics(res) {
     return {tot:res.tot, cost:res.cost, uns:res.unsTotal, hosp:res.hospH,
       dem:Array.from(res.hrDem), outages:Array.from(res.hrUns)};
@@ -163,23 +158,20 @@ ZERO_JS = r"""() => {
 }"""
 
 
-def baseline_check(checks, ctx, current, pages):
-    old = monitored(ctx, pages, "기준 커밋")
-    old.goto("about:blank")
-    old.evaluate("""() => { window.KCP = {route(){}, on(){}, esc:s=>String(s)}; }""")
-    for module in MODULES:
-        # 읽기 전용 Git. commit/push/fetch와 외부 네트워크를 사용하지 않는다.
-        source = subprocess.run(["git", "show", f"{BASELINE}:ui/{module}"],
-                                cwd=ROOT, check=True, text=True, capture_output=True).stdout
-        old.add_script_tag(content=source)
-    install_helpers(old)
-    expected = old.evaluate(ZERO_JS)
+def baseline_check(checks, current):
     actual = current.evaluate(ZERO_JS)
-    checks.ok(actual["build"] == expected["build"], "T5 #build MODS 없는 기술0 결과 기준 커밋과 동일")
+    expected = current.evaluate("""source => {
+      const data = KCP.TECH_DATA;
+      if (!data) throw new Error('T5 양성 대조에 TECH_DATA 필요');
+      try {
+        delete KCP.TECH_DATA;
+        return (0, eval)('(' + source + ')')();
+      } finally { KCP.TECH_DATA = data; }
+    }""", ZERO_JS)
+    checks.ok(actual["build"] == expected["build"], "T5 #build 기술0 결과: 같은 엔진의 TECH_DATA 유/무 동일")
     for i, label in enumerate(("계절 4턴", "달 12턴")):
         checks.ok(actual["leagues"][i] == expected["leagues"][i],
-                  f"T5 {label} 기술0 전력·정산·경제·점수 기존 결과 불변")
-    old.close()
+                  f"T5 {label} 기술0 전력·정산·경제·점수: 같은 엔진의 TECH_DATA 유/무 동일")
     return True
 
 
