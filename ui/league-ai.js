@@ -90,7 +90,7 @@
       const b = bg.BLD[n.kind];
       if (n.kind === "import" || n.kind === "town") return;
       if (n.cap) firm += n.cap;
-      else if (b?.cls === "disp") firm += b.mw;
+      else if (b?.cls === "disp" && !(n.kind === "smr" && S.round < (S.teams[id].construction?.["smr:" + n.tile]?.readyRound || Infinity))) firm += b.mw;
       else if (b?.cls === "ren") renew += b.mw;
       else if (b?.cls === "bat") storage += b.mw;
     });
@@ -144,14 +144,14 @@
     // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
     const unsafe = initial.firm < safetyTarget;
     if (!unsafe && !scheduled) return plan;
-    const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan);
+    const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
     const committed = S.teams[id].committed ??
       (S.teams[id].base || []).reduce((sum, x) => sum + x.c, 0) + fixed;
     const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
     const choiceCap = committed + extra - fixed;
     const cap = unsafe ? budget - fixed : choiceCap;
     if (bg.capex(plan) >= cap) return plan;
-    const types = Object.keys(bg.BLD).filter(t => ["ren", "disp", "bat"].includes(bg.BLD[t].cls));
+    const types = Object.keys(bg.BLD).filter(t => ["ren", "disp", "bat"].includes(bg.BLD[t].cls) && (!bg.BLD[t].tech || C.techOf(S, id).includes(bg.BLD[t].tech)));
     const used = new Set(plan.builds.map(b => b.i));
     const legal = Object.fromEntries(types.map(t => [t, bg.TILES.filter(x => !bg.siteRule(t, x)).map(x => x.i)]));
     const viable = types.filter(t => legal[t].some(i => !used.has(i)));
@@ -319,6 +319,32 @@
     return actions;
   }
 
+  // 연구도 공개 규칙 안에서 고른다. 운영 가능한 공급을 먼저 확보한 뒤 인력을 짓는다.
+  function research(S, R, id, bg, styleName, plan) {
+    if (!KCP.TECH_DATA) return plan;
+    const D = KCP.TECH_DATA, C = KCP.leagueCore, rs = C.researchView(S, id), p = k => D.params[k].v;
+    plan.rq = rs.queue.filter(key => rs.stage[key] !== "done");
+    const pending = plan.rq[0];
+    const order = p("aiOrder")[styleName] || p("aiOrder").balanced;
+    const card = pending || order.find(key => !rs.stage[key] && !rs.adopted.includes(key) && !C.researchError(S, id, [key], bg));
+    if (!card) return plan;
+    const have = supply(bg, S, id, plan);
+    if (have.firm < have.peak) return plan;
+    const labCost = bg.RS.labOpexR * p("aiLabs") * p("aiResearchReserve");
+    const demoReserve = C.researchReserve(S, id, bg, { ...plan, rq: [card] });
+    const limit = C.budget(S, id) - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, plan) - demoReserve - labCost;
+    for (const [kind, count] of [["lab", p("aiLabs")], ["uni", p("aiUnis")]]) {
+      if (plan.builds.filter(b => b.t === kind).length >= count) continue;
+      const tile = bg.TILES.find(t => !plan.builds.some(b => b.i === t.i) && !bg.siteRule(kind, t));
+      if (!tile) continue;
+      const candidate = { ...plan, builds: [...plan.builds, { t: kind, i: tile.i }] };
+      if (bg.capex(candidate) <= limit) plan = candidate;
+    }
+    if (plan.builds.some(b => b.t === "lab") && bg.capex(plan) <= limit) plan.rq = [card];
+    if (rs.adopted.includes("vpp")) plan.policies = [...new Set([...(plan.policies || []), "dr"])].slice(0, 2);
+    return plan;
+  }
+
   function plan(S, R, id, bg, style) {
     if (!S.teams[id] || !R.teams.some(t => t.id === id)) throw new Error("AI: 참가 도시가 아닙니다");
     const styles = value("aiStyles"), selected = typeof style === "string" ? styles[style] : style;
@@ -327,7 +353,12 @@
       Number.isInteger(chosen.delay) && chosen.delay >= 0)) throw new Error("AI: 성향 값 범위를 확인하세요");
     return withMap(bg, R, id, () => {
       const original = assets(S.teams[id].plan);
-      const result = build(S, R, id, bg, chosen, original);
+      const constructed = build(S, R, id, bg, chosen, original);
+      const styleName = Object.keys(styles).find(key => styles[key].risk === chosen.risk) || "balanced";
+      const result = research(S, R, id, bg, styleName, constructed);
+      // 공급 보강으로 실증 예약금까지 썼다면 연구를 대기한다. 진척은 호스트에 남는다.
+      const C = KCP.leagueCore;
+      if (KCP.TECH_DATA && C.spendOf(bg, S, R, id, result) > C.budget(S, id) && C.researchReserve(S, id, bg, result) > 0) result.rq = [];
       return { plan: result, econPol: policy(S, id, chosen, Math.max(0, bg.capex(result) - (S.teams[id].committed || 0))), ties: ties(S, R, id, bg, chosen, result) };
     });
   }

@@ -88,6 +88,7 @@
       houseCap: has(as, "houseCap") && as.houseCap > 0 ? as.houseCap : null,
       indCap: has(as, "indCap") && as.indCap > 0 ? as.indCap : null
     };
+    if (po.re100 === true) policy.re100 = true;
     return { energy, policy, assets };
   }
 
@@ -161,6 +162,7 @@
     const w0 = P("wA"), w = Object.assign({}, w0);
     w.price = w0.price * (P("priceWeightBase") + (mix.steel || 0) + (mix.semi || 0) + (mix.chem || 0));
     w.re = w0.re * (P("reWeightBase") + re100Of(S, data));
+    if (ctx.inp.policy.re100) w.re *= P("re100PolicyWeight");
     w.carbon = w0.carbon + (I.cbam ? P("carbonWeight") * steelX : 0);
     return { score: wsum(parts, w), parts, w };
   }
