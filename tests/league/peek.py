@@ -79,13 +79,17 @@ DRAWER_JS = """() => {
   const visible = n => !!n && !!n.getClientRects().length && !n.hidden &&
     getComputedStyle(n).visibility !== 'hidden';
   const panel = document.querySelector('#lg-panel');
+  const root = document.querySelector('#bd-root');
   return {open:visible(panel),
     // ECON-UI v1.2: 서랍 선택 상태는 탐색을 맡는 막대 버튼에서 수집한다.
     buttons:[...document.querySelectorAll('#lg-bar [data-panel]')]
       .filter(n => n.dataset.panel !== 'region')
       .map(n => [n.dataset.panel, n.getAttribute('aria-expanded'),
         n.getAttribute('aria-current'), n.className]),
-    tools:[...document.querySelectorAll('[data-tool]')]
+    mode:root?.dataset.mode,
+    groups:[...root.querySelectorAll('[data-group]')]
+      .map(n => [n.dataset.group, n.dataset.active || null]),
+    tools:[...root.querySelectorAll('[data-tool]')].filter(visible)
       .map(n => [n.dataset.tool, n.getAttribute('aria-pressed'), n.className])};
 }"""
 FULLSCREEN_JS = """() => {
@@ -284,6 +288,12 @@ def scenario(checks, context, base, label, mode, pages):
     checks.ok(initial["econ"] == (mode != "season"), f"{label} U5 경제/계절 fixture")
     if mode != "season":
         checks.ok(initial["rounds"] == 12, f"{label} U5 경제 모드 12달")
+        checks.ok(shown(team, "#lg-panel") and
+                  team.locator('#lg-bar [data-panel="journal"]').get_attribute("aria-expanded") == "true",
+                  f"{label} 1월 계획 단계 일지 서랍 자동 열림")
+        # 모바일에서는 자동 일지가 도구 펼침을 덮는다. 자동 열림 검증 뒤 닫고 편집한다.
+        team.locator('#lg-panel [data-pclose]').click()
+        checks.ok(not shown(team, "#lg-panel"), f"{label} 도구 선택 전 일지 서랍 닫힘")
     checks.ok(team.evaluate(PLAN_JS), f"{label} U5 우리 계획 fixture 설정")
     (host or team).wait_for_function(PLAN_READY_JS, arg=tid)
     team.wait_for_timeout(600)
@@ -291,12 +301,13 @@ def scenario(checks, context, base, label, mode, pages):
         checks.ok(team.evaluate(WIRE_READ_JS)["plans"] > 0,
                   f"{label} U5 감시기가 실제 plan 전송을 포착(양성 대조)")
     # 편집 도구와 열린 서랍을 복귀 전후 비교할 수 있도록 정한다.
-    group = team.locator('[data-group="ren"]')
-    if group.count() and group.first.is_visible():
-        group.first.click()
-    tool = team.locator('[data-tool="solar"]')
-    if tool.count() and tool.first.is_visible() and tool.first.is_enabled():
-        tool.first.click()
+    group = team.locator('#bd-root [data-group="ren"]:visible')
+    group.click()
+    tool = team.locator('#bd-root [data-tool="solar"]:visible')
+    tool.click()
+    checks.ok(team.locator('#bd-root').get_attribute('data-mode') == 'solar' and
+              group.get_attribute('data-active') == 'true',
+              f"{label} U5 비교 기준 태양광 도구·재생 묶음 선택됨")
     open_panel(team, "deal")
     checks.ok(shown(team, "#lg-panel"), f"{label} U5 복귀 비교용 서랍 열림")
     observation = state(team)
