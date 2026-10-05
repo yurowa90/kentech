@@ -46,12 +46,31 @@
     return base.replace(/^https/, "wss").replace(/\/$/, "") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(key) + "&vsn=1.0.0";
   }
 
-  function supabase(room, url, key) {
+  function supabase(room, url, key, canSend = () => true) {
     const H = hub(), topic = "realtime:kcp-league-" + room, addr = wsUrl(url, key);
     let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
     const queue = [];
     if (!addr || !key) { H.set("error"); return { kind: "supabase", send() {}, on: H.on, onStatus: H.onStatus, status: () => H.status, close() {} }; }
     const raw = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    function enqueue(m) {
+      const p = m.payload, d = p.payload;
+      if (p.event === "req" && d) {
+        // 연계선·사건은 대상별 최신값을 남겨 다른 협상까지 지우지 않는다.
+        const i = queue.findIndex(q => q.payload.event === p.event && q.payload.payload?.type === d.type &&
+          q.payload.payload.team === d.team && q.payload.payload.token === d.token &&
+          q.payload.payload.other === d.other && q.payload.payload.ev === d.ev);
+        if (i >= 0) queue.splice(i, 1);
+      }
+      queue.push(m); if (queue.length > 50) queue.shift();
+    }
+    function flush() {
+      if (!joined) return;
+      for (let i = 0; i < queue.length;) {
+        const m = queue[i];
+        if (!canSend(m.payload.event, m.payload.payload)) { i++; continue; }
+        queue.splice(i, 1); m.join_ref = joinRef; raw(m);
+      }
+    }
     function join() {
       joinRef = String(++ref);
       const payload = { config: { broadcast: { self: false, ack: false }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
@@ -68,7 +87,7 @@
         try { m = JSON.parse(e.data); } catch (x) { return; }
         if (!m || m.topic !== topic) return;
         if (m.event === "phx_reply" && m.ref === joinRef) {
-          if (m.payload && m.payload.status === "ok") { joined = true; H.set("open"); while (queue.length) raw(queue.shift()); }
+          if (m.payload && m.payload.status === "ok") { joined = true; H.set("open"); flush(); }
           else { H.set("error"); }
           return;
         }
@@ -85,15 +104,16 @@
       send(ev, data) {
         const m = { topic, event: "broadcast", payload: { type: "broadcast", event: ev, payload: data }, ref: String(++ref), join_ref: joinRef };
         if (JSON.stringify(m).length > MAX_BYTES) { console.warn("league: message too large", ev); return; }
-        if (joined) raw(m); else { queue.push(m); if (queue.length > 50) queue.shift(); }
+        enqueue(m); flush();
       },
+      flush,
       on: H.on, onStatus: H.onStatus, status: () => H.status,
       close() { closed = true; clearInterval(hb); clearTimeout(timer); if (ws) try { ws.close(); } catch (e) { /* 이미 닫힘 */ } H.set("closed"); }
     };
   }
 
   KCP.leagueNet = {
-    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key) : local(o.room); },
+    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend) : local(o.room); },
     wsUrl
   };
 })();
