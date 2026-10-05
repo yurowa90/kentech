@@ -1251,7 +1251,19 @@
       L.conn.on("snap", onSnap);
       L.conn.on("nack", m => { if (m && m.team === L.team) nack(m); });
       L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team) send("claim"); });
-      L.timers.push(setInterval(() => { if (L.team) { send("hello"); if (L.snap && L.snap.teams[L.team] && L.snap.teams[L.team].rev < L.rev) sendPlan(); } }, 5000));
+      // 교실 와이파이에서 요청 하나가 사라져도 5초 안에 복구한다: 계획·정책·기준·준비를 진행자에 반영될 때까지 다시 보낸다.
+      // 진행자는 같은 값을 조용히 넘기므로(reduce의 quiet) 중복 전송은 해가 없다. 준비는 토글이 아니라 원하는 값을 보낸다.
+      L.timers.push(setInterval(() => {
+        if (!L.team) return;
+        send("hello");
+        const me = L.snap && L.snap.teams[L.team];
+        if (!me) return;
+        if (me.rev < L.rev) sendPlan();
+        if (L.snap.phase !== "plan") return;
+        if (L.pendingPol) send("econ", L.pendingPol);
+        if (L.pendingCrit && L.pendingCrit.chips.length && L.pendingCrit.choice) send("crit", L.pendingCrit);
+        if (L.wantReady != null && !!me.ready !== L.wantReady) send("ready", { ready: L.wantReady });
+      }, 5000));
       L.timers.push(setInterval(tickTimer, 1000));
     }
     L.app = app;
@@ -1260,6 +1272,7 @@
   function send(type, extra) {
     if (L.away && !["hello", "claim"].includes(type)) return;
     if (type === "crit") L.pendingCrit = { chips: extra.chips.slice(), line: extra.line, choice: extra.choice };
+    if (type === "ready") L.wantReady = !!(extra && extra.ready);
     L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}));
   }
   function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, token: L.token }; tab.set(s); if (L.team) store.set(K_TEAM, s); }
@@ -1299,7 +1312,8 @@
       if (prev && prev.round !== V.round) L.pendingCrit = null;
       const pending = L.pendingCrit, crit = me?.crit;
       if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;
-      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) { L.pendingPol = null; L.awaitReady = false; }
+      if (prev && (prev.phase !== V.phase || prev.round !== V.round)) { L.pendingPol = null; L.awaitReady = false; L.wantReady = null; }
+      if (L.wantReady != null && me && !!me.ready === L.wantReady) L.wantReady = null;
       const pendingPol = L.pendingPol, econPol = me?.econPol;
       if (pendingPol && econPol && ["taxRes", "taxInd", "service", "incentive"].every(k => pendingPol[k] === econPol[k])) L.pendingPol = null;
       if (L.claiming && me.seated) { L.claiming = false; if (L.app && L.app.isConnected) mountCity(L.app); return; }
