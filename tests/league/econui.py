@@ -375,7 +375,22 @@ def economic(checks, context, base, label, pages):
     advance(host, team, 1, "plan")
     checks.test(f"{label} U1 #lg-bar 도시 버튼", lambda: shown(team, '#lg-bar [data-panel="city"]'))
     checks.test(f"{label} U1 도시 서랍 열기", lambda: (open_panel(team, "city"), shown(team, "#lg-city"))[1])
-    checks.test(f"{label} U1 서랍 도시 탭", lambda: shown(team, '.lg-ptabs [data-ptab="city"]'))
+    # ECON-NEXT §2: 탐색 버튼은 막대 한 곳. 서랍은 제목·접기·닫기만 둔다.
+    checks.test(f"{label} 팀 탐색 버튼 중복 없음", lambda:
+                team.locator('[data-panel="city"]').count() == 1 and
+                team.locator('#lg-panel [data-ptab]').count() == 0)
+    checks.test(f"{label} 팀 서랍 접기", lambda:
+                (team.locator('#lg-panel-fold').click(), absent_or_hidden(team, '#lg-panel .lg-pbody'))[1])
+    checks.test(f"{label} 팀 서랍 펼치기", lambda:
+                (team.locator('#lg-panel-fold').click(), shown(team, '#lg-city'))[1])
+    checks.test(f"{label} HUD·도시 남은 돈 = 공개 left", lambda: team.evaluate("""() => {
+      const V = KCP.league.state().snap, id = KCP.league.state().team;
+      const expected = V.teams[id].left.toLocaleString('ko-KR', {maximumFractionDigits:1}) + '억';
+      return [...document.querySelectorAll('[data-money="left"]')].every(el => el.textContent === expected);
+    }"""))
+    checks.test(f"{label} D-60 시작 통계 일괄 표지 없음", lambda:
+                '시작값: 공식 통계' not in team.locator('#lg-city').inner_text() and
+                '억 = 게임 단위' in team.locator('#lg-city').inner_text())
     groups = team.evaluate("() => Object.keys(KCP.ECON_DATA.groups)")
     checks.test(f"{label} U1 .lg-grp[data-g] 정확히 6개", lambda:
                 team.locator('#lg-city .lg-grp[data-g]').count() == 6 and
@@ -398,6 +413,31 @@ def economic(checks, context, base, label, pages):
     checks.test(f"{label} U4 첫 달 #lg-crit", lambda:
                 (open_panel(team, "journal"), shown(team, "#lg-crit"))[1])
     checks.test(f"{label} U4 crit 객체 키·칩·숫자만 전송", lambda: choose_crit(team, host, tid))
+    # ECON-NEXT §2 피드백③: 근거→예측은 기기에 저장하며 서술을 전송하지 않는다.
+    team.locator('[data-evidence="grid"]').click()
+    team.locator('[data-pred="uns"]').select_option('down')
+    team.locator('[data-pred="cash"]').select_option('down')
+    team.locator('[data-note="decision"]').fill('가상 도시의 접속 여유를 먼저 확인한다')
+    team.locator('[data-note="decision"]').press('Tab')
+    checks.ok('가상 도시의 접속 여유를 먼저 확인한다' not in json.dumps(host.evaluate(HOST_JS), ensure_ascii=False),
+              f"{label} 근거·예측·기준 설명은 기기에만 저장")
+    # ECON-NEXT §2 U5: 두 번 관전·복귀해도 숨긴 이전 지도와 관전 id가 남지 않는다.
+    other = next(city for city in ids if city != tid)
+    team.locator('.lg-px').click()
+    for visit in range(2):
+        team.locator('#lg-bar [data-panel="region"]').click()
+        team.locator(f'[data-region-city="{other}"]').click()
+        team.wait_for_selector('#lg-peek-back')
+        checks.ok(all(team.locator(selector).count() == 1 for selector in
+                      ('#bd-root', '#lg-peek', '#lg-peek-region', '#lg-peek-back', '#lg-ready')),
+                  f"{label} 관전 {visit + 1}회 지도·id 중복 0")
+        team.locator('#lg-peek-region').click()
+        team.locator('#lg-region-back').click()
+        checks.ok(team.locator('#bd-root').count() == 1 and team.locator('#lg-ready').count() == 1,
+                  f"{label} 관전 {visit + 1}회 복귀 지도·준비 id 중복 0")
+    open_panel(team, 'journal')
+    checks.ok(team.locator('[data-note="decision"]').input_value() == '가상 도시의 접속 여유를 먼저 확인한다',
+              f"{label} 관전·복귀 후 기준 설명 보존")
     overflow(checks, team, label + " 계획 도시 서랍")
     overflow(checks, host, label + " 계획 진행자")
     screenshot(checks, team, f"econui-{label}-team-plan.png")
@@ -413,6 +453,20 @@ def economic(checks, context, base, label, pages):
         advance(host, team, month, "review")
         checks.test(f"{label} U4 {month}달 결과 .lg-ask ≤ 1", lambda:
                     team.locator('.lg-ask').count() <= 1)
+        checks.test(f"{label} {month}달 질문 유형과 선택 버튼", lambda: team.evaluate("""() => {
+          const ask = document.querySelector('.lg-ask');
+          return !ask || (ask.querySelectorAll('[data-answer]').length ===
+            (/^lg-[rpf]-/.test(ask.dataset.question) ? 2 : 0));
+        }"""))
+        if month == 1:
+            checks.test(f"{label} 학습 미션은 비교 전 미달성", lambda:
+                        '달성' != team.locator('#lg-learning-mission').inner_text().split(':')[-1].strip())
+            team.locator('[data-compared]').check()
+            team.locator('#lg-panel [data-answer="keep"]').click()
+            team.locator('[data-note="askReason"]').fill('실제 결과와 비교했고 다음 달에도 근거를 확인한다')
+            team.locator('[data-note="askReason"]').press('Tab')
+            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() == '학습 미션: 달성',
+                      f"{label} 근거→예측→실제 비교→유지·수정 완료로 학습 미션 달성")
         # // ECON-UI v1.1: 결과로 자동 전환된 서랍에서 도시 탭을 직접 열어 검사한다.
         checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda:
                     (open_panel(team, "city"), disabled_policies(team))[1])
