@@ -161,6 +161,7 @@ def setup_pair(context, base, turns, pages):
     fixture = host.evaluate(SEED_JS, [list(IDS), turns])
     host.goto(base + "#league/host")
     host.wait_for_selector("#lg-roomcode")
+    fixture["room"] = host.inner_text("#lg-roomcode").replace("-", "").strip()
     team, events = monitored_page(context)
     pages.append((team, events, "team"))
     team.goto(base + "#league")

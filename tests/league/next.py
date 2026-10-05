@@ -200,6 +200,8 @@ def setup_pair(context, base, pages):
     fixture = host.evaluate(SEED, IDS)
     host.goto(base + "#league/host")
     host.wait_for_function("() => !!KCP.league.state().S")
+    host.wait_for_selector("#lg-roomcode")
+    fixture["room"] = host.inner_text("#lg-roomcode").replace("-", "").strip()
     team = monitor(context, pages, "team")
     team.goto(base + "#league")
     # No join ids specified. Interpret "방 코드" as label or placeholder.

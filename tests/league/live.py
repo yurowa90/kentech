@@ -302,14 +302,15 @@ def scenario(checks, host, teams, base, project, key, markers):
     host.click("#lg-host")  # 앱의 무작위 방 코드 생성 그대로 사용.
     host.wait_for_selector("#lg-roomcode")
     host.wait_for_function(OPEN_JS)
-    room = host.inner_text("#lg-roomcode").strip()
-    checks.require(bool(re.fullmatch(r"[A-Z2-9]{5}", room)), "무작위 5글자 방 코드")
+    room_display = host.inner_text("#lg-roomcode").strip()
+    room = room_display.replace("-", "")
+    checks.require(bool(re.fullmatch(r"[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}", room_display)), "8글자 방 코드·4-4 표시")
     state = host.evaluate(STATE_JS)
     checks.require(len(state["rounds"]) == 12 and bool(state.get("econ")), "경제 모드 12달")
     for tid, (page, _) in teams.items():
         checks.stage = tid + " 온라인 방 코드 참가"
         online(page, base, project, key)
-        page.fill("#lg-code", room)
+        page.fill("#lg-code", room_display.lower())
         page.click("#lg-join")
         page.wait_for_selector(f'[data-seat="{tid}"]:not([disabled])')
         page.click(f'[data-seat="{tid}"]')
@@ -457,7 +458,7 @@ def scenario(checks, host, teams, base, project, key, markers):
             host.wait_for_selector("#lg-roomcode")
             host.wait_for_function(OPEN_JS)
             after = host.evaluate(STATE_JS)
-            checks.require(host.inner_text("#lg-roomcode").strip() == room and
+            checks.require(host.inner_text("#lg-roomcode").strip().replace("-", "") == room and
                            all(after[k] == before[k] for k in
                                ("rev", "round", "phase", "econ", "ties", "results")) and
                            all(after["teams"][t]["token"] == before["teams"][t]["token"] for t in IDS),

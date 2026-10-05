@@ -48,7 +48,10 @@
     let value = codeTime;
     return Array.from({ length: n }, () => { const ch = ALPHA[value % ALPHA.length]; value = Math.floor(value / ALPHA.length); return ch; }).join("");
   }
-  const validRoom = r => typeof r === "string" && /^[A-Z2-9]{4,6}$/.test(r);
+  const normalizeRoom = r => String(r || "").replace(/[-\s]/g, "").toUpperCase();
+  const newRoom = r => /^[A-HJ-NP-Z2-9]{8}$/.test(r);
+  const validRoom = r => typeof r === "string" && (newRoom(r) || /^[A-Z2-9]{4,6}$/.test(r));
+  const displayRoom = r => newRoom(r) ? r.slice(0, 4) + "-" + r.slice(4) : r;
   const netCfg = () => store.get(K_NET) || { kind: "local", url: "", key: "" };
   const b64e = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const b64d = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
@@ -920,8 +923,8 @@
           <article class="lg-card" id="lg-mode-join" data-panel="join" data-active="false">
             <header class="lg-modehead"><h2>팀으로 참가</h2><p class="lg-hint">진행자 화면의 방 코드를 넣으세요.</p></header>
             <div class="lg-modebody">
-            <label class="lg-field"><span>방 코드</span><input id="lg-code" aria-label="방 코드" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" minlength="4" maxlength="6" value="${esc(pre && validRoom(pre.r) ? pre.r : "")}" placeholder="K7QH2A" aria-describedby="lg-code-h"></label>
-            <p class="lg-hint" id="lg-code-h">진행자 화면에 보이는 6글자</p>
+            <label class="lg-field"><span>방 코드</span><input id="lg-code" aria-label="방 코드" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" minlength="8" maxlength="32" value="${esc(pre && validRoom(pre.r) ? displayRoom(pre.r) : "")}" placeholder="ABCD-EFGH" aria-describedby="lg-code-h"></label>
+            <p class="lg-hint" id="lg-code-h">진행자 화면의 8글자 · 하이픈·공백은 생략해도 됩니다</p>
             <button type="button" class="v2-btn primary lg-big" id="lg-join">참가하기</button>
             ${lastTeam && validRoom(lastTeam.room) && lastTeam.team ? `<button type="button" class="v2-btn lg-big" id="lg-rejoin">이어서: ${esc(teamName(lastTeam.team))} 팀 · 방 ${esc(lastTeam.room)}</button>` : ""}
             </div>
@@ -996,12 +999,12 @@
     });
     $("#lg-solo-reset")?.addEventListener("click", () => { if (!window.confirm("저장된 진행과 일지·답변을 지우고 처음부터 시작할까요?")) return; store.del(K_SOLO); lobby(app); });
     $("#lg-join").addEventListener("click", () => {
-      const room = $("#lg-code").value.trim().toUpperCase();
-      if (!validRoom(room)) { errEl.textContent = "방 코드는 4~6글자(영문·숫자)입니다."; $("#lg-code").focus(); return; }
+      const room = normalizeRoom($("#lg-code").value);
+      if (!newRoom(room)) { errEl.textContent = "새 방 코드는 8글자입니다. 예전 방은 진행자가 이어서 진행한 뒤 새 코드로 참가하세요."; $("#lg-code").focus(); return; }
       const n = readNet();
       if (!n) return;
-      const cur = tab.get();
-      tab.set({ ...(cur && cur.room === room ? cur : { room, net: n, team: null, identity: null }), ...(pre?.r === room && pre.f ? { fingerprint: pre.f } : {}) });
+      const cur = tab.get(), oldTeam = cur?.room?.length <= 6 ? cur : lastTeam;
+      tab.set({ migrationFrom: cur?.migrationFrom || (oldTeam?.room?.length <= 6 ? { room: oldTeam.room, team: oldTeam.team } : null), ...(cur && cur.room === room ? cur : { room, net: n, team: null, identity: null }), ...(pre?.r === room && pre.f ? { fingerprint: pre.f } : {}) });
       location.hash = "#league/team";
     });
     const rj = $("#lg-rejoin");
@@ -1149,14 +1152,14 @@
     const save = store.get(K_HOST);
     if (!save || !validRoom(save.room) || !save.state) return false;
     if (!NET.secure()) return false;
-    if (!save.identity?.privateKey || !save.state.sid || save.room.length !== 6) {
+    if (!save.identity?.privateKey || !save.state.sid || save.room.length !== 8) {
       save.identity = await NET.createIdentity();
       const binding = await NET.hostBinding(save.identity.publicKey);
       save.state.seedKey ??= save.state.room;
       save.room = save.state.room = binding.room; save.fingerprint = binding.fingerprint;
       save.state.sid = NET.sessionId();
-      for (const id of Object.keys(save.state.teams)) C.host(save.state, "kick", Date.now(), id);
-      save.migration = "예전 방은 새 진행자 키와 6자리 코드로 다시 만들었습니다. 저장된 게임을 이어갑니다. 팀은 새 코드로 다시 참가하세요.";
+      for (const id of Object.keys(save.state.teams || {})) C.host(save.state, "kick", Date.now(), id);
+      save.migration = "예전 방은 새 진행자 키와 8자리 코드로 다시 만들었습니다. 저장된 게임을 이어갑니다. 팀은 새 코드로 다시 참가하세요.";
     }
     if (!L || L.role !== "host" || L.room !== save.room) {
       close();
@@ -1164,8 +1167,10 @@
       // 저장본 바로잡기: 지역·팀이 맞지 않으면 새로
       const ok = S && S.region === REGION && S.teams && actT(S).length >= 2 && actT(S).every(t => S.teams[t.id]);
       L = { role: "host", room: save.room, net: save.net, identity: save.identity, fingerprint: save.fingerprint, migration: save.migration, S: ok ? S : C.newState(save.room, REGION, Date.now()), timers: [], pending: 0 };
+      L.S.sid = NET.sessionId(); // 실행마다 새 세션: 저장 실패 전 봉투도 다시 적용하지 않는다.
       L.conn = NET.open(Object.assign({ room: save.room }, save.net));
       const session = L;
+      const replyFor = NET.replyGate();
       const receive = NET.receiver(L.S, m => L === session ? C.reduce(session.S, m, Date.now(), BG) : { ok: false, err: "closed" });
       if (Object.values(L.S.teams).some(t => t.token && !t.publicKey) && !L.S.log.some(x => x.t.startsWith("예전 방식으로 앉은 팀"))) {
         L.S.log.push({ at: Date.now(), t: "예전 방식으로 앉은 팀은 자리 비우기를 누른 뒤 다시 앉아 주세요." });
@@ -1183,7 +1188,8 @@
         if (L !== session) return;
         // 검증과 규칙 적용 뒤에만 화면과 저장을 갱신한다.
         if (L.viewing) BG.selectPack(C.teamDef(R(), L.viewing).pack, "league");
-        if (m?.kid) await hostSend(r.ok ? "ack" : "nack", { team: m.team, type: m.type, err: r.err, kid: m.kid, n: m.n, id: m.id, rid: m.rid, rd: m.rd, ph: m.ph, current: { rd: L.S.round, ph: L.S.phase } });
+        const reply = replyFor(r);
+        if (reply) await hostSend(r.ok ? "ack" : "nack", reply);
         if (L !== session) return;
         if (r.verified) saveHost(); // quiet 요청도 마지막 순번을 보존한다.
         if (r.ok && !r.quiet) changed();
@@ -1283,7 +1289,7 @@
         <main class="lg-host" data-econ="${!!V.econ}">
           <header class="lg-hbar">
             <a class="lg-back" href="#league" aria-label="로비로">←</a>
-            <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(L.room)}</b></div>
+            <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div><p class="lg-hint">팀은 참가 링크나 QR로 들어오세요. 코드는 직접 입력할 때 사용합니다.</p>
             <div class="lg-hmeta">
               <p class="v2-kicker">${esc(reg.short)} · ${esc(reg.name)}</p>
               <h1 id="lg-h1"></h1>
@@ -1379,7 +1385,7 @@
     $("#lg-teams").querySelectorAll("canvas[data-thumb]").forEach(cv => {
       if (!V.econ || $("#lg-host-details").open && cv.closest("details").open) thumb(cv, cv.dataset.thumb, V.teams[cv.dataset.thumb].plan);
     });
-    $("#lg-results").innerHTML = res ? resultsTable(S, res) : `<p class="lg-hint">${V.econ ? "한 달을" : "라운드를"} 운영하면 여기에 도시별 결과가 나옵니다. 팀은 <b>방 코드 ${esc(L.room)}</b>로 들어옵니다.</p>`;
+    $("#lg-results").innerHTML = res ? resultsTable(S, res) : `<p class="lg-hint">${V.econ ? "한 달을" : "라운드를"} 운영하면 여기에 도시별 결과가 나옵니다. 팀은 <b>방 코드 ${esc(displayRoom(L.room))}</b>로 들어옵니다.</p>`;
     if (!V.econ && techData()) {
       let news = $("#lg-tech-host-news");
       if (!news) { news = document.createElement("section"); news.id = "lg-tech-host-news"; news.className = "lg-tech-host-news"; $("#lg-results").before(news); }
@@ -1924,14 +1930,14 @@
     if (!save || !validRoom(save.room)) { location.hash = "#league"; return; }
     if (!L || L.role !== "team" || L.room !== save.room) {
       close();
-      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
+      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, migrationFrom: save.migrationFrom, lastHostAt: Date.now(), pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, L.net, {
         canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(NET.requestBody(m)?.type)
       }));
       const session = L;
       const receiveHost = NET.hostReceiver(session, async (event, data) => {
         if (L !== session) return;
-        session.hostWarning = false;
+        session.lastHostAt = Date.now(); session.hostWarning = false;
         const status = document.getElementById("lg-conn");
         if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); }
         if (event === "snap") onSnap(data);
@@ -1939,12 +1945,12 @@
         if (L === session) teamSave();
       }, event => { if (L === session && event === "snap") connectionWarning(); });
       for (const event of ["snap", "nack", "ack"]) L.conn.on(event, wire => receiveHost(event, wire));
-      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team) send("claim"); });
+      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team && !L.claimAccepted) send("claim"); });
       // 교실 와이파이에서 요청 하나가 사라져도 5초 안에 복구한다: 계획·정책·기준·준비를 진행자에 반영될 때까지 다시 보낸다.
       // 진행자는 같은 값을 조용히 넘기므로(reduce의 quiet) 중복 전송은 해가 없다. 준비는 토글이 아니라 원하는 값을 보낸다.
       L.timers.push(setInterval(() => {
+        connectionWarning();
         if (!L.team) return;
-        if (L.hostWarning) { connectionWarning(); return; }
         if (!L.snap) return;
         if (!L.claimAccepted) { send("claim"); return; }
         send("hello");
@@ -1962,7 +1968,7 @@
     }
     L.app = app;
     if (!L.team) seatPicker(app);
-    else if (L.snap?.teams[L.team]) mountCity(app);
+    else if (L.claimAccepted && L.snap?.teams[L.team]) mountCity(app);
     else {
       app.innerHTML = `<main class="lg-lobby" id="lg-team-wait"><a class="lg-back" href="#league">← 로비</a><h1>${esc(teamName(L.team))} 팀</h1><p role="status">진행자에게 첫 도시 상태를 받는 중입니다.</p></main>`;
       send("hello"); send("claim");
@@ -1982,10 +1988,12 @@
       return;
     }
     if (!L.snap?.sid || !L.team) return;
+    if (type === "claim" && Date.now() < (L.claimAfter || 0)) return;
     const session = L, team = L.team;
     const oneShot = ["tie", "respond", "price", "research", "license", "joint"].includes(type);
-    const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), tries: 0 } : null);
-    const request = { ...extra, ...stamp, ...(pending?.current || {}), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id } : {}) };
+    if (oneShot && !retry && L.pendingRequests.size >= 32) { BG.toast("응답을 기다리는 요청이 많아요. 잠시 뒤 다시 요청하세요."); return; }
+    const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
+    const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
     if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); }
     // 서명도 직렬 처리해 느린 기기에서 뒤 요청이 앞서 전송되지 않게 한다.
     session.sending = (session.sending || Promise.resolve()).then(async () => {
@@ -1997,30 +2005,31 @@
       if (L !== session || L.team !== team) return;
       // 저장 실패 시 미등록 키로 자리를 잡지 않는다. 예전 토큰 방식으로 돌아가지 않는다.
       if (!teamSave()) throw new Error("seat-save");
-      if (pending) pending.n = NET.requestBody(envelope).n;
-      if (type === "claim") session.claimN = NET.requestBody(envelope).n;
+      if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; }
+      if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = Date.now() + 5000; }
       session.conn.send("req", envelope);
     }).catch(() => {
       if (L === session) BG.toast("안전한 연결을 만들지 못했어요. 다시 접속해 주세요.");
     });
   }
-  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
+  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat, migrationFrom: L.migrationFrom }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
   function seatPicker(app) {
     const reg = R(), V = L.snap;
     app.innerHTML = `<main class="lg-lobby">
-      <header class="lg-lhead"><a class="lg-back" href="#league">← 로비</a><p class="v2-kicker">방 ${esc(L.room)}</p><h1>우리 팀 도시 고르기</h1>
+      <header class="lg-lhead"><a class="lg-back" href="#league">← 로비</a><p class="v2-kicker">방 ${esc(displayRoom(L.room))}</p><h1>우리 팀 도시 고르기</h1>
         <p class="lg-sub" id="lg-wait">${V ? "빈 도시를 고르세요." : "진행자 화면을 찾는 중… 방 코드와 연결 방식이 맞는지 확인하세요."}</p></header>
       <div class="lg-seats">${(V ? actT(V) : reg.teams).map(t => { const v = V && V.teams[t.id]; const taken = v && v.seated; return `<button type="button" class="lg-seatbtn" style="--c:${t.color}" data-seat="${t.id}" ${!V || taken ? "disabled" : ""}><b>${esc(t.name)}</b><span>${!V ? "…" : taken ? "다른 팀이 맡음" : "비어 있음"}</span></button>`; }).join("")}</div>
       <p class="lg-err" id="lg-err" role="alert"></p></main>`;
     app.querySelectorAll("[data-seat]").forEach(b => b.addEventListener("click", () => {
       L.team = b.dataset.seat;
-      L.claiming = true;
+      L.claiming = true; L.claimAccepted = false;
       teamSave();
       send("claim");
       app.querySelector("#lg-wait").textContent = `${teamName(L.team)} 자리를 요청했습니다…`;
     }));
   }
   function connectionWarning() {
+    if (Date.now() - L.lastHostAt <= 10000) return;
     L.hostWarning = true;
     const text = "진행자 화면과 연결을 확인하는 중";
     const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
@@ -2051,10 +2060,19 @@
     if (pending && pending.n !== m.n) return;
     if (event === "ack") {
       if (pending) L.pendingRequests.delete(m.id);
-      if (m.type === "claim" && m.n === L.claimN) { L.claimAccepted = true; L.seat = L.snap?.teams[L.team]?.seatVersion || 0; }
+      if (m.type === "claim" && m.n === L.claimN && m.seat === L.claimSeat) {
+        L.claimAccepted = true; L.seat = m.seat;
+        const old = L.migrationFrom;
+        if (old?.team === L.team && old.room !== L.room && !store.get(dataKey())) {
+          const data = store.get(`${K_DATA}:${old.room}:${L.team}`);
+          if (data) store.set(dataKey(), data);
+        }
+        if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap);
+      }
       return;
     }
-    if (pending && ["replay", "stale"].includes(m.err)) { pending.current = m.current; retryRequest(pending); return; }
+    if (pending && m.err === "session") return; // 새 sid는 서명된 snap에서만 받는다.
+    if (pending && m.err === "replay") { retryRequest(pending); return; }
     if (pending) L.pendingRequests.delete(m.id);
     nack(m);
   }
@@ -2062,12 +2080,14 @@
     if (["signature", "replay", "seat", "session"].includes(m.err)) return;
     if (m.type === "claim") {
       const msg = m.err === "legacy" ? "진행자에게 이 팀 자리 비우기를 요청하세요" : "다른 기기가 이미 그 팀을 맡았습니다. 진행자에게 이 팀 자리 비우기를 요청하세요";
+      L.claimAfter = Date.now() + 30000;
+      releaseSeat();
       BG.toast(msg);
       const el = document.getElementById("lg-err"); if (el) el.textContent = msg;
       return;
     }
     if (["research", "license", "joint"].includes(m.type)) {
-      L.techPending = null; L.techError = techErrorText(m.err); renderPanel();
+      L.techPending = null; L.techError = m.err === "stale" ? "지난 단계 요청입니다. 현재 화면에서 다시 확인하세요." : techErrorText(m.err); renderPanel();
       BG.toast(L.techError); return;
     }
     if (m.type === "crit") {
@@ -2079,7 +2099,7 @@
     if (m.type === "plan" && ["phase", "stale"].includes(m.err) && !["lobby", "plan"].includes(L.snap?.phase)) {
       warnUnsentPlan(); return;
     }
-    const msg = { stale: "지난 라운드·단계의 요청입니다. 현재 화면에서 다시 확인하세요.", phase: "지금 단계에서는 바꿀 수 없습니다.", built: "이미 연결된 연계선입니다.", noprop: "제안이 없습니다.", notie: "이웃이 아닙니다.", noev: "이번 라운드 우리 도시 사건이 아닙니다.", noopt: "없는 대응입니다." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자랍니다.` : "요청을 처리하지 못했습니다.");
+    const msg = { stale: "지난 단계 요청입니다. 현재 화면에서 다시 확인하세요.", phase: "지금 단계에서는 바꿀 수 없습니다.", built: "이미 연결된 연계선입니다.", noprop: "제안이 없습니다.", notie: "이웃이 아닙니다.", noev: "이번 라운드 우리 도시 사건이 아닙니다.", noopt: "없는 대응입니다." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자랍니다.` : "요청을 처리하지 못했습니다.");
     BG.toast(turnText(msg));
   }
   function onSnap(V) {
@@ -2088,6 +2108,18 @@
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();
+      if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
+      const me = V.teams[L.team];
+      if (!me) return;
+      if (L.role === "team") {
+        const previousSeat = L.seat;
+        if (previousSeat != null && me.seatVersion !== previousSeat) { releaseSeat(); return; }
+        if (!prev) send("claim");
+        if (prev && prev.sid !== V.sid) {
+          for (const pending of L.pendingRequests.values()) retryRequest(pending);
+        }
+        if (!L.claimAccepted) return;
+      }
       if (V.econ?.report?.cities?.[L.team]) {
         const d = tdata(); d.interview = d.interview || {}; d.interview.causes = d.interview.causes || {};
         const last = V.results.at(-1);
@@ -2099,15 +2131,6 @@
             tieCost: V.econ.report.contrib?.[L.team]?.tieCost, taxRes: V.econ.cities[L.team].policy?.taxRes };
           putData(d);
         }
-      }
-      if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
-      const me = V.teams[L.team];
-      if (!me) return;
-      if (L.role === "team") {
-        const previousSeat = L.seat ?? prev?.teams[L.team]?.seatVersion;
-        if (!me.seated && previousSeat != null && me.seatVersion !== previousSeat) { releaseSeat(); return; }
-        L.seat = me.seatVersion;
-        if (!prev) send("claim");
       }
       // 새로고침·이어서: 첫 상태를 받기 전에는 대기 화면이고, 받은 뒤에 도시 지도를 붙인다.
       if (L.app?.isConnected && L.app.querySelector("#lg-team-wait")) { mountCity(L.app); return; }

@@ -28,7 +28,7 @@ with sync_playwright() as pw:
     ok(host.locator(".bd-home-link").count() == 0, "lobby rendered (no home hero)")
     (host.click('[data-turns="0"]') if host.locator('[data-turns="0"]').count() else None); host.click("#lg-host"); host.wait_for_selector("#lg-roomcode")
     room = host.inner_text("#lg-roomcode"); print("room", room)
-    ok(len(room) == 5, "room code 5 chars")
+    ok(len(room) == 9 and room[4] == "-", "room code 8 chars in 4-4 format")
     tp = {}
     for i, t in enumerate(TEAMS):
         pg = page(t); tp[t] = pg
