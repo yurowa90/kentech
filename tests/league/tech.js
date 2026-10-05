@@ -53,15 +53,27 @@
     return { S, ids };
   }
   function token(id) { return `tech-fixture-${id}`; }
-  function planFor(id, types) {
+  function planFor(id, types, connect = false) {
     const { BG } = context(); BG.selectPack(id, "league");
-    const used = new Set(), builds = [];
+    const used = new Set(), builds = [], lines = [], anchor = BG.SITES.find(s => s.dem).tile;
     types.forEach(type => {
-      const tile = BG.TILES.find(t => !t.out && t.site < 0 && !used.has(t.i) && !BG.siteRule(type, t));
+      const tile = BG.TILES.find(t => !t.out && t.site < 0 && !used.has(t.i) && !BG.siteRule(type, t) &&
+        (!connect || BG.routePath(anchor, t.i)));
       if (!tile) throw new Error(`${type}: 유효 건설 칸 없음`);
       used.add(tile.i); builds.push({ t: type, i: tile.i });
+      if (connect) lines.push({ p: BG.routePath(anchor, tile.i) });
     });
-    return { builds, lines: [], policies: [], shed: "equal", missions: [], seed: 2026, rq: [] };
+    return { builds, lines, policies: [], shed: "equal", missions: [], seed: 2026, rq: [] };
+  }
+  function connectCities(S, a, b) {
+    const { BG } = context();
+    for (const [id, other] of [[a, b], [b, a]]) {
+      BG.selectPack(id, "league");
+      const gate = BG.SITES.find(s => s.kind === "gridpt" && (s.to || []).includes(other));
+      const path = gate && BG.routePath(BG.SITES.find(s => s.dem).tile, gate.tile);
+      if (!path) throw new Error(`${id}: 상대 도시 연결 경로 없음`);
+      S.teams[id].plan.lines.push({ p: path });
+    }
   }
   function request(S, id, cards) {
     const { C, BG } = context(), T = S.teams[id];
@@ -113,7 +125,15 @@
     H.ok(!!D.eureka && IDS.every(id => Array.isArray(D.eureka) ? D.eureka.some(e => e.id === id || e.card === id) : !!D.eureka[id]), "T2 카드마다 유레카 조건");
     H.ok(!!D.params && Object.keys(D.params).length > 0, "T3 params 존재");
     Object.entries(D.params || {}).forEach(([key, p]) => H.ok(!!p && text(p.grade) && text(p.note), `T3 params.${key} grade·note`));
-    H.test("T1 리그 한 달 연구 진척 4주", () => context().BG.RS.roundSteps === 4);
+    H.test("T1 리그 한 달 연구 진척 4주", () => {
+      // T1은 달 리그의 진척 계약이다. T5의 기존 #build 상수가 아닌 실제 월 운영을 검사한다.
+      const { S, ids } = fixture(), id = ids[0], { C } = context();
+      S.teams[id].plan = planFor(id, ["lab"]);
+      if (!request(S, id, ["hvdc"]).ok) throw new Error("월 진척 연구 요청 거부");
+      operate(S);
+      return C.publicView(S, 500).teams[id].research.stepsPerTurn === 4 &&
+        S.teams[id].research.prog.hvdc === 4;
+    });
     return H.checks;
   }
   function paceChecks() {
@@ -201,29 +221,44 @@
       return equal(before, K.econ.score(S.econ)) && equal(before, C.publicView(S, 500).econ.score);
     });
     H.test("T2 유레카: 남은 need의 1/3·카드당 한 번", () => {
-      const { S, ids } = fixture(), id = ids[0], card = cardsOf().find(c => c.id === "tandem");
+      const { S, ids } = fixture({ turns: 36 }), id = ids[0], card = cardsOf().find(c => c.id === "tandem");
       if (!card) throw new Error("tandem 카드 없음");
       const need = number(card.need), initial = need / 4;
-      S.teams[id].plan = planFor(id, Array(10).fill("solar"));
+      // T2는 태양광 10기 '운영' 조건이다. 배선과 ESS 접속 여유를 갖추고 접속 완료까지 운영한다.
+      S.teams[id].plan = planFor(id, [...Array(10).fill("solar"), ...Array(4).fill("battery")], true);
+      const { C, BG, R } = context();
+      while (C.gridStatus(S, R, BG, id).waitingMW > 0 && S.round < 30) operate(S);
+      if (C.gridStatus(S, R, BG, id).waitingMW > 0) throw new Error("태양광 10기 접속 미완료");
+      if (S.phase === "review") C.host(S, "next", 400);
       S.teams[id].research.prog.tandem = initial;
       if (!request(S, id, ["tandem"]).ok) throw new Error("tandem 연구 거부");
-      // 연구 인력 0: 통상 진척과 유레카를 분리한다. T2 예시 조건 태양광10기.
-      const control = clone(S); control.teams[id].plan.builds.pop();
-      operate(control); operate(S);
+      // T2 '조건을 채운 달에 ... 즉시 진척': 인력 0으로 정규 진척과 분리하며 조건을 생략하지 않는다.
+      const control = clone(S), disconnected = clone(S);
+      control.teams[id].plan.builds.splice(control.teams[id].plan.builds.findIndex(b => b.t === "solar"), 1);
+      disconnected.teams[id].plan.lines = [];
+      operate(control); operate(disconnected); const result = operate(S);
       const rs = S.teams[id].research, expected = initial + (need - initial) / 3;
       const once = rs.prog.tandem;
-      const first = Math.abs(once - expected) < 1e-6 && rs.eureka.includes("tandem") &&
-        Math.abs(control.teams[id].research.prog.tandem - initial) < 1e-6;
+      const first = result.team[id].renPct > 0 && Math.abs(once - expected) < 1e-6 &&
+        rs.eureka.includes("tandem") && [control, disconnected].every(state =>
+          Math.abs(state.teams[id].research.prog.tandem - initial) < 1e-6 &&
+          !state.teams[id].research.eureka.includes("tandem"));
       operate(S);
-      return first && S.teams[id].research.prog.tandem === once;
+      return first && S.teams[id].research.prog.tandem === once &&
+        S.teams[id].research.eureka.filter(k => k === "tandem").length === 1;
     });
     H.test("T3 공개 상태: 도입·진행 연구·진척·칭호", () => {
       const { S, ids } = fixture(), id = ids[0];
       S.teams[id].research = research(["grid", "hvdc", "scable"]);
-      request(S, id, ["sic"]); S.teams[id].research.prog.sic = 1;
-      const T = context().C.publicView(S, 500).teams[id];
-      return T.research?.adopted.includes("hvdc") && T.research.queue.includes("sic") &&
-        T.research.prog.sic > 0 && JSON.stringify(T).includes("그리드 개척자");
+      if (!request(S, id, ["sic"]).ok) throw new Error("공개 상태 연구 요청 거부");
+      S.teams[id].research.prog.sic = 1;
+      // T3 진척은 %로, T2 칭호는 자료의 id로 공개한다(ECON-SPEC §13.1 필드 계약).
+      const { K, C } = context(), view = C.publicView(S, 500);
+      const title = entries(K.TECH_DATA.titles).find(t => t.name === "그리드 개척자");
+      const need = number(cardsOf().find(c => c.id === "sic").need);
+      return !!title && [view.teams[id].research, view.econ.cities[id].research].every(rs =>
+        rs?.adopted.includes("hvdc") && rs.queue.includes("sic") && rs.current === "sic" &&
+        rs.prog.sic === 1 && Math.abs(rs.progress.sic - 100 / need) < 1e-6 && rs.titles.includes(title.id));
     });
     return H.checks;
   }
@@ -250,26 +285,23 @@
       return true;
     });
     H.test("T2 이전 연구 need 50%: 절반 직전 미완료·절반에서 실증", () => {
-      const { S: A, ids: pair } = fixture({ staff: true }), [origin, target] = pair;
-      A.teams[origin].research = research(["grid"]);
-      if (!special(A, target, "license", origin, "grid").ok) throw new Error("절반 비용 fixture license 거부");
-      const need = number(cardsOf().find(c => c.id === "grid").need);
-      const RS = context().BG.RS, saved = RS.roundSteps;
-      // 검사 복제 조건에서 한 번의 진척을 need/10으로 낮춰 절반 경계를 분해한다.
-      // 기본 진척이 need보다 크면 50%/100% 구현 모두 한 턴에 끝나 구별할 수 없다.
-      const step = need / 10, eff = Math.min(2 * RS.labStaff + RS.uniStaff, 2 * RS.labSeats);
-      RS.roundSteps = step / eff;
-      try {
-        const epsilon = need / 1000;
-        A.teams[target].research.prog.grid = need / 2 - step - epsilon;
-        operate(A);
-        const rs = A.teams[target].research;
-        if (["demo", "done"].includes(rs.stage.grid) || adopted(A, target).includes("grid"))
-          throw new Error("need 절반 직전에 완료");
-        rs.prog.grid = need / 2 - step;
-        operate(A);
-        return ["demo", "done"].includes(A.teams[target].research.stage.grid) || adopted(A, target).includes("grid");
-      } finally { RS.roundSteps = saved; }
+      const { S: A, ids: pair } = fixture(), [origin, target] = pair;
+      A.teams[target].plan = planFor(target, ["lab"]);
+      A.teams[origin].research = research(["hvdc"]);
+      if (!special(A, target, "license", origin, "hvdc").ok) throw new Error("절반 비용 fixture license 거부");
+      const need = number(cardsOf().find(c => c.id === "hvdc").need);
+      // T1 월 4주 × 연구소 인력 1. #build의 RS를 변조하지 않고 T2 절반 경계 양쪽을 비교한다.
+      const step = 4, epsilon = need / 1000, B = clone(A), normal = clone(A);
+      A.teams[target].research.prog.hvdc = need / 2 - step - epsilon;
+      B.teams[target].research.prog.hvdc = normal.teams[target].research.prog.hvdc = need / 2 - step;
+      normal.teams[target].research.licensedFrom = {};
+      operate(A); operate(B); operate(normal);
+      const before = A.teams[target].research, at = B.teams[target].research, full = normal.teams[target].research;
+      if (["demo", "done"].includes(before.stage.hvdc) || adopted(A, target).includes("hvdc"))
+        throw new Error("need 절반 직전에 완료");
+      return Math.abs(before.prog.hvdc - (need / 2 - epsilon)) < 1e-6 &&
+        at.prog.hvdc === need / 2 && at.stage.hvdc === "demo" &&
+        full.prog.hvdc === need / 2 && !full.stage.hvdc && !adopted(normal, target).includes("hvdc");
     });
     H.test("T2 사용료 수입 도시당 월 3억 상한·수입 양수", () => {
       const { S, ids } = fixture({ all: true }), donor = ids[0], buyers = ids.slice(1);
@@ -289,6 +321,8 @@
       H.test(`T3 ${type} 요청으로 배타·선행 우회 불가`, () => {
         const { S, ids } = fixture(), [donor, buyer] = ids, { C, R } = context();
         S.ties = [{ ...C.tieDef(R, donor, buyer), cap: 4, st: "built" }];
+        // T3 선행·배타 거부를 검사하므로 T2 연결 조건부터 충족한다.
+        if (type === "joint") connectCities(S, donor, buyer);
         S.teams[donor].research = research(type === "license" ? ["ccu", "hvdc", "scable"] : []);
         S.teams[buyer].research = research(["h2store"]);
         const before = clone(S.teams[buyer].research);
@@ -297,22 +331,33 @@
       });
     }
     H.test("T2 공동 연구: 연결 필요·합산 진척·양쪽 도입", () => {
-      const { S, ids } = fixture({ staff: true }), [a, b] = ids, { C, R } = context();
-      if (special(S, a, "joint", b, "grid").ok !== false) throw new Error("연계선 없이 공동 연구 수락");
+      const { S, ids } = fixture(), [a, b] = ids, { C, R } = context();
+      [a, b].forEach(id => { S.teams[id].plan = planFor(id, ["lab"]); });
+      // T2는 연결된 두 도시의 공동 연구다. 내부망과 양방향 요청을 갖춘다(ECON-SPEC §13).
+      // HVDC는 연결 한 개로 유레카가 나지 않고 need가 커서 단독/합산 진척을 구별할 수 있다.
+      if (special(S, a, "joint", b, "hvdc").ok !== false) throw new Error("연계선 없이 공동 연구 수락");
       const tie = C.tieDef(R, a, b); S.ties = [{ ...tie, cap: 4, st: "built" }];
-      if (!request(S, a, ["grid"]).ok || !request(S, b, ["grid"]).ok ||
-          !special(S, a, "joint", b, "grid").ok) throw new Error("연결된 공동 연구 요청 거부");
+      if (special(S, a, "joint", b, "hvdc").ok !== false) throw new Error("내부망 없이 공동 연구 수락");
+      connectCities(S, a, b);
+      if (!request(S, a, ["hvdc"]).ok || !request(S, b, ["hvdc"]).ok ||
+          !special(S, a, "joint", b, "hvdc").ok) throw new Error("연결된 공동 연구 요청 거부");
+      if (S.teams[a].research.joint.hvdc.active) throw new Error("상대 동의 전에 공동 연구 활성");
+      if (!special(S, b, "joint", a, "hvdc").ok) throw new Error("상대 공동 연구 요청 거부");
+      if (![a, b].every(id => S.teams[id].research.joint.hvdc.active)) throw new Error("공동 연구 미활성");
       const solo = clone(S);
       [a, b].forEach(id => { solo.teams[id].research.joint = {}; });
-      const need = number(cardsOf().find(c => c.id === "grid").need);
-      const RS = context().BG.RS, step = RS.roundSteps * Math.min(2 * RS.labStaff + RS.uniStaff, 2 * RS.labSeats);
-      [S, solo].forEach(state => [a, b].forEach(id => { state.teams[id].research.prog.grid = Math.max(0, need - 2 * step); }));
+      const cut = clone(S); cut.teams[b].plan.lines = []; operate(cut);
+      if (![a, b].every(id => (cut.teams[id].research.prog.hvdc || 0) === 0))
+        throw new Error("내부망 단절 뒤 공동 연구 진척");
+      const step = 4; // T1: 각 도시 연구소 인력 1 × 월 4주
       operate(solo); operate(S);
-      const jointProgress = S.teams[a].research.prog.grid, soloProgress = solo.teams[a].research.prog.grid;
-      if (Math.abs(jointProgress - Math.min(need, soloProgress + step)) > 1e-6)
-        throw new Error(`공동 ${jointProgress}, 단독 ${soloProgress}, 합산 인력 진척 ${step}`);
+      for (const id of [a, b]) {
+        const jointProgress = S.teams[id].research.prog.hvdc, soloProgress = solo.teams[id].research.prog.hvdc;
+        if (soloProgress !== step || jointProgress !== soloProgress + step)
+          throw new Error(`공동 ${jointProgress}, 단독 ${soloProgress}, 합산 인력 진척 ${step}`);
+      }
       for (let m = 0; m < 3; m++) operate(S);
-      return [a, b].every(id => adopted(S, id).includes("grid"));
+      return [a, b].every(id => C.publicView(S, 500).teams[id].research.adopted.includes("hvdc"));
     });
     return H.checks;
   }
