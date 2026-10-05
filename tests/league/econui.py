@@ -375,10 +375,11 @@ def economic(checks, context, base, label, pages):
     advance(host, team, 1, "plan")
     checks.test(f"{label} U1 #lg-bar 도시 버튼", lambda: shown(team, '#lg-bar [data-panel="city"]'))
     checks.test(f"{label} U1 도시 서랍 열기", lambda: (open_panel(team, "city"), shown(team, "#lg-city"))[1])
-    # ECON-NEXT §2: 탐색 버튼은 막대 한 곳. 서랍은 제목·접기·닫기만 둔다.
+    # ECON-UI v1.2: 탐색 버튼은 막대 한 곳. 서랍은 제목·접기·닫기만 둔다.
     checks.test(f"{label} 팀 탐색 버튼 중복 없음", lambda:
+                team.locator('#lg-bar [data-panel="city"]').count() == 1 and
                 team.locator('[data-panel="city"]').count() == 1 and
-                team.locator('#lg-panel [data-ptab]').count() == 0)
+                team.locator('.lg-ptabs, #lg-panel [data-ptab]').count() == 0)
     checks.test(f"{label} 팀 서랍 접기", lambda:
                 (team.locator('#lg-panel-fold').click(), absent_or_hidden(team, '#lg-panel .lg-pbody'))[1])
     checks.test(f"{label} 팀 서랍 펼치기", lambda:

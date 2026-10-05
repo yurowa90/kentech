@@ -121,8 +121,8 @@ with sync_playwright() as pw:
     # 결과 단계에서 짓기 잠금
     locked = tp["asan"].evaluate("() => KCP.league.plan(st => st.builds.pop())")
     ok(locked is False, "building locked in review phase")
-    # 일지
-    tp["asan"].click('.lg-ptab[data-ptab="journal"]'); tp["asan"].fill('[data-j="why"]', "디스플레이 단지 정전을 막으려고 당진과 4 MW 연계선을 이었다."); tp["asan"].press('[data-j="why"]', "Tab")
+    # ECON-UI v1.2: 일지는 서랍 탭 대신 아래 막대에서 연다.
+    tp["asan"].click('#lg-bar [data-panel="journal"]'); tp["asan"].fill('[data-j="why"]', "디스플레이 단지 정전을 막으려고 이웃 도시와 4 MW 연계선을 이었다."); tp["asan"].press('[data-j="why"]', "Tab")
     tp["asan"].screenshot(path=f"{SH}/{SCHEME}-7-team-journal.png")
     # 2라운드
     host.click("#lg-next"); host.wait_for_timeout(1000)

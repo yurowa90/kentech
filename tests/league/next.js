@@ -81,7 +81,8 @@ function causesContract(id, report) {
   const groups = report.groups && report.groups[id];
   check(`${id}: group explanation exists`, !!groups && Object.hasOwn(groups, 'why'));
   if (causes.length && groups) {
-    check(`${id}: why uses leading cause key`, groups.why === causes[0].key,
+    // ECON-NEXT §0: why 객체의 key가 첫 원인의 key와 같아야 한다.
+    check(`${id}: why uses leading cause key`, groups.why?.key === causes[0].key,
       `why=${JSON.stringify(groups.why)} first=${JSON.stringify(causes[0].key)}`);
   }
 }
@@ -191,25 +192,6 @@ function operate(C, BG, S) {
   if (S.phase !== 'plan') C.host(S, 'next', 100 + S.round * 100);
   S.events = [];
   return C.run(S, BG, 150 + S.round * 100);
-}
-
-function policyId(BG, phrase) {
-  // Public policy definitions, not source text. ECON-NEXT gives Korean names
-  // but no policy ids; fail explicitly if the fixture cannot find that name.
-  const seen = new Set();
-  const visit = (object, depth = 0, objectKey = '') => {
-    if (!object || typeof object !== 'object' || depth > 4 || seen.has(object)) return null;
-    seen.add(object);
-    if (phrase.test(String(object.name || object.label || object.title || ''))) {
-      return object.id || object.key || objectKey || null;
-    }
-    for (const [key, value] of Object.entries(object)) {
-      const found = visit(value, depth + 1, key);
-      if (found) return found;
-    }
-    return null;
-  };
-  return visit(BG);
 }
 
 async function main() {
@@ -350,9 +332,12 @@ async function main() {
   });
 
   await scenario('§1 profit sharing is not always beneficial in policy grid', () => {
-    const share = policyId(BG, /이익\s*공유/);
-    check('public profit-sharing policy fixture available', typeof share === 'string' && share.length > 0);
-    if (!share) return;
+    // ECON-NEXT §1: 이익공유는 기존 plan.policies의 share로 실행한다.
+    // 정책 목록 공개는 계약이 아니다. 실제 입력 수용과 아래 격자의 효과를 검사한다.
+    const share = 'share';
+    const accepted = BG.sanitize({ policies: [share] }, 1e9).policies.includes(share);
+    check('profit-sharing policy fixture accepted', accepted);
+    if (!accepted) return;
     let changed = 0, better = 0, notBetter = 0;
     for (const far of [false, true]) for (const tax of [-2, 0, 2]) for (const service of [-2, 0, 2]) {
       const rows = [];
@@ -375,44 +360,45 @@ async function main() {
   });
 
   await scenario('§1 negative subsidy settles once', () => {
-    // Subsidy parameter ids are not promised by ECON-NEXT. Discover the
-    // public monetary parameter and create negative support, without replacing
-    // yearStart/monthStep. A missing negative fixture is a failure, never skip.
+    // ECON-NEXT §1: 음수 지원금은 사건의 budgetAdd → energy.bonus다.
+    // ECON-SPEC §5의 국가 지원금은 하한 0이므로 params를 음수로 바꾸지 않는다.
+    const definition = R.events.find(event => finite(event.effect?.budgetAdd) && event.effect.budgetAdd < 0);
+    check('negative event subsidy fixture available', !!definition);
+    if (!definition) return;
+    const bonus = definition.effect.budgetAdd;
     const E = initial(X, D, ids);
-    let fixture;
-    for (const key of Object.keys(D.params).filter(key => /subsid|grant|support/i.test(key))) {
-      const data = copy(D);
-      if (!finite(data.params[key].v)) continue;
-      data.params[key].v = -100 * Math.max(1, Math.abs(data.params[key].v));
-      const paid = X.yearStart(copy(E), data);
-      if (ids.some(city => finite(paid.subsidy[city]) && paid.subsidy[city] < 0)) {
-        fixture = { data, paid }; break;
-      }
-    }
-    check('negative subsidy fixture reached real yearStart', !!fixture);
-    if (!fixture) return;
-    const { data, paid } = fixture;
-    const direct = X.monthStep(copy(E), inputs(E), data);
-    const prepaid = X.monthStep(copy(paid.E), inputs(E), data);
-    const twice = X.yearStart(copy(paid.E), data);
-    check('negative yearStart is idempotent', same(twice.E, paid.E));
+    const paid = X.yearStart(E, D);
+    const plain = X.monthStep(E, inputs(E), D);
+    const direct = X.monthStep(E, inputs(E, () => ({ energy: { bonus } })), D);
+    const prepaid = X.monthStep(paid.E, inputs(E, () => ({ energy: { bonus } })), D);
+    const twice = X.yearStart(paid.E, D);
+    check('yearStart remains idempotent with negative event fixture', same(twice.E, paid.E));
     for (const city of ids) {
-      check(`${city}: negative support cash change matches subsidy`,
-        approx(paid.E.cities[city].cash - E.cities[city].cash, paid.subsidy[city]));
+      check(`${city}: negative event cash change matches bonus once`,
+        approx(direct.E.cities[city].cash - plain.E.cities[city].cash, bonus));
       check(`${city}: direct vs prepaid negative support cash equal`,
         approx(direct.E.cities[city].cash, prepaid.E.cities[city].cash));
-      check(`${city}: prepaid support not booked twice`, prepaid.report.fiscal[city].rev.subsidy === 0);
-      check(`${city}: signed direct support recorded`, approx(direct.report.fiscal[city].rev.subsidy, paid.subsidy[city]));
+      check(`${city}: prepaid national support not booked twice`, prepaid.report.fiscal[city].rev.subsidy === 0);
+      for (const [label, result] of [['direct', direct], ['prepaid', prepaid]]) {
+        const f = result.report.fiscal[city];
+        check(`${city}/${label}: signed event support recorded`, f.rev.bonus === bonus && f.eventBonus === bonus);
+        check(`${city}/${label}: signed support cash identity`,
+          approx(f.cashBefore + f.revTotal - f.expTotal, f.cashAfter));
+      }
     }
   });
 
   await scenario('§1 event targeting absent line does not choose another line', () => {
-    const definition = R.events.find(event => /^(tie|line)$/.test(event.scope));
+    // ECON-NEXT §1: 지정 선은 effect.tieDown이며 scope는 다른 효과의 적용 범위다.
+    // 풍력·수요 변화가 섞이지 않은 선 사건으로 운영 결과의 동일성을 확인한다.
+    const definition = R.events.find(event => typeof event.effect?.tieDown === 'string' &&
+      Object.keys(event.effect).every(key => ['tieDown', 'budgetAdd'].includes(key)));
     check('named-line event fixture available', !!definition);
     if (!definition) return;
-    const hitIds = ids.filter(city => C.hits(R, definition, city));
-    check('named-line event targets exactly two endpoint cities', hitIds.length === 2);
-    if (hitIds.length !== 2) return;
+    const hitIds = definition.effect.tieDown.split('~');
+    check('named-line event targets exactly two endpoint cities',
+      new Set(hitIds).size === 2 && hitIds.every(city => ids.includes(city)));
+    if (new Set(hitIds).size !== 2 || !hitIds.every(city => ids.includes(city))) return;
     const unrelated = R.ties.find(tie => !hitIds.includes(tie.a) && !hitIds.includes(tie.b));
     check('unrelated built line fixture available', !!unrelated);
     if (!unrelated) return;
@@ -427,16 +413,20 @@ async function main() {
     check('absent target: every city outcome unchanged', same(a.team, b.team));
     check('absent target: regional operating outcome unchanged', same(a.region, b.region));
     check('absent target: unrelated line state unchanged', same(withEvent.ties, noEvent.ties));
+    check('absent target: no line reported down', b.tieDown === null);
     // A present target must allow BOTH endpoint cities to respond, not only a.
     const present = copy(S);
     const target = C.tieDef(R, hitIds[0], hitIds[1]);
     if (!target) throw new Error('target line fixture missing');
     present.ties.push({ ...copy(target), cap: 4, st: 'built' });
     present.events = [{ id: definition.id, round: present.round, x: 1 }];
+    // ECON-NEXT §1: 사건 자체가 무효인 fixture가 통과하지 않도록 지정 선의 단절도 확인한다.
+    check('present target: named line reported down',
+      C.runRound(copy(present), BG).tieDown === definition.effect.tieDown);
     const option = (definition.opts || []).find(item => item.id && item.cost >= 0);
     if (!option) throw new Error('line-event response option fixture missing');
     for (const city of hitIds) {
-      const reply = C.reduce(present, { type: 'respond', team: city, token: `next-${city}`,
+      const reply = C.reduce(copy(present), { type: 'respond', team: city, token: `next-${city}`,
         ev: definition.id, opt: option.id }, 4, BG);
       check(`${city}: line endpoint response accepted`, reply.ok === true, JSON.stringify(reply));
     }

@@ -80,11 +80,10 @@ DRAWER_JS = """() => {
     getComputedStyle(n).visibility !== 'hidden';
   const panel = document.querySelector('#lg-panel');
   return {open:visible(panel),
+    // ECON-UI v1.2: 서랍 선택 상태는 탐색을 맡는 막대 버튼에서 수집한다.
     buttons:[...document.querySelectorAll('#lg-bar [data-panel]')]
       .filter(n => n.dataset.panel !== 'region')
-      .map(n => [n.dataset.panel, n.getAttribute('aria-expanded')]),
-    tabs:[...document.querySelectorAll('.lg-ptabs [data-ptab]')]
-      .map(n => [n.dataset.ptab, n.getAttribute('aria-selected'),
+      .map(n => [n.dataset.panel, n.getAttribute('aria-expanded'),
         n.getAttribute('aria-current'), n.className]),
     tools:[...document.querySelectorAll('[data-tool]')]
       .map(n => [n.dataset.tool, n.getAttribute('aria-pressed'), n.className])};

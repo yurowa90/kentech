@@ -231,15 +231,14 @@ def setup_ui(ctx, base, pages, kind):
 
 
 def open_tech(team):
-    button = team.locator('[data-panel="tech"]')
+    # ECON-UI v1.2 · ECON-TECH-SPEC T4: 연구 탐색은 아래 막대 한 곳이다.
+    button = team.locator('#lg-bar [data-panel="tech"]')
     if button.count() != 1:
-        raise AssertionError('T4 data-panel="tech" 버튼 한 개 필요')
+        raise AssertionError('T4 #lg-bar data-panel="tech" 버튼 한 개 필요')
     if button.get_attribute("aria-expanded") != "true":
         button.click()
-    tab = team.locator('[data-ptab="tech"]')
-    if tab.count() != 1:
-        raise AssertionError('T4 data-ptab="tech" 탭 한 개 필요')
-    tab.click()
+    if team.locator('.lg-ptabs, #lg-panel [data-ptab]').count() != 0:
+        raise AssertionError('ECON-UI v1.2 서랍 안 탭 줄은 없어야 함')
     return team.locator("#lg-panel")
 
 
