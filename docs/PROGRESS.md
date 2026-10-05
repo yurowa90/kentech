@@ -20,6 +20,13 @@
 
 
 
+
+## 이어받을 곳(2026-10-05)
+- 사용자 동의(2026-10-05 "동의할테니 다 진행해, 지금 하는 싱글·멀티 구현에 집중"): Supabase 프로젝트(yurowa90's Project, ap-southeast-1) 재개함 — ACTIVE_HEALTHY.
+- 실네트워크 멀티 검사 tests/league/live.py 추가(진행자 1·팀 3, 상태 일치·새로고침 복구·자유 서술 미전송·지연). 주소·공개 키는 환경 변수 KCP_SB_URL·KCP_SB_KEY로만. **아직 실행 못 함**: 프로젝트 주소 조회가 권한 판단에서 거부됨 — 사용자가 주소를 주거나 권한을 허용하면 `KCP_SB_URL=… KCP_SB_KEY=… tests/.venv/bin/python tests/league/live.py http://127.0.0.1:9430/index.html`.
+- 출력제어 표시: 계통 접속 출력제어 + 출력제어 사건을 '버린 재생 전기'로 묶고 그 달 수요 대비 %로. 검사 econui 804/0·solo 372/0·rules·e2e3·econint 0.
+- 다른 해 기출 재정비·PR 병합은 리그 구현 뒤.
+
 ## 이어받을 곳(2026-10-04 저녁)
 - 브랜치 claude/kentech-league-econ-balance(push, 344b0b7 이후): 밸런스 v1.4.1(B18 계통 접속 여유·출력제어·ESS 상한, 소수력 포함, 배수 0.4), 혼자 하기 저장 고침, 지방채 v1.3, 컴퓨터 AI 접속 여유 고려, 도시 서랍 접속·출력제어 표시.
 - 최종 검사(v1.4.1): balance 553/0, 1-invariants 2,688,699/0, 9-grid 168/0, econui 804/0, solo 372/0(직접 3회 반복도 0), ai-check 4,909/0, rules·e2e·e2e2·e2e3·econint 0, 회귀 14종 0, 콘솔·가로 스크롤 0.
