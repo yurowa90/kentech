@@ -51,7 +51,13 @@
   const monthOf = doy => { let m = 11; while (m > 0 && MSTART[m] > doy) m--; return m; };
   const monthName = m => `${m + 1}월${m === 6 ? " 장마" : ""}`;
   const seasonName = id => { const x = SEASONS.find(q => q.id === id) || SEASONS[1]; return `${x.name} · ${monthName(x.m)}`; };
-  const seasonLabel = res => (res && res.season ? seasonName(res.season) : "");
+  const leagueMonth = () => S?.opts.leagueRound?.()?.month;
+  const displaySeason = id => {
+    const rd = S?.opts.leagueRound?.(), x = SEASONS.find(q => q.id === id) || SEASONS[1];
+    return rd?.month ? `${x.name} · ${rd.month}월 (날씨는 ${monthName(x.m)} 기준)` : seasonName(id);
+  };
+  const leagueWords = text => leagueMonth() ? text.replaceAll("라운드", "달").replaceAll("턴", "달") : text;
+  const seasonLabel = res => (res && res.season ? displaySeason(res.season) : "");
   const KIND_POP = { city_l: 5000, city_m: 3500, town_s: 900, hospital: 600, fire: 100, gov: 300, rail: 800, rail_s: 300, school: 1500, farm: 100, livestock: 150, water: 100, port: 1000, industry: 1500, factory_big: 2500, plant: 50, gridpt: 0 };
 
   function hash(a, b, k) {
@@ -114,7 +120,7 @@
     else tiles.filter(T => T.t === "grid").forEach((T, k) => {
       const north = T.r < rows / 2, g = (P.gates || []).find(x => x.r * cols + x.c === T.i);
       if (g) sites.push({ id: "G" + k, code: "망", kind: "gridpt", name: g.name.replace(/ 방향/, " 쪽 외부 전력망"), note: "외부 전력망(수입)", to: g.to.slice(), tile: T.i, pop: 0 });
-      else sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: north ? "오산·수원" : "아산·천안", tile: T.i, pop: 0 });
+      else sites.push({ id: north ? "GN" : "GS", code: "망", kind: "gridpt", name: north ? "외부 전력망(북)" : "외부 전력망(남)", note: P.externalGridNote?.[north ? "north" : "south"] || "이웃 지역 전력망", tile: T.i, pop: 0 });
     });
     const towns = [];
     sites.forEach((s, si) => {
@@ -254,6 +260,15 @@
   const lineUnit = () => PK.lineCost || 0.5;
   // 계산에 쓰는 기존 개선 비율(2/3)을 그대로 표시한다. 지도별 손실률을 고정 문구로 덮지 않는다.
   const gridLossPerHex = () => (PK.lossPerHex || M.lossPerHex) * (2 / 3);
+  const bmsEffectText = () => {
+    const text = TECHS.find(t => t.id === "bms").eff;
+    const floor = text.match(/하한\s*[\d.]+%\s*→\s*([\d.]+)%/);
+    const efficiency = text.match(/효율\s*[\d.]+%\s*→\s*([\d.]+)%/);
+    const p = KCP.TECH_DATA?.params;
+    const newFloor = p?.bmsFloor?.v ?? (floor ? Number(floor[1]) / 100 : null);
+    const newEff = p?.bmsEfficiency?.v ?? (efficiency ? Number(efficiency[1]) / 100 : null);
+    return `잔량 하한 ${fmt(M.socFloor * 100, 1)}% → ${newFloor == null ? "자료 없음" : fmt(newFloor * 100, 1) + "%"} · 변환 효율 ${fmt(M.batEff * 100, 2)}% → ${newEff == null ? "자료 없음" : fmt(newEff * 100, 2) + "%"}`;
+  };
   const gridEffectText = () => `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 2)}%/칸 → ${fmt(100 * gridLossPerHex(), 2)}%/칸`;
   const cityName = (pack = PK) => KCP.ECON_DATA?.start?.[pack.id]?.name ||
     Object.values(KCP.LEAGUE_REGIONS || {}).flatMap(r => r.teams).find(t => t.pack === pack.id)?.name || pack.name;
@@ -390,7 +405,7 @@
     if (!B || !toolsOf().includes(type)) return "못 지음";
     if (T.out) return "지도 밖";
     if (type === "smr" && T.t !== "river" && T.t !== "beach") return "냉각수: 해안·하천만";
-    if (B.sea) return (B.sea === "offshore" ? T.offshore : T.tidal) ? "" : B.sea === "tidal" ? "조력: 아산만 연안 바다만" : "해상풍력: 연안 2칸 바다만";
+    if (B.sea) return (B.sea === "offshore" ? T.offshore : T.tidal) ? "" : B.sea === "tidal" ? (PK.tidalNote || "조력: 항구 가까운 연안 바다만") : "해상풍력: 연안 2칸 바다만";
     if (T.t === "sea") return "바다에는 못 지음";
     if (T.site >= 0) { const k = SITES[T.site].kind; return B.roof && k !== "plant" && k !== "gridpt" && T.t === "urban" ? "" : "시설 자리"; }
     if (T.t === "town") return "마을 자리";
@@ -1019,7 +1034,7 @@
   function saveState(doc) { try { window.localStorage.setItem(KEY, JSON.stringify(doc)); } catch (e) { /* 저장 없이도 동작한다 */ } }
 
   selectPack(PACK_IDS[0]);
-  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
+  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
 
   /* =====================================================================
    * 3. 아이콘
@@ -1960,7 +1975,7 @@
       const b = S.st.builds[bi], c = buildCost(b.t, b.i), back = c * salvageOf(`b:${b.t}:${b.i}`);
       S.st.builds.splice(bi, 1);
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
-      changed(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`);
+      changed(leagueWords(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`));
       return;
     }
     const keep = S.st.lines.filter(L => !L.p.includes(i));
@@ -1969,7 +1984,7 @@
       const back = gone.reduce((a, L) => a + lineCost(L.p) * salvageOf(`l:${L.p.join("-")}`), 0);
       S.st.lines = keep;
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
-      changed(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`);
+      changed(leagueWords(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`));
       return;
     }
     toast("철거할 것이 없다");
@@ -2064,7 +2079,7 @@
     const btn = $("#bd-season"), pop = $("#bd-seasons");
     if (!btn) return;
     btn.hidden = !PK.climate;
-    $("#bd-season-t").textContent = PK.climate ? seasonName(S.st.season) : "";
+    $("#bd-season-t").textContent = PK.climate ? displaySeason(S.st.season) : "";
     btn.setAttribute("aria-expanded", String(!!S.seasonOpen));
     pop.hidden = !(PK.climate && S.seasonOpen);
     if (!pop.hidden) pop.innerHTML = SEASONS.map(x => `<button type="button" class="bd-tool bd-seasonbtn" data-season="${x.id}" aria-pressed="${S.st.season === x.id}">${ico(x.id === "summer" ? "sun" : x.id === "winter" ? "wind" : x.id === "spring" ? "leaf" : "cloud")}<span class="bd-tool-n">${x.name}</span><span class="bd-tool-c num">${monthName(x.m)}</span></button>`).join("");
@@ -2267,7 +2282,7 @@
     if (S.lastTick !== tick) {
       S.lastTick = tick;
       $("#bd-run-day").textContent = tick;
-      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${PK.climate ? monthName(wx.m) + " · " : ""}${WX[wx.w].name}${wx.hot ? " · 폭염" : ""}</span>`;
+      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${PK.climate ? (leagueMonth() ? `${leagueMonth()}월 (날씨는 ${monthName(wx.m)} 기준)` : monthName(wx.m)) + " · " : ""}${WX[wx.w].name}${wx.hot ? " · 폭염" : ""}</span>`;
       const bar = $("#bd-run-bar");
       bar.style.width = `${Math.round(p * 100)}%`;
       $("#bd-run-prog").setAttribute("aria-valuenow", String(Math.round(p * 100)));
@@ -2362,7 +2377,7 @@
     return `<button type="button" class="bd-mapbtn bd-mapcur" id="bd-mapcur" aria-expanded="false" aria-controls="bd-mappop"><span>지도</span> <b id="bd-mapcur-t"></b> <span aria-hidden="true">▾</span></button>
       <div class="bd-mappop" id="bd-mappop" hidden>
         ${prac.length ? `<p class="bd-mappop-h">연습</p><div class="bd-mappop-g">${prac.map(btn).join("")}</div>` : ""}
-        ${city.length ? `<p class="bd-mappop-h">경기 남부·충청권 도시</p><div class="bd-mappop-g">${city.map(btn).join("")}</div>` : ""}
+        ${city.length ? `<p class="bd-mappop-h">${esc(KCP.LEAGUE_REGIONS?.south?.name || "지역 도시")}</p><div class="bd-mappop-g">${city.map(btn).join("")}</div>` : ""}
       </div>`;
   }
   function shell(app, packs) {
@@ -2390,9 +2405,7 @@
         <button type="button" class="bd-help" id="bd-help" aria-label="도움말과 팁">${ico("help")}</button>
       </header>
       <div class="bd-mapbar" id="bd-mapbar">
-        <div class="bd-maps" role="group" aria-label="지도 고르기">
-          ${packs.length > 3 ? mapPicker(packs) : packs.length > 1 ? packs.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("") : ""}
-        </div>
+        ${packs.length > 1 ? `<div class="bd-maps" role="group" aria-label="지도 고르기">${packs.length > 3 ? mapPicker(packs) : packs.map(id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`).join("")}</div>` : ""}
         <div class="bd-layers" role="group" aria-label="자료 지도">
           ${LAYERS.map(L => `<button type="button" class="bd-layer" data-layer="${L.id}" aria-pressed="false">${ico(L.icon)}<span>${L.name}</span></button>`).join("")}
         </div>
@@ -2747,17 +2760,17 @@
   function renderResearch() {
     const R0 = researchRun(S.st, 13), eff = Math.min(R0.staff, R0.seats), host = S.opts.research ? S.opts.research() : null;
     const wk = id => { const a = R0.adoptW[id], dm = R0.log.find(x => x.id === id && x.ev === "demo"); return a != null ? `${a + 1}주차 도입` : dm ? `${dm.w + 1}주차 실증 중` : "3달 안에 못 끝남"; };
-    const hostTxt = id => { if (!host) return ""; const st = (host.stage || {})[id]; return st === "done" ? `도입됨(${host.adoptR[id]}라운드부터)` : st === "demo" ? "실증 중 — 다음 라운드 도입" : `진척 ${host.prog && host.prog[id] || 0}/${TECHS.find(T => T.id === id).need}`; };
+    const hostTxt = id => { if (!host) return ""; const st = (host.stage || {})[id]; return st === "done" ? `도입됨(${leagueMonth() ? `${S.opts.leagueTurnLabel?.(host.adoptR[id]) || "도입 달 자료 없음"}부터` : `${host.adoptR[id]}라운드부터`})` : st === "demo" ? leagueWords("실증 중 — 다음 라운드 도입") : `진척 ${host.prog && host.prog[id] || 0}/${TECHS.find(T => T.id === id).need}`; };
     const q = S.st.rq || [];
     return `<p class="bd-sub">${ico("flask")}연구 <b>지어야 시작</b></p>
-      <p class="bd-note">에너지공학대학 ${R0.unis} · 기후에너지데이터연구소 ${R0.labs} → 전문인력 ${R0.staff}명, 연구석 ${R0.seats}자리 → <b>유효 연구인력 ${eff}명</b>${R0.unis ? ` (대학 인력은 ${LG ? "지은 다음 라운드부터" : `${RS.uniPrepW}주 뒤부터`})` : ""}${!R0.labs ? " · 연구소가 없으면 연구석이 0" : ""}</p>
+      <p class="bd-note">에너지공학대학 ${R0.unis} · 기후에너지데이터연구소 ${R0.labs} → 전문인력 ${R0.staff}명, 연구석 ${R0.seats}자리 → <b>유효 연구인력 ${eff}명</b>${R0.unis ? ` (대학 인력은 ${LG ? leagueWords("지은 다음 라운드부터") : `${RS.uniPrepW}주 뒤부터`})` : ""}${!R0.labs ? " · 연구소가 없으면 연구석이 0" : ""}</p>
       <div class="bd-cards">${TECHS.map(T => {
         const k = q.indexOf(T.id), onR = k >= 0;
         return `<button type="button" class="bd-card" data-rq="${T.id}" aria-pressed="${onR}">
           <span class="bd-card-ico">${onR ? `<b class="num">${k + 1}</b>` : ico("flask")}</span>
-          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${T.grade}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
+          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.id === "bms" ? bmsEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${T.grade}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
       }).join("")}</div>
-      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1턴, 그다음 턴부터 효과. 연구소 운영비 ${RS.labOpexR}억/턴.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 게임 가정(G).</p>`;
+      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1${leagueMonth() ? "달" : "턴"}, 그다음 ${leagueMonth() ? "달" : "턴"}부터 효과. 연구소 운영비 ${RS.labOpexR}억/${leagueMonth() ? "달" : "턴"}.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 게임 가정(G).</p>`;
   }
   function satBar(v) {
     const tone = v >= 70 ? "ok" : v >= 40 ? "mid" : "bad";
@@ -2769,7 +2782,7 @@
     const len = R.days === 7 ? "1주" : R.days === 30 ? "1달" : "3달";
     const chosen = R.missions.filter(m => m.chosen), others = R.missions.filter(m => !m.chosen);
     const lostElse = others.filter(m => !m.ok);
-    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(seasonName(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
+    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(displaySeason(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
       <div class="bd-res-acts">
         <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
         <button type="button" class="v2-btn primary" id="bd-jopen">${ico("pen")}<span>일지 쓰기</span></button>
@@ -3184,7 +3197,7 @@
   Object.assign(KCP.buildGame, {
     mount, saveView, restoreView, lastTrial,
     current: () => (S ? S.st : null),
-    refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
+    refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
     toast: msg => { if (S) toast(msg); }
   });

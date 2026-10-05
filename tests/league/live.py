@@ -183,6 +183,11 @@ class Wire:
             event, data = envelope.get("event"), envelope.get("payload")
             if not isinstance(data, dict):
                 return
+            # 팀 요청 body는 문자열 JSON, 진행자 봉투는 객체 data를 그대로 싣는다.
+            if event == "req" and isinstance(data.get("body"), str):
+                data = json.loads(data["body"])
+            elif event in ("snap", "nack", "ack") and isinstance(data.get("data"), dict):
+                data = data["data"]
             p = self.pending
             if sent and event == "req":
                 self.requests[data.get("type")] += 1

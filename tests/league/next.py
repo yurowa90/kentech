@@ -12,6 +12,8 @@ import re
 import sys
 from urllib.parse import urlsplit
 
+from playwright.sync_api import expect
+
 
 WAIT = 12000
 IDS = ["pyeongtaek", "hwaseong", "anseong", "dangjin", "asan", "cheonan"]
@@ -77,7 +79,7 @@ TRIAL = """() => {
     const state = JSON.parse(JSON.stringify(S));
     state.events = [{id:definition.id, round:state.round, x}];
     const mods = C.trialMods(state, R, id);
-    const result = BG.simulate(JSON.parse(JSON.stringify(p)), 30, mods);
+    const result = BG.simulate(JSON.parse(JSON.stringify(p)), 30, {league:true, mods});
     return {mods, result};
   });
   return {xs:[0.2,2.8], runs, noEvent, eventHasEffect:!!Object.keys(definition.effect).length};
@@ -208,7 +210,10 @@ def setup_pair(context, base, pages):
         raise AssertionError("one room-code input required")
     code[0].fill(fixture["room"])
     button(team, r"^(?:방\s*)?(?:참가|참여|입장|들어가기)(?:하기)?$").click()
-    button(team, re.escape(fixture["names"][0])).click()
+    seat = team.locator(f'[data-seat="{fixture["team"]}"]')
+    expect(seat).to_be_visible()
+    expect(seat).to_be_enabled()
+    seat.click()
     team.wait_for_function("() => !!KCP.league.state().team")
     return host, team, fixture
 
@@ -344,12 +349,12 @@ def results(host, team, checks, fixture):
     ledger = result["team"][fixture["team"]].get("ledger", {})
     checks.ok(all(isinstance(ledger.get(key), (int, float)) for key in ["open", "income", "invest", "opex", "close"]),
               "result fixture has contractual ledger")
-    spend_nodes = visible(team.get_by_text(re.compile(r"이번\s*턴\s*총지출")))
+    spend_nodes = visible(team.get_by_text(re.compile(r"이번\s*(?:달|턴)\s*총지출")))
     checks.ok(bool(spend_nodes), "result labels current-turn total spending")
     if spend_nodes and "invest" in ledger and "opex" in ledger:
         shown = spend_nodes[0].evaluate(r"""n => {
           for(let p=n,d=0;p && d<4;p=p.parentElement,d++) {
-            const m=/이번\s*턴\s*총지출\s*[:：]?\s*([\d,]+(?:\.\d+)?)/.exec(p.innerText||'');
+            const m=/이번\s*(?:달|턴)\s*총지출\s*[:：]?\s*([\d,]+(?:\.\d+)?)/.exec(p.innerText||'');
             if(m) return {text:m[1], value:Number(m[1].replace(/,/g,''))};
           } return null;
         }""")
@@ -403,7 +408,13 @@ def record_trial(team, checks):
     if not controls:
         panel(team, r"^건설$")
     button(team, r"시험.*(?:1달|1개월)|(?:1달|1개월).*시험|^1달(?:\s*운영)?$").click()
+    team.wait_for_function("() => /날씨는/.test(document.querySelector('#bd-run-wx')?.textContent || '')")
+    month = team.evaluate("() => KCP.leagueCore.roundsOf(KCP.league.state().snap)[KCP.league.state().snap.round-1].month")
+    checks.ok(f'{month}월 (날씨는 ' in team.locator('#bd-run-wx').inner_text(),
+              '#32 시험 운전 날씨 칩의 현재 달과 날씨 기준월')
     team.wait_for_function("() => !!KCP.buildGame.lastTrial()")
+    checks.ok(f'· {month}월 (날씨는 ' in team.locator('#bd-res-title').inner_text(),
+              '#32 시험 성적표의 현재 달과 날씨 기준월')
     trial = team.evaluate("() => KCP.buildGame.lastTrial()")
     checks.ok(isinstance(trial, dict) and bool(trial), "one-month UI trial records BG.lastTrial for result comparison")
     no_overflow(team, checks, "one-month trial")
@@ -529,8 +540,10 @@ def solo(context, base, checks, pages):
     page = monitor(context, pages, "solo")
     page.goto(base + "#league")
     page.wait_for_function(BOOT)
-    # Interpretation: the lobby's 혼자 하기 control starts a new solo game.
-    button(page, r"혼자\s*하기").click()
+    start = page.locator("#lg-solo-start")
+    expect(start).to_be_visible()
+    expect(start).to_be_enabled()
+    start.click()
     page.wait_for_url(re.compile(r".*#league/solo$"))
     page.wait_for_function("() => !!(KCP.league.state().S || KCP.league.state().snap)")
     before = page.evaluate(READ)["S"]

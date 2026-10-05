@@ -114,6 +114,9 @@
     const p = { taxRes: clampStep(previous.taxRes), taxInd: clampStep(previous.taxInd),
       service: clampStep(previous.service), incentive: 0 };
     if (!c) return p;
+    // 신중 성향은 재생 여유를 더 요구한다. 기존 연구 문턱·위험 선호 계수만 사용한다.
+    if (KCP.TECH_DATA) p.re100 = KCP.leagueCore.techOf(S, id).includes("re100") &&
+      (S.results.at(-1)?.team[id]?.renPct || 0) >= KCP.TECH_DATA.params.re100Need.v * (2 - style.risk);
     const floor = (c.approval0 ?? KCP.ECON_DATA.params.sat0.v) - KCP.ECON_DATA.params.approvalDrop.v;
     const cash = c.cash - investment;
     const reserve = c.pop * KCP.ECON_DATA.params.svcCost.v *
@@ -191,7 +194,7 @@
     connected.nodes.filter(n => anchor && n.comp === anchor.comp && n.comp >= 0)
       .forEach(n => n.att.forEach(([i]) => roots.add(i)));
     const maxMW = Math.max(...viable.map(t => bg.BLD[t].mw));
-    const seed = `${S.room}:${S.round}:${id}`;
+    const seed = `${S.seedKey ?? S.room}:${S.round}:${id}`;
     const have = supply(bg, S, id, plan);
     const grid = gridFor(bg, S, R, id, plan);
     const hydroLimit = (grid ? grid.peakMW : bg.peakDemand({}, false)) * value("aiHydroMaxShare");
@@ -270,7 +273,7 @@
     const gridTight = grid && grid.headroomMW - (grid.waitingMW - grid.reservedMW) < Math.min(grid.monthlyMW, renewNeed);
     let free = C.budget(S, id) - C.spendOf(bg, S, R, id, plan);
     const pending = R.ties.filter(t => t.a === id || t.b === id);
-    let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => ({ ...t, id: C.tieId(t) }));
+    let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => C.effectiveTie(S, t));
     // 공개 계획·수요·연료 가격으로 대표 주를 예상한다. 사건의 숨은 실현값은 읽지 않는다.
     const rd = C.roundsOf(S)[Math.max(0, S.round - 1)];
     const preview = () => {
@@ -283,7 +286,7 @@
         const mods = S.econ ? withMap(bg, R, key, () => C.modsFor({ ...S, events: [],
           grid: { ...S.grid, [key]: grid } }, R, key)) : {};
         sims[key] = withMap(bg, R, key, () => C.simTeam(bg, R, key, p,
-          { ...rd, seed: KCP.econ.hashStr(`${S.room}:${S.round}:trade`) },
+          { ...rd, seed: KCP.econ.hashStr(`${S.seedKey ?? S.room}:${S.round}:trade`) },
           Math.max(C.budget(S, key), bg.capex(p)), mods));
         prices[key] = S.teams[key].price;
       }
@@ -295,7 +298,8 @@
       if (existing?.st === "built") continue;
       const incoming = existing?.st === "prop" && existing.by !== id;
       if (!incoming && (existing || style.risk !== value("aiStyles").bold.risk && !gridTight)) continue;
-      const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap }) / 2;
+      const kind = incoming ? existing.kind : C.techOf(S, id).includes("hvdc") ? "hvdc" : def.kind;
+      const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap, kind }) / 2;
       const theirs = assets(S.teams[other].plan);
       const neighbor = withMap(bg, R, other, () => supply(bg, S, other, theirs));
       const otherFree = withMap(bg, R, other, () => C.budget(S, other) - C.spendOf(bg, S, R, other, theirs));
@@ -303,7 +307,7 @@
         S.econ.cities[key].cash >= -S.econ.cities[key].debtCap);
       const eligible = own.gates.includes(other) && neighbor.gates.includes(id) && debtOK && free >= half && otherFree >= half;
       let worthwhile = false;
-      const candidate = { ...def, cap, id: C.tieId(def) };
+      const candidate = C.effectiveTie(S, { ...def, cap, kind });
       if (eligible) {
         preview();
         const before = C.settle(accepted, sims, prices, sims[id].H, rd.days);
@@ -317,8 +321,8 @@
         };
         worthwhile = worth(id) > half && (incoming || worth(other) > half);
       }
-      if (incoming) actions.push({ type: worthwhile ? "accept" : "cancel", other, cap });
-      else if (worthwhile) actions.push({ type: "propose", other, cap });
+      if (incoming) actions.push({ type: worthwhile ? "accept" : "cancel", other, cap, kind });
+      else if (worthwhile) actions.push({ type: "propose", other, cap, kind });
       if (worthwhile) { free -= half; accepted.push(candidate); }
     }
     return actions;

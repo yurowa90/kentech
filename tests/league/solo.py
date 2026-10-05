@@ -209,12 +209,21 @@ def play(checks, page, base, label):
     screenshot(checks, page, f"econui-solo-{label}-lobby.png")
     observation = start(page)
     state = observation["S"]
+    page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {configurable:true,
+      value:{writeText:async text => {window.__soloSheet=text;}}})""")
+    open_panel(page, 'journal')
+    page.locator('#lg-jcopy').click()
+    page.wait_for_function('() => !!window.__soloSheet')
+    sheet = page.evaluate('window.__soloSheet')
+    checks.ok('내 계획을 기준 먼저' in sheet and '우리 계획을 기준 먼저' not in sheet,
+              f'{label} #16 혼자 하기 활동지 끝 성찰은 내 계획')
     initial_fingerprint = fingerprint(state)
     initial_room = state["room"]
     close_drawer(page)
-    with page.expect_dialog() as dialog_info:
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    with page.expect_event("dialog") as dialog_info:
         page.locator("#lg-solo-restart").click()
-    dialog_info.value.dismiss()
+    checks.ok(dialog_info.value.type == "confirm", f"{label} 처음부터 확인 대화상자")
     checks.ok(fingerprint(read(page)["S"]) == initial_fingerprint, f"{label} 처음부터 취소 → 진행 보존")
     checks.ok(state.get("econ") is not None and len(state.get("rounds") or []) == 12,
               f"{label} U3 시작은 경제 모드 12달")

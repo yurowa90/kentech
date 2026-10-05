@@ -70,7 +70,7 @@
       costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, 10) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
       co2: has(e, "co2") ? clamp(e.co2, 0, BIG) : null,
-      renPct: num(e.renPct, 0, 100, 0), tradeNet: num(e.tradeNet, -BIG, BIG, 0),
+      renPct: num(e.renPct, 0, 100, 0), tradeNet: num(e.tradeNet, -BIG, BIG, 0), royalty: num(e.royalty, 0, BIG, 0),
       opex: num(e.opex, 0, BIG, 0), capexNew: num(e.capexNew, 0, BIG, 0),
       bonus: num(e.bonus, -BIG, BIG, 0), salvage: num(e.salvage, 0, BIG, 0),
       demMWh: has(e, "demMWh") ? clamp(e.demMWh, 0, BIG) : null,
@@ -496,7 +496,7 @@
   }
 
   /* ---------- 한 달 ---------- */
-  // inputs[id] = {energy:{unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
+  // inputs[id] = {energy:{unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), royalty?(기술 사용료 수입), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
   //               policy:{taxRes, taxInd, service, incentive}, assets:{uni, lab, port, site, houseCap?, indCap?}}
   function monthStep(E0, inputs, data) {
     data = data || DATA();
@@ -559,7 +559,7 @@
       const c = C[id], inp = ins[id], e = inp.energy, o = outIdx(c, inp, I, data);
       c.out = o.v;
       const own = ownRev(c, inp, data, o.v, reg);
-      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, tariff: own.tariff, trade: own.trade, bonus: r3(e.bonus), salvage: r3(e.salvage) };
+      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty), bonus: r3(e.bonus), salvage: r3(e.salvage) };
       const exp = {
         capex: r3(e.capexNew), opex: r3(netOpex(e)),
         service: r3(c.pop * P("svcCost") * (1 + P("svcStep") * c.policy.service)),
