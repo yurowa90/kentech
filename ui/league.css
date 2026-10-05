@@ -483,3 +483,69 @@
 }
 
 .tag-paper { display: inline-block; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-2); font-size: 12px; }
+
+/* T4: 팀 탐색은 아래 막대만 사용. 트리의 가로 넘침은 이 영역 안에 가둔다. */
+#lg-panel.lg-tech-drawer { width: min(1080px, calc(100vw - 16px)); box-sizing: border-box; overflow-x: hidden; }
+.lg-tech-panel,
+.lg-tech-detail { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.lg-tech-panel h2 { font-size: 20px; margin: 0 0 10px; }
+.lg-tech-staff,
+.lg-tech-queue { font-size: 14px; line-height: 1.6; }
+.lg-tech-scroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--line); border-radius: 10px; }
+.lg-tech-tree { display: grid; grid-template-columns: repeat(6, minmax(156px, 1fr)); gap: 8px; padding: 10px; min-width: 1000px; box-sizing: border-box; align-items: start; }
+.lg-tech-branch { min-width: 0; display: grid; gap: 10px; }
+.lg-tech-branch h3 { font-size: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+.lg-tech-card { display: grid; gap: 7px; min-width: 44px; min-height: 44px; padding: 12px 10px; text-align: left; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.lg-tech-card strong { font-size: 14px; }
+.lg-tech-card span,
+.lg-tech-card small { font-size: 12px; line-height: 1.5; }
+.lg-tech-card[data-state="locked"] { border-style: dashed; }
+.lg-tech-card[data-state="adopted"] { border-color: var(--accent); }
+.lg-tech-card[data-state="progress"],
+.lg-tech-card[data-state="demo"],
+.lg-tech-card[data-state="pending"] { border-width: 2px; }
+.lg-tech-card[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg-tech-card progress { width: 100%; height: 10px; accent-color: var(--accent); }
+.lg-tech-detail { margin-top: 12px; padding: 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.lg-tech-detail p { font-size: 14px; line-height: 1.6; }
+.lg-tech-effect { font-weight: 700; }
+.lg-tech-source,
+.lg-tech-scale { font-size: 12px; }
+.lg-tech-source a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.lg-tech-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.lg-tech-actions label { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
+.lg-tech-actions button,
+.lg-tech-actions select { min-width: 44px; min-height: 44px; max-width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--sheet); font: inherit; box-sizing: border-box; }
+.lg-tech-actions button { cursor: pointer; }
+.lg-tech-actions :disabled { opacity: .65; cursor: default; }
+.lg-tech-status { min-height: 1.6em; font-size: 14px; font-weight: 700; }
+.lg-tech-titles,
+.lg-tech-icons { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.lg-tech-title,
+.lg-tech-icon { display: inline-block; max-width: 100%; box-sizing: border-box; margin: 3px 0; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--paper); font-size: 12px; overflow-wrap: anywhere; }
+.lg-tech-host-news { padding: 0 12px; }
+.lg-tech-news { overflow-wrap: anywhere; }
+.lg-tech-results { display: grid; gap: 10px; margin-bottom: 12px; perspective: 900px; }
+.lg-tech-results:empty { display: none; }
+.lg-tech-complete { padding: 12px; border: 2px solid var(--accent); border-radius: 10px; background: var(--paper); color: var(--ink); overflow-wrap: anywhere; }
+.lg-tech-complete p { margin: 6px 0; font-size: 14px; }
+.lg-tech-complete h3 { margin: 6px 0; font-size: 18px; }
+/* T2 지정 0.8초. JS의 TECH_FLIP_MS와 일치; 상태 갱신 때 음의 delay로 이어 재생한다. */
+.lg-tech-flip { animation: lg-tech-reveal .8s ease-out both; }
+.lg-tech-eureka { margin: 0; padding: 10px; border-left: 3px solid var(--accent); background: var(--paper); color: var(--ink); font-size: 14px; }
+.lg-tech-scroll:focus-visible,
+.lg-tech-card:focus-visible,
+.lg-tech-actions :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lg-tech-drawer .lg-px,
+.lg-tech-drawer .lg-bbtn { min-width: 44px; min-height: 44px; }
+@keyframes lg-tech-reveal {
+  from { transform: rotateY(-180deg); opacity: 0; }
+  to { transform: rotateY(0); opacity: 1; }
+}
+@media (max-width: 760px) {
+  .lg-tech-actions > * { flex: 1 1 100%; }
+  .lg-tech-actions select { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-tech-flip { animation: none; transform: none; }
+}
