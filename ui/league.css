@@ -134,8 +134,8 @@
 .lg-nbs li { padding: 8px 10px; border-left: 5px solid var(--c); border-radius: 8px; background: var(--paper); }
 .lg-nbh { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .lg-nbh span { font-size: 12.5px; color: var(--ink-2); }
-.lg-gate { font-weight: 700; color: #b9551f !important; }
-.lg-gate[data-ok="true"] { color: #2e8b57 !important; }
+.lg-gate { font-weight: 700; color: var(--lg-danger, var(--bad)); }
+.lg-gate[data-ok="true"] { color: var(--lg-ok, var(--ok)); }
 .lg-nbs-st { margin: 4px 0; font-size: 14px; }
 .lg-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .lg-acts .v2-btn { min-height: 44px; font-size: 14px; }
@@ -196,7 +196,7 @@
 .lg-ev b { font-size: 15px; }
 .lg-ev span { font-size: 14px; line-height: 1.45; }
 .lg-ev small { font-size: 12px; color: var(--ink-2); }
-.lg-ev[data-mine="false"] { opacity: 0.7; border-style: dashed; }
+.lg-ev[data-mine="false"] { border-style: dashed; }
 .lg-panel .lg-evs { grid-template-columns: 1fr; }
 .lg-evres { margin-top: 10px; }
 
@@ -449,7 +449,7 @@
 .lg-regioncity span { display: block; font-size: 12px; }
 .lg-regioncap { margin: 0; padding: 0 12px; font-size: 13px; }
 .lg-regioncap:empty { display: none; }
-.lg-peek #lg-peek { position: fixed; inset: 0; pointer-events: none; }
+.lg-peek #lg-peek { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
 .lg-peek .lg-awaybar { pointer-events: auto; position: fixed; inset: 0 0 auto; transform: none; max-width: none; border-radius: 0; z-index: 40; }
 .lg-peek #bd-dock,
 .lg-peek #bd-drawer { visibility: hidden; pointer-events: none; }
@@ -465,6 +465,7 @@
 #lg-panel .lg-ptabs { align-items: center; }
 #lg-panel .lg-ptabs strong { flex: 1; }
 #lg-panel .lg-ptabs .lg-bbtn { color: var(--ink); border-color: var(--line); }
+#lg-panel .lg-ptabs .lg-bbtn[aria-expanded="true"] { color: #0d2a33; }
 #lg-panel [hidden] { display: none; }
 .lg-team-map .bd-banner[data-kind]:not([data-kind="city"]):not([data-kind="city_l"]):not([data-kind="city_m"]):not([data-kind="port"]):not([data-kind="factory_big"]):not([data-kind="plant"]):not([data-kind="gridpt"]) { visibility: hidden; }
 .lg-team-map[data-line-tool="true"] .bd-banner[data-kind] { visibility: visible; }
@@ -476,8 +477,8 @@
 #lg-previous-note { padding: 8px; border-left: 3px solid var(--accent); background: var(--paper); }
 #lg-learning-mission { font-weight: 700; }
 @media (max-width: 760px) {
-  #lg-panel { top: auto; max-height: 52dvh; }
-  #lg-panel[data-folded="true"] { top: auto; bottom: calc(var(--bd-dock, 90px) + 8px); }
+  #lg-panel { top: var(--bd-top, 264px); bottom: auto; max-height: min(32dvh, calc(100dvh - var(--bd-top, 264px) - var(--bd-dock, 90px) - 16px)); }
+  #lg-panel[data-folded="true"] { top: var(--bd-top, 264px); bottom: auto; }
   .lg-bar { width: calc(100vw - 16px); box-sizing: border-box; gap: 4px; }
   .lg-bar .lg-bbtn { padding: 0 8px; font-size: 13px; }
 }
@@ -584,3 +585,53 @@
 @media (prefers-reduced-motion: reduce) {
   .lg-tech-flip { animation: none; transform: none; }
 }
+
+/* 최종 검증: 조작 크기·대비와 지도 위 UI의 겹침. 건설 계산은 바꾸지 않는다. */
+.lg-back,
+.lg-bbtn,
+.lg-px,
+.lg-kick,
+.lg-mapnav a { min-width: 44px; min-height: 44px; box-sizing: border-box; }
+.lg-back { justify-content: center; }
+#lg-panel .lg-field select { min-width: 44px; min-height: 44px; padding: 6px 8px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+#lg-panel summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+#lg-panel .lg-radio > span { display: flex; align-items: center; min-height: 44px; gap: 8px; }
+.lg-bar:not(.lg-awaybar) { z-index: 32; }
+.lg-bteam { background: #0d2a33; color: #f3f6f8; border: 2px solid var(--c); }
+.lg-host { --lg-danger: var(--bad); --lg-ok: var(--ok); }
+.lg-panel { --lg-danger: #ff8a7a; --lg-ok: #8fe0a9; }
+.lg-host .v2-kicker { color: var(--accent); }
+.lg-tline b[data-bad="true"],
+.lg-table td[data-bad="true"],
+.lg-kpi dd[data-bad="true"],
+.lg-timer[data-low="true"],
+.lg-seat[data-s="off"],
+.lg-host .lg-conn[data-s="error"],
+.lg-host .lg-conn[data-s="reconnecting"] { color: var(--lg-danger, var(--bad)); border-color: currentColor; }
+.lg-seat[data-s="on"],
+.lg-ready,
+.lg-host .lg-conn[data-s="open"] { color: var(--lg-ok, var(--ok)); border-color: currentColor; }
+.lg-panel .lg-gate[data-ok="true"] { color: var(--lg-ok); }
+.lg-panel .lg-gate[data-ok="false"] { color: var(--lg-danger); }
+.lg-host .tag-mine,
+.lg-panel .tag-mine { color: var(--ink-2); border-color: currentColor; }
+.lg-evsize i { background: #d08a1c; color: #15222c; }
+.tag-model { display: inline-block; padding: 1px 5px; border: 1px dashed currentColor; border-radius: 4px; color: var(--ink-2); font-size: 12px; }
+.lg-event-source a { color: var(--ink); text-decoration: underline; overflow-wrap: anywhere; }
+.lg-event-source summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.lg-event-source p { font-size: 13px; line-height: 1.5; }
+.lg-peek #bd-hud { visibility: hidden; pointer-events: none; }
+.lg-peek #bd-hud :is(a, button) { visibility: hidden; }
+.lg-team-map .bd-cap .v2-cap-k { white-space: normal; text-overflow: clip; overflow: visible; overflow-wrap: anywhere; }
+.lg-team-map .bd-cap[data-cap="time"] .v2-cap-v { white-space: normal; text-overflow: clip; overflow: visible; }
+@media (max-width: 760px) {
+  .lg-regionlabels { display: none; }
+  .lg-regioncity span { overflow-wrap: anywhere; }
+  .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
+  .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
+  .lg-team-map .bd-cap[data-cap="time"] .v2-cap-v { font-size: 10px; }
+}
+#lg-final-summary p,
+#lg-final-causes p { margin: 6px 0; }
+#lg-panel details > summary::after { content: "▸"; margin-left: auto; padding-left: 8px; }
+#lg-panel details[open] > summary::after { content: "▾"; }

@@ -2453,6 +2453,7 @@
       if (!el) return;
       const vEl = el.querySelector("[data-v]");
       if (vEl.textContent !== v) vEl.textContent = v;
+      vEl.title = v;
       if (tone !== undefined) el.classList.toggle("tone-danger", tone === "danger");
     };
     const left = budgetLeft();
@@ -2485,7 +2486,9 @@
     const rd = S.opts.league && S.opts.leagueRound ? S.opts.leagueRound() : null;
     if (rd) {
       const season = (SEASONS.find(q => q.id === rd.season) || SEASONS[1]).name;
-      set("time", rd.month ? `${rd.year}년 ${rd.month}월 · ${season}` : season);
+      set("time", rd.month ? `${rd.month}월 · ${season}` : season);
+      const time = S.root.querySelector('[data-cap="time"] [data-v]');
+      if (rd.month && time) { time.title = `${rd.year}년 ${rd.month}월 · ${season}`; time.setAttribute("aria-label", time.title); }
     }
     const pk = S.root.querySelector('[data-cap="power"] .v2-cap-k'), mode = R ? "run" : res ? "res" : "build";
     if (pk.dataset.mode !== mode) { pk.dataset.mode = mode; pk.innerHTML = R ? '공급/수요<span class="bd-unit"> MW</span>' : res ? "결과" : '설비/피크<span class="bd-unit"> MW</span>'; }
