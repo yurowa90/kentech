@@ -135,7 +135,12 @@
     return rs ? [...new Set([...(rs.adopted || []).filter(t => !rs.adoptR || rs.adoptR[t] == null || rs.adoptR[t] <= S.round), ...Object.keys(rs.adoptR || {}).filter(t => rs.adoptR[t] <= S.round)])] : [];
   };
   function saveResearch(T, rs) { T.research = rs; T.rs = rs; }
+  // 연구 화면·예약 계산은 유레카·공동 연구 판정에서 다른 도시 지도를 고른다 — 화면 지도를 바꾸지 않게 감싼다.
   function researchView(S, id) {
+    const bg = KCP.buildGame;
+    return bg ? preserveMap(bg, () => researchViewRaw(S, id)) : researchViewRaw(S, id);
+  }
+  function researchViewRaw(S, id) {
     const rs = researchOf(S.teams[id]), cards = techCards(KCP.buildGame), adopted = techOf(S, id);
     const progress = Object.fromEntries(cards.map(c => [c.id, Math.min(100, 100 * (rs.prog[c.id] || 0) / (c.need * (rs.licensedFrom[c.id] ? tp("licenseNeed") : 1)))]));
     const titles = KCP.TECH_DATA ? KCP.TECH_DATA.titles.filter(t => cards.filter(c => c.branch === t.branch && adopted.includes(c.id)).length >= t.need.v).map(t => t.id) : [];
@@ -163,6 +168,9 @@
   }
   function researchReserve(S, id, bg, plan) {
     if (!KCP.TECH_DATA || !S.teams?.[id]) return 0;
+    return bg ? preserveMap(bg, () => researchReserveRaw(S, id, bg, plan)) : researchReserveRaw(S, id, bg, plan);
+  }
+  function researchReserveRaw(S, id, bg, plan) {
     const rs = researchOf(S.teams[id]);
     const royalty = royaltyCards(S, id, bg, plan).length * tp("royalty");
     return royalty + (plan?.rq || []).reduce((sum, key) => {
