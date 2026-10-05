@@ -277,19 +277,34 @@
       operate(control); operate(S);
       const gain = S.econ.cities[donor].cash - control.econ.cities[donor].cash;
       const paid = buyers.reduce((total, id) => total + control.econ.cities[id].cash - S.econ.cities[id].cash, 0);
-      return { gain, paid };
+      const demoDelta = buyers.reduce((total, id) => total + (S.teams[id].rfix || 0) - (control.teams[id].rfix || 0), 0);
+      return { gain, paid, demoDelta };
     }
-    H.test("T2 진척 없는 이전 연구 6달만 사용료 0.5억·쌍방 현금 정산", () => {
+    H.test("H-E #3 진척 없는 이전 연구는 7달 내내 사용료 없음", () => {
       const { S, ids } = fixture(), [donor, buyer] = ids;
       S.teams[donor].research = research(["grid"]);
       if (!special(S, buyer, "license", donor, "grid").ok) throw new Error("license 요청 거부");
       if (!S.teams[buyer].research.licensedFrom.grid) throw new Error("licensedFrom.grid 없음");
       for (let m = 0; m < 7; m++) {
-        const { gain, paid } = differential(S, donor, [buyer]), expected = m < 6 ? 0.5 : 0;
+        const { gain, paid } = differential(S, donor, [buyer]), expected = 0;
         if (Math.abs(gain - expected) > 0.011 || Math.abs(paid - expected) > 0.011)
           throw new Error(`${m + 1}달 개발도시 +${gain}, 수입도시 -${paid}, 목표 ${expected}`);
       }
       return true;
+    });
+    H.test("H-E #3 진척하는 이전 연구만 최대 6회·쌍방 현금 정산", () => {
+      const { S, ids } = fixture(), [donor, buyer] = ids;
+      S.teams[buyer].plan = planFor(buyer, ["lab"]);
+      S.teams[donor].research = research(["smr"]);
+      if (!special(S, buyer, "license", donor, "smr").ok) throw new Error("license 요청 거부");
+      S.teams[buyer].research.eureka = ["smr"];
+      for (let m = 0; m < 7; m++) {
+        const before = S.teams[buyer].research.prog.smr || 0;
+        const { gain, paid, demoDelta } = differential(S, donor, [buyer]), expected = m < 6 ? 0.5 : 0;
+        if (Math.abs(gain - expected) > 1e-8 || Math.abs(paid - expected - demoDelta) > 1e-8 ||
+            (m < 5 && !(S.teams[buyer].research.prog.smr > before))) throw new Error(`${m + 1}달 진척·사용료 상한 불일치`);
+      }
+      return S.teams[buyer].research.royaltyMonths.smr === 6;
     });
     H.test("T2 이전 연구 need 50%: 절반 직전 미완료·절반에서 실증", () => {
       const { S: A, ids: pair } = fixture(), [origin, target] = pair;
@@ -311,14 +326,14 @@
         full.prog.hvdc === need / 2 && !full.stage.hvdc && !adopted(normal, target).includes("hvdc");
     });
     H.test("T2 사용료 수입 도시당 월 3억 상한·수입 양수", () => {
-      const { S, ids } = fixture({ all: true }), donor = ids[0], buyers = ids.slice(1);
+      const { S, ids } = fixture({ all: true, staff: true }), donor = ids[0], buyers = ids.slice(1);
       const roots = ["grid", "bms", "fcst", "sic"];
       S.teams[donor].research = research(roots);
       buyers.forEach(id => roots.forEach(card => {
         if (!special(S, id, "license", donor, card).ok) throw new Error(`${id}/${card} license 거부`);
       }));
       const { gain, paid } = differential(S, donor, buyers);
-      return gain > 0 && gain <= 3.011 && paid >= gain - 0.011;
+      return Math.abs(gain - buyers.length * 0.5) < 1e-8 && gain <= 3 && Math.abs(paid - gain) < 1e-8;
     });
     H.test("T2 미도입 도시에서 기술 이전 거부", () => {
       const { S, ids } = fixture(), [donor, buyer] = ids, before = clone(S.teams[buyer].research);
