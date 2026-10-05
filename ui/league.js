@@ -1162,6 +1162,7 @@
       if (me.plan && me.rev > L.rev && L.rev === 0 && isEmptyDoc()) adoptPlan(me);
       const rd = curRound();
       BG.setSeason(rd.season);
+      // 계절이 같아도 달이 바뀌면 leagueRound()를 다시 읽어 HUD 시간을 갱신한다.
       BG.refresh();
       if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
       else if (!prev && V.econ && V.phase === "plan" && curRound().month === 1) openPanel("journal");
@@ -1220,6 +1221,7 @@
       salvage: key => { const me = L.snap && L.snap.teams[L.team]; return me && (me.base || []).some(x => x.k === key) ? C.SALV : 1; },
       locked: lockMsg,
       season: () => curRound().season,
+      leagueRound: curRound,
       onChange: () => {
         if (L.snap?.econ) { const { d, n } = monthNote(); n.confirmed = false; n.research = (BG.current()?.builds || []).some(b => ["uni", "lab"].includes(b.t) && !(L.snap.teams[L.team].base || []).some(item => item.k === C.itemKey("b", b))); putData(d); }
         L.rev++; const z = tdata(); z.rev = L.rev; putData(z); clearTimeout(L.planT);

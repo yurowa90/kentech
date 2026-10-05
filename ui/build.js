@@ -2391,6 +2391,12 @@
       const cp = complaints(S.st, null);
       set("cp", `${cp.issues}건`, cp.issues > 1 ? "danger" : "");
     }
+    // 리그의 달 턴은 시뮬 계절의 대표 월과 별개다. 표시만 현재 턴을 따른다.
+    const rd = S.opts.league && S.opts.leagueRound ? S.opts.leagueRound() : null;
+    if (rd) {
+      const season = (SEASONS.find(q => q.id === rd.season) || SEASONS[1]).name;
+      set("time", rd.month ? `${rd.year}년 ${rd.month}월 · ${season}` : season);
+    }
     const pk = S.root.querySelector('[data-cap="power"] .v2-cap-k'), mode = R ? "run" : res ? "res" : "build";
     if (pk.dataset.mode !== mode) { pk.dataset.mode = mode; pk.innerHTML = R ? '공급/수요<span class="bd-unit"> MW</span>' : res ? "결과" : '설비/피크<span class="bd-unit"> MW</span>'; }
   }
@@ -2924,7 +2930,7 @@
   KCP.buildGame.active = () => !!S;
 
   // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
-  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · onMount(root) 화면이 생긴 뒤
+  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤
   function mount(app, opts) {
     opts = opts || {};
     teardown();
