@@ -80,7 +80,7 @@ RANK_JS = r"""() => {
 }"""
 POLICY_JS = """([id, key, expected]) => {
   const S = KCP.league.state().S, P = S.teams[id].econPol;
-  return !!P && P[key] === expected;
+  return !!P && (key === "re100" ? !!P[key] === expected : P[key] === expected);
 }"""
 CRIT_JS = """id => {
   const S = KCP.league.state().S;
@@ -208,12 +208,12 @@ def automatic_plan():
                     isinstance(t, ast.Name) and t.id == "AUTO" for t in node.targets))
 
 
-def setup_pair(context, base, turns, pages):
+def setup_pair(context, base, turns, pages, seed_js=SEED_JS):
     host, events_h = monitored_page(context)
     pages.append((host, events_h, "진행자"))
     host.goto(base + "#home")
     host.wait_for_function(BOOT_JS)
-    fixture = host.evaluate(SEED_JS, turns)
+    fixture = host.evaluate(seed_js, turns)
     host.goto(base + "#league/host")
     host.wait_for_selector("#lg-roomcode")
     team, events_t = monitored_page(context)
@@ -398,9 +398,9 @@ def economic(checks, context, base, label, pages):
                 sorted(team.locator('#lg-city .lg-grp[data-g]').evaluate_all(
                     "nodes => nodes.map(n => n.dataset.g)")) == sorted(groups) and
                 all(shown(team, f'#lg-city .lg-grp[data-g="{key}"]') for key in groups))
-    checks.test(f"{label} U1 정책 항목은 정확히 4종", lambda:
+    checks.test(f"{label} U1 기본 정책 4종과 RE100 지정", lambda:
                 sorted(team.locator('#lg-city [data-pol]').evaluate_all(
-                    "nodes => [...new Set(nodes.map(n => n.dataset.pol))]")) == sorted(POLICIES))
+                    "nodes => [...new Set(nodes.map(n => n.dataset.pol))]")) == sorted((*POLICIES, "re100")))
     for key in POLICIES:
         checks.test(f"{label} U1 정책 {key} 표시·활성", lambda key=key:
                     shown(team, f'#lg-city [data-pol="{key}"]') and
@@ -503,6 +503,308 @@ def economic(checks, context, base, label, pages):
     screenshot(checks, host, f"econui-{label}-host-end.png")
 
 
+
+# H-U #27: 실제 BroadcastChannel 전달만 보류한다. 앱 상태·mount를 대체하지 않는다.
+HOLD_SNAP_JS = """(() => {
+  const Native = window.BroadcastChannel;
+  window.__huHold = sessionStorage.getItem('hu-hold-first-snap') === 'yes';
+  window.__huQueued = [];
+  window.__huRelease = () => {
+    window.__huHold = false;
+    sessionStorage.removeItem('hu-hold-first-snap');
+    window.__huQueued.splice(0).forEach(fn => fn());
+  };
+  window.BroadcastChannel = class extends Native {
+    set onmessage(handler) {
+      super.onmessage = event => {
+        if (window.__huHold && event.data?.ev === 'snap')
+          window.__huQueued.push(() => handler(event));
+        else handler(event);
+      };
+    }
+  };
+})();"""
+
+CONTRAST_JS = """selector => {
+  const color = s => (s.match(/[\\d.]+/g) || []).map(Number);
+  const lum = c => c.slice(0,3).map(v => {
+    v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+  }).reduce((sum,v,i) => sum + v * [.2126,.7152,.0722][i],0);
+  return [...document.querySelectorAll(selector)].filter(el => el.getClientRects().length)
+    .map(el => {
+      let bg = [255,255,255];
+      const chain = []; for (let n=el;n;n=n.parentElement) chain.unshift(n);
+      for (const n of chain) {
+        const c = color(getComputedStyle(n).backgroundColor), a = c[3] ?? 1;
+        if(c.length >= 3) bg = c.slice(0,3).map((v,i) => v*a + bg[i]*(1-a));
+      }
+      const fg = color(getComputedStyle(el).color), a = fg[3] ?? 1;
+      const f = lum(fg.slice(0,3).map((v,i) => v*a + bg[i]*(1-a))), b = lum(bg);
+      return {text:el.textContent, ratio:(Math.max(f,b)+.05)/(Math.min(f,b)+.05)};
+    });
+}"""
+
+
+def contrast(checks, page, selector, label):
+    rows = page.evaluate(CONTRAST_JS, selector)
+    checks.ok(bool(rows) and all(row['ratio'] >= 4.5 for row in rows),
+              f"{label} #31 글자 대비 ≥4.5: " +
+              ', '.join(f"{row['ratio']:.2f}" for row in rows))
+
+
+def set_question(page, key, nb=None):
+    page.evaluate("""([key, nb]) => {
+      const L=KCP.league.state(), k=`kcp-league-data-v1:${L.room}:${L.team}`;
+      const d=JSON.parse(localStorage.getItem(k)) || {};
+      d.interview ||= {}; d.interview.months ||= {};
+      d.interview.months[L.snap.round] ||= {};
+      Object.assign(d.interview.months[L.snap.round], {ask:key, nb, quarterKey:null});
+      localStorage.setItem(k,JSON.stringify(d));
+    }""", [key, nb])
+    open_panel(page, 'city')
+    open_panel(page, 'result')
+
+
+def ui_fixes(checks, context, base, label, pages):
+    """H-U UI fixtures are isolated from the existing economic/solo acceptance runs."""
+    host, team, fixture = setup_pair(context, base, 12, pages, SEED_JS.replace("'dangjin'", "'hwaseong'"))
+    tid, other = fixture['team'], fixture['ids'][1]
+    team.add_init_script(HOLD_SNAP_JS)
+    # Both refresh and lobby's 이어서 must wait before mounting the first map.
+    for route in ('새로고침', '이어서'):
+        if route == '이어서':
+            team.goto(base + '#league')
+            contrast(checks, team, '.lg-lobby .v2-kicker', label + ' 로비')
+        team.evaluate("sessionStorage.setItem('hu-hold-first-snap','yes')")
+        if route == '새로고침':
+            team.reload()
+        else:
+            # add_init_script runs on navigation; reload the lobby before 이어서.
+            team.reload()
+            team.locator('#lg-rejoin').click()
+        team.wait_for_selector('#lg-team-wait')
+        checks.ok(team.locator('#bd-root').count() == 0 and
+                  team.evaluate('() => KCP.league.state().snap === null'),
+                  f'{label} #27 {route}: 첫 상태 전 대기·지도 없음')
+        team.wait_for_function('() => window.__huQueued.length > 0')
+        team.evaluate('window.__huRelease()')
+        team.wait_for_selector('#lg-bar')
+        checks.ok(team.locator('#bd-root').count() == 1 and
+                  team.evaluate('id => KCP.league.state().team === id', tid),
+                  f'{label} #27 {route}: 첫 상태 뒤 내 도시 지도 하나')
+    checks.ok(team.locator('.bd-maps').count() == 0, f'{label} #38 지도 하나일 때 선택 상자 없음')
+    advance(host, team, 1, 'plan')
+    open_panel(team, 'result')
+    checks.ok('한 달을 운영하면' in team.locator('#lg-panel').inner_text() and
+              '라운드' not in team.locator('#lg-panel').inner_text(), f'{label} #17 첫 결과 전 달 안내')
+    open_panel(team, 'city')
+    checks.ok(team.locator('[data-pol="re100"]').is_disabled() and
+              '🔒 RE100' in team.locator('.lg-re100').inner_text(), f'{label} #11 RE100 도입 전 잠금')
+    checks.ok('실제 대기질(미세먼지 등)' in team.locator('#lg-city').inner_text(), f'{label} #24 도시 CO₂ 추정 주석')
+    open_panel(team, 'deal')
+    checks.ok('🔒 HVDC' in team.locator('#lg-panel').inner_text() and
+              team.locator('[data-kind="hvdc"]').count() == 0, f'{label} #11 HVDC 도입 전 잠금')
+    open_panel(team, 'tech')
+    ids = team.evaluate('() => KCP.TECH_DATA.cards.map(c => c.id)')
+    for card in ids:
+        button = team.locator(f'[data-tech-card="{card}"]')
+        button.focus()
+        button.press('Space')
+        team.wait_for_selector(f'[data-tech-detail="{card}"]')
+        detail = team.locator('#lg-tech-detail')
+        checks.ok(detail.locator('[data-tech-source] a[href^="http"]').count() > 0 and
+                  '기준연도' in detail.inner_text() and
+                  detail.locator('[data-tech-source] a[href^="docs/"]').count() == 0,
+                  f'{label} #12 {card} 외부 출처·연도(없으면 자료 없음 명시)')
+        checks.ok('교육용 배속 ×' in detail.inner_text() or 'G·비교값 없음' in detail.inner_text(),
+                  f'{label} #23 {card} 배속 또는 비교값 없음')
+        checks.ok(detail.locator('.lg-tech-effect .tag-mine').count() > 0 or card == 'h2mix',
+                  f'{label} #22 {card} 효과 등급과 색 구분')
+        if card == 're100':
+            checks.ok('켄텍 융합전공:' in detail.inner_text() and
+                      '12대 연구분야 아님' in detail.inner_text(), f'{label} #10 RE100 융합전공 구분')
+        if card in ('grid', 'bms', 'nbat', 're100'):
+            checks.ok(not any(text in detail.inner_text() for text in
+                             ('기존 손실 개선 유지', '효과 유지', 'BMS의 몫', ';')),
+                      f'{label} #23 {card} 학생용 한 문장')
+    # A new coefficient must change displayed effect immediately, without editing prose.
+    for card, param, value in (('tandem', 'tandemOutput', 1.237), ('ccu', 'ccuCo2', .321),
+                               ('hvdc', 'hvdcLoss', .0173)):
+        before = team.evaluate('key => KCP.TECH_DATA.params[key].v', param)
+        team.evaluate('([key,v]) => {KCP.TECH_DATA.params[key].v=v}', [param, value])
+        try:
+            team.locator(f'[data-tech-card="{card}"]').click()
+            expected = '1.73%' if card == 'hvdc' else str(value)
+            checks.ok(expected in team.locator('.lg-tech-effect').inner_text(),
+                      f'{label} #23 {card} 변경된 자료 값으로 효과 표시')
+        finally:
+            team.evaluate('([key,v]) => {KCP.TECH_DATA.params[key].v=v}', [param, before])
+    before = team.evaluate('() => KCP.buildGame.M.batEff')
+    team.evaluate('() => {KCP.buildGame.M.batEff=.79}')
+    try:
+        team.locator('[data-tech-card="bms"]').click()
+        checks.ok(bool(re.search(r'79(?:\.0+)?%', team.locator('.lg-tech-effect').inner_text())), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
+    finally:
+        team.evaluate('v => {KCP.buildGame.M.batEff=v}', before)
+    contrast(checks, team, '.lg-tech-effect [class^="tag-"]', label + ' 기술')
+    overflow(checks, team, label + ' H-U 기술')
+    # Host fixture adopts the two features; the normal public snapshot carries them.
+    host.evaluate("""id => {
+      const S=KCP.league.state().S, r=S.teams[id].research;
+      for (const k of ['hvdc','re100']) {r.stage[k]='done'; r.adoptR[k]=S.round;}
+    }""", tid)
+    team.wait_for_function("""() => ['hvdc','re100'].every(k =>
+      KCP.league.state().snap.teams[KCP.league.state().team].research.adopted.includes(k))""")
+    open_panel(team, 'city')
+    team.evaluate("""() => {
+      window.__huEconRequests=[];
+      const post=BroadcastChannel.prototype.postMessage;
+      BroadcastChannel.prototype.postMessage=function(message) {
+        if(message.ev==='req' && message.data?.type==='econ') window.__huEconRequests.push(message.data);
+        return post.call(this,message);
+      };
+    }""")
+    toggle = team.locator('[data-pol="re100"]')
+    toggle.focus(); toggle.press('Space'); toggle.press('Tab')
+    host.wait_for_function(POLICY_JS, arg=[tid, 're100', True])
+    checks.ok(True, f'{label} #11 키보드 RE100 켜기 → econ re100:true')
+    # Refresh handles deferred drawer updates after server acknowledgement.
+    open_panel(team, 'deal'); open_panel(team, 'city')
+    team.locator('[data-pol="re100"]').uncheck()
+    team.locator('[data-pol="re100"]').press('Tab')
+    host.wait_for_function(POLICY_JS, arg=[tid, 're100', False])
+    checks.ok(team.evaluate('() => window.__huEconRequests.some(r => r.re100 === false)'), f'{label} #11 RE100 끄기 → econ re100:false')
+    open_panel(team, 'deal')
+    proposal = team.locator(f'[data-kind="hvdc"][data-other="{other}"][data-cap="2"]')
+    checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
+    box = proposal.bounding_box()
+    checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
+    proposal.focus(); proposal.press('Enter')
+    host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>
+      [t.a,t.b].includes(a) && [t.a,t.b].includes(b) && t.kind==='hvdc' && t.st==='prop')""", arg=[tid, other])
+    checks.ok(True, f'{label} #11 HVDC 제안 kind=hvdc 서버 반영')
+    # Leave another city as unseated: run anyway creates review with stale ready values.
+    advance(host, team, 1, 'review')
+    team.evaluate('() => {window.__huHold=true}')
+    checks.ok(host.locator('#lg-host-ready, #lg-host-unready, .lg-ready').count() == 0 and
+              '미준비' not in host.locator('#lg-host-summary-table').inner_text(), f'{label} #37 결과 준비 표시 없음')
+    open_panel(team, 'result')
+    team.evaluate("""() => {
+      const L=KCP.league.state(), r=L.snap.results.at(-1).team[L.team].research;
+      if(!r) throw Error('연구 결과 fixture 없음');
+      window.__huCompleted=r.completed; r.completed=['mass','re100'];
+    }""")
+    open_panel(team, 'city'); open_panel(team, 'result')
+    checks.ok(team.locator('.lg-tech-complete .tag-mine').count() >= 2 and
+              '켄텍 융합전공' in team.locator('.lg-tech-results').inner_text(),
+              f'{label} #10·22 완료 소식도 융합전공·G 등급 표시')
+    team.evaluate("""() => {
+      const L=KCP.league.state();L.snap.results.at(-1).team[L.team].research.completed=window.__huCompleted;
+    }""")
+    checks.ok('공급한 전기 기준 감축(소비 배출, 추정)' in team.locator('#lg-coop').inner_text() and
+              '정전으로 줄어든 배출은 감축에 넣지 않음' in team.locator('#lg-coop').inner_text(), f'{label} #8 감축 이름·정의')
+    if team.locator('[data-event-source]').count() == 0:
+        team.evaluate("""() => {
+          const L=KCP.league.state(), R=KCP.leagueCore.regionOf(L.snap.region);
+          const E=R.events.find(e => KCP.leagueCore.hits(R,e,L.team) && e.why && e.sources?.length);
+          if(!E) throw Error('사건 출처 fixture 없음');
+          L.snap.events.push({id:E.id,round:L.snap.round,x:1});
+          L.snap.results.at(-1).events.push({id:E.id,round:L.snap.round,x:1});
+        }""")
+        open_panel(team, 'city'); open_panel(team, 'result')
+    checks.ok(team.locator('[data-event-source]').count() > 0 and
+              team.locator('[data-event-source]').evaluate_all("""nodes => nodes.every(n =>
+                n.querySelector('a[href^="http"]') && /기준연월/.test(n.textContent) &&
+                !n.querySelector('a[href^="docs/"]'))"""), f'{label} #12 사건 외부 출처·기준연월')
+    snapshot = team.evaluate('() => KCP.league.state().snap')
+    zero_ids = [id for id, r in snapshot['results'][-1]['team'].items() if r['dem'] == r['uns']]
+    checks.ok(bool(zero_ids) and all('공급 없음' in team.locator(f'[data-contrib="{id}"]').inner_text()
+                                   for id in zero_ids), f'{label} #8 공급 0 도시 공급 없음')
+    checks.ok(team.locator('.lg-pop-reasons meter').count() == 0 and
+              '항목별 점수 변화의 비중' not in team.locator('#lg-causes').inner_text(), f'{label} #6 주민 이동 비례 막대 제거')
+    reasons = team.locator('.lg-pop-reasons').inner_text() if team.locator('.lg-pop-reasons').count() else ''
+    flows = snapshot['econ']['report']['flows']['pop']
+    checks.ok(all(f['why'] in reasons for f in flows if tid in (f['from'],f['to']) and
+                  f['why'] != '공기가 나빠서'), f'{label} #6 엔진 이주 이유 그대로 표시')
+    open_panel(team, 'city')
+    checks.ok(team.locator('[data-pol="re100"]').is_disabled(), f'{label} #11 결과에서 RE100 정책 잠금')
+    low = team.locator('#lg-city .lg-why')
+    checks.ok(low.count() == 1 and bool(re.search(r'만족도 부족 \d+(?:\.\d)?점', low.inner_text())), f'{label} #17 최저 집단 불만 한 자리 표시')
+    # Synthetic royalty report proves optional 0 is shown and missing is omitted.
+    fiscal = snapshot['econ']['report']['fiscal'][tid]
+    had = 'royalty' in fiscal['rev']; original = fiscal['rev'].get('royalty')
+    team.evaluate("""() => {const L=KCP.league.state();L.snap.econ.report.fiscal[L.team].rev.royalty=0;}""")
+    open_panel(team, 'deal'); open_panel(team, 'city')
+    checks.ok('기술 사용료' in team.locator('#lg-fiscal').inner_text(), f'{label} 사용료 필드 0도 별도 표시')
+    team.evaluate("""() => {const L=KCP.league.state();delete L.snap.econ.report.fiscal[L.team].rev.royalty;}""")
+    open_panel(team, 'deal'); open_panel(team, 'city')
+    checks.ok('기술 사용료' not in team.locator('#lg-fiscal').inner_text(), f'{label} 사용료 필드 없으면 생략')
+    if had:
+        team.evaluate('([id,v]) => {KCP.league.state().snap.econ.report.fiscal[id].rev.royalty=v}', [tid, original])
+    # All rebuttal types must display two side-by-side measures, including unavailable baselines.
+    for key in ('co2', 'outage', 'tax', 'free', 'tie', 'tie-accept'):
+        set_question(team, 'lg-r-' + key, other)
+        checks.ok(team.locator('.lg-ask .lg-rebuttal-metrics > div').count() == 2 and
+                  team.locator('.lg-ask .lg-rebuttal-metrics').evaluate("""el => {
+                    const [a,b]=el.children, x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
+                    return Math.abs(x.top-y.top)<1 && x.right <= y.left;
+                  }"""), f'{label} #18 r-{key} 두 지표 나란히')
+        overflow(checks, team, f'{label} 반문 {key}')
+    team.evaluate("""() => {
+      const L=KCP.league.state(); L.snap.teams[L.team].crit={chips:['rel'],line:60,choice:'keep'};
+    }""")
+    set_question(team, 'lg-p-line')
+    checks.ok('지킬 선(전력 신뢰 60점 이상) 아래로 내려갔습니다' in team.locator('.lg-ask').inner_text(), f'{label} #20 하한 항목·숫자·미달 문구')
+    team.evaluate("""() => {
+      const L=KCP.league.state(), k=`kcp-league-data-v1:${L.room}:${L.team}`;
+      const d=JSON.parse(localStorage.getItem(k));
+      d.interview.months[L.snap.round].pred={uns:'down',cash:'up'};
+      localStorage.setItem(k,JSON.stringify(d));
+    }""")
+    # Clipboard capture stays entirely within this page.
+    team.evaluate("""() => Object.defineProperty(navigator,'clipboard', {configurable:true,
+      value:{writeText: async text => {window.__huCopy=text;}}})""")
+    open_panel(team, 'journal'); team.locator('#lg-jcopy').click()
+    team.wait_for_function('() => !!window.__huCopy')
+    text = team.evaluate('window.__huCopy')
+    checks.ok('■ 2027년 1월' in text and '■ 1달' not in text and '예측: 정전 줄 것 / 현금 늘 것' in text and '{"uns"' not in text,
+              f'{label} #16 활동지 달 머리·예측 JSON 없음')
+    # Force warning/badge states to measure the exact previously failing CSS selectors.
+    team.evaluate("""() => {
+      const panel=document.querySelector('#lg-panel');
+      panel.insertAdjacentHTML('beforeend','<p class="lg-warn">가상 경고</p><p class="lg-left"><b data-bad="true">가상 음수 예산</b></p>');
+      const b=document.querySelector('#lg-bar [data-panel="deal"]');
+      if(!b.querySelector('.lg-badge')) b.insertAdjacentHTML('beforeend','<span class="lg-badge">1</span>');
+    }""")
+    contrast(checks, team, '.lg-warn, .lg-left b[data-bad="true"], .lg-badge', label + ' 서랍·뱃지')
+    host.locator('#lg-host-details').evaluate('el => {el.open=true}')
+    contrast(checks, host, '.lg-conn[data-s="open"], .lg-seat[data-s="on"]', label + ' 연결 상태')
+    team.evaluate('window.__huRelease()')
+    # Check every actual month, including representative-weather months and end state.
+    for month in range(2, 13):
+        advance(host, team, month, 'plan')
+        season = team.locator('#bd-season-t').inner_text()
+        checks.ok(f'· {month}월 (날씨는 ' in season and '기준)' in season, f'{label} #32 {month}월·날씨 기준월')
+        overflow(checks, team, f'{label} H-U {month}월')
+        advance(host, team, month, 'review')
+    advance(host, team, 12, 'end')
+    checks.ok(host.locator('#lg-host-ready, #lg-host-unready, .lg-ready').count() == 0,
+              f'{label} #37 끝 준비 표시 없음')
+    board = host.locator('.lg-host-board').inner_text()
+    checks.ok('남은 시간 시간 제한 없음' not in board and '시간 제한 없음' in board,
+              f'{label} #39 시간 제한 없을 때 중복 라벨 없음')
+    overflow(checks, host, label + ' H-U 끝 진행자')
+    screenshot(checks, team, f'econui-{label}-hu-end.png')
+    # D-58: map picker heading must track renamed regional data, then restore.
+    build, events = monitored_page(context); pages.append((build, events, '자유 건설'))
+    build.goto(base + '#home'); build.wait_for_function(BOOT_JS)
+    name = build.evaluate('() => KCP.LEAGUE_REGIONS.south.name')
+    build.evaluate("() => {KCP.LEAGUE_REGIONS.south.name='가상 연습 지역';location.hash='#build'}")
+    build.wait_for_selector('#bd-mapcur')
+    build.locator('#bd-mapcur').click()
+    checks.ok('가상 연습 지역' in build.locator('#bd-mappop').inner_text(), f'{label} #25 지도 제목은 지역 자료에서 읽음')
+    build.evaluate('name => {KCP.LEAGUE_REGIONS.south.name=name}', name)
+
 def seasonal(checks, context, base, label, pages):
     host, team, _ = setup_pair(context, base, 0, pages)
     stages = [("lobby", 0)] + [(phase, round_number) for round_number in range(1, 5)
@@ -528,7 +830,7 @@ def main():
             for width, height in ((1280, 900), (390, 844)):
                 for scheme in ("light", "dark"):
                     label = f"{width}x{height}-{scheme}"
-                    for name, scenario in (("경제", economic), ("계절", seasonal)):
+                    for name, scenario in (("경제", economic), ("계절", seasonal), ("H-U", ui_fixes)):
                         context, external = context_for(browser, base, width, height, scheme)
                         pages = []
                         try:

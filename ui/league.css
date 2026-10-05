@@ -598,7 +598,8 @@
 #lg-panel .lg-radio > span { display: flex; align-items: center; min-height: 44px; gap: 8px; }
 .lg-bar:not(.lg-awaybar) { z-index: 32; }
 .lg-bteam { background: #0d2a33; color: #f3f6f8; border: 2px solid var(--c); }
-.lg-host { --lg-danger: var(--bad); --lg-ok: var(--ok); }
+.lg-host { --lg-danger: var(--bad); --lg-ok: #2a7046; }
+:root[data-theme="dark"] .lg-host { --lg-ok: var(--ok); }
 .lg-panel { --lg-danger: #ff8a7a; --lg-ok: #8fe0a9; }
 .lg-host .v2-kicker { color: var(--accent); }
 .lg-tline b[data-bad="true"],
@@ -635,3 +636,23 @@
 #lg-final-causes p { margin: 6px 0; }
 #lg-panel details > summary::after { content: "▸"; margin-left: auto; padding-left: 8px; }
 #lg-panel details[open] > summary::after { content: "▾"; }
+
+/* H-U: 밝음·어두움의 작은 글자와 새 정책·반문 표시. */
+.lg-badge { color: #15222c; }
+.lg-lobby .v2-kicker { color: var(--accent); }
+.lg-panel .lg-left b[data-bad="true"],
+.lg-panel .lg-warn { color: var(--lg-danger); }
+.lg-re100 > span { justify-content: flex-start; align-items: center; gap: 8px; min-height: 44px; }
+.lg-re100 input[type="checkbox"] { width: 24px; flex: 0 0 24px; min-height: 44px; }
+.lg-rebuttal-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lg-rebuttal-metrics div { padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
+.lg-rebuttal-metrics dt, .lg-rebuttal-metrics dd { margin: 0; overflow-wrap: anywhere; }
+.lg-rebuttal-metrics dd { margin-top: 4px; }
+.lg-tech-source { overflow-wrap: anywhere; }
+.lg-tech-design { margin-top: 6px; }
+.lg-nbs .v2-btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.lg-panel :is(button, input, a, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.lg-team-map #bd-season-t { white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.lg-team-map .bd-season { max-width: 100%; box-sizing: border-box; }
+.lg-tech-source a, .lg-event-source a, .lg-tech-design a { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; overflow-wrap: anywhere; }
