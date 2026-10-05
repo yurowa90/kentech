@@ -410,8 +410,9 @@ block("B11", () => {
     const normal = run12(1, id => id === SMALL ? { energy: { unsPct: 100, costPerMWh: 0, tradeNet: 0 } } :
       id === target ? { energy: { unsPct: 0, costPerMWh: normalCost, tradeNet: 0 } } : {});
     const normalPrice = normal.reports[0].cities?.[target]?.Lparts?.price;
-    ok(blackoutPrice === 0 && finite(normalPrice) && blackoutPrice < normalPrice,
-      `정전100% ${SMALL} price=${blackoutPrice}, 정전0%·평균원가 ${target} price=${normalPrice} (0점·정상보다 낮음)`);
+    // ECON-NEXT §1 감사 A가 B11의 공급0 요금0점을 대체: 직전 부분 점수 보존(정전 이중 감점 제거).
+    ok(blackoutPrice === r.start.cities[SMALL].lagL.price && finite(normalPrice),
+      `정전100% ${SMALL} price=${blackoutPrice}, 직전=${r.start.cities[SMALL].lagL.price} (동일)`);
     const normalCap = normal.reports[0].fiscal?.[target]?.debtCap;
     ok(finite(normalCap) && normalCap > 0,
       `${target} 정전0%·평균원가 fiscal.debtCap=${fmt(normalCap)} (목표 >0)`);

@@ -72,13 +72,15 @@
       co2: has(e, "co2") ? clamp(e.co2, 0, BIG) : null,
       renPct: num(e.renPct, 0, 100, 0), tradeNet: num(e.tradeNet, -BIG, BIG, 0),
       opex: num(e.opex, 0, BIG, 0), capexNew: num(e.capexNew, 0, BIG, 0),
-      bonus: num(e.bonus, 0, BIG, 0), salvage: num(e.salvage, 0, BIG, 0),
+      bonus: num(e.bonus, -BIG, BIG, 0), salvage: num(e.salvage, 0, BIG, 0),
       demMWh: has(e, "demMWh") ? clamp(e.demMWh, 0, BIG) : null,
       servedMWh: has(e, "servedMWh") ? clamp(e.servedMWh, 0, BIG) : null,
       buyCost: num(e.buyCost, 0, BIG, Math.max(0, -fin(e.tradeNet, 0))),
       co2Int: has(e, "co2Int") ? clamp(e.co2Int, 0, 5) : null,
       fossilMWh: has(e, "fossilMWh") ? clamp(e.fossilMWh, 0, BIG) : null,
-      spareMW: has(e, "spareMW") ? clamp(e.spareMW, 0, BIG) : null
+      spareMW: has(e, "spareMW") ? clamp(e.spareMW, 0, BIG) : null,
+      exportMWh: num(e.exportMWh, 0, BIG, 0), importMWh: num(e.importMWh, 0, BIG, 0), tieCost: num(e.tieCost, 0, BIG, 0),
+      cpList: (Array.isArray(e.cpList) ? e.cpList : []).filter(c => c && ["noise", "view", "smoke", "forest"].includes(c.kind)).map(c => ({ kind: c.kind, score: num(c.score, 0, BIG, 0), near: c.near }))
     };
     const old = C.policy, step = (x, d) => Math.round(num(x, -2, 2, d));
     const policy = { taxRes: step(po.taxRes, old.taxRes), taxInd: step(po.taxInd, old.taxInd), service: step(po.service, old.service), incentive: num(po.incentive, 0, 1e4, old.incentive) };
@@ -88,6 +90,8 @@
       houseCap: has(as, "houseCap") && as.houseCap > 0 ? as.houseCap : null,
       indCap: has(as, "indCap") && as.indCap > 0 ? as.indCap : null
     };
+    if (po.save === true) policy.save = true;
+    if (po.share === true) policy.share = true;
     if (po.re100 === true) policy.re100 = true;
     return { energy, policy, assets };
   }
@@ -114,7 +118,7 @@
   // 넘침 꼴: 수용의 90%까지 90점 이상, 넘으면 빠르게 감점(SimCity 'R 수요' 포화)
   const crowdScore = (over, data) => { const knee = pv(data, "crowdKnee"), base = pv(data, "crowdBase"); return c100(over <= knee ? base + (100 - base) * (knee - over) / knee : base - pv(data, "crowdSlope") * (over - knee)); };
   const servedOf = e => e.servedMWh != null ? Math.min(e.servedMWh, e.demMWh == null ? e.servedMWh : e.demMWh) : (e.demMWh || 0) * (1 - e.unsPct / 100);
-  const priceScore = (e, reg, data) => servedOf(e) <= 0 ? 0 : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
+  const priceScore = (e, reg, data, previous) => servedOf(e) <= 0 ? fin(previous, pv(data, "neutralScore")) : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
   const taxSatisfaction = (step, data) => c100(pv(data, "taxBase") + pv(data, "taxCurve")[step + 2]);
   const lagRate = (key, data) => pv(data, ["svc", "re", "crowd", "talent", "land", "labor", "air"].includes(key) ? "lambdaSlow" : "lambdaFast");
   // 호스트가 발전량을 넘기면 사용, 없으면 비재생 공급량을 화석 사용의 대리값으로 쓴다(G).
@@ -131,7 +135,7 @@
     const pop = Math.max(1, city.pop);
     const parts = {
       rel: c100(100 * (1 - e.unsPct / P("unsZeroL")) - (e.hospH > 0 ? P("hospPen") : 0)),
-      price: priceScore(e, reg, data),
+      price: priceScore(e, reg, data, city.lagL && city.lagL.price),
       air: e.co2Local == null ? P("airDefault") : c100(100 * Math.exp(-(e.co2Local / (pop / 1e4)) / P("airRef"))),
       jobs: c100(P("neutralScore") + P("neutralScore") * Math.tanh(P("jobsSlope") * ((city.ind / pop) / Math.max(1e-6, reg.jobsAvg) - 1))),
       svc: c100(P("neutralScore") + P("serviceCurve")[pol.service + 2] + Math.min(P("eduMax"), P("eduUni") * as.uni + P("eduLab") * as.lab)),
@@ -149,7 +153,7 @@
     const steelX = (mix.steel || 0) * (S.exportShare || 0);
     const parts = {
       rel: c100(100 * (1 - e.unsPct / P("unsZeroA"))),
-      price: servedOf(e) <= 0 ? 0 : !reg.avgCost ? P("neutralScore") : c100(P("neutralScore") + P("priceSlopeA") * (1 - Math.max(fin(e.costPerMWh, reg.avgCost) / reg.avgCost, P("priceFloor")))),
+      price: servedOf(e) <= 0 ? fin(city.lagA && city.lagA.price, P("neutralScore")) : !reg.avgCost ? P("neutralScore") : c100(P("neutralScore") + P("priceSlopeA") * (1 - Math.max(fin(e.costPerMWh, reg.avgCost) / reg.avgCost, P("priceFloor")))),
       re: c100((100 * e.renPct) / P("reTarget")),
       labor: c100(P("neutralScore") + P("laborLog") * Math.log(pop / Math.max(1, reg.popAvg)) + P("laborYouth") * (city.groups.youth.share - reg.youthAvg)),
       talent: c100(P("talentBase") + P("talentUni") * as.uni + P("talentLab") * as.lab),
@@ -265,7 +269,9 @@
       const e = ins[id].energy, co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       C.unsS = e.unsPct; C.renS = e.renPct; C.co2pc = co2 / Math.max(1, C.pop / 1000);
       C.out = outIdx(C, ins[id], E.intl.cur, data).v;
+      C.hospRel = l.parts.rel - c100(100 * (1 - e.unsPct / P("unsZeroL")));
       const g = groupTargets(C, ins[id], C.out, data);
+      C.groupContrib = clone(g.contrib);
       Object.keys(C.groups).forEach(k => { C.groups[k].sat = g.tg[k]; });
       C.approval = c100(sum(Object.keys(C.groups).map(k => C.groups[k].share * C.groups[k].sat)));
       C.approval0 = C.approval;
@@ -440,22 +446,32 @@
       A: C.A, out: c100((100 * (out - P("outMin"))) / (P("outMax") - P("outMin"))), taxI: taxSatisfaction(C.policy.taxInd, data),
       ren: c100((100 * C.renS) / P("reTarget")), co2: c100(100 * Math.exp(-C.co2pc / P("scoreCo2Ref")))
     });
-    const tg = {};
+    const tg = {}, contrib = {};
     Object.keys(data.groups).forEach(g => {
-      let v = wsum(parts, W[g] || {});
-      if (g === "senior" && e.hospH > 0) v -= P("seniorHosp");
-      if (e.unsPct >= P("outageSatThreshold")) v -= P("outageSatPenalty");
-      if (C.unrest > 0) v -= P("unrestPenalty");
-      tg[g] = c100(v);
+      const w = W[g] || {}, z = sum(Object.keys(w).filter(k => parts[k] != null).map(k => w[k])) || 1;
+      const terms = Object.fromEntries(Object.keys(w).map(k => [k, w[k] * fin(parts[k], 0) / z]));
+      // 신뢰 점수에 이미 든 병원 감점도 별도 원인으로 분리한다(감점 총량은 유지).
+      const hospital = (w.rel || 0) * fin(C.hospRel, 0) / z;
+      terms.rel = fin(terms.rel, 0) - hospital;
+      terms.hospital = hospital - (g === "senior" && e.hospH > 0 ? P("seniorHosp") : 0);
+      terms.outage = e.unsPct >= P("outageSatThreshold") ? -P("outageSatPenalty") : 0;
+      const complaints = sum(e.cpList.filter(c => (P("complaintGroups")[c.kind] || []).includes(g)).map(c => c.score));
+      terms.complaint = -Math.min(P("complaintCap"), complaints * P("complaintScale"));
+      terms.share = inp.policy.share ? -terms.complaint * P("shareRelief") : 0;
+      terms.save = inp.policy.save ? -P("saveSatPenalty") : 0;
+      terms.unrest = C.unrest > 0 ? -P("unrestPenalty") : 0;
+      const total = sum(Object.values(terms));
+      tg[g] = c100(total);
+      terms.bounds = tg[g] - total;
+      contrib[g] = terms;
     });
-    return { tg, parts };
+    return { tg, parts, contrib };
   }
-  const GW = { rel: "정전", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "생산 부진", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출" };
-  function whyOf(C, parts, data) {
-    const W = pv(data, "groupW");
-    const g = Object.keys(C.groups).sort((a, b) => C.groups[a].sat - C.groups[b].sat)[0];
-    const ks = Object.keys(W[g] || {}).filter(k => parts[k] != null).sort((a, b) => parts[a] - parts[b]);
-    return { group: g, part: ks[0] || null, text: `${data.groups[g].name} 불만: ${GW[ks[0]] || "여러 가지"}` };
+  const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
+  function whyOf(C, causes, data) {
+    const group = Object.keys(C.groups).sort((a, b) => C.groups[a].sat - C.groups[b].sat)[0], cause = causes[0];
+    return { group, key: cause ? cause.key : null, part: cause ? cause.key : null,
+      text: cause ? `${cause.label}: 이번 달 지지율 ${cause.delta > 0 ? "+" : ""}${r3(cause.delta)}점` : "이번 달 지지율 변화 없음" };
   }
 
   /* ---------- 한 달 ---------- */
@@ -493,6 +509,8 @@
       const c = C[id], ctx = ctxOf(E, ins, data, id, reg), l = livability(c, ctx), a = industryAttract(c, ctx);
       Object.keys(l.parts).forEach(k => { c.lagL[k] += lagRate(k, data) * (l.parts[k] - c.lagL[k]); });
       Object.keys(a.parts).forEach(k => { c.lagA[k] = fin(c.lagA[k], a.parts[k]) + lagRate(k, data) * (a.parts[k] - fin(c.lagA[k], a.parts[k])); });
+      const hospRel = l.parts.rel - c100(100 * (1 - ins[id].energy.unsPct / P("unsZeroL")));
+      c.hospRel = fin(c.hospRel, 0) + lagRate("rel", data) * (hospRel - fin(c.hospRel, 0));
       c.L = wsum(c.lagL, l.w); c.A = wsum(c.lagA, a.w);
       c.Leff = effOf(c, "L", l.w, data);
       // 유치 순위는 시작 매력을 전부 빼서 같은 개선은 동점으로 취급한다.
@@ -555,10 +573,24 @@
       c.renS += P("lambdaSlow") * (e.renPct - c.renS);
     });
     // 7) 집단 만족 → 지지율
-    const groups = {};
+    const groups = {}, causes = {};
     ids.forEach(id => {
       const c = C[id], g = groupTargets(c, ins[id], c.out, data);
-      Object.keys(c.groups).forEach(k => { c.groups[k].sat = c100(c.groups[k].sat + lam * (g.tg[k] - c.groups[k].sat)); });
+      const changes = {}, previous = c.groupContrib || {};
+      Object.keys(c.groups).forEach(k => {
+        const old = previous[k] || { other: c.groups[k].sat }, target = g.contrib[k], next = {};
+        new Set([...Object.keys(old), ...Object.keys(target)]).forEach(key => {
+          const delta = lam * (fin(target[key], 0) - fin(old[key], 0));
+          next[key] = fin(old[key], 0) + delta;
+          changes[key] = fin(changes[key], 0) + c.groups[k].share * delta;
+        });
+        g.contrib[k] = next;
+        c.groups[k].sat = c100(c.groups[k].sat + lam * (g.tg[k] - c.groups[k].sat));
+      });
+      c.groupContrib = g.contrib;
+      causes[id] = Object.entries(changes).filter(([, delta]) => delta !== 0)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || a[0].localeCompare(b[0]))
+        .slice(0, P("causeCount")).map(([key, delta]) => ({ key, label: GW[key] || key, delta }));
       c.approval = c100(sum(Object.keys(c.groups).map(k => c.groups[k].share * c.groups[k].sat)));
       c.approvalHistory.push(c.approval);
       if (c.approvalHistory.length > P("approvalWindow")) c.approvalHistory.shift();
@@ -569,7 +601,7 @@
         news.push(`${c.name} 시위 — 지지율이 회복되면 멈춰요`);
       }
       const sats = {}; Object.keys(c.groups).forEach(k => { sats[k] = r1(c.groups[k].sat); });
-      groups[id] = { sat: sats, approval: r1(c.approval), why: whyOf(c, g.parts, data) };
+      groups[id] = { sat: sats, approval: r1(c.approval), why: whyOf(c, causes[id], data) };
     });
     // 8) 기업 이전 희망
     E.offers = E.offers.filter(o => o.until > E.t);
@@ -597,7 +629,7 @@
       c.hist.push({ t: E.t, pop: c.pop, ind: c.ind, cash: r1(c.cash), appr: r1(c.approval) });
       if (c.hist.length > P("historyMonths")) c.hist.shift();
       cities[id] = {
-        L: r1(c.L), A: r1(c.A), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff), Aeff: r1(Ar[id].eff),
+        causes: causes[id], L: r1(c.L), A: r1(c.A), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff), Aeff: r1(Ar[id].eff),
         pop: c.pop, ind: c.ind, dPop: c.pop - before[id].pop, dInd: c.ind - before[id].ind,
         out: c.out, demandMul: demandMul(c), cash: r1(c.cash)
       };
@@ -609,6 +641,17 @@
       flows: { pop: fp, ind: fi }, net, fiscal, groups, cities,
       intl: Object.assign(clone(I), { started, fossilMWh: r3(fossil), fossilEstimated: ids.some(id => ins[id].energy.fossilMWh == null), fossilBase: r3(fossilBase), nextMarketLng: E.intl.nextMarketLng }), offers, review, news, totals: clone(E.totals)
     };
+    // 지역 실적은 월 MWh/t, 연계선 분담은 누적 투자 억. 감축은 보통 배출계수 대비(음수도 보존).
+    const goal = inputs.region && inputs.region.goal || { uns: P("coopUnsGoal"), co2: P("coopCo2Goal") * weekMul(E.year, E.month) };
+    const demand = sum(ids.map(id => ins[id].energy.demMWh || 0));
+    const uns = sum(ids.map(id => Math.max(0, (ins[id].energy.demMWh || 0) - servedOf(ins[id].energy))));
+    const co2 = sum(ids.map(id => fin(ins[id].energy.co2Local, 0)));
+    report.region = { unsPct: demand > 0 ? 100 * uns / demand : 0, co2, goal: clone(goal), met: { uns: demand > 0 && 100 * uns / demand <= goal.uns, co2: co2 <= goal.co2 } };
+    report.contrib = Object.fromEntries(ids.map(id => {
+      const e = ins[id].energy;
+      return [id, { exportMWh: e.exportMWh, importMWh: e.importMWh, co2Cut: P("normalCo2") * (e.demMWh || 0) - fin(e.co2Local, 0), tieCost: e.tieCost }];
+    }));
+    E.coop = report.region.met.uns && report.region.met.co2 ? P("coopBonus") : 0;
     // 다음 달로
     E.t++; E.month++;
     if (E.month > 12) { E.month = 1; E.year++; }
@@ -635,7 +678,7 @@
         appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("unsZeroL")))
       };
       Object.keys(parts).forEach(k => { parts[k] = r1(parts[k]); });
-      return { id, name: c.name, score: r1(wsum(parts, w)), parts };
+      return { id, name: c.name, score: r1(c100(wsum(parts, w) + fin(E.coop, 0))), parts, coop: fin(E.coop, 0) };
     });
     const rank = list.slice().sort((a, b) => b.score - a.score || E.order.indexOf(a.id) - E.order.indexOf(b.id));
     rank.forEach((x, i) => { x.rank = i + 1; });

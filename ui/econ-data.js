@@ -80,6 +80,16 @@
       }
     },
     params: {
+      complaintScale: p(1, G, "D-62: 민원 점수당 해당 집단 만족 감점; 국내 인과 실증값 없음"),
+      complaintCap: p(20, G, "D-62: 집단별 민원 감점 상한; 6달 입지 차이 수용 기준으로 검산"),
+      complaintGroups: p({ noise: ["farm", "senior"], view: ["farm", "senior"], smoke: ["senior", "youth"], forest: ["green"] }, G, "D-62: 민원 종류별 영향 집단 가정"),
+      shareRelief: p(0.5, G, "D-62: 이익공유는 민원 감점의 절반 완화; 민원 없는 곳에 가산하지 않음"),
+      saveSatPenalty: p(5, G, "D-62: 절전 카드 집단 만족 목표 −5점"),
+      aiComplaintCost: p(0.5, G, "D-62: AI 입지 비교에서 민원 점수당 가상 비용(억); 실제 지출 아님"),
+      causeCount: p(3, G, "ECON-NEXT: 이번 달 지지율 변화 기여 원인 최대 개수"),
+      coopBonus: p(2, G, "D-61: 지역 정전·CO₂ 공동목표를 모두 달성한 달 모든 활성 도시 총점 +2; 누적하지 않음"),
+      coopUnsGoal: p(0.5, G, "단독 경제 검사 기본 지역 정전 목표(%); 호스트의 활성 도시 목표가 우선"),
+      coopCo2Goal: p(3000, G, "단독 경제 검사 기본 지역 대표 7일 CO₂ 목표(t); 월 일수 환산, 호스트 목표 우선"),
       re100PolicyWeight: p(1.5, G, "ECON-TECH-SPEC T1: RE100 산단 선택 시 산업 매력 재생 항 가중, 낮은 재생에도 적용"),
       neutralScore: p(50, G, "중립 부분 점수"),
       airDefault: p(60, G, "배출 자료가 없을 때 대기 점수"),
@@ -180,7 +190,7 @@
       resTax: p(3.0e-5, G, "주민 관련 세: 1명당 달 억(실제 구조: 지방세 중 주민세·재산세 몫 참고)"),
       indTax: p(1.8e-5, G, "산업 관련 세: 종사자 1명당 달 억(지방소득세·법인분 참고)"),
       indTaxK: p(3, G, "EVIDENCE §5 세수 급락 보도(O*) 방향; 근거 약함: 매출보다 큰 이익 변동을 out^3으로 단순화, 추정 지수 아님"),
-      subRevenueRate: p(0.8, "O", "EVIDENCE §5 지방교부세법 제8조 원문(위키문헌 판본 확인, 최신 개정 미대조): 표준세율 기준 수입 80%"),
+      subRevenueRate: p(0.8, "O*", "EVIDENCE §5 지방교부세법 제8조 검색 요약·위키문헌 판본 참고(공식 원문·최신 개정 미대조): 표준세율 기준 수입 80%"),
       subAdjust: p(0.5, G, "근거 약함: EVIDENCE §5 교부세 조정률 근사; 전년 표준세입 증가분의 40%를 1월 지원금에서 상쇄"),
       taxStep: p(0.4, G, "B12: 세율 단계당 세입 40%, 최저·최고는 기준의 20~180%; 법정 탄력세율이 아닌 세입 증감의 게임 눈금"),
       svcCost: p(3.3e-5, G, "공공서비스: 1명당 달 억"),
@@ -265,11 +275,20 @@
       { id: "steel_proc", name: "철강 가공 공장", sector: "steel", workers: [800, 2000], mw: [1, 2], re: [0, 10], uns: 2 }
     ],
     sources: [
-      { id: "placeholder", text: "시작값은 모두 자리표시(est). 주민등록 인구 통계(행정안전부), 전국사업체조사(통계청), 지방재정365 재정자립도로 바꿀 것." },
+      { id: "placeholder", text: "시작값은 2025 주민등록·2022/2023 사업체조사·2025 재정자립도 검색 요약(O*)과 추정(G)이 섞임. start.src에 항목별 기준·출처·등급, 원문 대조는 남음." },
       { id: "fiscal", text: "재정지원금 구조는 지방교부세(기준재정수요 − 수입) 원리를 단순화(M)." },
       { id: "cbam", text: "EU CBAM: 2026년 본격 시행, 철강·시멘트·알루미늄 등. 게임에선 2028년 1월부터(G)." }
     ]
   };
+  // ECON-DATA §1의 기존 값만 구조화. null 연도는 추정값의 기준연도가 확인되지 않았다는 뜻.
+  Object.entries(KCP.ECON_DATA.start).forEach(([id, city]) => {
+    const employmentYear = { pyeongtaek: 2022, anseong: 2023, cheonan: 2023 }[id];
+    city.src = {
+      pop0: { year: "2025.12", source: "행정안전부 주민등록인구", grade: "O*", unit: "명" },
+      ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사" : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명" },
+      fsr0: { year: 2025, source: "지방재정365" + (id === "hwaseong" ? " · 두 도시 예산 가중 계산" : ""), grade: id === "hwaseong" ? "M" : "O*", unit: "비율" }
+    };
+  });
   // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.
   if (KCP.TECH_DATA) Object.entries(KCP.TECH_DATA.params).forEach(([key, record]) => {
     KCP.ECON_DATA.params["tech_" + key] = record;
