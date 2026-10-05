@@ -26,8 +26,13 @@ SUMMARY_JS = """() => {
 }"""
 SYNC_JS = """expected => {
   const V = KCP.league.state()?.snap;
+  // 실서버 키 정렬: 중첩 객체의 키 순서는 무시하고 배열 순서는 유지한다.
+  const canon = x => JSON.stringify(x, (_, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
+      : value);
   return !!V && V.rev === expected.rev && V.round === expected.round &&
-    V.phase === expected.phase && JSON.stringify(V.econ) === JSON.stringify(expected.econ);
+    V.phase === expected.phase && canon(V.econ) === canon(expected.econ);
 }"""
 PHASE_JS = """([round, phase]) => {
   const L = KCP.league.state(), V = L && (L.S || L.snap);
@@ -136,6 +141,7 @@ class Wire:
     def __init__(self, project, key, markers):
         self.project, self.key, self.markers = urlsplit(project).hostname, key, markers
         self.sockets = self.bad_sockets = self.sent = self.snaps = self.leaks = 0
+        self.sent_snaps = 0
         self.nacks = self.callback_errors = self.blocked = 0
         self.requests, self.errors = Counter(), Counter()
         self.pending, self.latencies = None, []
@@ -180,6 +186,8 @@ class Wire:
                 self.requests[data.get("type")] += 1
                 if p and p["start"] is None and p["request"](data):
                     p["start"] = time.perf_counter()
+            elif sent and event == "snap":
+                self.sent_snaps += 1
             elif not sent and event == "nack":
                 self.nacks += 1
             elif not sent and event == "snap":
@@ -454,8 +462,13 @@ def report_wires(checks, pages):
             checks.ok(wire.errors[kind] == 0, f"{label} {kind} {wire.errors[kind]} (기대 0)")
         checks.ok(wire.sockets > 0 and wire.bad_sockets == 0,
                   f"{label} 실제 프로젝트 WSS만 연결 ({wire.sockets}회)")
-        checks.ok(wire.sent > 0 and wire.snaps > 0,
-                  f"{label} 프레임 관찰 송신 {wire.sent}·스냅 수신 {wire.snaps}")
+        # live.md 검사 내용: self:false이므로 진행자는 자기 스냅을 수신하지 않는다.
+        if label == "진행자":
+            checks.ok(wire.sent > 0 and wire.sent_snaps > 0,
+                      f"{label} 프레임 관찰 송신 {wire.sent}·스냅 송신 {wire.sent_snaps}")
+        else:
+            checks.ok(wire.sent > 0 and wire.snaps > 0,
+                      f"{label} 프레임 관찰 송신 {wire.sent}·스냅 수신 {wire.snaps}")
         checks.ok(wire.leaks == 0, f"{label} 모든 송신 프레임 자유 서술 표식 {wire.leaks} (기대 0)")
         checks.ok(wire.callback_errors == 0 and wire.blocked == 0,
                   f"{label} 프레임 검사 예외·예상 밖 HTTP 요청 0")
