@@ -8,7 +8,7 @@
   if (!KCP || typeof KCP.route !== "function" || !KCP.leagueCore || !KCP.leagueNet || !KCP.buildGame) return;
   const C = KCP.leagueCore, NET = KCP.leagueNet, BG = KCP.buildGame, esc = KCP.esc;
   const REGION = "south";
-  // K_TEAM: 이 기기에서 마지막으로 쓴 팀(이어서 하기). K_TAB(sessionStorage): 이 탭의 팀·토큰 — 한 PC에서 탭 여러 개로 시연해도 섞이지 않게.
+  // K_TEAM: 이 기기에서 마지막으로 쓴 팀(이어서 하기). K_TAB(sessionStorage): 이 탭의 팀·서명 키·순번 — 한 PC에서 탭 여러 개로 시연해도 섞이지 않게.
   // 팀 자료(건설·일지)는 방·팀마다 따로: K_DATA + ":" + 방 + ":" + 팀
   const K_NET = "kcp-league-net-v1", K_HOST = "kcp-league-host-v1", K_TEAM = "kcp-league-team-v1", K_TAB = "kcp-league-tab-v1", K_DATA = "kcp-league-data-v1";
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -26,7 +26,7 @@
   };
   const tab = {
     get() { try { return JSON.parse(window.sessionStorage.getItem(K_TAB)); } catch (e) { return null; } },
-    set(v) { try { window.sessionStorage.setItem(K_TAB, JSON.stringify(v)); } catch (e) { /* 무시 */ } }
+    set(v) { try { window.sessionStorage.setItem(K_TAB, JSON.stringify(v)); return true; } catch (e) { return false; } }
   };
   const dataKey = () => `${K_DATA}:${L.room}:${L.team}`;
   const tdata = () => { const d = L?.role === "solo" ? L.interview || {} : store.get(dataKey()) || {}; d.docs = d.docs || {}; d.journal = d.journal || {}; return d; };
@@ -54,13 +54,14 @@
   const b64d = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
 
   let lobbyStop = null;
-  let L = null; // { role, room, net, conn, S?(진행자 상태), snap?(받은 공개 상태), team?, token?, timers[] }
+  let L = null; // { role, room, net, conn, S?(진행자 상태), snap?(받은 공개 상태), team?, identity?, token?(혼자 하기), timers[] }
   function close() {
     if (!L) return;
     saveSolo();
+    flushHost();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect();
     L.timers.forEach(t => clearInterval(t));
-    clearTimeout(L.planT); clearTimeout(L.pending);
+    clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
     if (L.conn) L.conn.close();
     L = null;
   }
@@ -623,7 +624,7 @@
     try { const r = fn(); ok = true; return r; }
     finally { if (--session.mutating === 0 && L === session && ok) saveSolo(); }
   }
-  window.addEventListener("pagehide", saveSolo);
+  window.addEventListener("pagehide", () => { saveSolo(); flushHost(); });
   document.addEventListener("visibilitychange", () => { if (document.hidden) saveSolo(); });
   function startSolo(app, fresh) {
     let validSave = false;
@@ -828,6 +829,7 @@
     const reg = R();
     let syncLobby = null;
     const mustCity = id => (reg.must || []).includes(id);
+    const seedChoice = id => `<label class="lg-field" for="${id}">날씨·사건<select id="${id}" style="min-height:44px"><option value="room">방마다 다르게(기본)</option><option value="fixed">고정(다시 해 보기용)</option></select></label>`;
     const cityChecks = solo => reg.teams.map(t => `<label class="lg-pickcity" style="--c:${esc(t.color)}"><input class="lg-chipcheck" type="checkbox" ${solo ? `data-solo-city="${esc(t.id)}"` : `value="${esc(t.id)}"`} checked ${mustCity(t.id) ? "disabled" : ""}><span>${esc(t.name)}${mustCity(t.id) ? ' <small aria-label="필수 도시">🔒</small>' : ""}</span></label>`).join("");
     const choices = (id, label, options) => `<fieldset class="lg-pick lg-choice"><legend><label for="${id}">${label}</label></legend><select class="lg-contract" id="${id}" aria-label="${label}">${options.map(([v, name, selected]) => `<option value="${esc(v)}" ${selected ? "selected" : ""}>${esc(name)}</option>`).join("")}</select><div class="lg-presets" role="group" aria-label="${label}">${options.map(([v, name]) => `<button class="lg-preset" type="button" data-select="${id}" data-value="${esc(v)}" aria-pressed="false">${esc(name)}</button>`).join("")}</div></fieldset>`;
     app.innerHTML = `
@@ -858,6 +860,7 @@
             </div>
             <div class="lg-gamesettings">
             ${choices("lg-solo-turns", "게임 길이", [12, 24, 36].map(n => [String(n), `${n}달`]))}
+            ${seedChoice("lg-solo-seed")}
             <p class="lg-hint" id="lg-solo-turnmsg"></p>
             ${choices("lg-solo-style", "컴퓨터 성향", [["careful", "신중"], ["balanced", "균형", true], ["bold", "공격"]])}
             </div>
@@ -868,8 +871,8 @@
           <article class="lg-card" id="lg-mode-join" data-panel="join" data-active="false">
             <header class="lg-modehead"><h2>팀으로 참가</h2><p class="lg-hint">진행자 화면의 방 코드를 넣으세요.</p></header>
             <div class="lg-modebody">
-            <label class="lg-field"><span>방 코드</span><input id="lg-code" aria-label="방 코드" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" minlength="4" maxlength="6" value="${esc(pre && validRoom(pre.r) ? pre.r : "")}" placeholder="K7QH2" aria-describedby="lg-code-h"></label>
-            <p class="lg-hint" id="lg-code-h">진행자 화면에 보이는 4~6글자</p>
+            <label class="lg-field"><span>방 코드</span><input id="lg-code" aria-label="방 코드" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" minlength="4" maxlength="6" value="${esc(pre && validRoom(pre.r) ? pre.r : "")}" placeholder="K7QH2A" aria-describedby="lg-code-h"></label>
+            <p class="lg-hint" id="lg-code-h">진행자 화면에 보이는 6글자</p>
             <button type="button" class="v2-btn primary lg-big" id="lg-join">참가하기</button>
             ${lastTeam && validRoom(lastTeam.room) && lastTeam.team ? `<button type="button" class="v2-btn lg-big" id="lg-rejoin">이어서: ${esc(teamName(lastTeam.team))} 팀 · 방 ${esc(lastTeam.room)}</button>` : ""}
             </div>
@@ -887,10 +890,11 @@
             <fieldset class="lg-pick">
               <legend>게임 길이</legend>
               <div class="lg-presets" role="group" aria-label="게임 길이">${[[0, "계절 4라운드"], [12, "12달(1년)"], [24, "24달"], [36, "36달"]].map(([n, t]) => `<button type="button" class="lg-preset" data-turns="${n}" aria-pressed="${n === 12}">${t}</button>`).join("")}</div>
+              ${seedChoice("lg-host-seed")}
               <p class="lg-hint" id="lg-turnmsg">1턴 = 1달. 해마다 1월에 국가 재정지원금, 달마다 세금. 주민·기업은 살기 좋은 도시로 옮겨 갑니다.</p>
             </fieldset>
             </div>
-            <div class="lg-launch"><button type="button" class="v2-btn primary lg-big" id="lg-host">새 방 만들기</button>
+            ${!NET.secure() ? '<p role="alert">이 주소에서는 팀이 앉을 수 없어요(https 주소나 이 기기 안에서만)</p>' : ""}<div class="lg-launch"><button type="button" class="v2-btn primary lg-big" id="lg-host">새 방 만들기</button>
             ${hostSave && validRoom(hostSave.room) ? `<button type="button" class="v2-btn lg-big" id="lg-rehost">이어서 진행: 방 ${esc(hostSave.room)}</button>` : ""}
             </div>
             </div>
@@ -935,7 +939,7 @@
       if (!ids.includes(player)) ids.push(player);
       const check = C.validTeams(reg, ids);
       if (!check.ok) { errEl.textContent = check.err; return; }
-      const state = C.newState(code(6), REGION, 0, check.ids, { turns: +$("#lg-solo-turns").value });
+      const state = C.newState(code(6), REGION, 0, check.ids, { turns: +$("#lg-solo-turns").value, seedMode: $("#lg-solo-seed").value });
       check.ids.forEach(id => C.reduce(state, { type: "claim", team: id, token: `solo-city-${id}` }, 0, BG));
       if (soloSave?.state && !window.confirm("새 판을 시작하면 저장된 진행과 일지·답변이 지워집니다. 시작할까요?")) return;
       close(); pendingSolo = { v: 1, state, initial: structuredClone(state), team: player, style: $("#lg-solo-style").value, interview: { docs: {}, journal: {} } }; writeSolo(pendingSolo);
@@ -948,20 +952,25 @@
       const n = readNet();
       if (!n) return;
       const cur = tab.get();
-      tab.set(cur && cur.room === room ? cur : { room, net: n, team: null, token: code(16) });
+      tab.set({ ...(cur && cur.room === room ? cur : { room, net: n, team: null, identity: null }), ...(pre?.r === room && pre.f ? { fingerprint: pre.f } : {}) });
       location.hash = "#league/team";
     });
     const rj = $("#lg-rejoin");
-    if (rj) rj.addEventListener("click", () => { tab.set({ room: lastTeam.room, net: lastTeam.net, team: lastTeam.team, token: lastTeam.token }); location.hash = "#league/team"; });
-    $("#lg-host").addEventListener("click", () => {
+    if (rj) rj.addEventListener("click", () => { tab.set({ ...lastTeam, identity: lastTeam.identity || null }); location.hash = "#league/team"; });
+    $("#lg-host").addEventListener("click", async () => {
+      if (!NET.secure()) { errEl.textContent = "이 주소에서는 팀이 앉을 수 없어요(https 주소나 이 기기 안에서만)"; return; }
       const n = readNet();
       if (!n) return;
       if (hostSave && hostSave.state && hostSave.state.phase !== "end" && !window.confirm(`진행 중인 방 ${hostSave.room}을 닫고 새로 만들까요?`)) return;
       const V = C.validTeams(reg, picked());
       if (!V.ok) { errEl.textContent = V.err; return; }
-      const room = code(5);
+      const identity = await NET.createIdentity(), binding = await NET.hostBinding(identity.publicKey), room = binding.room;
       const tb = app.querySelector("[data-turns][aria-pressed=true]"), turns = tb ? +tb.dataset.turns : 0;
-      store.set(K_HOST, { room, net: n, state: C.newState(room, REGION, Date.now(), V.ids, turns ? { turns } : null) });
+      const state = C.newState(room, REGION, Date.now(), V.ids, { turns, seedMode: $("#lg-host-seed").value });
+      state.sid = NET.sessionId();
+      if (!store.set(K_HOST, { room, net: n, identity, fingerprint: binding.fingerprint, state })) {
+        errEl.textContent = "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인하세요."; return;
+      }
       location.hash = "#league/host";
     });
     app.querySelectorAll("[data-turns]").forEach(b => b.addEventListener("click", () => {
@@ -1079,40 +1088,94 @@
   }
 
   /* ================= 진행자 ================= */
-  function hostView(app) {
-    if (!hostInit()) { location.hash = "#league"; return; }
+  async function hostView(app) {
+    if (!NET.secure()) { app.innerHTML = '<main class="lg-lobby"><a href="#league">← 로비</a><p role="alert">이 주소에서는 팀이 앉을 수 없어요(https 주소나 이 기기 안에서만)</p></main>'; return; }
+    if (!await hostInit()) { location.hash = "#league"; return; }
     L.app = app;
     L.viewing = null;
     renderHost(true);
     pushSnap();
   }
-  function hostInit() {
+  async function hostInit() {
     const save = store.get(K_HOST);
     if (!save || !validRoom(save.room) || !save.state) return false;
+    if (!NET.secure()) return false;
+    if (!save.identity?.privateKey || !save.state.sid || save.room.length !== 6) {
+      save.identity = await NET.createIdentity();
+      const binding = await NET.hostBinding(save.identity.publicKey);
+      save.state.seedKey ??= save.state.room;
+      save.room = save.state.room = binding.room; save.fingerprint = binding.fingerprint;
+      save.state.sid = NET.sessionId();
+      for (const id of Object.keys(save.state.teams)) C.host(save.state, "kick", Date.now(), id);
+      save.migration = "예전 방은 새 진행자 키와 6자리 코드로 다시 만들었습니다. 저장된 게임을 이어갑니다. 팀은 새 코드로 다시 참가하세요.";
+    }
     if (!L || L.role !== "host" || L.room !== save.room) {
       close();
       const S = save.state;
       // 저장본 바로잡기: 지역·팀이 맞지 않으면 새로
       const ok = S && S.region === REGION && S.teams && actT(S).length >= 2 && actT(S).every(t => S.teams[t.id]);
-      L = { role: "host", room: save.room, net: save.net, S: ok ? S : C.newState(save.room, REGION, Date.now()), timers: [], pending: 0 };
+      L = { role: "host", room: save.room, net: save.net, identity: save.identity, fingerprint: save.fingerprint, migration: save.migration, S: ok ? S : C.newState(save.room, REGION, Date.now()), timers: [], pending: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, save.net));
-      L.conn.on("req", m => {
-        const r = C.reduce(L.S, m, Date.now(), BG);
-        // 규칙 검사가 다른 도시 지도로 바꿔 놓았을 수 있다 — 보고 있는 도시로 되돌린다.
+      const session = L;
+      const receive = NET.receiver(L.S, m => L === session ? C.reduce(session.S, m, Date.now(), BG) : { ok: false, err: "closed" });
+      if (Object.values(L.S.teams).some(t => t.token && !t.publicKey) && !L.S.log.some(x => x.t.startsWith("예전 방식으로 앉은 팀"))) {
+        L.S.log.push({ at: Date.now(), t: "예전 방식으로 앉은 팀은 자리 비우기를 누른 뒤 다시 앉아 주세요." });
+        L.S.log = L.S.log.slice(-40);
+      }
+      L.conn.on("oversize", ({ ev }) => {
+        if (L !== session || ev !== "snap" || L.sizeWarned) return;
+        L.sizeWarned = true;
+        L.S.log.push({ at: Date.now(), t: "상태가 너무 커서 팀 기기에 보내지 못했어요" });
+        L.S.log = L.S.log.slice(-40); saveHost(); renderHost();
+      });
+      L.conn.on("req", async envelope => {
+        if (L !== session) return;
+        const r = await receive(envelope), m = r.request;
+        if (L !== session) return;
+        // 검증과 규칙 적용 뒤에만 화면과 저장을 갱신한다.
         if (L.viewing) BG.selectPack(C.teamDef(R(), L.viewing).pack, "league");
-        if (!r.ok && m && typeof m.team === "string") L.conn.send("nack", { team: m.team, type: m.type, err: r.err, rid: m.rid, rd: m.rd, ph: m.ph });
+        if (m?.kid) await hostSend(r.ok ? "ack" : "nack", { team: m.team, type: m.type, err: r.err, kid: m.kid, n: m.n, id: m.id, rid: m.rid, rd: m.rd, ph: m.ph, current: { rd: L.S.round, ph: L.S.phase } });
+        if (L !== session) return;
+        if (r.verified) saveHost(); // quiet 요청도 마지막 순번을 보존한다.
         if (r.ok && !r.quiet) changed();
         else if (r.ok && m.type === "claim") pushSnap();
       });
       L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } });
       L.timers.push(setInterval(() => { pushSnap(); renderHost(); }, 4000));
       L.timers.push(setInterval(tickTimer, 1000));
+      flushHost();
     }
     return true;
   }
   const connLabel = s => ({ open: "연결됨", connecting: "연결 중", reconnecting: "다시 연결 중", error: "연결 오류", closed: "닫힘" }[s] || s);
-  function saveHost() { store.set(K_HOST, { room: L.room, net: L.net, state: L.S }); }
-  function pushSnap() { if (L && L.role === "host") L.conn.send("snap", C.publicView(L.S, Date.now())); }
+  function saveHost() {
+    if (L?.role !== "host" || L.hostSaveT) return;
+    L.hostSaveT = setTimeout(() => { if (L?.role === "host") flushHost(); }, 1000);
+  }
+  function flushHost() {
+    if (L?.role !== "host") return;
+    clearTimeout(L.hostSaveT); L.hostSaveT = 0;
+    L.saveWarning = !store.set(K_HOST, { room: L.room, net: L.net, identity: L.identity, fingerprint: L.fingerprint, migration: L.migration, state: L.S });
+    hostWarning();
+  }
+  function hostWarning() {
+    const el = document.getElementById("lg-host-warning");
+    if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인하세요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || ""].filter(Boolean).join(" ");
+  }
+  function hostSend(event, data) {
+    const session = L, copy = structuredClone(data);
+    session.hostSending = (session.hostSending || Promise.resolve()).then(async () => {
+      if (L !== session) return;
+      const wire = await NET.signHost(session.identity, event, session.room, session.S.sid, copy);
+      if (L === session) { saveHost(); return session.conn.send(event, wire); }
+    }).catch(() => { if (L === session) BG.toast("진행자 서명을 만들지 못했어요. 연결을 확인하세요."); return false; });
+    return session.hostSending;
+  }
+  async function pushSnap() {
+    if (L?.role !== "host") return;
+    const session = L;
+    if (await hostSend("snap", C.publicView(L.S, Date.now())) !== false && L === session) L.sizeWarned = false;
+  }
   function changed() {
     saveHost();
     if (L.viewing) updateView();
@@ -1154,7 +1217,7 @@
   }
   function joinLink() {
     const n = L.net && L.net.kind === "supabase" ? { kind: "supabase", url: L.net.url, key: L.net.key } : { kind: "local" };
-    return `${location.origin}${location.pathname}#league/j=${b64e(JSON.stringify({ r: L.room, n }))}`;
+    return `${location.origin}${location.pathname}#league/j=${b64e(JSON.stringify({ r: L.room, f: L.fingerprint, n }))}`;
   }
   function renderHost(full) {
     if (!L || L.role !== "host" || !L.app || !L.app.isConnected || L.viewing) return;
@@ -1182,6 +1245,7 @@
             <button type="button" class="v2-btn primary" id="lg-next"></button>
             <button type="button" class="v2-btn" id="lg-link">참가 링크 복사</button>
           </header>
+          <p id="lg-host-warning" role="alert"></p>
           ${V.econ ? '<section id="lg-host-overview" aria-label="진행 현황"></section><section id="lg-host-summary" aria-label="도시 요약"></section>' : ""}
           ${V.econ ? `<div id="lg-host-ticker">${tickerHTML(V)}</div>` : ""}
           <section class="lg-evbox" id="lg-evbox" aria-live="polite"></section>
@@ -1284,6 +1348,7 @@
       $("#lg-mapcap").textContent += top.map(f => ` · ${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join("");
     }
     $("#lg-log").innerHTML = S.log.slice(-8).reverse().map(x => `<li>${esc(logText(V, x.t))}</li>`).join("");
+    hostWarning();
   }
   function logText(V, text) {
     if (!V.econ) return text;
@@ -1561,8 +1626,9 @@
   }
 
   /* ---------- 진행자: 도시 지도 크게 보기(#league/view/<팀>) ---------- */
-  function viewCity(app, id) {
-    if (!hostInit()) { location.hash = "#league"; return; }
+  async function viewCity(app, id) {
+    if (!NET.secure()) { app.innerHTML = '<main class="lg-lobby"><a href="#league">← 로비</a><p role="alert">이 주소에서는 팀이 앉을 수 없어요(https 주소나 이 기기 안에서만)</p></main>'; return; }
+    if (!await hostInit()) { location.hash = "#league"; return; }
     const t = C.teamDef(R(), id);
     if (!t || !Object.hasOwn(L.S.teams, id)) { location.hash = "#league/host"; return; }
     L.app = app; L.viewing = id;
@@ -1802,26 +1868,43 @@
   /* ================= 팀 ================= */
   function teamView(app) {
     const save = tab.get();
-    if (!save || !validRoom(save.room) || typeof save.token !== "string") { location.hash = "#league"; return; }
+    if (!NET.secure()) {
+      close();
+      app.innerHTML = '<main class="lg-lobby"><a href="#league">← 로비</a><p role="alert">이 주소에서는 안전한 연결을 만들 수 없어요. https 주소나 같은 기기에서 열어 주세요.</p></main>';
+      return;
+    }
+    if (!save || !validRoom(save.room)) { location.hash = "#league"; return; }
     if (!L || L.role !== "team" || L.room !== save.room) {
       close();
-      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, token: save.token, snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
+      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, L.net, {
-        canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(m.type)
+        canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(NET.requestBody(m)?.type)
       }));
-      L.conn.on("snap", onSnap);
-      L.conn.on("nack", m => { if (m && m.team === L.team) nack(m); });
+      const session = L;
+      const receiveHost = NET.hostReceiver(session, async (event, data) => {
+        if (L !== session) return;
+        session.hostWarning = false;
+        const status = document.getElementById("lg-conn");
+        if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); }
+        if (event === "snap") onSnap(data);
+        else await response(event, data);
+        if (L === session) teamSave();
+      }, event => { if (L === session && event === "snap") connectionWarning(); });
+      for (const event of ["snap", "nack", "ack"]) L.conn.on(event, wire => receiveHost(event, wire));
       L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team) send("claim"); });
       // 교실 와이파이에서 요청 하나가 사라져도 5초 안에 복구한다: 계획·정책·기준·준비를 진행자에 반영될 때까지 다시 보낸다.
       // 진행자는 같은 값을 조용히 넘기므로(reduce의 quiet) 중복 전송은 해가 없다. 준비는 토글이 아니라 원하는 값을 보낸다.
       L.timers.push(setInterval(() => {
         if (!L.team) return;
+        if (L.hostWarning) { connectionWarning(); return; }
+        if (!L.snap) return;
+        if (!L.claimAccepted) { send("claim"); return; }
         send("hello");
+        for (const pending of L.pendingRequests.values()) if (Date.now() - pending.sentAt >= 5000) retryRequest(pending);
         const me = L.snap && L.snap.teams[L.team];
         if (!me) return;
         if (["lobby", "plan"].includes(L.snap.phase) && me.rev < L.rev) sendPlan();
         if (L.snap.phase === "plan") {
-          if (L.techPending) send(L.techPending.type, L.techPending.extra);
           if (L.pendingPol) send("econ", L.pendingPol);
           if (L.pendingCrit && validCritLine(L.pendingCrit.line) && L.pendingCrit.chips.length && L.pendingCrit.choice) send("crit", L.pendingCrit);
         }
@@ -1832,7 +1915,7 @@
     L.app = app;
     if (!L.team) seatPicker(app); else mountCity(app);
   }
-  function send(type, extra) {
+  function send(type, extra, retry) {
     if (L.away && !["hello", "claim"].includes(type)) return;
     if (type === "crit") {
       if (!extra || !validCritLine(extra.line) || !extra.chips?.length || !extra.choice) return;
@@ -1841,9 +1924,34 @@
     }
     if (type === "ready") L.wantReady = !!(extra && extra.ready);
     const stamp = L.snap && !["claim", "hello"].includes(type) ? { rd: L.snap.round, ph: L.snap.phase } : {};
-    L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}, stamp));
+    if (L.role === "solo") {
+      L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}, stamp));
+      return;
+    }
+    if (!L.snap?.sid || !L.team) return;
+    const session = L, team = L.team;
+    const oneShot = ["tie", "respond", "price", "research", "license", "joint"].includes(type);
+    const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), tries: 0 } : null);
+    const request = { ...extra, ...stamp, ...(pending?.current || {}), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id } : {}) };
+    if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); }
+    // 서명도 직렬 처리해 느린 기기에서 뒤 요청이 앞서 전송되지 않게 한다.
+    session.sending = (session.sending || Promise.resolve()).then(async () => {
+      if (L !== session || L.team !== team) return;
+      if (!session.identity) session.identity = await NET.createIdentity();
+      if (L !== session || L.team !== team) return;
+      if (type === "claim") request.publicKey = session.identity.publicKey;
+      const envelope = await NET.signEnvelope(session.identity, team, request);
+      if (L !== session || L.team !== team) return;
+      // 저장 실패 시 미등록 키로 자리를 잡지 않는다. 예전 토큰 방식으로 돌아가지 않는다.
+      if (!teamSave()) throw new Error("seat-save");
+      if (pending) pending.n = NET.requestBody(envelope).n;
+      if (type === "claim") session.claimN = NET.requestBody(envelope).n;
+      session.conn.send("req", envelope);
+    }).catch(() => {
+      if (L === session) BG.toast("안전한 연결을 만들지 못했어요. 다시 접속해 주세요.");
+    });
   }
-  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, token: L.token }; tab.set(s); if (L.team) store.set(K_TEAM, s); }
+  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
   function seatPicker(app) {
     const reg = R(), V = L.snap;
     app.innerHTML = `<main class="lg-lobby">
@@ -1859,11 +1967,50 @@
       app.querySelector("#lg-wait").textContent = `${teamName(L.team)} 자리를 요청했습니다…`;
     }));
   }
+  function connectionWarning() {
+    L.hostWarning = true;
+    const text = "진행자 화면과 연결을 확인하는 중";
+    const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
+    if (el) { el.textContent = text; el.dataset.s = "connecting"; }
+  }
+  function releaseSeat() {
+    L.regionObserver?.disconnect(); L.away = null; L.home = null;
+    L.team = null; L.seat = null; L.claiming = false; L.claimAccepted = false; L.pendingRequests.clear(); teamSave();
+    if (L.app?.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); }
+  }
+  function retryRequest(pending) {
+    if (pending.tries >= 3) {
+      L.pendingRequests.delete(pending.id);
+      if (["research", "license", "joint"].includes(pending.type)) { L.techPending = null; L.techError = "요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청하세요."; renderPanel(); }
+      BG.toast("요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청하세요."); return;
+    }
+    pending.tries++; send(pending.type, pending.extra, pending);
+  }
+  async function response(event, m) {
+    const session = L;
+    if (!m || m.team !== L.team || !L.identity || m.kid !== await NET.fingerprint(L.identity.publicKey)) return;
+    if (L !== session) return;
+    // signature 거절의 kid/id는 아직 인증되지 않은 요청에서 왔다. 대기 요청도 취소하지 않는다.
+    if (event === "nack" && m.err === "signature") return;
+    const pending = L.pendingRequests.get(m.id);
+    if (["tie", "respond", "price", "research", "license", "joint"].includes(m.type) && !pending) return;
+    if (m.type === "claim" && m.n !== L.claimN) return;
+    if (pending && pending.n !== m.n) return;
+    if (event === "ack") {
+      if (pending) L.pendingRequests.delete(m.id);
+      if (m.type === "claim" && m.n === L.claimN) { L.claimAccepted = true; L.seat = L.snap?.teams[L.team]?.seatVersion || 0; }
+      return;
+    }
+    if (pending && ["replay", "stale"].includes(m.err)) { pending.current = m.current; retryRequest(pending); return; }
+    if (pending) L.pendingRequests.delete(m.id);
+    nack(m);
+  }
   function nack(m) {
-    if (m.type === "claim" || m.err === "seat") {
-      L.regionObserver?.disconnect(); L.away = null; L.home = null;
-      L.team = null; L.claiming = false; teamSave();
-      if (L.app && L.app.isConnected) { location.hash !== "#league/team" ? (location.hash = "#league/team") : seatPicker(L.app); const e = L.app.querySelector("#lg-err"); if (e) e.textContent = m.err === "taken" ? "다른 기기가 이미 그 팀을 맡았습니다." : "자리가 비워졌습니다. 다시 고르세요."; }
+    if (["signature", "replay", "seat", "session"].includes(m.err)) return;
+    if (m.type === "claim") {
+      const msg = m.err === "legacy" ? "진행자에게 이 팀 자리 비우기를 요청하세요" : "다른 기기가 이미 그 팀을 맡았습니다. 진행자에게 이 팀 자리 비우기를 요청하세요";
+      BG.toast(msg);
+      const el = document.getElementById("lg-err"); if (el) el.textContent = msg;
       return;
     }
     if (["research", "license", "joint"].includes(m.type)) {
@@ -1884,6 +2031,7 @@
   }
   function onSnap(V) {
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
+    V = NET.expandSnapshot(V);
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();
@@ -1894,6 +2042,12 @@
       }
       if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
       const me = V.teams[L.team];
+      if (L.role === "team") {
+        const previousSeat = L.seat ?? prev?.teams[L.team]?.seatVersion;
+        if (!me?.seated && previousSeat != null && me?.seatVersion !== previousSeat) { releaseSeat(); return; }
+        L.seat = me?.seatVersion;
+        if (!prev) send("claim");
+      }
       syncTechQueue(V, me);
       const pending = L.pendingCrit, crit = me?.crit;
       if (pending && crit && pending.line === crit.line && pending.choice === crit.choice && pending.chips.length === crit.chips.length && pending.chips.every((k, i) => k === crit.chips[i])) L.pendingCrit = null;

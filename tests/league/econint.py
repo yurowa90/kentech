@@ -68,8 +68,8 @@ JS = r"""
   }
   C.host(S, "next", 9999);
   ok(S.phase === "end", "ends after 12 months");
-  const sz = JSON.stringify(C.publicView(S, 10000)).length;
-  ok(sz < 400000, "snapshot size " + sz);
+  const sz = new TextEncoder().encode(JSON.stringify(C.publicView(S, 10000))).length;
+  ok(sz < 200000, "snapshot size " + sz);
   out.hist = hist; out.score = KCP.econ.score(S.econ).rank.map(x => [x.name, x.score]);
   return out;
 }
