@@ -290,18 +290,21 @@ def scenario(checks, context, base, label, mode, pages):
         checks.ok(initial["rounds"] == 12, f"{label} U5 경제 모드 12달")
         checks.ok(not shown(team, "#lg-panel"), f"{label} U1 첫 지도는 일지 서랍 닫힘")
         guide = team.locator('#lg-guide-close')
-        if guide.count(): guide.click()
+        if guide.count():
+            checks.ok(guide.evaluate('el => el === document.activeElement'), f'{label} U2 첫 안내 닫기에 바로 포커스')
+            team.evaluate('document.activeElement.blur()')
+            team.keyboard.press('Escape')
+            checks.ok(team.locator('#lg-first-guide').count() == 0, f'{label} U2 지도 밖 포커스에서도 안내 Escape 닫기')
         team.locator('[data-run="7"]').click()
         team.wait_for_selector('#bd-skip')
         team.wait_for_function("() => !!document.querySelector('#bd-run-tip')?.textContent")
         tip = team.locator('#bd-run-tip').inner_text()
         checks.ok(all(int(m) == 1 for m in re.findall(r'(\d+)월', tip)), f'{label} U7 1월 시험 TIP의 다른 계절 문구 없음')
         team.locator('#bd-skip').click()
-        checks.ok(shown(team, "#lg-panel") and
-                  team.locator('#lg-bar [data-panel="journal"]').get_attribute("aria-expanded") == "true" and
-                  not team.evaluate("document.documentElement.classList.contains('bd-drawer-open')"),
-                  f"{label} U1 첫 시험 운전 뒤 기준 서랍 하나만 자동 열림")
-        team.locator('#lg-panel [data-pclose]').click()
+        checks.ok(not shown(team, "#lg-panel") and
+                  team.evaluate("document.documentElement.classList.contains('bd-drawer-open')"),
+                  f"{label} U2 첫 시험 성적표 유지·리그 일지 닫힘")
+        team.locator('#bd-drawer-x').click()
         checks.ok(not shown(team, "#lg-panel"), f"{label} 도구 선택 전 일지 서랍 닫힘")
     checks.ok(team.locator('[data-lens="result"]').count() == 1, f'{label} U2 지도 운영 결과 토글')
     checks.ok(team.locator('[data-lens="grid"]').count() == 1 and team.locator('[data-lens="complaints"]').count() == 1,

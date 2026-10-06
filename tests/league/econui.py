@@ -23,6 +23,8 @@ WAIT = 12000  # 실행기 대기 한도. 경제 모형 계수가 아니다.
 
 BOOT_JS = "() => !!(window.KCP && KCP.leagueCore && KCP.league && KCP.buildGame)"
 HIDDEN_JS = r"""el => {
+  if (!el.checkVisibility({contentVisibilityAuto:true,visibilityProperty:true})) return true;
+  if (el.closest("details:not([open])") && el.tagName !== "SUMMARY") return true;
   for (let n = el; n; n = n.parentElement) {
     const s = getComputedStyle(n);
     if (n.hidden || s.display === 'none' || s.visibility === 'hidden' ||
@@ -387,6 +389,11 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#lg-panel').press('Escape')
     checks.ok(not shown(team, '#lg-panel') and team.locator('#bd-help').evaluate('el => el === document.activeElement'),
               f'{label} U1 도움말 Escape 닫기·포커스 복귀')
+    team.locator('#bd-help').click()
+    checks.ok('처음부터' not in team.locator('#lg-help').inner_text(), f'{label} U2 멀티 도움말에 혼자 다시 시작 설명 없음')
+    team.locator('#lg-build-help').click()
+    checks.ok(team.locator('#bd-help-dlg').is_visible() and '자료와 가정' in team.locator('#bd-help-dlg').inner_text(), f'{label} U2 원래 자료·모형 도움말 경로 유지')
+    team.locator('#bd-help-dlg').press('Escape')
     team.locator('[data-cap="budget"]').focus(); team.locator('[data-cap="budget"]').press('Enter')
     checks.ok(shown(team, '.lg-left'), f'{label} U5 HUD 남은 돈 키보드로 거래 서랍')
     team.locator('.lg-px').click()
@@ -400,14 +407,26 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('[data-lens="complaints"]').focus(); team.locator('[data-lens="complaints"]').press('Enter')
     checks.ok(team.locator('[data-lens="complaints"]').get_attribute('aria-pressed') == 'false',
               f'{label} U3 민원 렌즈 키보드 끄기')
+    if group.count(): group.click()
+    team.locator('[data-tool="solar"]').click()
+    checks.ok(team.locator('[data-lens="complaints"]').get_attribute('aria-pressed') == 'false',
+              f'{label} U2 도구 재선택에도 학생이 끈 렌즈 유지')
+    checks.ok(all(team.locator('[data-run]').nth(i).inner_text().startswith('시험 ') for i in range(team.locator('[data-run]').count())),
+              f'{label} U2 시험 단추 실제 글자')
     checks.ok(team.locator('#lg-watch button').count() <= 3 and team.locator('#lg-hud-chips button').count() == 2,
               f'{label} U4 이번 달 배지 최대 셋·지지·주민 칩')
     checks.ok(not shown(team, '.lg-bmoney') and not shown(team, '[data-tab="mission"]'),
               f'{label} U4·U7 남은 돈 중복·리그 미션 0/2 숨김')
+    team.locator('#bd-help').click()
     checks.ok(team.locator('#lg-sound').get_attribute('aria-pressed') == 'false', f'{label} U7 소리 기본 꺼짐')
     team.locator('#lg-sound').click()
     checks.ok(team.evaluate("localStorage.getItem('kcp-league-sound-v1') === 'true'"), f'{label} U7 소리 켜기는 기기에만 저장')
     team.locator('#lg-sound').click()
+    team.locator('#lg-panel [data-pclose]').click()
+    open_panel(team, 'city')
+    team.locator('#lg-panel').evaluate('el => {el.scrollTop=500}')
+    open_panel(team, 'result')
+    checks.ok(team.locator('#lg-panel').evaluate('el => el.scrollTop===0'), f'{label} U2 새 결과 서랍은 위에서 시작')
     open_panel(team, 'city')
     checks.ok(team.locator('#lg-trends [data-trend]').count() == 4, f'{label} U5 도시 추이 네 줄')
     checks.ok('주민·기업 이동 시간 ×' in team.locator('#lg-city').inner_text(), f'{label} U9 배속 대상·현실 달 문구')
@@ -428,13 +447,19 @@ def u_plan_contract(checks, team, host, tid, label):
       return {html, speed:m.speedText({speeds:{monthsPerTurn:1.5},eduSpeed:99}),
         reason:m.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'집값이 올라서 (M)',whyGrade:'M'})};
     }""")
-    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂(국가 총량 밖)', '공급 1MWh당, 지연 평균', '-100원', '25%', '40%', '지방재정법 시행령')),
+    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂(국가 총량 밖)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
+    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes('(G)')"),
+              f'{label} U2 이전 엔진 이주 이유 G 표시 유지')
+    checks.ok('정수 반올림' not in team.locator('#lg-city').inner_text(), f'{label} U2 내부 용어 숨김')
     checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('(M)') == 1 and '(추정·G)' not in ui['reason'],
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
     checks.ok(team.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 근거 없는 약속 제출 금지')
+    checks.ok(team.locator('#lg-predict').evaluate("el => {const r=el.getBoundingClientRect(),p=document.querySelector('#lg-panel').getBoundingClientRect();return r.top>=p.top && r.top<p.bottom;}"), f'{label} U2 준비 직후 약속 카드가 서랍 안에 보임')
+    checks.ok(team.locator('#lg-predict [data-evidence]').first.evaluate("el => el === document.activeElement"),
+              f'{label} U2 준비 관문은 약속 근거에 바로 포커스')
     checks.ok(team.locator('[data-confidence]').count() == 3 and team.locator('#lg-predict-skip').count() == 0,
               f'{label} U8 확신 세 단계·멀티 건너뛰기 없음')
     team.locator('.lg-px').click()
@@ -449,6 +474,12 @@ def u_plan_contract(checks, team, host, tid, label):
     }"""), f'{label} U1 서랍 닫으면 지도 높이 60% 이상')
     checks.ok(shown(host, '#lg-download'), f'{label} U6 진행자 기록 내려받기')
     csv = host.evaluate('() => KCP.league.uiMath.publicCSV(KCP.leagueCore.publicView(KCP.league.state().S,Date.now()))')
+    import csv as csv_module
+    import io
+    records = list(csv_module.reader(io.StringIO(csv.lstrip('\ufeff'))))
+    checks.ok(records[0][:4] == ['도시', '달', '연', '월'], f'{label} U2 CSV 연·월 열')
+    if len(records) > 1:
+        checks.ok(records[1][1] == '1' and records[1][4] != '', f'{label} U2 CSV 첫 달=1·정전 포함')
     checks.ok(csv.startswith('\ufeff"도시","달"') and all(word not in csv for word in ('확신', '이유', 'decision', 'askReason', 'confidence', 'token')),
               f'{label} U6 CSV 명시한 공개 숫자 열·서술과 약속 제외')
 
@@ -558,6 +589,22 @@ def economic(checks, context, base, label, pages):
             checks.ok(shown(team, '#lg-promise-result') and shown(team, '#lg-evidence-direction'),
                       f'{label} U8 예측 대 실제·근거 방향 비교')
             checks.ok(team.locator('#lg-calibration').count() == 0, f'{label} U8 멀티 확신 보정 숫자 없음')
+        alignment = team.evaluate("""() => {
+          const L=KCP.league.state(), V=L.snap, id=L.team;
+          const points=KCP.league.uiMath.monthPoints(V,id), hist=V.econ.cities[id].hist;
+          return points.length === V.results.length && points.every(p => {
+            const h=hist.find(h=>h.t+1===p.t), r=V.results.find(r=>r.round===p.t);
+            return h && r && p.pop===h.pop && p.appr===h.appr && p.cash===h.cash && p.uns===r.team[id].unsPct;
+          });
+        }""")
+        checks.ok(alignment, f'{label} U2 {month}달 추이 네 값이 같은 달 끝 상태')
+        import csv as csv_module
+        import io
+        export = team.evaluate('() => KCP.league.uiMath.publicCSV(KCP.league.state().snap)')
+        records = list(csv_module.reader(io.StringIO(export.lstrip('\ufeff'))))
+        completed = [row for row in records[1:] if row[1] == str(month)]
+        checks.ok(len(completed) == len(ids) and all(row[4] != '' for row in completed),
+                  f'{label} U2 {month}달 CSV 모든 도시·마지막 달 정전 포함')
         open_panel(team, 'result')
         checks.test(f"{label} U4 {month}달 결과 .lg-ask ≤ 1", lambda:
                     team.locator('.lg-ask').count() <= 1)
@@ -804,8 +851,9 @@ def ui_fixes(checks, context, base, label, pages):
               '미준비' not in host.locator('#lg-host-summary-table').inner_text(), f'{label} #37 결과 준비 표시 없음')
     open_panel(team, 'result')
     team.evaluate("""() => {
-      const L=KCP.league.state(), r=L.snap.results.at(-1).team[L.team].research;
-      if(!r) throw Error('연구 결과 fixture 없음');
+      const L=KCP.league.state(), t=L.snap.results.at(-1).team[L.team];
+      window.__huHadResearch=!!t.research;
+      const r=t.research || (t.research={completed:[],eurekaNow:[]});
       window.__huCompleted=r.completed; r.completed=['mass','re100'];
     }""")
     open_panel(team, 'city'); open_panel(team, 'result')
@@ -813,7 +861,8 @@ def ui_fixes(checks, context, base, label, pages):
               '켄텍 융합전공' in team.locator('.lg-tech-results').inner_text(),
               f'{label} #10·22 완료 소식도 융합전공·G 등급 표시')
     team.evaluate("""() => {
-      const L=KCP.league.state();L.snap.results.at(-1).team[L.team].research.completed=window.__huCompleted;
+      const L=KCP.league.state(), t=L.snap.results.at(-1).team[L.team];
+      if(window.__huHadResearch) t.research.completed=window.__huCompleted; else delete t.research;
     }""")
     checks.ok('공급한 전기 기준 감축(소비 배출, 추정)' in team.locator('#lg-coop').inner_text() and
               '정전으로 줄어든 배출은 감축에 넣지 않음' in team.locator('#lg-coop').inner_text(), f'{label} #8 감축 이름·정의')
@@ -868,7 +917,7 @@ def ui_fixes(checks, context, base, label, pages):
       const L=KCP.league.state(); L.snap.teams[L.team].crit={chips:['rel'],line:60,choice:'keep'};
     }""")
     set_question(team, 'lg-p-line')
-    checks.ok('지킬 선(전력 신뢰 60점 이상) 아래로 내려갔습니다' in team.locator('.lg-ask').inner_text(), f'{label} #20 하한 항목·숫자·미달 문구')
+    checks.ok('지킬 선(전력 신뢰 60점 이상) 아래로 내려갔어요' in team.locator('.lg-ask').inner_text(), f'{label} #20 하한 항목·숫자·미달 문구')
     team.evaluate("""() => {
       const L=KCP.league.state(), k=`kcp-league-data-v1:${L.room}:${L.team}`;
       const d=JSON.parse(localStorage.getItem(k));

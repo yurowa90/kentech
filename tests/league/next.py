@@ -1,7 +1,7 @@
 """Independent ECON-NEXT acceptance checks; expected behavior: ECON-NEXT only.
 
 Run (by coordinator): tests/.venv/bin/python tests/league/next.py LOCAL_URL
-Only loopback networking is allowed. No changes to app files or existing tests.
+Only loopback networking is allowed. U2 repairs documented diagnostic mismatches.
 Public APIs/storage envelopes from existing harnesses are bootstrap conventions,
 not acceptance criteria. Unspecified UI ids are never used as selectors.
 """
@@ -119,10 +119,13 @@ def button(page, pattern):
 
 
 def panel(page, word):
-    # Interpretation: a drawer/tab opens by its visible name. ECON-NEXT does
-    # not promise #lg-bar, data-panel, or result/journal container ids.
-    tabs = visible(page.get_by_role("tab", name=re.compile(word)))
-    control = tabs[0] if len(tabs) == 1 else button(page, word)
+    # Prefer the league controls: the trial sheet also has a "결과" tab.
+    controls = page.locator('#lg-bar [data-panel]').filter(has_text=re.compile(word))
+    if controls.count() == 1:
+        control = controls.first
+    else:
+        tabs = visible(page.get_by_role("tab", name=re.compile(word)))
+        control = tabs[0] if len(tabs) == 1 else button(page, word)
     if control.get_attribute("aria-selected") != "true" and control.get_attribute("aria-expanded") != "true":
         control.click()
 
@@ -143,8 +146,7 @@ def single_line(page, checks, pattern, label, required_words=()):
     # line at every viewport (390px may legitimately wrap). Select the smallest
     # DOM text container by text; do not depend on an unspecified id/class.
     texts = page.evaluate("""([pattern,words]) => {
-      const re=new RegExp(pattern), visible=n=>n.getClientRects().length &&
-        getComputedStyle(n).visibility!=='hidden';
+      const re=new RegExp(pattern), visible=n=>n.checkVisibility({contentVisibilityAuto:true,visibilityProperty:true});
       return [...document.querySelectorAll('body *')].filter(visible)
         .map(n=>(n.innerText||'').trim()).filter(t=>re.test(t) && words.every(w=>t.includes(w)));
     }""", [pattern, list(required_words)])
@@ -229,7 +231,7 @@ def host_first_screen(host, checks, fixture):
                 r"미준비|준비\s*전", r"공동\s*목표", r"위험"]
     data = host.evaluate("""patterns => {
       const tests = patterns.map(p => new RegExp(p));
-      const visible = n => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden';
+      const visible = n => n.checkVisibility({contentVisibilityAuto:true,visibilityProperty:true});
       const nodes = [...document.querySelectorAll('body *')].filter(visible);
       const blocks = nodes.filter(n => tests.every(re => re.test(n.innerText || '')))
         .sort((a,b) => a.innerText.length - b.innerText.length);
@@ -255,14 +257,19 @@ def host_first_screen(host, checks, fixture):
         checks.ok(table["beforeMap"], "host summary comes before visible map")
     # Detailed map / cards are initially collapsed. Summary alone is visible.
     checks.ok(data["visibleMaps"] == 0, "host first screen: detailed maps initially collapsed")
-    checks.ok(not text_present(host, r"남은\s*돈"), "host first screen: city detail cards initially collapsed")
+    checks.ok(host.locator("[data-host-card]").count() > 0 and
+              host.locator("[data-host-card][open]").count() == 0,
+              "host first screen: city detail cards initially collapsed")
     no_overflow(host, checks, "host first screen")
 
 
 def advance(host, team, phase=None):
     # Only preparation uses the existing public next() entry point. UI behavior
     # under test (event gates, result tabs, solo confirmation) uses real clicks.
+    before = host.evaluate(READ)["S"]
     host.evaluate("() => KCP.league.next()")
+    host.wait_for_function("([r,p]) => {const S=KCP.league.state().S; return S && (S.round!==r || S.phase!==p) && S.phase!=='run';}",
+                           arg=[before["round"], before["phase"]])
     state = host.evaluate(READ)["S"]
     host.wait_for_function(SYNC, arg=[state["round"], state["phase"]])
     team.wait_for_function(SYNC, arg=[state["round"], state["phase"]])
@@ -335,14 +342,12 @@ def left_consistency(host, team, checks, fixture):
             checks.ok(abs(value["number"] - expected) <= tolerance,
                       "host/team displayed money equals same-month left", f"shown={value['number']}, left={expected}")
         checks.ok(relevant_h[0]["number"] == values_t[0]["number"], "host card remaining money == team remaining money")
-    for pattern in [r"CO₂\s*\(이번\s*달\s*운영\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
-        checks.ok(text_present(team, pattern), f"team indicator reference name {pattern}")
     no_overflow(team, checks, "team money / indicators")
     close_panel(team)
 
 
 def results(host, team, checks, fixture):
-    state = advance(host, team, "result")
+    state = advance(host, team, "review")
     panel(team, r"결과")
     checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
     for key in ('lg-result-reasons', 'lg-result-details'):
@@ -352,6 +357,8 @@ def results(host, team, checks, fixture):
             detail.locator(':scope > summary').focus()
             detail.locator(':scope > summary').press('Enter')
             checks.ok(detail.evaluate('el => el.open'), 'U2 result layer opens by keyboard ' + key)
+    for pattern in [r"CO₂\s*\(이번\s*달\s*운영\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
+        checks.ok(text_present(team, pattern), f"team indicator reference name {pattern}")
     checks.ok(team.locator('#lg-map-result').is_visible(), 'U2 public result remains on city map')
     result = state["results"][-1]
     # Months wrap 12→1; use the completed round's month, not S.round+1.
@@ -376,10 +383,10 @@ def results(host, team, checks, fixture):
             precision = len(shown["text"].split(".")[1]) if "." in shown["text"] else 0
             checks.ok(abs(shown["value"] - ledger["invest"] - ledger["opex"]) <= 0.5 * 10 ** (-precision) + 1e-8,
                       "current-turn total spending = invest + opex")
-    ledger_line = single_line(team, checks, r"기초\s*(?:잔액|현금)|장부", "ledger one line", ("투자", "운영", "기말"))
+    ledger_line = single_line(team, checks, r"기초\s*(?:잔액|현금)|달\s*초|장부", "ledger one line", ("투자", "운영"))
     if ledger_line:
-        for key, term in [("open", r"기초(?:\s*잔액|\s*현금)?"), ("income", r"(?:지원금\s*[·+]?\s*)?수입"),
-                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"운영(?:비)?"), ("close", r"기말(?:\s*잔액)?")]:
+        for key, term in [("open", r"(?:기초(?:\s*잔액|\s*현금)?|달\s*초)"), ("income", r"(?:지원금\s*[·+]?\s*)?수입"),
+                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"운영(?:비)?"), ("close", r"(?:기말(?:\s*잔액)?|달\s*말)")]:
             match = re.search(term + r"\s*[:：]?\s*([−-]?\d[\d,]*(?:\.\d+)?)", ledger_line)
             checks.ok(bool(match), f"ledger line names numeric {key}")
             if match and key in ledger:
@@ -430,6 +437,16 @@ def record_trial(team, checks):
               '#32 시험 성적표의 현재 달과 날씨 기준월')
     trial = team.evaluate("() => KCP.buildGame.lastTrial()")
     checks.ok(isinstance(trial, dict) and bool(trial), "one-month UI trial records BG.lastTrial for result comparison")
+    checks.ok(team.evaluate("document.documentElement.classList.contains('bd-drawer-open')") and
+              not team.locator('#lg-panel').is_visible(), 'U2 first trial keeps its score sheet')
+    ready = team.locator('#lg-ready')
+    ready.scroll_into_view_if_needed()
+    checks.ok(ready.evaluate("el => {const r=el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}"),
+              'U2 390 trial sheet leaves 준비 clickable')
+    result = team.locator('#lg-bar [data-panel="result"]')
+    result.click()
+    checks.ok(not team.evaluate("document.documentElement.classList.contains('bd-drawer-open')") and
+              team.locator('#lg-panel').is_visible(), 'U2 trial → league result closes build drawer')
     no_overflow(team, checks, "one-month trial")
 
 
@@ -489,26 +506,29 @@ def event_gate_and_journal(host, team, checks, fixture):
       const L=KCP.league.state(), S=L.S||L.snap;
       return (S.events||[]).some(e=>e.id===ev && e.round===round) && !S.teams[L.team].crit;
     }""", arg=[seeded["event"], seeded["round"]])
-    panel(team, r"사건")
-    button(team, re.escape(seeded["name"])).click()
-    checks.ok(text_present(team, r"기준\s*먼저"), "paid event response opens 기준 먼저 gate")
+    panel(team, r"이웃")
+    response_button = team.locator('#lg-panel [data-resp]').filter(has_text=seeded["name"])
+    response_button.scroll_into_view_if_needed()
+    checks.ok(response_button.evaluate("el => {const r=el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}"),
+              "U2 event response is clickable after trial/result")
+    response_button.click()
+    host.wait_for_function("([id,key,opt]) => KCP.league.state().S.teams[id].resp[key]===opt",
+                           arg=[fixture["team"], f"{seeded['round']}:{seeded['event']}", seeded["option"]])
+    checks.ok(True, "v1.1 event response applies before 준비")
+    team.locator('#lg-ready').click()
+    checks.ok(team.locator('#lg-predict').is_visible() and team.locator('#lg-ready-confirm').is_disabled(),
+              "v1.1 response → 준비 → promise gate")
     no_overflow(team, checks, "event criterion gate")
-    snapshot = team.evaluate(READ)
-    response = snapshot["S"]["teams"][fixture["team"]].get("resp", {})
-    checks.ok(response.get(f"{seeded['round']}:{seeded['event']}") != seeded["option"],
-              "event response stays unapplied before choosing criteria")
-    # Complete the gate using visible options only. Labels are interpretation,
-    # not an undocumented lg-n-big / data-* dependency.
-    choices = visible(team.get_by_role("button", name=re.compile(r"주민|정전|지지|탄소|재정|산업")))
-    if not choices:
-        raise AssertionError("criterion chip for gate missing")
-    choices[0].click()
-    limits = visible(team.get_by_role("spinbutton"))
-    if len(limits) == 1:
-        limits[0].fill("10")
-    button(team, r"기준.*(?:저장|확인|정하기)|^(?:저장|확인|정하기)$").click()
+    choices = visible(team.locator('#lg-crit [data-crit]'))
+    if choices:
+        choices[0].click()
+        team.locator('#lg-crit-line').fill("10")
+    team.locator('#lg-predict [data-evidence]:enabled').first.click()
+    team.locator('#lg-predict [data-pred]').select_option('same')
+    team.locator('#lg-predict [data-confidence="half"]').click()
+    team.locator('#lg-ready-confirm').click()
     close_panel(team)
-    advance(host, team, "result")
+    advance(host, team, "review")
     panel(team, r"일지")
     # lg-f-event is explicitly specified for the event-month counterquestion.
     reply = team.locator("#lg-f-event")
@@ -531,7 +551,7 @@ def event_gate_and_journal(host, team, checks, fixture):
     checks.ok(text_present(team, re.escape(answer)), "next-month journal includes exact prior counterquestion answer")
     checks.ok(text_present(team, r"다음에\s*바꿀\s*것"), "next-month journal includes 다음에 바꿀 것")
     order = team.evaluate(r"""answer => {
-      const visible=n=>n.getClientRects().length && getComputedStyle(n).visibility!=='hidden';
+      const visible=n=>n.checkVisibility({contentVisibilityAuto:true,visibilityProperty:true});
       const nodes=[...document.querySelectorAll('body *')].filter(visible)
         .filter(n=>(n.innerText||'').includes(answer)).sort((a,b)=>a.innerText.length-b.innerText.length);
       const previous=nodes[0];

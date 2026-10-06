@@ -718,3 +718,63 @@
   .lg-team-map #bd-mapnote { display: none; }
   .lg-team-map .lg-lens-grid { position: absolute; top: 52px; left: 0; }
 }
+
+/* U2: status stays visible; actions occupy one scrollable row on phones. */
+html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
+.lg-team-map .lg-bar { left: 8px; right: 8px; transform: none; max-width: none; gap: 4px; }
+.lg-actions { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
+.lg-actions > button { flex: 0 0 auto; }
+#lg-hud-chips { display: flex; min-width: 0; gap: 3px; }
+#lg-hud-chips button { max-width: 290px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lg-watch { position: static; display: flex; min-width: 0; gap: 3px; }
+#lg-watch > span { display: none; }
+#lg-watch button { max-width: 88px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-team-map #bd-mapnote { display: none; }
+.lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
+.lg-lens-key { display: none; position: absolute; left: 0; top: 48px; width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
+.lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
+.lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
+.lg-map-result { top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
+.lg-map-result[data-faded="true"] { opacity: 1; color: var(--ui-muted); }
+.lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+.lg-trends text { font-size: 16px; }
+.lg-team-map .lg-lens-grid { position: fixed; left: 8px; top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
+.lg-team-map #lg-panel { z-index: 46; }
+@media (max-width: 760px) {
+  .lg-team-map .lg-bar { justify-content: flex-start; padding: 3px; gap: 3px; }
+  .lg-team-map .lg-bteam { max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lg-team-map .lg-bphase, .lg-team-map .lg-conn, .lg-team-map .lg-bar .lg-timer { display: inline-flex; align-items: center; font-size: 12px; min-height: 24px; }
+  .lg-team-map .lg-conn { max-width: 72px; padding: 0 4px; white-space: nowrap; overflow: hidden; }
+  .lg-team-map #lg-hud-chips { display: none; }
+  .lg-team-map #lg-watch { position: static; display: flex; flex: 1; max-width: none; overflow: hidden; }
+  .lg-team-map #lg-watch button { min-width: 44px; max-width: 66px; min-height: 44px; padding: 0 4px; font-size: 11px; }
+  .lg-team-map .lg-actions { flex-basis: 100%; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .lg-team-map .lg-actions::-webkit-scrollbar { display: none; }
+  .lg-team-map .bd-layers { display: flex; order: 0; }
+  .lg-team-map .bd-layers > [data-layer] { display: none; }
+  .lg-team-map .lg-lenses .bd-layer { padding: 0 7px; }
+  .lg-team-map .bd-mapbar { flex-wrap: nowrap; }
+  .lg-team-map .bd-zoom { order: 0; }
+  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+  .lg-team-map .lg-lens-grid { top: calc(var(--lg-mapbar-bottom, 210px) + 64px); }
+  .lg-team-map #lg-sound { position: static; }
+  .lg-team-map #lg-panel { top: var(--bd-top, 180px); }
+}
+@media (max-width: 760px) {
+  .lg-team-map.bd-grouped .bd-tools { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .lg-team-map .bd-season { display: none; }
+  .lg-team-map.bd-grouped .bd-runs { grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr)); }
+}
+
+.lg-team-map .lg-lens-grid { top: auto; bottom: calc(var(--bd-dock, 100px) + 8px); }
+.lg-team-map .bd-subtools .bd-tool-c { display: block; }
+.lg-team-map .bd-subtools .bd-tool-n small { display: block; font-size: 11px; white-space: normal; }
+@media (max-width: 760px) {
+  .lg-team-map .lg-actions .lg-readybtn { position: sticky; right: 0; z-index: 1; margin-left: auto; background: #152936; box-shadow: -4px 0 6px #152936; }
+  .lg-team-map .lg-actions .lg-readybtn[aria-pressed="true"] { background: #71dceb; }
+}
+@media (max-width: 760px) {
+  .lg-team-map .bd-tools, .lg-team-map .bd-runs { padding: 2px; }
+  .lg-team-map .bd-tools > .bd-tool { padding: 2px 0; gap: 0; line-height: 1.1; }
+  .lg-team-map .bd-layers, .lg-team-map .bd-zoom { padding: 0; }
+}

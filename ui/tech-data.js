@@ -20,7 +20,7 @@
     scableLoss: p(0.5, "G", "초전도 연계선 손실 절반; 보도 1/4보다 보수적"),
     scableCooling: p(0.5, "G", "연계선당 월 냉각비 억; 양 끝이 도입하면 절반씩"),
     sicOutput: p(1.015, "G", "재생 인버터 출력 1.5% 증가; P 효율 자료의 하단", [evidence, "https://minds.wisc.edu/items/299cade1-bc94-4a3b-8a19-85a24ae2aea2"]),
-    tandemOutput: p(1.15, "G", "새 탠덤 설비만 출력 15% 증가; 상용 효율 26.9/23 근사"),
+    tandemOutput: p(1.15, "G", "새 탠덤 설비만 출력 15% 증가; 상용 모듈 22→26.9% 대비 출력 증가폭 비교(ECON-DATA §기술 표)"),
     tandemCost: p(1.15, "G", "새 탠덤 설비 건설비 15% 증가"),
     nbatCapacity: p(1.25, "G", "새 배터리 16→20 MWh; 밀도 +40% 발표의 0.625배"),
     nbatCost: p(15, "G", "차세대 배터리 건설비 억"),
@@ -76,39 +76,52 @@
     numbers: { need: p(need, "G", "필요 연구량; 기존 3종은 보존"), demo: p(demo, "G", "실증비 억, 실증 한 턴 뒤 도입") }
   });
   const cards = [
-    card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "선로 상태를 살펴 전기를 보낼 때의 손실을 줄입니다."),
-    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], "연계선 손실 2→1.2%, 새 선 건설비 ×1.3", "P·G", "짧은 거리에서는 변환소 비용 부담이 크다"),
-    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "P·G", "저항은 작아져도 냉각 전력과 비용이 든다"),
-    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄인다"),
-    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "하한 10→5%, 변환 효율 95→95.5%", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 씁니다."),
-    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], "새 탠덤 태양광 출력·건설비 ×1.15", "P·G", "기존 패널은 바뀌지 않는다"),
-    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], "새 배터리 용량 ×1.25, 화재 면역", "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요합니다."),
-    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], "새 태양광·배터리 건설비 ×0.92", "G", "시장 전체 가격 하락을 한 도시의 연구 성과로 보지 않는다"),
-    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], "200 MWh 장주기 저장, 왕복 35%", "P·G", "저장은 크지만 손실이 크고 처음에는 비어 있다"),
-    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], "LNG CO₂ ×0.88", "M", "부피 비율과 열량 비율은 다르다"),
-    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], "석탄 CO₂ ×0.4, 출력 ×0.85", "P·G", "포집에 전기가 든다"),
-    card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "20 MW, 150억, 건설 6턴", "P·G", "시간을 압축한 건설이며 실제 인허가 예측이 아니다"),
-    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], "저녁 피크에 저장을 남기고 사건 예보 범위를 절반으로", "M·G", "예측은 날씨를 바꾸지 않는다"),
-    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "실측 VPP 효과 대신 수업용 가정"),
-    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아집니다.")
+    card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "선로 상태를 살펴 전기를 보낼 때의 손실을 줄여요."),
+    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], "연계선 손실 2→1.2%, 새 선 건설비 ×1.3", "P·G", "짧은 거리에서는 변환소 비용 부담이 커요."),
+    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
+    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
+    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "하한 10→5%, 변환 효율 95→95.5%", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
+    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], "새 탠덤 태양광 출력·건설비 ×1.15", "P·G", "기존 패널은 바뀌지 않아요."),
+    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], "새 배터리 용량 ×1.25, 화재 면역", "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요해요."),
+    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], "새 태양광·배터리 건설비 ×0.92", "G", "시장 전체의 가격 하락을 한 도시의 연구 성과로 보지는 않아요."),
+    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], "200 MWh 장주기 저장, 왕복 35%", "P·G", "많이 저장하지만 손실이 크고 처음에는 비어 있어요."),
+    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], "LNG CO₂ ×0.88", "M", "부피 비율과 열량 비율은 달라요."),
+    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], "석탄 CO₂ ×0.4, 출력 ×0.85", "P·G", "포집에도 전기가 들어요."),
+    card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "20 MW, 150억, 건설 6턴", "P·G", "수업 시간에 맞춰 공사 기간을 줄였어요. 실제 인허가 기간과는 달라요."),
+    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], "저녁 피크에 저장을 남기고 사건 예보 범위를 절반으로", "M·G", "예측은 날씨를 바꾸지 않아요."),
+    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "효과 크기는 수업을 위한 가정이에요."),
+    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아져요.")
   ];
+  // 효과 계수는 그대로 둔다. scale은 효과 증가/감소 폭을 현실 비교 폭으로 나눈 표시값(G).
+  // tandem 기준은 ECON-TECH와 ECON-DATA의 일반 모듈 22% → 상용 탠덤 26.9%다.
+  const comparisons = {
+    hvdc: { v: (1 - params.hvdcLoss.v / .02) / (1 - 3.5 / 6.7), baseline: "손실 개선폭: 교류 6.7% → 직류 3.5%", reference: { from: 6.7, to: 3.5, unit: "%" } },
+    scable: { v: (params.scableCap.v - 1) / (5 - 1), baseline: "송전 용량 증가폭: 기존의 5배", reference: { multiplier: 5 } },
+    tandem: { v: (params.tandemOutput.v - 1) / (26.9 / 22 - 1), baseline: "모듈 효율 증가폭: 일반 22% → 탠덤 26.9%", reference: { from: 22, to: 26.9, unit: "%" } },
+    nbat: { v: (params.nbatCapacity.v - 1) / .4, baseline: "셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요)", reference: { increase: .4 } },
+    h2store: { v: params.h2Efficiency.v / .35, baseline: "왕복 효율 30~40%의 가운데 값 35%", reference: { range: [.3, .4], midpoint: .35 } },
+    h2mix: { v: (1 - params.h2Co2.v) / .12, baseline: "수소 30 vol% 혼소의 열량 환산 CO₂ 감소 12%(M)", reference: { reduction: .12, grade: "M" } },
+    ccu: { v: (1 - params.ccuCo2.v) / .9, baseline: "포집률 상단 90%", reference: { capture: .9 } }
+  };
+  cards.forEach(c => { c.scale = { v: null, baseline: null, reference: null, grade: "G", ...comparisons[c.id] }; });
   // 외부 자료는 기존 조사 기록에서 옮긴다. 연도가 없는 자료는 추정하지 않는다.
   const referenceNotes = {
-    hvdc: ["2019", "직류 송전 비교 · https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
-    scable: ["2025", "초전도 케이블 운영 보도 · https://www.hankyung.com/article/202507072966i"],
-    sic: ["자료 없음", "전력변환 비교 설계 · https://minds.wisc.edu/items/299cade1-bc94-4a3b-8a19-85a24ae2aea2"],
-    tandem: ["2024-06", "상용 모듈 효율 보도 · https://optics.org/news/oxford-pv-debuts-commercial-solar-module-with-record-26.9-efficiency"],
-    nbat: ["2024", "차세대 배터리 발표 보도 · https://www.ddaily.co.kr/page/view/2024072314310111898"],
-    mass: ["2025", "배터리 시장 가격 조사 · https://about.bnef.com/insights/clean-energy/lithium-ion-battery-pack-prices/"],
-    h2store: ["자료 없음", "수소 저장 핸드북 · https://www.sandia.gov/app/uploads/sites/163/2022/03/ESHB_Ch11_Hydrogen_Headley.pdf"],
-    h2mix: ["자료 없음", "수소 혼소는 물성값으로 어림한 모형(M) · https://gs.kentech.ac.kr/process/research_field"],
-    ccu: ["2024", "발전소 탄소 포집 보고 · https://www.crugroup.com/en/communities/thought-leadership/2024/Challenges-in-achieving-90percent-carbon-capture-Technical-vs-economic-factors/"],
-    smr: ["2026-03", "소형 원자로 인허가 계획 보도 · https://www.hankyung.com/article/202603048316i"]
+    hvdc: ["2019", "직류 송전 비교", "https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
+    scable: ["2025", "초전도 케이블 운영 보도", "https://www.hankyung.com/article/202507072966i"],
+    sic: ["자료 없음", "전력변환 비교 설계", "https://minds.wisc.edu/items/299cade1-bc94-4a3b-8a19-85a24ae2aea2"],
+    tandem: ["2024-06", "상용 모듈 효율 보도", "https://optics.org/news/oxford-pv-debuts-commercial-solar-module-with-record-26.9-efficiency"],
+    nbat: ["2024", "차세대 배터리 발표 보도", "https://www.ddaily.co.kr/page/view/2024072314310111898"],
+    mass: ["2025", "배터리 시장 가격 조사", "https://about.bnef.com/insights/clean-energy/lithium-ion-battery-pack-prices/"],
+    h2store: ["자료 없음", "수소 저장 핸드북", "https://www.sandia.gov/app/uploads/sites/163/2022/03/ESHB_Ch11_Hydrogen_Headley.pdf"],
+    h2mix: ["자료 없음", "수소 혼소는 물성값으로 어림한 모형(M)", "https://gs.kentech.ac.kr/process/research_field"],
+    ccu: ["2024", "발전소 탄소 포집 보고", "https://www.crugroup.com/en/communities/thought-leadership/2024/Challenges-in-achieving-90percent-carbon-capture-Technical-vs-economic-factors/"],
+    smr: ["2026-03", "소형 원자로 인허가 계획 보도", "https://www.hankyung.com/article/202603048316i"]
   };
   cards.forEach(c => {
     const ref = referenceNotes[c.id];
     c.year = "2026 모집요강";
-    c.numbers.need.note = ref ? ref[1] : "분야 이름 자료 · https://gs.kentech.ac.kr/process/research_field · 효과 크기는 게임 가정(G)";
+    c.effectSources = ref ? [ref[2]] : [];
+    c.numbers.need.note = ref ? ref[1] + " · " + ref[2] : "분야 이름 자료 · https://gs.kentech.ac.kr/process/research_field · 효과 크기는 게임 가정(G)";
     c.numbers.need.year = ref ? ref[0] : "2026 모집요강";
   });
   params.hvdcLoss.year = "2019";

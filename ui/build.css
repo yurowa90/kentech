@@ -1009,3 +1009,8 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
 .bd-tab { gap: 3px; padding: 0 4px; flex: 1 1 auto; }
 .bd-tab span, .bd-tab .bd-count { white-space: nowrap; }
 .bd-card-txt small { display: block; margin-top: 2px; font-size: 12px; opacity: 0.85; }
+
+/* U2: league trial sheet leaves the league actions reachable on phones. */
+@media (max-width: 760px) {
+  .bd-league .bd-drawer { bottom: calc(var(--bd-dock, 100px) + 8px); top: var(--bd-top, 180px); max-height: calc(100dvh - var(--bd-top, 180px) - var(--bd-dock, 100px) - 16px); }
+}

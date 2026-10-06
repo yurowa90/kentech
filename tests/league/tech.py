@@ -183,6 +183,14 @@ SEED_UI = r"""async kind => {
   if (kind === 'transfer') {
     S.teams[other].research = H.research(['grid']);
     S.ties = [{...C.tieDef(R, team, other), cap:4, st:'built'}];
+    // Same connected internal grid as tech.js fixture; no engine helper export needed.
+    for (const [id, peer] of [[team, other], [other, team]]) {
+      const BG = K.buildGame; BG.selectPack(id, 'league');
+      const gate = BG.SITES.find(s => s.kind === 'gridpt' && (s.to || []).includes(peer));
+      const path = gate && BG.routePath(BG.SITES.find(s => s.dem).tile, gate.tile);
+      if (!path) throw Error('공동 연구 연결 경로 없음');
+      S.teams[id].plan.lines.push({p:path});
+    }
     H.request(S, other, ['sic']);
   }
   if (kind === 'completion') {
@@ -263,6 +271,15 @@ def queue_from_ui(host, team, state):
 
 def tool_state(team, name, locked):
     # data-tool은 기존 건설 도구 연결부. 새 기술 화면의 전용 속성은 가정하지 않는다.
+    if team.locator("#lg-panel:not([hidden]) [data-pclose]").count():
+        team.locator("#lg-panel [data-pclose]").click()
+    group = {"탠덤 태양광": "ren", "탠덤 지붕 태양광": "ren", "차세대 배터리": "store", "수소 탱크": "store", "SMR": "thermal"}.get(name)
+    # Pack group ids are discovered from the existing base tool, avoiding naming assumptions.
+    base = {"ren":"solar", "store":"battery", "thermal":"diesel"}.get(group)
+    group_id = team.evaluate("base => {const BG=KCP.buildGame; return BG.PACKS[KCP.league.state().team]?.groups?.find(g=>g.tools.includes(base))?.id;}", base)
+    if group_id:
+        control = team.locator(f'[data-group="{group_id}"]')
+        if control.get_attribute("aria-expanded") != "true": control.click()
     tools = team.locator("[data-tool]").filter(has_text=name)
     if not tools.count():
         return False
@@ -278,14 +295,15 @@ def tool_state(team, name, locked):
 
 def title_badge(host, team, state):
     panel = open_tech(team)
-    team_badge = panel.get_by_text("그리드 개척자", exact=True)
+    team_badge = panel.get_by_text("그리드 개척자", exact=False)
     row = host.locator(f'[data-team="{state["team"]}"]').filter(has_text="그리드 개척자")
     return (team_badge.count() > 0 and team_badge.first.is_visible() and row.count() > 0 and
-            row.first.get_by_text("그리드 개척자", exact=True).count() > 0)
+            row.first.get_by_text("그리드 개척자", exact=False).count() > 0)
 
 
 def completion_element(team):
-    team.locator('[data-panel="result"]').click()
+    control = team.locator('#lg-bar [data-panel="result"]')
+    if control.get_attribute('aria-expanded') != 'true': control.click()
     return team.evaluate(r"""() => {
       const card = KCPTechChecks.cardsOf().find(c=>c.id==='grid');
       const result = document.querySelector('#lg-panel .lg-pbody');
@@ -294,7 +312,7 @@ def completion_element(team):
       const found = [...result.querySelectorAll('*')].find(el => {
         const text = el.textContent;
         return el.getBoundingClientRect().height > 0 && text.length < 1500 &&
-          text.includes(card.name) && text.includes(card.field) && text.includes(card.grade) &&
+          text.includes(card.name) && text.includes(card.field) && text.includes('근거 ' + card.evidenceGrade.replaceAll('·', ' · ')) && text.includes('효과 크기 ' + card.effectGrade.replaceAll('·', ' · ')) &&
           (typeof card.eff !== 'string' || text.includes(card.eff));
       });
       if (!found) return null;
@@ -308,10 +326,10 @@ def completion_element(team):
     }""")
 
 
-def completion_flow(checks, host, team, label):
+def completion_flow(checks, host, team, label, state):
     # 실제 요청→진척→실증→도입을 운영한다. 화면에 카드가 직접 주입된 결과를 쓰지 않는다.
     observed = False
-    before = host.evaluate("() => KCP.leagueCore.techOf(KCP.league.state().S, KCP.league.state().S.active[0])")
+    before = host.evaluate("id => KCP.leagueCore.techOf(KCP.league.state().S, id)", state["team"])
     for month in range(4):
         phase = host.evaluate("() => KCP.league.state().S.phase")
         if phase == "review":
@@ -321,11 +339,12 @@ def completion_flow(checks, host, team, label):
         host.evaluate("() => KCP.league.next()")
         host.wait_for_function("() => KCP.league.state().S.phase === 'review'")
         team.wait_for_function("r => KCP.league.state().snap?.phase==='review' && KCP.league.state().snap.round===r", arg=previous)
-        now = host.evaluate("() => KCP.leagueCore.techOf(KCP.league.state().S, KCP.league.state().S.active[0])")
-        if "grid" in now and "grid" not in before:
+        now = host.evaluate("id => KCP.leagueCore.techOf(KCP.league.state().S, id)", state["team"])
+        completed = host.evaluate("id => KCP.league.state().S.results.at(-1)?.team[id]?.research?.completed || []", state["team"])
+        if "grid" in completed:
             observed = True
             element = completion_element(team)
-            checks.ok(bool(element) and element["top"] <= 100, f"{label} T2 도입 달 결과 맨 위 완료 카드·효과·분야·등급")
+            checks.ok(bool(element) and element["top"] <= 100, f"{label} T2 연구 완료 달(다음 달 도입) 결과 맨 위 완료 카드·효과·분야·등급")
             checks.ok(bool(element) and any(abs(d - 800) < 5 for d in element["durations"]),
                       f"{label} T2 완료 연출 0.8초")
             checks.ok("개발" in host.locator("body").inner_text() and
@@ -339,10 +358,10 @@ def completion_flow(checks, host, team, label):
     return observed
 
 
-def ui_block(checks, browser, base, scheme):
-    ctx, external = browser_context(browser, base, scheme, width=390)
+def ui_block(checks, browser, base, scheme, width=390):
+    ctx, external = browser_context(browser, base, scheme, width=width)
     pages = []
-    label = f"390px {scheme}"
+    label = f"{width}px {scheme}"
     try:
         host, team, state = setup_ui(ctx, base, pages, "locked")
         checks.test(f"{label} T4 연구 탭·아래 막대", lambda: open_tech(team).is_visible())
@@ -366,12 +385,17 @@ def ui_block(checks, browser, base, scheme):
             panel = card_detail(team, "tandem")
             card = team.evaluate("() => KCPTechChecks.cardsOf().find(c=>c.id==='tandem')")
             body = panel.inner_text()
-            return (card["field"] in body and card["grade"] in body and
+            return (card["field"] in body and ("근거 " + card["evidenceGrade"].replace("·", " · ")) in body and
+                    ("효과 크기 " + card["effectGrade"].replace("·", " · ")) in body and
                     "유레카" in body and "출처" in body and "배속" in body)
 
         checks.test(f"{label} T4 상세 분야·등급·출처·유레카·배속", detail)
+        for card_id in team.evaluate("() => KCP.TECH_DATA.cards.map(c=>c.id)"):
+            card_detail(team, card_id)
+            checks.ok(bool(re.search(r"교육용 배속 (?:×[\d.]+\(G\)|: 비교값 없음\(G\))|교육용 배속: 비교값 없음\(G\)", team.locator(".lg-tech-scale").inner_text())),
+                      f"{label} U2 {card_id} 구조화 배속 표시")
         checks.test(f"{label} T3 화면 연구 요청 서버 반영", lambda: queue_from_ui(host, team, state))
-        for name in ("탠덤 태양광", "차세대 배터리", "수소 탱크", "SMR"):
+        for name in ("탠덤 태양광", "탠덤 지붕 태양광", "차세대 배터리", "수소 탱크", "SMR"):
             checks.test(f"{label} T2 {name} 해금 전 자물쇠·필요 연구", lambda name=name: tool_state(team, name, True))
         checks.test(f"{label} T5 가로 넘침 0", lambda: team.evaluate(
             "() => Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)<=innerWidth"))
@@ -383,7 +407,7 @@ def ui_block(checks, browser, base, scheme):
         team.close()
 
         host, team, state = setup_ui(ctx, base, pages, "adopted")
-        for name in ("탠덤 태양광", "차세대 배터리", "수소 탱크", "SMR"):
+        for name in ("탠덤 태양광", "탠덤 지붕 태양광", "차세대 배터리", "수소 탱크", "SMR"):
             checks.test(f"{label} T2 {name} 도입 후 건설 가능", lambda name=name: tool_state(team, name, False))
         checks.test(f"{label} T2 팀 칭호·진행자 순위 배지", lambda: title_badge(host, team, state))
         host.close()
@@ -412,7 +436,7 @@ def ui_block(checks, browser, base, scheme):
         team.close()
 
         host, team, _ = setup_ui(ctx, base, pages, "completion")
-        checks.test(f"{label} T2 실제 도입 완료 연출", lambda: completion_flow(checks, host, team, label))
+        checks.test(f"{label} T2 실제 도입 완료 연출", lambda: completion_flow(checks, host, team, label, state))
     except Exception as exc:
         checks.ok(False, f"{label} 화면 초기화: {type(exc).__name__}: {str(exc).splitlines()[0][:220]}")
     finally:
@@ -431,8 +455,9 @@ def main():
             browser = pw.chromium.launch()
             try:
                 engine_block(checks, browser, base)
-                for scheme in ("light", "dark"):
-                    ui_block(checks, browser, base, scheme)
+                for width in (1280, 390):
+                    for scheme in ("light", "dark"):
+                        ui_block(checks, browser, base, scheme, width)
             finally:
                 browser.close()
     except Exception as exc:

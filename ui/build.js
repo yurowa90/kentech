@@ -1904,7 +1904,8 @@
         const rd = S.opts.leagueRound?.(), completedDays = actual.days || S.opts.leagueResultDays?.() || rd?.days;
         const shortage = actual.uns ?? (Number.isFinite(actual.dem) ? actual.dem * actual.unsPct / 100 : null);
         const average = Number.isFinite(shortage) && completedDays ? shortage / (completedDays * 24) : null;
-        const text = "운영 결과" + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건${actual.town?.length ? "" : " · 마을별 정전 자료 없음"}`;
+        const villages = new Set((actual.cpList || []).filter(cp => cp.score > 0).map(cp => cp.near));
+        const text = (actual.faded ? `지난달(${actual.month || "–"}월) 실제` : `${actual.month || "–"}월 실제`) + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건 · 영향 마을 ${villages.size}곳`;
         if (summary.textContent !== text) summary.textContent = text;
       }
     }
@@ -1920,17 +1921,23 @@
     g.save();
     if (actual && S.lenses.result && !S.run) {
       g.globalAlpha = actual.faded ? .35 : 1;
-      (actual.cpList || []).filter(cp => cp.score > 0 && Number.isInteger(cp.near)).forEach(cp => {
+      [...new Set((actual.cpList || []).filter(cp => cp.score > 0 && Number.isInteger(cp.near)).map(cp => cp.near))].forEach(near => {
+        const cp = { near };
         const W = TOWNS[cp.near]; if (!W) return;
         const [x, y] = tileTop(TILES[W.tile]);
         g.fillStyle = "#ffe07a"; g.strokeStyle = "#172633"; g.lineWidth = 2;
         g.beginPath(); g.arc(x + 14, y - 25, 8, 0, Math.PI * 2); g.fill(); g.stroke();
         g.fillStyle = "#172633"; g.font = "bold 12px sans-serif"; g.textAlign = "center"; g.fillText("!", x + 14, y - 21);
       });
-      // Future/full local results may contain town rows. Missing rows stay unpainted.
+      if (!actual.town?.length && actual.unsPct > 0) {
+        g.strokeStyle = "#ff8a7a"; g.lineWidth = 5;
+        g.strokeRect(V.area.l + 3, V.area.t + 3, Math.max(0, V.area.r - V.area.l - 6), Math.max(0, V.area.b - V.area.t - 6));
+      }
+      // Public town rows, when available, are the only source of village outage colors.
       (actual.town || []).forEach((town, ti) => { if (!(town.outH > 0) || !TOWNS[ti]) return; polyPath(g, topPoly(TILES[TOWNS[ti].tile])); g.fillStyle = "rgba(192,57,43,.7)"; g.fill(); });
     }
     g.globalAlpha = 1;
+    const trialLabels = [];
     if (S.result && S.lenses.result && !S.run) {
       // Local trial arrays are kept on this device. Town failures are actual trial values.
       S.result.town.forEach((town, ti) => {
@@ -1939,8 +1946,20 @@
         polyPath(g, topPoly(T)); g.fillStyle = "rgba(192,57,43,.7)"; g.fill();
         S.result.uiPeak ||= S.result.town.map((_, ti) => { let peak = 0; for (let k = 0; k < S.result.H; k++) peak = Math.max(peak, S.result.hrUns[k * S.result.NT + ti]); return peak; });
         const peak = S.result.uiPeak[ti];
-        const text = `시험 부족 ${fmt(peak, 2)} MW`;
-        g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.lineWidth = 3; g.strokeStyle = "#172633"; g.strokeText(text, x, y - 14); g.fillStyle = "#fff"; g.fillText(text, x, y - 14);
+        if (isMobile() && peak > 0) trialLabels.push({ x, y, peak });
+      });
+    }
+    if (S.result && S.lenses.result && !S.run && isMobile()) {
+      // Small screens hide facility banners; keep only the three largest peaks.
+      const placed = [];
+      trialLabels.sort((a, b) => b.peak - a.peak).slice(0, 3).forEach(p => {
+        const text = `시험 최대 부족 ${fmt(p.peak, 2)} MW`;
+        g.font = "bold 12px sans-serif"; g.textAlign = "center";
+        const width = g.measureText(text).width, x = clamp(p.x, width / 2 + 8, V.W - width / 2 - 8);
+        let y = p.y - 14;
+        while (placed.some(q => Math.abs(q.x - x) < (q.width + width) / 2 + 4 && Math.abs(q.y - y) < 18)) y -= 20;
+        placed.push({ x, y, width });
+        g.lineWidth = 3; g.strokeStyle = "#172633"; g.strokeText(text, x, y); g.fillStyle = "#fff"; g.fillText(text, x, y);
       });
     }
     if (S.lenses.grid) {
@@ -1948,7 +1967,7 @@
     }
     if (S.lenses.complaints && BLD[S.tool] && S.hover != null) {
       const T = TILES[S.hover], radius = T.t === "forest" ? 3 : ["diesel", "wind"].includes(S.tool) ? 2 : ["solar", "biomass", "offshore"].includes(S.tool) ? 1 : 0;
-      TILES.filter(t => radius > 0 && !t.out && hexDist(t.i, T.i) === radius).forEach(t => { polyPath(g, topPoly(t)); g.strokeStyle = "#ffe07a"; g.lineWidth = 2; g.stroke(); });
+      TILES.filter(t => radius > 0 && !t.out && hexDist(t.i, T.i) === radius).forEach(t => { polyPath(g, topPoly(t)); g.strokeStyle = "#f0a9e9"; g.lineWidth = 2; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]); });
       // Reuse the complaint calculation for affected demand sites, including wind/smoke direction.
       const cpKey = JSON.stringify([S.st.builds, S.st.policies, S.tool, T.i]);
       if (S.previewComplaint?.key !== cpKey) S.previewComplaint = { key: cpKey, value: complaints({ ...S.st, builds: [...S.st.builds, { t: S.tool, i: T.i }] }, null) };
@@ -2024,6 +2043,7 @@
     S.floaters.push({ x, y: y - V.S * 0.6, text, col, t0: performance.now() });
   }
   function place(type, i) {
+    if (toolLocked(type)) { toast(toolLocked(type)); return; }
     const chk = canPlace(type, i);
     if (!chk.ok) { toast(chk.why); return; }
     S.st.builds.push({ t: type, i });
@@ -2094,6 +2114,7 @@
     request();
   }
   function act(i) {
+    if (toolLocked(S.tool)) { toast(toolLocked(S.tool)); return; }
     const tool = S.tool;
     if (!tool) { showTip(i); return; }
     const lk = lockedMsg();
@@ -2104,9 +2125,10 @@
     showTip(i);
   }
   function setTool(id) {
+    if (toolLocked(id)) { toast(toolLocked(id)); return; }
     S.tool = S.tool === id ? null : id;
-    if (S.opts.league && BLD[S.tool]) {
-      S.lenses.complaints = true; S.lenses.grid = true; syncLensButtons();
+    if (S.opts.league && BLD[S.tool] && !S.lensChosen) {
+      S.lenses.complaints = true; S.lenses.grid = true; rememberLenses(); syncLensButtons();
     }
     if (S.opts.league) S.opts.onTool?.();
     cancelLine();
@@ -2118,21 +2140,39 @@
     request();
   }
   /* ---------- 도구 막대: 섬은 6개 그대로, 평택은 묶음(재생·화력·저장·송전·철거) ---------- */
-  const toolBtn = (id, extra = "") => { const T = toolMeta(id); return `<button type="button" class="bd-tool" data-tool="${id}" aria-pressed="${S.tool === id}"${extra}>${ico(T.icon)}<span class="bd-tool-n">${T.name}</span><span class="bd-tool-c num">${T.cost}${T.rated ? `<br>${T.rated}` : ""}</span></button>`; };
+  const toolLocked = id => {
+    const tech = BLD[id]?.tech;
+    if (!S.opts.league || !tech || S.opts.research?.()?.adopted?.includes(tech)) return "";
+    return `${KCP.TECH_DATA?.cards.find(c => c.id === tech)?.name || tech} 연구 필요`;
+  };
+  function toolGroups() {
+    const groups = (PK.groups || []).map(g => ({ ...g, tools: g.tools.slice() }));
+    if (!S.opts.league || !KCP.TECH_DATA) return groups;
+    const add = (base, ids, name) => {
+      const group = groups.find(g => g.tools.includes(base));
+      if (group) { group.tools.push(...ids.filter(id => BLD[id])); if (name) group.name = name; }
+    };
+    add("solar", ["tandem", "tandem_roof"]);
+    add("battery", ["nbat", "h2store"], "저장");
+    add("diesel", ["smr"]);
+    return groups;
+  }
+  const toolBtn = (id, extra = "") => {
+    const T = toolMeta(id), why = toolLocked(id);
+    return `<button type="button" class="bd-tool" data-tool="${esc(id)}" aria-pressed="${S.tool === id}"${why ? ` disabled aria-disabled="true" title="${esc(why)}" aria-label="${esc(T.name + ' · ' + why)}"` : ""}${extra}>${ico(T.icon)}<span class="bd-tool-n">${why ? "🔒 " : ""}${esc(T.name)}${why ? `<small>${esc(why)}</small>` : ""}</span><span class="bd-tool-c num">${esc(T.cost)}${T.rated ? `<br>${esc(T.rated)}` : ""}</span></button>`;
+  };
   function renderTools() {
     const box = $("#bd-tools"), sub = $("#bd-subtools");
     if (!box) return;
+    const groups = toolGroups();
     S.root.classList.toggle("bd-grouped", !!PK.groups);
-    if (!PK.groups) { box.innerHTML = PK.tools.map(id => toolBtn(id)).join(""); sub.hidden = true; return; }
-    box.innerHTML = PK.groups.map(G => {
-      if (G.tools.length === 1) {
-        const T = toolMeta(G.tools[0]);
-        return `<button type="button" class="bd-tool" data-tool="${G.tools[0]}" aria-pressed="${S.tool === G.tools[0]}">${ico(T.icon)}<span class="bd-tool-n">${G.name}</span><span class="bd-tool-c num">${T.cost}${T.rated ? `<br>${T.rated}` : ""}</span></button>`;
-      }
+    if (!PK.groups) { box.innerHTML = toolsOf().map(id => toolBtn(id)).join(""); sub.hidden = true; return; }
+    box.innerHTML = groups.map(G => {
+      if (G.tools.length === 1) return toolBtn(G.tools[0]);
       const cur = G.tools.includes(S.tool) ? toolMeta(S.tool) : null;
-      return `<button type="button" class="bd-tool bd-group" data-group="${G.id}" aria-expanded="${S.openGroup === G.id}" aria-controls="bd-subtools"${cur ? ' data-active="true"' : ""}>${ico(cur ? cur.icon : G.icon)}<span class="bd-tool-n">${G.name}</span><span class="bd-tool-c num">${cur ? esc(cur.name) : G.tools.length + "종"}</span></button>`;
+      return `<button type="button" class="bd-tool bd-group" data-group="${esc(G.id)}" aria-expanded="${S.openGroup === G.id}" aria-controls="bd-subtools"${cur ? ' data-active="true"' : ""}>${ico(cur ? cur.icon : G.icon)}<span class="bd-tool-n">${esc(G.name)}</span><span class="bd-tool-c num">${cur ? esc(cur.name) : G.tools.length + "종"}</span></button>`;
     }).join("");
-    const G = PK.groups.find(g => g.id === S.openGroup);
+    const G = groups.find(g => g.id === S.openGroup);
     sub.hidden = !G;
     if (G) { sub.setAttribute("aria-label", G.name); sub.innerHTML = G.tools.map(id => toolBtn(id)).join(""); }
   }
@@ -2362,8 +2402,11 @@
       R.tip = tipK;
       const el = $("#bd-run-tip");
       const month = leagueMonth();
-      const relevantTips = month ? tips().filter(t => { const months = [...t.matchAll(/(\d+)월/g)].map(m => +m[1]); return !months.length || months.includes(month); }) : tips();
-      el.textContent = (T => T[(R.tipBase * 3 + tipK) % T.length])(relevantTips);
+      const relevantTips = month ? tips().filter(t => { const namedMonth = /^(\d+)월/.exec(t);
+        if (namedMonth && +namedMonth[1] !== month) return false;
+        const seasons = { 봄: [3,4,5], 여름: [6,7,8], 장마: [6,7], 가을: [9,10,11], 겨울: [12,1,2] };
+        return Object.entries(seasons).every(([word, months]) => !t.includes(word) || months.includes(month)); }) : tips();
+      el.textContent = (T => T[(R.tipBase * 3 + tipK) % T.length])(relevantTips.length ? relevantTips : ["전력망과 저장 설비를 함께 살펴요."]);
     }
   }
   function paintSpark() {
@@ -2578,7 +2621,7 @@
       if (rd.month && time) { time.title = `${rd.year}년 ${rd.month}월 · ${season}`; time.setAttribute("aria-label", time.title); }
     }
     const pk = S.root.querySelector('[data-cap="power"] .v2-cap-k'), mode = R ? "run" : res ? "res" : "build";
-    if (pk.dataset.mode !== mode) { pk.dataset.mode = mode; pk.innerHTML = R ? '공급/수요<span class="bd-unit"> MW</span>' : res ? "결과" : '설비/피크<span class="bd-unit"> MW</span>'; }
+    if (pk.dataset.mode !== mode) { pk.dataset.mode = mode; pk.innerHTML = R ? '공급/수요<span class="bd-unit"> MW</span>' : res ? (S.opts.league ? "시험 결과" : "결과") : '설비/피크<span class="bd-unit"> MW</span>'; }
   }
 
   /* ---------- 배너(시설 이름) ---------- */
@@ -2635,7 +2678,7 @@
         const town = S.result.town[ti];
         S.result.uiPeak ||= S.result.town.map((_, ti) => { let peak = 0; for (let k = 0; k < S.result.H; k++) peak = Math.max(peak, S.result.hrUns[k * S.result.NT + ti]); return peak; });
         const peak = S.result.uiPeak[ti];
-        txt = `${town.outH}h · 부족 ${fmt(peak, 2)} MW`;
+        txt = `${S.opts.league ? "시험 " : ""}${town.outH}h${peak > 0 ? ` · 최대 부족 ${fmt(peak, 2)} MW` : ""}`;
         if (S.result.cp.list.some(cp => cp.ti === ti)) txt += " · 민원 !";
         state = S.result.town[ti].outH > 0 ? "out" : "ok";
       } else {
@@ -2857,7 +2900,7 @@
     const len = R.days === 7 ? "1주" : R.days === 30 ? "1달" : "3달";
     const chosen = R.missions.filter(m => m.chosen), others = R.missions.filter(m => !m.chosen);
     const lostElse = others.filter(m => !m.ok);
-    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(displaySeason(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
+    return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${S.opts.league ? "시험 " : ""}${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(displaySeason(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
       <div class="bd-res-acts">
         <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
         <button type="button" class="v2-btn primary" id="bd-jopen">${ico("pen")}<span>일지 쓰기</span></button>
@@ -3103,6 +3146,7 @@
     html.style.setProperty("--bd-hudb", `${Math.round(hud.bottom)}px`);
     const lgb = S.root.querySelector(".lg-bar"), top = lgb ? Math.max(hud.bottom, lgb.getBoundingClientRect().bottom) : hud.bottom;
     html.style.setProperty("--bd-top", `${Math.round(top + 8)}px`);
+    html.style.setProperty("--lg-mapbar-bottom", `${Math.round($("#bd-mapbar").getBoundingClientRect().bottom + 8)}px`);
     html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
@@ -3171,6 +3215,11 @@
   //   league 리그 모드(외부 연결점) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
   //   leagueMods(st) 사건을 뺀 이번 달 운영 보정값(trialMods 계약) · leagueGrid(st) 계획 기준 접속 상태(gridStatus, entries 포함 시 설비별 대기 계산)
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
+  const K_LENSES = "kcp-league-lenses-v1";
+  function rememberLenses() {
+    S.lensChosen = true;
+    try { localStorage.setItem(K_LENSES, JSON.stringify(S.lenses)); } catch (_) {}
+  }
   function mount(app, opts) {
     opts = opts || {};
     teardown();
@@ -3192,14 +3241,18 @@
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     if (opts.league) {
+      try { const saved = JSON.parse(localStorage.getItem(K_LENSES)); if (saved) { ["complaints", "grid", "result"].forEach(k => { if (typeof saved[k] === "boolean") S.lenses[k] = saved[k]; }); S.lensChosen = true; } } catch (_) {}
       const lenses = document.createElement("div"); lenses.className = "lg-lenses"; lenses.setAttribute("role", "group"); lenses.setAttribute("aria-label", "영향과 결과 렌즈");
-      lenses.innerHTML = [["complaints", "민원"], ["grid", "전력망"], ["result", "운영 결과"]].map(([key, label]) => `<button type="button" class="bd-layer" data-lens="${key}" aria-pressed="${S.lenses[key]}">${label}</button>`).join("");
-      root.querySelector("#bd-mapbar").append(lenses);
-      lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; syncLensButtons(); placeBannerValues(); request(); });
+      lenses.innerHTML = [["complaints", "민원"], ["grid", "전력망"], ["result", "결과"]].map(([key, label]) => `<button type="button" class="bd-layer" data-lens="${key}" aria-pressed="${S.lenses[key]}">${label}</button>`).join("");
+      root.querySelector(".bd-layers").append(lenses);
+      const legend = document.createElement("span"); legend.className = "lg-lens-key"; legend.textContent = "하늘색: 선 닿음 · 노랑: 선 안 닿음 · 분홍 점선: 민원 반경";
+      lenses.append(legend);
+      lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; rememberLenses(); syncLensButtons(); placeBannerValues(); request(); });
       const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
       const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
       root.querySelector('[data-tab="mission"]').hidden = true;
-      root.querySelectorAll("[data-run]").forEach(b => { const span = b.querySelector("span"); if (span) span.textContent = `시험 ${span.textContent}`; });
+      root.querySelectorAll("[data-run]").forEach(b => { b.textContent = `시험 ${b.textContent}`; });
+      root.querySelector("#bd-pm span").textContent = "정책·결과";
     }
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     applyPack();
@@ -3281,7 +3334,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    mount, saveView, restoreView, lastTrial, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
+    mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
