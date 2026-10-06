@@ -78,7 +78,7 @@ const initial = () => { const E = X.initCities(ids, data, { months: 36, seed: "r
   near(half.E.cities[a].co2Intensity, .4567 + .15 * (.82 - .4567), "F19·29 공급량 분모와 지연");
   near(r.report.region.goal.co2, 600 * .4567 * .7, "F20 2027 수요 기반 공동 목표");
   const score = X.score(E, data).by[a], w = data.params.wScore.v;
-  near(score.score, Math.round(Math.exp(sum(Object.entries(w).map(([k, v]) => v * Math.log(Math.max(1, score.parts[k])))) / sum(Object.values(w))) * 10) / 10, "F39 기하평균");
+  near(score.score, Math.round(Math.exp(sum(Object.entries(w).map(([k, v]) => v * Math.log(Math.max(data.params.scorePartFloor.v, score.parts[k])))) / sum(Object.values(w))) * 10) / 10, "F39 기하평균·G6 투입 하한");
 }
 const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0, ids, { turns: 36 });
 {

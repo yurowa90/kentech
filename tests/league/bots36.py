@@ -3,6 +3,7 @@ import argparse
 import ast
 import json
 import math
+import os
 import subprocess
 import statistics
 from pathlib import Path
@@ -659,20 +660,61 @@ def horizon_summary(out):
         cash = {s: statistics.mean(r["cash"] for r in rows if r["strategy"] == s) for s in strategies}
         winners = {}
         nothing_ranks = {}
+        nothing_score_ranks = {}
         for city in out["ids"]:
             group = [r for r in rows if r["id"] == city]
             best = max(r["score"] for r in group)
             winners[city] = [r["strategy"] for r in group if r["score"] == best]
             nothing = next((r for r in group if r["strategy"] == "nothing"), None)
             if nothing:
+                nothing_score_ranks[city] = 1 + sum(r["score"] > nothing["score"] for r in group)
                 nothing_ranks[city] = 1 + sum(r["cash"] > nothing["cash"] for r in group)
         samples = [f for run in runs for h in run["hist"][:month] for f in h["fiscal"].values()]
         result[month] = dict(n=len(rows), overCities=sum(r["over"] for r in rows),
             debtMedian=statistics.median(r["debtRatio"] for r in rows),
             overCityMonths=sum(f["debtOver"] for f in samples), cityMonths=len(samples),
             nothingCashRank=1 + sum(v > cash["nothing"] for v in cash.values()),
-            nothingCashCityRanks=nothing_ranks, meanScores=means, meanCash=cash, winners=winners)
+            nothingCashCityRanks=nothing_ranks, nothingScoreCityRanks=nothing_score_ranks, meanScores=means, meanCash=cash, winners=winners)
     return result
+
+
+def debt_breakdown(out):
+    """총액 회계로 복원한다. 차익에서 이미 차감한 연료를 다시 비용에 더하지 않는다."""
+    rows = []
+    for run in out.get("runs", []):
+        assignment = run.get("assignment") or {city: run["style"] for city in run["hist"][0]["fiscal"]}
+        for city, strategy in assignment.items():
+            totals = dict(income=0, fuel=0, operation=0, purchase=0, interest=0,
+                          service=0, construction=0, other=0, rounding=0)
+            for h in run["hist"]:
+                f, r = h["fiscal"][city], h["energy"][city]
+                # 월별 보고에 사용한 실제 달력 일수. 2027년부터 시작하는 검사 방.
+                import calendar
+                wk = calendar.monthrange(2027 + (h["month"] - 1) // 12, (h["month"] - 1) % 12 + 1)[1] / 7
+                power = f["tariffGross"] - f["rev"]["tariff"]
+                fuel = r["cost"]["fuel"] * wk
+                operation = r["cost"]["policy"] * wk + r["cost"].get("resp", 0) + r["cost"].get("research", 0)
+                purchase = r["pay"] * wk
+                amounts = dict(income=f["revTotal"] + power, fuel=fuel, operation=operation,
+                    purchase=purchase, interest=f["exp"]["interest"], service=f["exp"]["service"],
+                    construction=f["exp"]["capex"], other=f["exp"]["incentive"] + f["exp"]["policy"],
+                    rounding=power + f["exp"]["opex"] - fuel - operation - purchase)
+                for key, amount in amounts.items():
+                    totals[key] += amount
+            first, last = run["hist"][0]["fiscal"][city], run["hist"][-1]["fiscal"][city]
+            close = first["cashBefore"] + totals["income"] - sum(v for k, v in totals.items() if k != "income")
+            if abs(close - last["cashAfter"]) > 1e-6:
+                raise AssertionError(f"지출 분해 현금 항등식 {strategy}/{city}: {close}/{last['cashAfter']}")
+            rows.append(dict(id=city, strategy=strategy, **totals, opening=first["cashBefore"],
+                cash=last["cashAfter"], debtCap=last["debtCap"], over=last["debtOver"],
+                firstWarn=next((h["month"] for h in run["hist"] if h["fiscal"][city]["debtStage"] != "ok"), None),
+                firstOver=next((h["month"] for h in run["hist"] if h["fiscal"][city]["debtOver"]), None)))
+    strategies = list(dict.fromkeys(r["strategy"] for r in rows))
+    means = {s: {key: statistics.mean(r[key] for r in rows if r["strategy"] == s)
+                 for key in [*totals, "opening", "cash", "debtCap"]} for s in strategies} if rows else {}
+    for s in strategies:
+        means[s]["overCities"] = sum(r["over"] for r in rows if r["strategy"] == s)
+    return dict(rows=rows, means=means)
 
 
 def markdown(out):
@@ -725,7 +767,15 @@ def markdown(out):
             lines += ["", f"### {month}달 전략별 평균", "", "| 전략 | 점수 | 현금 억 |", "|---|---:|---:|"]
             lines += [f"| {s} | {h['meanScores'][s]:.3f} | {h['meanCash'][s]:.3f} |" for s in out["strategies"]]
             lines += ["", f"도시별 1위: `{json.dumps(h['winners'], ensure_ascii=False)}`",
-                      f"nothing 도시별 현금 순위: `{json.dumps(h['nothingCashCityRanks'], ensure_ascii=False)}`"]
+                      f"nothing 도시별 현금 순위: `{json.dumps(h['nothingCashCityRanks'], ensure_ascii=False)}`",
+                      f"nothing 도시별 점수 순위: `{json.dumps(h['nothingScoreCityRanks'], ensure_ascii=False)}`"]
+    if out.get("debtBreakdown"):
+        lines += ["", "## 누적 지출 분해(도시 평균 억)", "", "차익에서 상계한 전력 원가를 복원한 총액 회계. 연료와 차익 비용의 중복 없음. operation은 전력 정책·사건 대응·연구 운영비이며 서비스·이자는 별도다.", "",
+                  "| 전략 | 초과 | 총수입 | 연료 | 운영 | 전력구매 | 이자 | 서비스 | 건설 | 기타 | 반올림 | 최종 현금 |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+        for strategy, row in out["debtBreakdown"]["means"].items():
+            values = [str(row["overCities"])] + [f"{row[k]:.3f}" for k in ("income", "fuel", "operation", "purchase", "interest", "service", "construction", "other", "rounding", "cash")]
+            lines.append("| " + " | ".join([strategy, *values]) + " |")
     checks = out.get("checks", [])
     bad = [message for passed, message in checks if not passed]
     lines += ["", f"checks {len(checks)} fail {len(bad)}", ""]
@@ -757,12 +807,13 @@ ctx.window=ctx;
 vm.runInContext('Math.random=()=>{throw new Error("unseeded random");}',ctx);
 for (const f of ['build-maps','tech-data','build','econ-data','econ','league-data','league-core','league-ai'])
   vm.runInContext(fs.readFileSync(path.join(arg.root,'ui',f+'.js'),'utf8'),ctx,{filename:f});
+if (arg.variant) require(path.join(arg.root, "tests/league/review/g6-variants")).apply(ctx.KCP, arg.variant);
 vm.runInContext(arg.auto,ctx);
 const run = vm.runInContext(arg.js,ctx);
 process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotations})));
 """
             result = subprocess.run(["node", "-e", runner], input=json.dumps({"root": str(root), "js": JS,
-                "months": months, "rotations": rotations, "auto": load_auto()}), text=True, capture_output=True, check=True)
+                "months": months, "rotations": rotations, "auto": load_auto(), "variant": os.environ.get("G6_VARIANT")}), text=True, capture_output=True, check=True)
             out = json.loads(result.stdout)
         else:
             out = browser_run(args.url, months, rotations, errors)
@@ -772,11 +823,18 @@ process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotatio
     out["url"] = "node (no network)" if args.node else args.url
     out["strategySummary"] = strategy_summary(out)
     out["horizons"] = horizon_summary(out)
+    out["debtBreakdown"] = debt_breakdown(out)
     if rotations == len(out["strategies"]):
         summary = out["strategySummary"]
         out["checks"].append([len(summary["completeCities"]) == len(out["ids"]), "D61 모든 도시 전략 비교"])
         for strategy, wins in summary["firstCounts"].items():
             out["checks"].append([wins < len(out["ids"]), f"D61 {strategy} 도시별 1위 {wins}/{len(out['ids'])}: 독식 없음"])
+    for month, horizon in out["horizons"].items():
+        for city, rank in horizon["nothingScoreCityRanks"].items():
+            out["checks"].append([rank > 3, f"G6 {month}달 {city} nothing 점수 {rank}/9위: 상위3위 아님"])
+        for strategy in out["strategies"]:
+            wins = sum(strategy in w for w in horizon["winners"].values())
+            out["checks"].append([wins < len(out["ids"]), f"B16 {month}달 {strategy} 도시1위 {wins}/6: 독식 없음"])
     result_dir = args.output_dir or Path(__file__).resolve().parents[1] / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
     report = markdown(out)

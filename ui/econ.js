@@ -126,6 +126,8 @@
   const carbonScore = (C, data) => c100(100 * (pv(data, "scoreCo2Worst") - fin(C.co2Intensity, fin(C.co2Intensity0, pv(data, "co2IntDef")))) / (pv(data, "scoreCo2Worst") - pv(data, "scoreCo2Best")));
   const serviceBase = (C, data) => C.pop * (pv(data, "svcCost") + C.groups.senior.share * pv(data, "svcCostSenior"));
   const debtRatio = (C, data) => Math.max(0, -C.cash) / Math.max(1e-9, pv(data, "budgetToRevenue") * C.revYear);
+  const debtStage = (c, data = KCP.ECON_DATA) => c.cash < -c.debtCap || debtRatio(c, data) >= 0.40 - 1e-12 ? "crisis" :
+    -c.cash >= pv(data, "debtWarnRatio") * c.revYear - 1e-12 ? "warn" : "ok";
   const approvalRelative = E => { const ds = E.order.map(id => E.cities[id].approval - E.cities[id].approval0); const avg = ds.length > 1 ? sum(ds) / ds.length : 0; return Object.fromEntries(E.order.map((id, i) => [id, ds[i] - avg])); };
   const lagRate = (key, data) => pv(data, ["svc", "re", "crowd", "talent", "land", "labor", "air"].includes(key) ? "lambdaSlow" : "lambdaFast");
   // 호스트가 발전량을 넘기면 사용, 없으면 비재생 공급량을 화석 사용의 대리값으로 쓴다(G).
@@ -612,7 +614,7 @@
       c.paidSubsidy = 0;
       if (c.revenueHistory.length > 12) c.revenueHistory.shift();
       const over = c.cash < -c.debtCap;
-      const ratio = debtRatio(c, data), stage = over || ratio >= 0.40 - 1e-12 ? "crisis" : -c.cash >= P("debtWarnRatio") * c.revYear - 1e-12 ? "warn" : "ok";
+      const ratio = debtRatio(c, data), stage = debtStage(c, data);
       // 억/명·달. 주민세 + 인구 배분 지원금/12 + 주민 수요 몫 전기 차익 − 서비스 비용.
       // 정액 지원은 제외하며, 소액·음수 기여를 보존하도록 억 단위 반올림하지 않는다.
       const fixedSubsidy = fin(c.subsidyFixed, P("subBase") + equalizeOf(c, data));
@@ -726,6 +728,7 @@
   function score(E, data) {
     data = data || DATA();
     const P = k => pv(data, k), w = P("wScore"), K = P("scoreGrowthK")[E.len] || P("scoreGrowthK")[36], T = E.totals;
+    const floor = clamp(fin(P("scorePartFloor"), 1), 1, 100);
     const list = E.order.map(id => {
       const c = E.cities[id];
       // 증가율은 지역 총량 증가를 뺀 몫 변화(경쟁)
@@ -738,17 +741,17 @@
         appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("scoreUnsZero")))
       };
       Object.keys(parts).forEach(k => { parts[k] = r1(parts[k]); });
-      return { id, name: c.name, score: r1(c100(Math.exp(sum(Object.keys(w).map(k => w[k] * Math.log(Math.max(1, parts[k])))) / sum(Object.values(w))) + fin(E.coop, 0))), parts, coop: fin(E.coop, 0) };
+      return { id, name: c.name, score: r1(c100(Math.exp(sum(Object.keys(w).map(k => w[k] * Math.log(Math.max(floor, parts[k])))) / sum(Object.values(w))) + fin(E.coop, 0))), parts, coop: fin(E.coop, 0) };
     });
     const rank = list.slice().sort((a, b) => b.score - a.score || E.order.indexOf(a.id) - E.order.indexOf(b.id));
     rank.forEach((x, i) => { x.rank = i + 1; });
     const by = {}; list.forEach(x => { by[x.id] = x; });
-    return { rank, by, aggregation: { name: "균형 점수", formula: "exp(Σ w × ln(max(1, 부분 점수)) / Σ w) + 공동 보너스", weights: clone(w) } };
+    return { rank, by, aggregation: { name: "균형 점수", formula: `exp(Σ w × ln(max(${floor}, 부분 점수)) / Σ w) + 공동 보너스`, weights: clone(w), floor } };
   }
 
   KCP.econ = {
     initCities, calibrate, livability, industryAttract, yearStart, monthStep, demandMul, score,
-    evalOffer, acceptOffer, spendable, outIdx, regionCtx, ctxOf, cleanInput,
+    evalOffer, acceptOffer, spendable, debtStage, outIdx, regionCtx, ctxOf, cleanInput,
     seasonOfMonth, monthsInGame, daysOf, weekMul, monthLabel, roundSum, pairFlows, hashStr, rng
   };
 })();

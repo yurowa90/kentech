@@ -15,6 +15,13 @@ vm.runInContext('Math.random = () => { throw new Error("unseeded random"); };', 
 for (const n of ["build-maps", "tech-data", "build", "econ-data", "econ", "league-data", "league-core", "league-ai"])
   vm.runInContext(fs.readFileSync(path.join(ROOT, `ui/${n}.js`), "utf8"), ctx, { filename: n });
 const { leagueCore: C, buildGame: B, leagueAI: AI, econ: X, ECON_DATA: D } = ctx.KCP;
+if (process.env.TECH_BALANCE_FUEL_MUL) {
+  const value = Number(process.env.TECH_BALANCE_FUEL_MUL);
+  if (D.params.smrFuelMul.grade !== "G" || !Number.isFinite(value) || value <= 0) throw Error("G 연료 민감도 값 오류");
+  D.params.smrFuelMul.v = value; // 진단 프로세스 안에서만 변경, 근거 키·파일 불변
+}
+if (process.env.G6_VARIANT) require("./g6-variants").apply(ctx.KCP, process.env.G6_VARIANT);
+if (process.env.G7_VARIANT) require("./g7-variants").apply(ctx.KCP, process.env.G7_VARIANT);
 const R = C.regionOf("south"), ids = R.teams.map(t => t.id), clone = x => JSON.parse(JSON.stringify(x));
 const STRATEGIES = {
   research: ["grid", "fcst", "bms", "vpp", "sic", "tandem", "mass", "nbat", "ccu", "hvdc", "scable", "re100"],
@@ -23,7 +30,7 @@ const STRATEGIES = {
   hydrogen: ["h2store", "h2mix", "grid", "fcst", "vpp", "bms", "sic", "tandem", "nbat", "mass"]
 };
 const names = { research: "연구 몰빵", none: "연구 0", smr: "SMR 조기", hydrogen: "수소 장주기" };
-const report = { contract: "ECON-TECH-SPEC T5", seed: "tech-strategy-common", months: 36, runs: [], failures: [] };
+const report = { contract: "ECON-TECH-SPEC T5", seed: "tech-strategy-common", months: 36, smrFuelMul: D.params.smrFuelMul.v, runs: [], failures: [] };
 let passes = 0;
 function ok(test, label) { if (test) passes++; else { report.failures.push(label); console.log("FAIL:", label); } }
 function select(id) { B.selectPack(C.teamDef(R, id).pack, "league"); }
@@ -90,10 +97,12 @@ function focalPlan(S, id, strategy) {
   return { plan: p, econPol: answer.econPol };
 }
 const selectedIds = process.env.TECH_BALANCE_CITY ? ids.filter(id => id === process.env.TECH_BALANCE_CITY) : ids;
-for (const focal of selectedIds) for (const strategy of Object.keys(STRATEGIES)) {
+const selectedStrategies = process.env.TECH_BALANCE_STRATEGY ? Object.keys(STRATEGIES).filter(s => s === process.env.TECH_BALANCE_STRATEGY) : Object.keys(STRATEGIES);
+if (!selectedIds.length || !selectedStrategies.length) throw Error("기술 진단 선택 오류");
+for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   const S = C.newState(report.seed, R.id, 0, ids, { turns: 36 });
   ids.forEach(id => { S.teams[id].token = "test-bot"; });
-  const run = { id: focal, name: D.start[focal].name, strategy, months: [], rejected: [] }; report.runs.push(run);
+  const run = { id: focal, name: D.start[focal].name, strategy, months: [], rejected: [], account: { tariff: 0, tariffGross: 0, service: 0, interest: 0, construction: 0 } }; report.runs.push(run);
   for (let m = 1; m <= 36; m++) {
     C.host(S, "next", m * 100000);
     const proposals = Object.fromEntries(ids.map(id => [id, id === focal ? focalPlan(S, id, strategy) : AI.plan(S, R, id, B, "balanced")]));
@@ -106,7 +115,11 @@ for (const focal of selectedIds) for (const strategy of Object.keys(STRATEGIES))
       if (!res.ok) { select(id); run.rejected.push({ month: m, id, response: res, cash: S.econ.cities[id].cash, debtCap: S.econ.cities[id].debtCap, budget: C.budget(S, id), spend: C.spendOf(B, S, R, id, proposals[id].plan), plan: proposals[id].plan }); }
     }
     const result = C.run(S, B, m * 100000 + 20), r = result.team[focal], city = S.econ.cities[focal];
-    run.months.push({ month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
+    const fiscal = result.econ.fiscal[focal];
+    run.account.tariff += fiscal.rev.tariff; run.account.tariffGross += fiscal.tariffGross;
+    run.account.service += fiscal.exp.service; run.account.interest += fiscal.exp.interest;
+    run.account.construction += fiscal.exp.capex;
+    run.months.push({ score: [12, 24, 36].includes(m) ? X.score({...S.econ, len: m}).by[focal] : null, month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
       growth: { pop: city.pop / city.pop0 / (S.econ.totals.pop / S.econ.totals.pop0) - 1, ind: city.ind / city.ind0 / (S.econ.totals.ind / S.econ.totals.ind0) - 1 },
       adopted: C.researchView(S, focal).adopted, builds: S.teams[focal].plan.builds.map(b => b.t) });
   }
@@ -124,7 +137,7 @@ for (const focal of selectedIds) for (const strategy of Object.keys(STRATEGIES))
   console.log(JSON.stringify({ city: run.name, strategy: names[strategy], score: run.score, avgUns: +run.avgUns.toFixed(3), cards: run.adopted.length }));
   fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
 }
-if (selectedIds.length === ids.length) {
+if (selectedIds.length === ids.length && selectedStrategies.length === Object.keys(STRATEGIES).length) {
   const avg = key => report.runs.filter(r => r.strategy === key).reduce((s, r) => s + r.score, 0) / ids.length;
   report.average = Object.fromEntries(Object.keys(STRATEGIES).map(k => [k, avg(k)]));
   report.researchGain = avg("research") - avg("none");
@@ -136,9 +149,23 @@ if (selectedIds.length === ids.length) {
   for (const strategy of Object.keys(STRATEGIES)) ok(!ids.every(id => report.winners[id].includes(strategy)), `T5 ${strategy} 6도시 모두 1위 금지(공동1위 포함)`);
   report.smrFirstCities = ids.filter(id => report.winners[id].includes("smr")).length;
   report.smrTargetMet = report.smrFirstCities <= 3;
+  ok(report.smrTargetMet, `G7 SMR 1위 ${report.smrFirstCities}/6, 목표 ≤3(공동1위 포함)`);
+  // 점수는 기하평균이므로 가중 부분점수를 선형 합산하지 않는다.
+  // 로그 차이의 정확 분해(LMDI). 관찰된 점수 차이의 회계이며 정책의 인과 효과는 아니다.
+  const w = D.params.wScore.v, wsum = Object.values(w).reduce((a, b) => a + b, 0);
+  const floor = process.env.G6_VARIANT ? (require("./g6-variants").variants[process.env.G6_VARIANT].floor || 1) : (D.params.scorePartFloor?.v || 1);
+  const geometric = r => Math.exp(Object.keys(w).reduce((s, k) => s + w[k] * Math.log(Math.max(floor, r.parts[k])), 0) / wsum);
+  report.smrComparison = Object.fromEntries(ids.map(id => {
+    const rows = report.runs.filter(r => r.id === id), smr = rows.find(r => r.strategy === "smr");
+    const other = rows.filter(r => r.strategy !== "smr").sort((a, b) => b.score - a.score)[0];
+    const a = geometric(smr), b = geometric(other), mean = Math.abs(a - b) < 1e-10 ? a : (a - b) / Math.log(a / b);
+    const contributions = Object.fromEntries(Object.keys(w).map(k => [k, mean * w[k] / wsum * Math.log(Math.max(floor, smr.parts[k]) / Math.max(floor, other.parts[k]))]));
+    ok(Math.abs(Object.values(contributions).reduce((s, x) => s + x, 0) - (a - b)) < 1e-8, `${id} SMR 부분점수 기하평균 차이 보존`);
+    return [id, { alternative: other.strategy, score: [smr.score, other.score], parts: [smr.parts, other.parts], account: [smr.account, other.account], contributions, coopDelta: smr.coop - other.coop }];
+  }));
   console.log("SMR 도시1위", report.smrFirstCities, "/6; 목표 ≤3", report.smrTargetMet);
   console.log("평균·도시별1위", JSON.stringify({ average: report.average, gain: report.researchGain, winners: report.winners }));
-} else console.log("부분 실행: T5 전체 6도시 판정 미실행");
+} else console.log("부분 실행: T5 전체 전략·6도시 판정 미실행");
 report.passes = passes;
 fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
 console.log(`T5 전략: ${passes} 통과, ${report.failures.length} 실패; ${OUT}`);

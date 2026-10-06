@@ -1163,11 +1163,16 @@
     // 시작 지도·첫 달 달력만 사용한다. 학생 계획·정책·사건은 기준을 바꾸지 않는다.
     const rd = roundsOf(S)[0], wk = rd.mdays / rd.days, P = KCP.ECON_DATA.params, base = {};
     preserveMap(bg, () => activeOf(S).forEach(id => {
-      const dem = simTeam(bg, R, id, {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k.dem;
+      // 기준 배치는 학생의 자산이 아니며 비용·연구·사건을 보정에 청구하지 않는다.
+      // 공급이 없는 빈 지도 대신 정책0의 고정 정상 공급 계획을 실제로 운전한다.
+      const normalPlan = KCP.ECON_DATA.normalStartPlans[id];
+      const normal = simTeam(bg, R, id, normalPlan || {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k;
+      const dem = normal.dem, served = Math.max(0, dem - normal.uns);
+      const intensity = served > 1e-6 ? normal.co2 / served : P.normalCo2.v;
       // F05: 월 입력과 같은 자산 경로. 시작 보정에는 학생 건설·정책을 포함하지 않는다.
       const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
       base[id] = econInput(initial, R, id, { dem, uns: 0, unsPct: 0, hospH: 0,
-        co2Prod: P.normalCo2.v * dem, co2Cons: P.normalCo2.v * dem, renPct: P.normalRen.v,
+        co2Prod: intensity * dem, co2Cons: intensity * dem, renPct: P.normalRen.v,
         exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: P.normalCost.v * dem, policy: 0 } }, wk);
     }));
     S.econ = KCP.econ.calibrate(S.econ, base); S.econCal = true;

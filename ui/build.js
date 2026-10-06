@@ -1050,7 +1050,7 @@
       out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${out.roof.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
       out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: "4 MW/20 MWh" };
       out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: "4 MW/200 MWh · 왕복 35%" };
-      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: "20 MW · 건설 6턴" };
+      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${+v("smrMW").toFixed(2)} MW · 건설 ${v("smrTurns")}턴` };
     }
     return out;
   }

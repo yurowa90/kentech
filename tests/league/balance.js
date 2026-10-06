@@ -239,6 +239,7 @@ block("B4", () => {
 });
 
 block("B5", () => {
+  param("scorePartFloor", "G", 1);
   const E = initial();
   IDS.forEach(id => test(`${id} 재정 점수`, () => {
     const parts = cash => { const e = clone(E); e.cities[id].cash = cash; return X.score(e, D)?.by?.[id]?.parts; };

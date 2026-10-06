@@ -1,4 +1,4 @@
-/* ECON-TECH-SPEC T1–T3가 계약. 출처는 기존 ECON-TECH 조사이며 새 외부 조회 없음.
+/* ECON-TECH-SPEC T1–T3가 계약. G7 SMR 첫 호기 비용 원문 정정은 REF §12.6.
  * 값의 단위·게임 축소는 각 params의 note, need/demo는 카드 numbers에 기록한다. */
 (function () {
   "use strict";
@@ -32,8 +32,8 @@
     h2Co2: p(0.88, "M", "수소 30 vol% 혼소의 열량 약 12% 환산"),
     ccuCo2: p(0.4, "G", "포집 60%; P 포집률 85–90%를 축소"),
     ccuOutput: p(0.79, "M", "포집 후 석탄 출력 · NETL(2022) 순효율 40.2→31.7% [I19][I07] · 계산: 31.7/40.2≈0.79 · 배속: 없음 · REF 12.5", ["I19", "I07"]),
-    smrMW: p(20, "G", "지도 규모로 축소한 SMR MW"),
-    smrCost: p(150, "M", "SMR 건설비 · IEA(2025) 2040 빠른 경로 낙관 단가 4,500$/kW [I10] · 계산: 20MW=140~207억, 첫 호기와 다름 · 배속: 없음 · REF 12.6", ["I10"]),
+    smrMW: p(4 * 170 / 230, "M", "i-SMR 발전소 4모듈×170MWe=680MWe(사업단 공개 기본 구성) [X16] · 지도 축척 230으로 나눠 2.956522 게임MW · 결정 v1.0.4 · REF 12.6", ["X16", "https://ismr.or.kr/source/file/i-SMR_leaflet_kr.pdf"]),
+    smrCost: p((150 / 20) * (8000 / 4500) * (4 * 170 / 230), "M", "SMR 첫 호기 건설비 · DOE(2023) FOAK overnight 6,000~10,000$/kW 중간값 8,000 [I34] · 기존 게임 가격지수 7.5×(8000/4500)=13.333333억/게임MW × (4×170/230)=39.420290억 · 금융비 제외, 미국 첨단원전 범위의 대리값이며 한국 i-SMR 견적 아님 · G7 REF 12.6", ["I34", "https://www.energy.gov/ne/articles/commercializing-advanced-nuclear-reactors-explained-five-charts"]),
     smrTurns: p(12, "P", "SMR 공사 · NREL ATB(2024) 시나리오 43/55/71개월 [I13] · 계산: round(55 / eduSpeed)=round(55/4.4)=12달 · 배속: 이동과 같은 시간 ×4.4 · 결정 v1.0.3 · REF 12.6", ["I13"]),
     smrMin: p(0.8, "G", "SMR 최소 출력 비율"),
     smrFuel: p(0.002, "M", "SMR 연료비 · EIA 2022–24 원자력/가스터빈 연료비 0.16~0.34 [S33] · 계산: LNG 0.008×비=0.0013~0.0027 · 배속: 없음, smrFuelMul은 별도 G · REF 12.6", ["S33"]),
@@ -87,7 +87,7 @@
     card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], "200 MWh 장주기 저장, 왕복 35%", "P·G", "저장은 크지만 손실이 크고 처음에는 비어 있다"),
     card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], "LNG CO₂ ×0.88", "M", "부피 비율과 열량 비율은 다르다"),
     card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], "석탄 CO₂ ×0.4, 출력 ×0.85", "P·G", "포집에 전기가 든다"),
-    card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "20 MW, 150억, 건설 6턴", "P·G", "시간을 압축한 건설이며 실제 인허가 예측이 아니다"),
+    card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "", "P·G", "시간을 압축한 건설이며 실제 인허가 예측이 아니다"),
     card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], "저녁 피크에 저장을 남기고 사건 예보 범위를 절반으로", "M·G", "예측은 날씨를 바꾸지 않는다"),
     card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "실측 VPP 효과 대신 수업용 가정"),
     card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아집니다.")
@@ -120,6 +120,10 @@
   Object.defineProperty(cards.find(c => c.id === "grid"), "eff", {
     enumerable: true,
     get: () => KCP.buildGame?.gridEffectText?.() || "현재 지도의 송전 손실을 ⅔로"
+  });
+  Object.defineProperty(cards.find(c => c.id === "smr"), "eff", {
+    enumerable: true,
+    get: () => `${+params.smrMW.v.toFixed(2)} MW, ${+params.smrCost.v.toFixed(2)}억, 건설 ${params.smrTurns.v}턴`
   });
   cards.forEach(c => {
     c.unlock = ({ hvdc: { tie: "hvdc" }, tandem: { builds: ["tandem", "tandem_roof"] },

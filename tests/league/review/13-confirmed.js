@@ -313,8 +313,8 @@ test("ECON-SPEC §14.1: SMR 운영 단가 보정은 달 모드 도입 기술에�
   near(after.tot.by.smr, before.tot.by.smr, "단가 변경은 SMR 발전량 불변");
   near(after.co2, before.co2, "단가 변경은 실제 운영 CO₂ 불변");
   near(after.cost.fuel - before.cost.fuel, after.tot.by.smr * 0.0005, "RECAL-SPEC §7.4: SMR 발전MWh당 운영비0.002→0.0025억");
-  near(B.BLD.smr.mw, 20, "SMR 정격20MW 유지");
-  near(B.BLD.smr.cost, 150, "SMR 건설150억 유지");
+  near(B.BLD.smr.mw, 4 * 170 / 230, "G5 SMR 4모듈 축척");
+  near(B.BLD.smr.cost, (150 / 20) * (8000 / 4500) * (4 * 170 / 230), "G7 DOE FOAK 환산 단가");
   near(ctx.KCP.TECH_DATA.params.smrTurns.v, 12, "SMR 공사 round(55/4.4)=12턴");
 });
 

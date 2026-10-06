@@ -117,6 +117,14 @@
     // 신중 성향은 재생 여유를 더 요구한다. 기존 연구 문턱·위험 선호 계수만 사용한다.
     if (KCP.TECH_DATA) p.re100 = KCP.leagueCore.techOf(S, id).includes("re100") &&
       (S.results.at(-1)?.team[id]?.renPct || 0) >= KCP.TECH_DATA.params.re100Need.v * (2 - style.risk);
+    const stage = KCP.econ.debtStage(c);
+    if (stage !== "ok") {
+      const name = Object.keys(value("aiStyles")).find(key => value("aiStyles")[key].risk === style.risk) || "balanced";
+      p.taxRes = Math.min(2, Math.max(1, (previous.taxRes || 0) + 1));
+      p.taxInd = Math.min(2, Math.max(1, (previous.taxInd || 0) + 1));
+      p.service = value("aiDebtPolicy")[name][stage];
+      return p;
+    }
     const active = S.econ.order.map(key => S.econ.cities[key]);
     const change = city => city.approval - (city.approval0 ?? city.approval);
     const relative = change(c) - (active.length > 1 ? active.reduce((s, city) => s + change(city), 0) / active.length : 0);
@@ -139,7 +147,8 @@
 
   function build(S, R, id, bg, style, plan) {
     const C = KCP.leagueCore, city = S.econ?.cities[id];
-    if (city && city.cash < -city.debtCap) return plan;
+    const stage = city ? KCP.econ.debtStage(city) : "ok";
+    if (stage === "crisis") return plan;
     const rounds = C.roundsOf(S), turn = Math.max(1, S.round);
     const origin = rounds.slice(0, turn).reduce((a, rd, i) => rd.month === 1 ? i + 1 : a, 1);
     const age = turn - origin - style.delay;
@@ -149,6 +158,7 @@
     const safetyTarget = initial.peak * (1 + value("aiSupplyReserve") + value("aiSafeReserve") * (1 - style.risk));
     // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
     const unsafe = initial.firm < safetyTarget;
+    if (stage === "warn" && !unsafe) return plan;
     if (!unsafe && !scheduled) return plan;
     const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
     const committed = S.teams[id].committed ??
@@ -210,6 +220,7 @@
     let route = routes(bg, roots);
     while (used.size < bg.TILES.length) {
       const safety = have.firm < safetyTarget;
+      if (stage === "warn" && !safety) break;
       const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
       const renewReady = scheduled && (!grid || age >= value("aiGridRenewDelay") * style.risk);
       const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
@@ -269,6 +280,9 @@
   }
 
   function ties(S, R, id, bg, style, plan) {
+    if (S.econ && KCP.econ.debtStage(S.econ.cities[id]) !== "ok") return S.ties
+      .filter(t => t.st === "prop" && [t.a, t.b].includes(id) && t.by !== id)
+      .map(t => ({ type: "cancel", other: t.by, cap: t.cap, kind: t.kind }));
     const C = KCP.leagueCore, own = supply(bg, S, id, plan), actions = [];
     const grid = gridFor(bg, S, R, id, plan);
     const renewNeed = Math.max(0, own.peak *
@@ -334,6 +348,7 @@
   // 연구도 공개 규칙 안에서 고른다. 운영 가능한 공급을 먼저 확보한 뒤 인력을 짓는다.
   function research(S, R, id, bg, styleName, style, plan) {
     if (!KCP.TECH_DATA) return plan;
+    if (S.econ && KCP.econ.debtStage(S.econ.cities[id]) !== "ok") { plan.rq = []; return plan; }
     const D = KCP.TECH_DATA, C = KCP.leagueCore, rs = C.researchView(S, id), p = k => D.params[k].v;
     plan.rq = rs.queue.filter(key => rs.stage[key] !== "done");
     const pending = plan.rq[0];

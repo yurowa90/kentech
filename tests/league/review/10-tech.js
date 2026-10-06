@@ -196,7 +196,7 @@ test("연계선·설비·MODS 수치", () => {
   near(mods.drEffect, 1.5, "VPP 수요반응 효과"); near(mods.drCost, 0.5, "VPP 수요반응 비용");
   select(a); near(bg.BLD.tandem.cost / bg.BLD.solar.cost, 1.2, "RECAL-SPEC §1.3 탠덤 건설비 배수");
   near(bg.BLD.nbat.mwh / bg.M.batMWh, 1.25, "차세대 배터리 용량 배수");
-  near(bg.BLD.smr.mw, 20, "SMR 정격20MW"); near(bg.BLD.smr.cost, 150, "SMR 건설150억 G");
+  near(bg.BLD.smr.mw, 4 * 170 / 230, "G5 SMR 4모듈×170MWe÷230"); near(bg.BLD.smr.cost, (150 / 20) * (8000 / 4500) * (4 * 170 / 230), "G7 DOE FOAK 환산 단가 M");
   const p = planOf(a, ["solar"], true); p.seed = 982; p.season = "spring";
   const original = bg.simulate(clone(p), 7, { league: true, mods: {} });
   const sic = bg.simulate(clone(p), 7, { league: true, mods: { renewOutput: 1.015 } });
