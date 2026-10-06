@@ -656,3 +656,65 @@
 .lg-team-map #bd-season-t { white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .lg-team-map .bd-season { max-width: 100%; box-sizing: border-box; }
 .lg-tech-source a, .lg-event-source a, .lg-tech-design a { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; overflow-wrap: anywhere; }
+
+/* U: 지도 보조 카드·렌즈. 문서나 요청 상태를 바꾸지 않는 화면 층. */
+.lg-team-map .lg-bmoney { display: none; }
+#lg-hud-chips, #lg-watch { display: contents; }
+#lg-watch > span { font-size: 12px; }
+.lg-lenses { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-panel); }
+.lg-lenses .bd-layer { min-width: 44px; min-height: 44px; color: var(--ui-text); }
+.lg-lenses .bd-layer[aria-pressed="true"] { color: #102b34; background: #71dceb; }
+.lg-map-result, .lg-first-guide { position: fixed; z-index: 29; left: 8px; top: calc(var(--bd-top, 160px) + 62px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; overflow-wrap: anywhere; }
+.lg-first-guide { z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lg-first-guide b { flex: 1 1 100%; }
+.lg-first-guide .v2-btn { min-width: 44px; min-height: 44px; font-size: 13px; }
+.lg-map-result[data-faded="true"] { opacity: .65; }
+.lg-map-result[hidden], .lg-lens-grid[hidden] { display: none; }
+.lg-lens-grid { margin: 0; padding: 5px 8px; border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; max-width: 100%; }
+.lg-trends { margin: 12px 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.lg-trends svg { display: block; width: 100%; height: auto; color: var(--ink); }
+.lg-trends text { fill: currentColor; font-size: 11px; }
+.lg-trends circle { fill: currentColor; }
+.lg-demolition, .lg-season-chip { display: inline-block; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.lg-calibration meter { width: 100%; }
+#lg-missed { display: flex; flex-wrap: wrap; gap: 6px; }
+#lg-missed h4 { flex-basis: 100%; }
+#lg-result-reasons, #lg-result-details { border-top: 1px solid var(--line); margin-top: 8px; }
+.lg-team-map [data-cap][role="button"] { cursor: pointer; min-height: 44px; }
+.lg-team-map [data-cap]:focus-visible, .lg-lenses button:focus-visible, .lg-first-guide button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map #bd-mapbar { max-width: calc(100vw - 16px); }
+.lg-team-map #bd-drawer { z-index: 31; }
+#lg-help ol { padding-left: 22px; }
+#lg-class-time, #lg-solo-practice { min-height: 44px; max-width: 100%; color: var(--ink); background: var(--paper); font: inherit; }
+@media (max-width: 760px) {
+  .lg-team-map .bd-title, .lg-team-map .bd-virtual { display: none; }
+  .lg-team-map .bd-hud { flex-wrap: nowrap; gap: 4px; }
+  .lg-team-map .bd-caps { order: 0; flex: 1; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .lg-team-map .lg-bar { padding: 4px; gap: 3px; }
+  .lg-team-map .lg-bar .lg-bbtn { padding: 0 6px; font-size: 12px; }
+  .lg-team-map .lg-bteam, .lg-team-map .lg-bphase, .lg-team-map .lg-conn, .lg-team-map .lg-bar .lg-timer { display: none; }
+  .lg-team-map #lg-watch > span { display: none; }
+  .lg-team-map .bd-mapbar { gap: 3px; }
+  .lg-team-map .bd-windchip { display: none; }
+  .lg-team-map .bd-layers { display: none; }
+  .lg-team-map .bd-dock { gap: 3px; }
+  .lg-team-map .bd-tool { min-height: 44px; }
+  .lg-team-map .bd-tool-c { display: none; }
+  .lg-team-map .bd-runs button { min-height: 44px; font-size: 11px; }
+  .lg-team-map .lg-first-guide { top: calc(var(--bd-top, 180px) + 58px); padding: 6px 8px; }
+  .lg-team-map .lg-map-result { top: calc(var(--bd-top, 180px) + 58px); pointer-events: none; }
+  .lg-team-map #lg-panel { top: var(--bd-top, 180px); max-height: min(36dvh, calc(100dvh - var(--bd-top, 180px) - var(--bd-dock, 100px) - 12px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-first-guide, .lg-map-result, .lg-trends { animation: none; transition: none; }
+}
+/* 휴대폰에서는 반복 월 표시를 줄이고 경고는 지도 가장자리에 둔다. */
+@media (max-width: 760px) {
+  .lg-team-map .lg-bteam { display: inline-block; padding: 3px 6px; }
+  .lg-team-map .lg-bround { display: none; }
+  .lg-team-map #lg-watch { position: fixed; right: 8px; top: calc(var(--bd-top, 180px) + 80px); display: flex; flex-direction: column; gap: 4px; max-width: 100px; }
+  .lg-team-map #lg-watch button { white-space: normal; background: #152936; color: #f3f6f8; }
+  .lg-team-map #lg-sound { position: fixed; right: 8px; bottom: calc(var(--bd-dock, 100px) + 8px); background: #152936; color: #f3f6f8; }
+  .lg-team-map #bd-mapnote { display: none; }
+  .lg-team-map .lg-lens-grid { position: absolute; top: 52px; left: 0; }
+}

@@ -1891,6 +1891,72 @@
     g.stroke();
     if (chk && chk.ok) { g.globalAlpha = 0.6; drawBuilding(g, S.tool, T, null, -1); g.globalAlpha = 1; }
   }
+  function syncLensButtons() {
+    S.root.querySelectorAll("[data-lens]").forEach(b => b.setAttribute("aria-pressed", String(S.lenses[b.dataset.lens])));
+  }
+  function paintLeagueLayers(g) {
+    const actual = S.opts.leagueResult?.(), summary = $("#lg-map-result"), gridText = $("#lg-lens-grid");
+    if (summary) {
+      summary.hidden = !actual || !S.lenses.result || !!S.run;
+      summary.dataset.faded = String(!!actual?.faded);
+      if (actual) {
+        // MWh / representative operating hours is an actual average shortage, not a peak estimate.
+        const rd = S.opts.leagueRound?.(), completedDays = actual.days || S.opts.leagueResultDays?.() || rd?.days;
+        const shortage = actual.uns ?? (Number.isFinite(actual.dem) ? actual.dem * actual.unsPct / 100 : null);
+        const average = Number.isFinite(shortage) && completedDays ? shortage / (completedDays * 24) : null;
+        const text = "운영 결과" + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건${actual.town?.length ? "" : " · 마을별 정전 자료 없음"}`;
+        if (summary.textContent !== text) summary.textContent = text;
+      }
+    }
+    if (gridText) {
+      gridText.hidden = !S.lenses.grid;
+      if (S.lenses.grid) {
+        const key = JSON.stringify([S.st.builds, S.st.lines, S.st.policies, S.opts.leagueRound?.()?.month, S.opts.leagueLensStamp?.()]);
+        if (S.lensCache?.key !== key) S.lensCache = { key, grid: S.opts.leagueGrid?.(S.st) };
+        const grid = S.lensCache.grid, text = grid ? `접속 여유 ${fmt(grid.headroomMW, 1)} MW · 대기 ${fmt(grid.waitingMW, 1)} MW` : `선이 닿는 수요지 ${S.net.nodes.filter(n => n.kind === "town" && n.live).length}/${TOWNS.length}`;
+        if (gridText.textContent !== text) gridText.textContent = text;
+      }
+    }
+    g.save();
+    if (actual && S.lenses.result && !S.run) {
+      g.globalAlpha = actual.faded ? .35 : 1;
+      (actual.cpList || []).filter(cp => cp.score > 0 && Number.isInteger(cp.near)).forEach(cp => {
+        const W = TOWNS[cp.near]; if (!W) return;
+        const [x, y] = tileTop(TILES[W.tile]);
+        g.fillStyle = "#ffe07a"; g.strokeStyle = "#172633"; g.lineWidth = 2;
+        g.beginPath(); g.arc(x + 14, y - 25, 8, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.fillStyle = "#172633"; g.font = "bold 12px sans-serif"; g.textAlign = "center"; g.fillText("!", x + 14, y - 21);
+      });
+      // Future/full local results may contain town rows. Missing rows stay unpainted.
+      (actual.town || []).forEach((town, ti) => { if (!(town.outH > 0) || !TOWNS[ti]) return; polyPath(g, topPoly(TILES[TOWNS[ti].tile])); g.fillStyle = "rgba(192,57,43,.7)"; g.fill(); });
+    }
+    g.globalAlpha = 1;
+    if (S.result && S.lenses.result && !S.run) {
+      // Local trial arrays are kept on this device. Town failures are actual trial values.
+      S.result.town.forEach((town, ti) => {
+        if (!TOWNS[ti] || !(town.outH > 0)) return;
+        const T = TILES[TOWNS[ti].tile], [x, y] = tileTop(T);
+        polyPath(g, topPoly(T)); g.fillStyle = "rgba(192,57,43,.7)"; g.fill();
+        S.result.uiPeak ||= S.result.town.map((_, ti) => { let peak = 0; for (let k = 0; k < S.result.H; k++) peak = Math.max(peak, S.result.hrUns[k * S.result.NT + ti]); return peak; });
+        const peak = S.result.uiPeak[ti];
+        const text = `시험 부족 ${fmt(peak, 2)} MW`;
+        g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.lineWidth = 3; g.strokeStyle = "#172633"; g.strokeText(text, x, y - 14); g.fillStyle = "#fff"; g.fillText(text, x, y - 14);
+      });
+    }
+    if (S.lenses.grid) {
+      S.net.nodes.forEach(n => { const T = TILES[n.tile]; if (!T || T.out) return; polyPath(g, topPoly(T)); g.lineWidth = 2; g.strokeStyle = n.live ? "#71dceb" : "#ffe07a"; g.stroke(); });
+    }
+    if (S.lenses.complaints && BLD[S.tool] && S.hover != null) {
+      const T = TILES[S.hover], radius = T.t === "forest" ? 3 : ["diesel", "wind"].includes(S.tool) ? 2 : ["solar", "biomass", "offshore"].includes(S.tool) ? 1 : 0;
+      TILES.filter(t => radius > 0 && !t.out && hexDist(t.i, T.i) === radius).forEach(t => { polyPath(g, topPoly(t)); g.strokeStyle = "#ffe07a"; g.lineWidth = 2; g.stroke(); });
+      // Reuse the complaint calculation for affected demand sites, including wind/smoke direction.
+      const cpKey = JSON.stringify([S.st.builds, S.st.policies, S.tool, T.i]);
+      if (S.previewComplaint?.key !== cpKey) S.previewComplaint = { key: cpKey, value: complaints({ ...S.st, builds: [...S.st.builds, { t: S.tool, i: T.i }] }, null) };
+      const cp = S.previewComplaint.value;
+      cp.items.filter(item => item.bi === S.st.builds.length).forEach(item => { polyPath(g, topPoly(TILES[TOWNS[item.ti].tile])); g.fillStyle = "rgba(255,224,122,.4)"; g.fill(); });
+    }
+    g.restore();
+  }
   function paintFloaters(g, now) {
     S.floaters = S.floaters.filter(f => now - f.t0 < 1100);
     S.floaters.forEach(f => {
@@ -1916,6 +1982,7 @@
     g.drawImage(S.base, 0, 0, V.W, V.H);
     paintDynamic(g, t);
     paintCursor(g, t);
+    if (S.opts.league) paintLeagueLayers(g);
     if (S.floaters.length) paintFloaters(g, now);
     placeBanners();
     const keep = !reduced() && !document.hidden;
@@ -2038,6 +2105,10 @@
   }
   function setTool(id) {
     S.tool = S.tool === id ? null : id;
+    if (S.opts.league && BLD[S.tool]) {
+      S.lenses.complaints = true; S.lenses.grid = true; syncLensButtons();
+    }
+    if (S.opts.league) S.opts.onTool?.();
     cancelLine();
     S.sel = null;
     closePops();
@@ -2290,7 +2361,9 @@
     if (tipK !== R.tip) {
       R.tip = tipK;
       const el = $("#bd-run-tip");
-      el.textContent = (T => T[(R.tipBase * 3 + tipK) % T.length])(tips());
+      const month = leagueMonth();
+      const relevantTips = month ? tips().filter(t => { const months = [...t.matchAll(/(\d+)월/g)].map(m => +m[1]); return !months.length || months.includes(month); }) : tips();
+      el.textContent = (T => T[(R.tipBase * 3 + tipK) % T.length])(relevantTips);
     }
   }
   function paintSpark() {
@@ -2339,7 +2412,8 @@
     if (head) head.focus({ preventScroll: true });
     announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
     // 첫 운영 뒤 한 번만 일지를 저절로 연다.
-    if (!S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
+    if (!S.opts.league && !S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
+    if (S.opts.league) S.opts.onTrial?.(S.result);
     request();
   }
   // 운영마다 지표 한 줄을 남긴다(글을 안 써도 남는다).
@@ -2557,8 +2631,12 @@
         const dm = demand(ti, ch.h, R.res.wx[ch.d], R.res.pol, R.res.fab2);
         txt = `${fmt(dm, dm < 1 ? 2 : 1)} MW`;
         state = uns > OUT_EPS() ? "out" : "ok";
-      } else if (S.result && ti >= 0) {
-        txt = `${S.result.town[ti].outH}h`;
+      } else if (S.result && ti >= 0 && (!S.opts.league || S.lenses.result)) {
+        const town = S.result.town[ti];
+        S.result.uiPeak ||= S.result.town.map((_, ti) => { let peak = 0; for (let k = 0; k < S.result.H; k++) peak = Math.max(peak, S.result.hrUns[k * S.result.NT + ti]); return peak; });
+        const peak = S.result.uiPeak[ti];
+        txt = `${town.outH}h · 부족 ${fmt(peak, 2)} MW`;
+        if (S.result.cp.list.some(cp => cp.ti === ti)) txt += " · 민원 !";
         state = S.result.town[ti].outH > 0 ? "out" : "ok";
       } else {
         const n = S.net.nodes.find(nd => nd.si === si);
@@ -2688,6 +2766,7 @@
   /* ---------- 서랍 ---------- */
   const isMobile = () => (window.matchMedia ? matchMedia("(max-width: 760px)").matches : window.innerWidth <= 760);
   function openDrawer(tab) {
+    S.opts.onDrawer?.();
     if (tab) S.drawerTab = tab;
     S.drawerOpen = true;
     html.classList.add("bd-drawer-open");
@@ -2709,7 +2788,7 @@
     if (!body) return;
     S.root.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.drawerTab)));
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
-    S.root.querySelector('[data-count="mission"]').textContent = `${S.st.missions.length}/2`;
+    S.root.querySelector('[data-count="mission"]').textContent = S.opts.league ? '' : `${S.st.missions.length}/2`;
     S.root.querySelector('[data-count="journal"]').textContent = S.doc.journal.length ? String(S.doc.journal.length) : "";
     const rc = S.root.querySelector('[data-count="research"]');
     if (rc) rc.textContent = S.st.rq && S.st.rq.length ? String(S.st.rq.length) : "";
@@ -3107,10 +3186,21 @@
     S = {
       opts, alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
+      lenses: { complaints: false, grid: false, result: true }, lensCache: null,
       lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
       floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
+    if (opts.league) {
+      const lenses = document.createElement("div"); lenses.className = "lg-lenses"; lenses.setAttribute("role", "group"); lenses.setAttribute("aria-label", "영향과 결과 렌즈");
+      lenses.innerHTML = [["complaints", "민원"], ["grid", "전력망"], ["result", "운영 결과"]].map(([key, label]) => `<button type="button" class="bd-layer" data-lens="${key}" aria-pressed="${S.lenses[key]}">${label}</button>`).join("");
+      root.querySelector("#bd-mapbar").append(lenses);
+      lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; syncLensButtons(); placeBannerValues(); request(); });
+      const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
+      const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
+      root.querySelector('[data-tab="mission"]').hidden = true;
+      root.querySelectorAll("[data-run]").forEach(b => { const span = b.querySelector("span"); if (span) span.textContent = `시험 ${span.textContent}`; });
+    }
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     applyPack();
     bindCanvas(S.canvas);
@@ -3143,7 +3233,7 @@
     root.querySelectorAll("[data-tab]").forEach(b => on(b, "click", () => { S.drawerTab = b.dataset.tab; renderDrawer(); }));
     on(root.querySelector("#bd-pm"), "click", () => (S.drawerOpen ? closeDrawer() : openDrawer()));
     on(root.querySelector("#bd-drawer-x"), "click", () => closeDrawer());
-    on(root.querySelector("#bd-help"), "click", e => openHelp(e.currentTarget));
+    on(root.querySelector("#bd-help"), "click", e => S.opts.onHelp ? S.opts.onHelp(e.currentTarget) : openHelp(e.currentTarget));
     on(root.querySelector("#bd-skip"), "click", () => { if (S.run) finishRun(); });
     on(root.querySelector("#bd-drawer-body"), "click", e => {
       const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
@@ -3191,7 +3281,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    mount, saveView, restoreView, lastTrial,
+    mount, saveView, restoreView, lastTrial, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },

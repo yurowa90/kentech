@@ -8,6 +8,12 @@ def panel(P, name):
     b = P.locator(f'.lg-bar [data-panel="{name}"]')
     if b.get_attribute("aria-expanded") != "true": b.click()
     P.wait_for_timeout(200)
+    if name == "result":
+        for key in ("lg-result-reasons", "lg-result-details"):
+            detail = P.locator('#' + key)
+            if detail.count() and not detail.evaluate('el => el.open'):
+                detail.locator(':scope > summary').click()
+
 def ok(c, m):
     print(("PASS " if c else "FAIL ") + m)
     if not c: problems.append(m)
@@ -52,6 +58,9 @@ with sync_playwright() as pw:
         if turns:
             P.wait_for_selector('#lg-predict', timeout=10000)
             check(P.locator('#lg-evidence').count() == 1, "event response opens criterion / evidence gate")
+            check(P.locator('[data-confidence]').count() == 3 and P.locator('[data-pred]').count() == 1,
+                  "U8 one topic and three verbal confidence choices")
+            check(P.locator('#lg-ready-confirm').is_disabled(), "U8 no promise without evidence")
             check(P.locator('#lg-predict-skip').count() == 0, "team learning loop has no solo skip")
         else:
             check(P.locator('#lg-predict, #lg-evidence, #lg-predict-skip').count() == 0,
@@ -88,6 +97,7 @@ with sync_playwright() as pw:
           const V = KCP.league.state().snap, me = V.teams.pyeongtaek;
           return KCP.leagueCore.lossOf(me.base, me.plan);
         }""")
+        check(P.locator('.lg-demolition').count() > 0, "U10 demolition loss is in budget ledger")
         loss_text = P.evaluate("n => n.toLocaleString('ko-KR', {maximumFractionDigits:1})", loss)
         budget_ledger = P.locator('#lg-panel .lg-left, #lg-panel .lg-sec, #lg-fiscal, #lg-result-ledger, [data-cap="budget"], .lg-bmoney').filter(
             has_text=re.compile(r'남은 돈|예산|장부|세입|세출'))

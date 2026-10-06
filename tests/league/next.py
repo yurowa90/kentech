@@ -221,6 +221,8 @@ def setup_pair(context, base, pages):
 
 
 def host_first_screen(host, checks, fixture):
+    checks.ok(host.locator('#lg-download').is_visible(), 'U6 host public CSV download control')
+
     # Interpretation: "한 줄 판" may be a dashboard paragraph or summary
     # band. It must contain all six concepts in the same compact visible block.
     concepts = [r"턴|월", r"남은\s*시간|\d+\s*분|시간\s*제한", r"준비",
@@ -342,6 +344,15 @@ def left_consistency(host, team, checks, fixture):
 def results(host, team, checks, fixture):
     state = advance(host, team, "result")
     panel(team, r"결과")
+    checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
+    for key in ('lg-result-reasons', 'lg-result-details'):
+        detail = team.locator('#' + key)
+        checks.ok(detail.count() == 1, 'U2 native disclosure ' + key)
+        if detail.count() and not detail.evaluate('el => el.open'):
+            detail.locator(':scope > summary').focus()
+            detail.locator(':scope > summary').press('Enter')
+            checks.ok(detail.evaluate('el => el.open'), 'U2 result layer opens by keyboard ' + key)
+    checks.ok(team.locator('#lg-map-result').is_visible(), 'U2 public result remains on city map')
     result = state["results"][-1]
     # Months wrap 12→1; use the completed round's month, not S.round+1.
     month = state["rounds"][state["round"] - 1]["month"]

@@ -207,7 +207,27 @@ def play(checks, page, base, label):
     checks.test(f"{label} U3 로비 #lg-solo 카드", lambda: shown(page, "#lg-solo"))
     overflow(checks, page, label + " 로비")
     screenshot(checks, page, f"econui-solo-{label}-lobby.png")
+    checks.ok(page.locator('#lg-class-time option').count() == 3 and page.locator('#lg-class-time').input_value() == '100',
+              f'{label} U6 로비 수업 시간 50·100·제한 없음')
     observation = start(page)
+    checks.ok(not shown(page, '#lg-panel'), f'{label} U1 혼자 하기 첫 화면 기준 서랍 닫힘')
+    checks.ok(shown(page, '#lg-first-guide'), f'{label} U1 첫 달 네 단계 안내')
+    page.locator('#lg-guide-close').click()
+    page.locator('#bd-help').focus(); page.locator('#bd-help').press('Enter')
+    checks.ok(shown(page, '#lg-help'), f'{label} U1 혼자 하기 리그 도움말 다시 보기')
+    page.locator('#lg-panel').press('Escape')
+    page.locator('#lg-ready').click()
+    checks.ok(shown(page, '#lg-predict-skip'), f'{label} U8 혼자 자유 실험에서만 건너뛰기')
+    checks.ok(page.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 빈 근거 제출 금지')
+    page.locator('[data-evidence="evening"]').click()
+    page.locator('[data-pred]').select_option('down')
+    page.locator('[data-confidence="fairly"]').click()
+    checks.ok(not page.locator('#lg-ready-confirm').is_disabled() and page.locator('[data-pred]').count() == 1,
+              f'{label} U8 근거·주제 하나·확신이면 약속 가능')
+    checks.ok(shown(page, '#lg-calibration') and '12번은 적은 표본' in page.locator('#lg-calibration').inner_text(),
+              f'{label} U8 혼자 하기 확신 보정·작은 표본 표시')
+    close_drawer(page)
+
     state = observation["S"]
     page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {configurable:true,
       value:{writeText:async text => {window.__soloSheet=text;}}})""")
@@ -284,6 +304,8 @@ def play(checks, page, base, label):
     overflow(checks, page, label + " 끝")
     screenshot(checks, page, f"econui-solo-{label}-end.png")
     open_panel(page, "result")
+    checks.ok(page.locator('#lg-timeline [data-trend]').count() == 4 and shown(page, '.lg-season-chip'),
+              f'{label} U5·U7 끝 화면 타임라인·실제 계절 칩')
     page.locator('#lg-solo-same').click()
     page.wait_for_function("""() => KCP.league.state()?.S?.phase === 'plan' && KCP.league.state()?.S?.round === 1""")
     replay = read(page)

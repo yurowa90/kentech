@@ -288,12 +288,24 @@ def scenario(checks, context, base, label, mode, pages):
     checks.ok(initial["econ"] == (mode != "season"), f"{label} U5 경제/계절 fixture")
     if mode != "season":
         checks.ok(initial["rounds"] == 12, f"{label} U5 경제 모드 12달")
+        checks.ok(not shown(team, "#lg-panel"), f"{label} U1 첫 지도는 일지 서랍 닫힘")
+        guide = team.locator('#lg-guide-close')
+        if guide.count(): guide.click()
+        team.locator('[data-run="7"]').click()
+        team.wait_for_selector('#bd-skip')
+        team.wait_for_function("() => !!document.querySelector('#bd-run-tip')?.textContent")
+        tip = team.locator('#bd-run-tip').inner_text()
+        checks.ok(all(int(m) == 1 for m in re.findall(r'(\d+)월', tip)), f'{label} U7 1월 시험 TIP의 다른 계절 문구 없음')
+        team.locator('#bd-skip').click()
         checks.ok(shown(team, "#lg-panel") and
-                  team.locator('#lg-bar [data-panel="journal"]').get_attribute("aria-expanded") == "true",
-                  f"{label} 1월 계획 단계 일지 서랍 자동 열림")
-        # 모바일에서는 자동 일지가 도구 펼침을 덮는다. 자동 열림 검증 뒤 닫고 편집한다.
+                  team.locator('#lg-bar [data-panel="journal"]').get_attribute("aria-expanded") == "true" and
+                  not team.evaluate("document.documentElement.classList.contains('bd-drawer-open')"),
+                  f"{label} U1 첫 시험 운전 뒤 기준 서랍 하나만 자동 열림")
         team.locator('#lg-panel [data-pclose]').click()
         checks.ok(not shown(team, "#lg-panel"), f"{label} 도구 선택 전 일지 서랍 닫힘")
+    checks.ok(team.locator('[data-lens="result"]').count() == 1, f'{label} U2 지도 운영 결과 토글')
+    checks.ok(team.locator('[data-lens="grid"]').count() == 1 and team.locator('[data-lens="complaints"]').count() == 1,
+              f'{label} U3 두 영향 렌즈')
     checks.ok(team.evaluate(PLAN_JS), f"{label} U5 우리 계획 fixture 설정")
     (host or team).wait_for_function(PLAN_READY_JS, arg=tid)
     team.wait_for_timeout(600)
