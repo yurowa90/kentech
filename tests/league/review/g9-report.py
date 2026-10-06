@@ -132,7 +132,7 @@ def write_review(directory, result, by):
     (OUT / 'G9-validation.json').write_text(json.dumps(validation, ensure_ascii=False, indent=2) + '\n')
     names = {city: by[city, 'smr']['name'] for city in grid}
     lines = ['# G9 재보정 보고 — 2026-10-07', '',
-             '**필수 수용 기준을 통과했다.** 근거 O·P·M 값, 점수식과 recal.js는 보존했다. '
+             '**당시 검사에서는 필수 수용 기준을 통과했다.** G10 독립 검토의 보완 결과는 [G10 보고](G10-report.md)를 따른다. 근거 O·P·M 값, 점수식과 recal.js는 보존했다. '
              f'SMR 1위는 {result["smrFirstCities"]}/6으로 관찰 목표 ≤3 여부는 별도 기록한다.', '',
              '작업 폴더·Git 루트 `/Users/yurosung/Projects/kentech-wt/econ-recal9`, 브랜치 `wip/recal9`, '
              '시작 HEAD `4aad101`, 미커밋 변경 없음. Node v24.21.0, pnpm 11.25.0. '
@@ -147,6 +147,7 @@ def write_review(directory, result, by):
              '| normalStartPlans | 가상 디젤 20기 포함 → 기존 지도 발전소만 | 고정 전선은 보존, 탄소·원가를 같은 운전에서 계산 |',
              '| 공급0 co2Intensity | 시작값으로 초기화 → 직전 값 유지 | 감축 성과가 한 달 정전으로 사라지지 않음 |',
              '| B12 | 최대감세만 제한 → 동방향 감세·증세 모두 ≤3 | +1·0 같은 부분 변경과 공동1위도 포함, 혼합 세율 별도 |',
+             '| bots36 storage | 잔여 버림 ESS → 태양광·접속용 ESS 묶음도 추가 | 전략 정의 변경. 당시 560행 양수 분기 안의 양수 단언은 공허하여 G10에서 분리 |',
              '| T5 v1.1 | SMR 건설·연구 vs 대안 구매 포함 → 양쪽 건설+운영·연료+구매 | 실제 총지출 기준, 수출용 추가 연료도 포함 |', '',
              'ai-check의 기존 대기0은 이전 G 목표였다. 월 접속량·접속 상한을 바꾸지 않고, '
              '새 묶음 누적 금지·각 설비의 실제4달 내 전량 접속으로 교체했다. 확정 공급·정전≤5%·'
@@ -188,7 +189,7 @@ def write_review(directory, result, by):
               '저장 전략은 재생+ESS 묶음을 실제 예산으로 설치하고 접속 뒤 같은 발전·날씨·수요에서 해당 ESS만 뺀 운전과 비교해 '
               '버림 감소를 확인한다. 기존 저장 추가0회 실패를 단언 삭제로 없애지 않았다.', '',
               '## 검사', '', '| 검사 | 결과 |', '|---|---|',
-              '| balance | 807 / 0 |', '| test-econ | 1,286,685 / 0 |', '| next / tech / sec | 575 / 167 / 442 통과, 실패0 |',
+              '| balance | 807 / 0 |', '| test-econ | 1,286,685 / 0 |', '| next / tech / sec | 575 / 167 / 524 통과, 실패0 |',
               f'| review/11 T5 | {result["passes"]:,} / 0 (사전 예산 반복의 합법성 검사 포함) |',
               '| 번호 review 28개 | 모두 종료0 |', '| 보조 모듈3개 | 종료0, 단언 검사로 세지 않음 |',
               f'| ai-check --node | {int(ai_match[2]):,} / 0 |',

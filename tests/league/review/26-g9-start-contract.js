@@ -16,8 +16,9 @@ for(const id of ids){
  const plan=B.sanitize(D.normalStartPlans[id],Number.MAX_VALUE);
  const sim=B.simulate({...plan,season:'winter',seed:0},7,{league:true});
  const served=Math.max(0,sim.tot.dem-sim.unsTotal), hasSupply=served>1e-6;
- const intensity=hasSupply?sim.co2/served:D.params.normalCo2.v;
- const cost=hasSupply?sim.cost.fuel/served:D.params.normalCost.v;
+ const missing=Math.max(0,sim.tot.dem-served);
+ const intensity=(sim.co2+missing*D.params.normalCo2.v)/sim.tot.dem;
+ const cost=(sim.cost.fuel+missing*D.params.normalCost.v)/sim.tot.dem;
  ok(plan.builds.length===0,'가상 신규 발전소 없음');
  near(S.econ.cities[id].co2Intensity0,intensity,'지도 구성 기준 탄소');
  near(inputs[id].energy.costPerMWh,cost,'탄소와 같은 운전의 원가');

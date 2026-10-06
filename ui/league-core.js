@@ -1176,12 +1176,14 @@
       const normalPlan = KCP.ECON_DATA.normalStartPlans[id];
       const normal = simTeam(bg, R, id, normalPlan || {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k;
       const dem = normal.dem, served = Math.max(0, dem - normal.uns);
-      const intensity = served > 1e-6 ? normal.co2 / served : P.normalCo2.v;
+      // 부분 공급도 무발전 도시와 같은 계통 대체값으로 부족 MWh를 보충한다.
+      const missing = Math.max(0, dem - served);
+      const intensity = dem > 1e-6 ? (normal.co2 + missing * P.normalCo2.v) / dem : P.normalCo2.v;
       // F05: 월 입력과 같은 자산 경로. 시작 보정에는 학생 건설·정책을 포함하지 않는다.
       const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
       base[id] = econInput(initial, R, id, { dem, uns: 0, unsPct: 0, hospH: 0,
         co2Prod: intensity * dem, co2Cons: intensity * dem, renPct: P.normalRen.v,
-        exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: served > 1e-6 ? normal.fuel / served * dem : P.normalCost.v * dem, policy: 0 } }, wk);
+        exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: normal.fuel + missing * P.normalCost.v, policy: 0 } }, wk);
     }));
     S.econ = KCP.econ.calibrate(S.econ, base); S.econCal = true;
   }

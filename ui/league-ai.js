@@ -158,15 +158,12 @@
     const safetyTarget = initial.peak * (1 + value("aiSupplyReserve") + value("aiSafeReserve") * (1 - style.risk));
     // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
     const unsafe = initial.firm < safetyTarget;
-    const fiscal = S.econRep?.fiscal?.[id];
-    const recover = value("aiDebtRepair") && city?.cash < 0 && fiscal &&
-      fiscal.revTotal - (fiscal.expTotal - fiscal.exp.capex) < 0;
-    if (stage === "warn" && !unsafe && !recover) return plan;
+    if (stage === "warn" && !unsafe) return plan;
     if (!unsafe && !scheduled) return plan;
     const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
     const committed = S.teams[id].committed ??
       (S.teams[id].base || []).reduce((sum, x) => sum + x.c, 0) + fixed;
-    const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : recover ? value("aiDebtRepair") : value("aiRepairInvest"));
+    const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
     const choiceCap = committed + extra - fixed;
     const cap = unsafe ? budget - fixed : choiceCap;
     if (bg.capex(plan) >= cap) return plan;
@@ -226,10 +223,10 @@
     let route = routes(bg, roots);
     while (used.size < bg.TILES.length) {
       const safety = have.firm < safetyTarget;
-      if (stage === "warn" && !safety && !recover) break;
+      if (stage === "warn" && !safety) break;
       const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
       const renewReady = scheduled && (!grid || age >= value("aiGridRenewDelay") * style.risk);
-      const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (recover && style.risk < 1 ? 1 : 1 - style.risk)) - have.renew) : 0;
+      const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
       const hydroAllowed = t => !grid || t !== "hydro" || hydroMW + bg.BLD[t].mw <= hydroLimit;
       const nextLimited = viable.filter(t => hydroAllowed(t) && bg.BLD[t].hostLimited && bg.BLD[t].mw <= gridMonth &&
         legal[t].some(i => !used.has(i))).map(t => bg.BLD[t].mw);
@@ -239,6 +236,14 @@
       const storageNeed = scheduled ? Math.max(hostNeed,
         have.renew * value("aiStorageShare") * (1 - style.risk) - have.storage, 0) : 0;
       if (!safety && (!scheduled || firmNeed + renewNeed + storageNeed <= 0)) break;
+      // 공개 가격·수요의 대표 주 급전으로 연료비 차이를 예상한다. 숨은 사건은 제외한다.
+      const rd = rounds[turn - 1], publicState = { ...S, events: [] };
+      const forecast = p => C.simTeam(bg, R, id, p,
+        { ...rd, seed: KCP.econ.hashStr(`${seed}:fuel`) }, Number.MAX_VALUE,
+        C.trialMods({ ...publicState, teams: { ...S.teams, [id]: { ...S.teams[id], plan: p } } }, R, id)).k.fuel;
+      const fuelBefore = S.econ ? forecast(plan) : 0;
+      const fuelWeeks = rounds.slice(turn - 1, turn - 1 + value("aiFuelMonths"))
+        .reduce((sum, r) => sum + (r.mdays || r.days) / rd.days, 0);
       const candidates = [], buildBudget = (safety ? cap : choiceCap) - bg.capex(plan);
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
@@ -258,7 +263,14 @@
         });
         if (!best || bg.capex(plan) + best.cost > (safety ? cap : choiceCap)) return;
         const capacity = Math.min(need, b.mw);
-        best.score = capacity * (1 + style.risk * value("aiLargeWeight") * b.mw / maxMW) / best.socialCost;
+        const trial = assets(plan); trial.builds.push({ t, i: best.i }); addPath(trial, route.path(best.i));
+        const fuelDelta = S.econ ? (forecast(trial) - fuelBefore) * fuelWeeks : 0;
+        // 입지 선호는 종류 안에서만 사용한다. 종류 간에는 실제 건설비와 예상 연료비 차이를 비교한다.
+        // 절약액이 건설비보다 커도 역전/발산하지 않도록 비용/MW의 음수를 최대화한다.
+        const costScore = -(best.cost + fuelDelta) / capacity;
+        const large = 1 + style.risk * value("aiLargeWeight") * b.mw / maxMW;
+        // 연료 절약으로 순비용이 음수여도 대형 선호의 방향은 뒤집지 않는다.
+        best.score = costScore < 0 ? costScore / large : costScore * large;
         best.storage = battery && storageNeed > 0;
         candidates.push(best);
       });
@@ -373,7 +385,8 @@
     const fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan);
     const committed = S.teams[id].committed ?? (S.teams[id].base || []).reduce((a, x) => a + x.c, 0) + fixed;
     const extra = Math.max(0, C.budget(S, id) - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
-    const limit = committed + extra - fixed - demoReserve - labCost;
+    const researchBudget = C.budget(S, id) - (S.econ?.cities[id].debtCap || 0) * (1 - value("aiResearchDebtShare"));
+    const limit = Math.min(committed + extra, researchBudget) - fixed - demoReserve - labCost;
     for (const [kind, count] of [["lab", p("aiLabs")], ["uni", p("aiUnis")]]) {
       if (plan.builds.filter(b => b.t === kind).length >= count) continue;
       const tile = bg.TILES.find(t => !plan.builds.some(b => b.i === t.i) && !bg.siteRule(kind, t));
