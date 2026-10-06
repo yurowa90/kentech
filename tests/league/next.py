@@ -529,10 +529,11 @@ def event_gate_and_journal(host, team, checks, fixture):
     team.locator('#lg-ready-confirm').click()
     close_panel(team)
     advance(host, team, "review")
-    panel(team, r"일지")
-    # lg-f-event is explicitly specified for the event-month counterquestion.
-    reply = team.locator("#lg-f-event")
-    checks.ok(reply.count() == 1 and reply.is_visible(), "event-month counterquestion uses lg-f-event")
+    panel(team, r"결과")
+    # 사건 달 반문은 결과 서랍의 질문 카드(질문 은행 키 lg-f-event, ECON-UI 결과 단계 .lg-ask)다.
+    card = team.locator('#lg-panel .lg-ask[data-question="lg-f-event"]')
+    checks.ok(card.count() == 1 and card.is_visible(), "event-month counterquestion uses lg-f-event")
+    reply = card.locator("textarea[data-note]")
     answer = "가상검사답: 이웃 정전 수치를 보고 예비 전력을 유지한다."
     if reply.count() != 1 or not reply.is_visible():
         raise AssertionError("event reply input missing")

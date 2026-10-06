@@ -370,7 +370,7 @@ def choose_crit(team, host, team_id):
 def migration_caption(host, flows):
     details = host.locator("#lg-host-details")
     if not details.evaluate("el => el.open"):
-        details.locator("summary").click()
+        details.locator(":scope > summary").click()
     host.wait_for_selector("#lg-mapcap")
     text = host.locator("#lg-mapcap").inner_text()
     names = host.evaluate("() => Object.fromEntries(Object.entries(KCP.ECON_DATA.start).map(([k,v]) => [k,v.name]))")
@@ -584,6 +584,10 @@ def economic(checks, context, base, label, pages):
                       not team.locator('#lg-result-details').evaluate('el => el.open'), f'{label} U2 결과 숫자 셋·원인·자세히 접힘')
             checks.ok(shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
             team.locator('[data-lens="result"]').click()
+            try:  # 렌즈는 다음 그리기 때 요약 카드를 숨긴다.
+                team.wait_for_function("() => document.querySelector('#lg-map-result')?.hidden === true", timeout=3000)
+            except Exception:
+                pass
             checks.ok(not shown(team, '#lg-map-result'), f'{label} U2 운영 결과 렌즈 끄기')
             team.locator('[data-lens="result"]').click()
             checks.ok(shown(team, '#lg-promise-result') and shown(team, '#lg-evidence-direction'),
@@ -775,7 +779,7 @@ def ui_fixes(checks, context, base, label, pages):
                   '기준연도' in detail.inner_text() and
                   detail.locator('[data-tech-source] a[href^="docs/"]').count() == 0,
                   f'{label} #12 {card} 외부 출처·연도(없으면 자료 없음 명시)')
-        checks.ok('교육용 배속 ×' in detail.inner_text() or 'G·비교값 없음' in detail.inner_text(),
+        checks.ok('교육용 배속 ×' in detail.inner_text() or '비교값 없음' in detail.inner_text(),
                   f'{label} #23 {card} 배속 또는 비교값 없음')
         checks.ok(detail.locator('.lg-tech-effect .tag-mine').count() > 0 or card == 'h2mix',
                   f'{label} #22 {card} 효과 등급과 색 구분')

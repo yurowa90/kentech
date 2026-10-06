@@ -464,7 +464,7 @@
     const progress = id => Math.max(0, Math.min(100, rs.progress?.[id] || 0));
     return `<section id="lg-tech" class="lg-tech-panel"><h2>연구 기술 트리</h2>
       <p class="lg-tech-staff">연구 인력: 대학 ${esc(fmt(builds.filter(b => b.t === "uni").length))}곳 · 연구소 ${esc(fmt(builds.filter(b => b.t === "lab").length))}곳 · 인력 ${esc(fmt(rs.staff))}명 · 유효 인력 ${esc(fmt(rs.eff))}명</p>
-      <p class="lg-hint">새 대학은 운영을 마친 뒤 인력에 반영돼요. ${V.econ ? "한 달" : "한 턴"}에 인력당 ${esc(fmt(rs.stepsPerTurn))}주치 진척 · 연구 예약 비용 ${esc(fmt(rs.reservedCost, 1))}억. 인력이 없으면 진척이 멈춥니다.</p>
+      <p class="lg-hint">새 대학은 운영을 마친 뒤 인력에 반영돼요. ${V.econ ? "한 달" : "한 턴"}에 인력당 ${esc(fmt(rs.stepsPerTurn))}주치 진척 · 연구 예약 비용 ${esc(fmt(rs.reservedCost, 1))}억. 인력이 없으면 진척이 멈춰요.</p>
       <div class="lg-tech-titles">${techTitlesHTML(rs)}</div><p class="lg-tech-queue">연구 순서: ${queue.length ? queue.map((k, i) => `${esc(i + 1)}. ${esc(techCard(k)?.name || k)}`).join(" → ") : "아직 없음"}</p>
       <p class="lg-hint">근거 등급: O 공식 원문 · O* 공식 자료·보도로 확인한 현상 · P 논문·보고서 · M 모형 계산 · G 게임 가정.</p>
       <p class="lg-hint">트리 안에서 좌우로 스크롤해 여섯 갈래를 볼 수 있어요. 카드를 눌러 상세를 확인해요.</p>
@@ -2820,7 +2820,7 @@
     const V = L.snap, reg = R(), tab = L.panel;
     const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
     const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : null).filter(Boolean);
-    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "id"].find(k => focused.hasAttribute(k)) : null;
+    const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "data-evidence", "data-confidence", "data-answer", "data-missed", "data-crit", "data-crit-choice", "data-resp", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
     if (!V) body = `<p class="lg-hint">진행자 연결을 기다리는 중이에요.</p>`;

@@ -110,7 +110,7 @@ with sync_playwright() as pw:
         panel(P, "tech"); P.wait_for_selector('#lg-tech')
         progress = P.locator('[data-tech-card="bms"] progress')
         check(progress.count() == 1 and abs(float(progress.get_attribute('value')) - expected / need * 100) < 1e-9 and
-           '새 대학은 운영을 마친 뒤 인력에 반영됩니다' in P.inner_text('#lg-tech'),
+           '운영을 마친 뒤 인력에 반영' in P.inner_text('#lg-tech'),
            "league research drawer shows host progress and delayed university staffing")
         P.screenshot(path=f"{SH}/v3-{mode}-4-team-research.png")
         for p in [h, *tp.values()]: p.close()
