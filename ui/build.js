@@ -550,7 +550,7 @@
         const add = (kind, pts) => items.push({ ti, kind, bi, src: B.t, pts: pts * (share && ["noise", "view"].includes(kind) && ["wind", "offshore", "solar"].includes(B.t) ? 0.5 : 1) });
         if (["diesel", "biomass"].includes(B.t)) {
           if (!farm && d <= 3) add("smoke", (B.t === "diesel" ? 30 : 12) * (d <= 1 ? 1 : d === 2 ? 0.6 : 0.3) * f);
-          if (B.t === "diesel" && d <= 1) add("noise", 6 * f);
+          else if (B.t === "diesel" && d <= 1) add("noise", 6 * f);
         } else if (B.t === "wind") {
           if (d <= 1) add("noise", 14);
           else if (d === 2) add("view", 3);
@@ -797,7 +797,7 @@
               for (const b of C.bat.filter(b => b.kind === "h2store")) {
                 const eff = storedEff(b, bEff), used = Math.max(0, Math.min(need, storedMW(b) - b.dis, b.soc * eff));
                 b.soc -= used / eff; b.dis += used; need -= used;
-                tot.co2 -= used * u.D.co2; u.mixed += used; tot.h2mixMWh += used;
+                tot.fuel -= used * u.mc; tot.co2 -= used * u.D.co2; u.mixed += used; tot.h2mixMWh += used;
               }
             }
             if (u.dk !== undefined && u.dk < 32) hrDiesel[k] |= 1 << u.dk;
@@ -816,7 +816,7 @@
           G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
           // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
           let dq = 0, dm = 0, dc = 0, db = 0;
-          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc * (u.out > 0 ? 1 - u.mixed / u.out : 1); dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
           G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0; G.dbioCo2[k] = dq > 0 ? db / dq : 0;
         });
         rem.forEach((r, ti) => {

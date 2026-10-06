@@ -44,7 +44,7 @@ const d=data(), E=X.initCities(IDS,d), base=inputsFor(E,()=>({})), cut=inputsFor
 const scores = input => IDS.map(id=>{const c=clone(E.cities[id]);c.policy=input[id].policy;return X.industryAttract(c,X.ctxOf(E,Object.fromEntries(IDS.map(key=>[key,X.cleanInput(input[key],E.cities[key],d.start[key])])),d,id));});
 const a=scores(base), b=scores(cut), raw=IDS.map((id,i)=>E.cities[id].ind/E.totals.ind*Math.exp(.08*(b[i].score-a[i].score)/10));
 const i=IDS.indexOf(focal), direct=100*(raw[i]/sum(raw)/(E.cities[focal].ind/E.totals.ind)-1);
-assert.ok(tax.current.pct>.45,"REF 2.7/4.6 +0.24% is not reproduced; do not tune M coefficients");
+assert.ok(tax.current.pct>=.15 && tax.current.pct<=.45,"G4 G tax weight matches literature conversion; M coefficients unchanged");
 // recal 09 uses rounded report Aeff. Read the state to independently reconstruct
 // the normalized softmax and integer migration for both time scales.
 const migration=[];

@@ -66,7 +66,7 @@
     const I = raw || {}, e = I.energy || {}, po = I.policy || {}, as = I.assets || {};
     const BIG = 1e7;
     const energy = {
-      priceMul: num(e.priceMul, 0.1, 2, 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, 1e4, 0),
+      residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, 0.1, 2, 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, 1e4, 0),
       costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, 10) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
       co2: has(e, "co2") ? clamp(e.co2, 0, BIG) : null,
@@ -123,7 +123,7 @@
   const servedOf = e => e.servedMWh != null ? Math.min(e.servedMWh, e.demMWh == null ? e.servedMWh : e.demMWh) : (e.demMWh || 0) * (1 - e.unsPct / 100);
   const priceScore = (e, reg, data, previous) => servedOf(e) <= 0 ? fin(previous, pv(data, "neutralScore")) : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
   const taxSatisfaction = (step, average, data) => { const d = step - pv(data, "taxYardstick") * fin(average, 0); return c100(pv(data, "taxBase") + pv(data, "taxGain") * -d * (d > 0 ? pv(data, "lossAversion") : 1)); };
-  const carbonScore = (C, data) => c100(100 * (pv(data, "scoreCo2Worst") - fin(C.co2Intensity, pv(data, "co2IntDef"))) / (pv(data, "scoreCo2Worst") - pv(data, "scoreCo2Best")));
+  const carbonScore = (C, data) => c100(100 * (pv(data, "scoreCo2Worst") - fin(C.co2Intensity, fin(C.co2Intensity0, pv(data, "co2IntDef")))) / (pv(data, "scoreCo2Worst") - pv(data, "scoreCo2Best")));
   const serviceBase = (C, data) => C.pop * (pv(data, "svcCost") + C.groups.senior.share * pv(data, "svcCostSenior"));
   const debtRatio = (C, data) => Math.max(0, -C.cash) / Math.max(1e-9, pv(data, "budgetToRevenue") * C.revYear);
   const approvalRelative = E => { const ds = E.order.map(id => E.cities[id].approval - E.cities[id].approval0); const avg = ds.length > 1 ? sum(ds) / ds.length : 0; return Object.fromEntries(E.order.map((id, i) => [id, ds[i] - avg])); };
@@ -280,7 +280,8 @@
       C.debtCap = r1(P("debtCapRatio") * C.revYear);
       // 지연 추적·집단 만족도 시작 상태의 균형값에서 출발(아무것도 안 하면 지지율이 저절로 오르내리지 않게)
       const e = ins[id].energy, co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
-      C.co2Intensity = co2IntOf(e, data);
+      C.co2Intensity0 = co2IntOf(e, data);
+      C.co2Intensity = C.co2Intensity0;
       C.unsS = e.unsPct; C.renS = e.renPct; C.co2pc = co2 / Math.max(1, C.pop / 1000);
       C.out = outIdx(C, ins[id], E.intl.cur, data, E.year).v;
       C.hospRel = l.parts.rel - c100(100 * (1 - e.unsPct / P("unsZeroL")));
@@ -612,10 +613,10 @@
       if (c.revenueHistory.length > 12) c.revenueHistory.shift();
       const over = c.cash < -c.debtCap;
       const ratio = debtRatio(c, data), stage = over || ratio >= 0.40 - 1e-12 ? "crisis" : -c.cash >= P("debtWarnRatio") * c.revYear - 1e-12 ? "warn" : "ok";
-      // 억/명·달. 실제 주민세 + 공지 연액 중 인구 배분분/12 − 서비스 비용.
+      // 억/명·달. 주민세 + 인구 배분 지원금/12 + 주민 수요 몫 전기 차익 − 서비스 비용.
       // 정액 지원은 제외하며, 소액·음수 기여를 보존하도록 억 단위 반올림하지 않는다.
       const fixedSubsidy = fin(c.subsidyFixed, P("subBase") + equalizeOf(c, data));
-      const perResidentNet = (rev.resTax + (c.subsidy - fixedSubsidy) / 12 - exp.service) / Math.max(1, c.pop);
+      const perResidentNet = (rev.resTax + (c.subsidy - fixedSubsidy) / 12 + rev.tariff * e.residentDemandShare - exp.service) / Math.max(1, c.pop);
       if (over || stage !== "ok") news.push(`${c.name} 재정 ${stage === "crisis" || over ? "위기: 새 건설·유료 대응 제한, 재정 점수 0" : "주의: 채무비율 25% 이상"}${over ? " — 운영 적자로 한도 초과 부채가 계속 쌓이고 있어요" : ""}`);
       fiscal[id] = { tariffGross: r3(servedOf(e) * reg.otherCost[id] * (1 + P("tariffMarkup"))), eventBonus: r3(e.bonus), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: revT, expTotal: expT, cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, debtRatio: ratio, debtStage: stage, spendable: spendable(c), out: o };
       fiscal[id].perResidentNet = perResidentNet;
@@ -623,7 +624,8 @@
       const co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       c.unsS += lam * (e.unsPct - c.unsS);
       c.co2pc += P("lambdaSlow") * (co2 / Math.max(1, c.pop / 1000) - c.co2pc);
-      if (servedOf(e) > 0) c.co2Intensity = fin(c.co2Intensity, P("co2IntDef")) + P("lambdaSlow") * (co2IntOf(e, data) - fin(c.co2Intensity, P("co2IntDef")));
+      if (servedOf(e) > 0) c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))) + P("lambdaSlow") * (co2IntOf(e, data) - fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))));
+      else c.co2Intensity = fin(c.co2Intensity0, fin(c.co2Intensity, P("co2IntDef")));
       c.renS += P("lambdaSlow") * (e.renPct - c.renS);
     });
     // 7) 집단 만족 → 지지율

@@ -171,7 +171,8 @@ block("B3", () => {
     const high = run(12, cid => cid === id ? { policy: { taxRes: 2, taxInd: 2, service: -2 } } : {});
     const l = operating(low, id), delta = operating(high, id) - operating(base, id);
     const drop = high.E.cities[id].approval - base.E.cities[id].approval;
-    // v1.6: 절대 적자 대신 같은 씨앗 정책0 대비 연 수지·36달 누적 현금 감소.
+    // v1.6.1: 상대 기준과 복원된 절대 적자를 함께 검증한다.
+    ok(finite(l) && l < 0, `${id} 저세율·서비스+2 연 운영수지 ${fmt(l)}억 (절대 적자)`);
     const low36 = run(36, cid => cid === id ? { policy: { taxRes: -2, taxInd: -2, service: 2 } } : {});
     const baseAnnual = operating(base, id);
     const cashDelta = (low36.E.cities[id].cash - low36.start.cities[id].cash) -
@@ -183,24 +184,8 @@ block("B3", () => {
     ok(delta >= 0.3 * D.start[id].cash0, `${id} 고세율 수지 개선 ${fmt(delta)}억 (목표 ≥${fmt(0.3 * D.start[id].cash0)})`);
     ok(drop <= -8, `${id} 고세율 지지율 차이 ${fmt(drop)}점 (목표 ≤-8)`);
   }));
-  const winners = []; let completed = 0;
-  IDS.forEach(id => test(`${id} 5×5 정책 격자`, () => {
-    const grid = [];
-    for (let tax = -2; tax <= 2; tax++) for (let service = -2; service <= 2; service++) {
-      const r = run(36, cid => cid === id ? { policy: { taxRes: tax, taxInd: tax, service } } : {});
-      const score = X.score(r.E, D)?.by?.[id]?.score;
-      if (!finite(score)) throw new Error(`${id} score.by.score 없음`);
-      grid.push({ tax, service, score });
-    }
-    const best = Math.max(...grid.map(x => x.score));
-    const target = grid.find(x => x.tax === -2 && x.service === 2);
-    if (target.score === best) winners.push(id); // 공동 1위도 지배 전략으로 센다.
-    completed++;
-    ok(grid.length === 25, `${id} 격자 25칸 실행`);
-  }));
-  ok(winners.length <= 2 && completed === IDS.length,
-    `저세율·서비스+2 36달 1위 ${winners.length}곳 ${winners.join(",")} (목표 ≤2곳, 격자 완료 ${completed}/${IDS.length}, 같은 씨앗·한 도시만 정책 변경)`);
-  // 계수 '약 3배', '0.5 수준'은 권고: 정확한 수치 대신 위 행동 목표로 판정한다.
+  // 정책 격자의 판정 입력은 B12 v1.6.1과 통일한다. 25칸 대각선도 아래 B12에서 단언.
+
 });
 
 block("B4", () => {
@@ -271,17 +256,31 @@ block("B5", () => {
 });
 
 block("B6", () => {
-  const r = run(12);
-  IDS.forEach(id => test(`${id} 보통 수지`, () => {
-    const c = r.start.cities[id], baseSub = X.yearStart(r.start, D).E.cities[id].subsidy - c.equalize;
-    const startTax = 12 * (c.pop0 * D.params.resTax.v + c.ind0 * D.params.indTax.v);
-    const baseService = c.pop0 * (D.params.svcCost.v + c.groups.senior.share * D.params.svcCostSenior.v);
-    const baseMargin = c.pop0 / FIXTURE.people * FIXTURE.mwhPerDay * FIXTURE.days * FIXTURE.cost * D.params.tariffMarkup.v;
-    const raw = (D.params.fiscalTargetRev.v * (startTax + baseSub) - (startTax + 12 * baseMargin - 12 * baseService) - baseSub) / (1 - D.params.fiscalTargetRev.v);
-    const expected = Math.max(0, Math.min(raw, baseSub)); // equalizeMaxShare=0.5
-    ok(Math.abs(c.equalize - expected) < 0.02 && operating(r, id) > 0,
-      `${id} F13 시작 연 세입 목표 보정 ${fmt(c.equalize)}/${fmt(expected)}, 보통 운영수지 ${fmt(operating(r,id))}`);
-  }));
+  // F13 목표 자체를 검증: 상·하한 여부만 판별하고 구현의 보정식을 재계산하지 않는다.
+  for (const targetRatio of [D.params.fiscalTargetRev.v, .6]) {
+    const data = clone(D);
+    data.params.fiscalTargetRev.v = targetRatio; // .6은 비제약 분기를 실제로 실행하는 별도 검사 입력.
+    for (const key of ["eduSpeed", "gpYear", "giYear"]) data.params[key].v = 0;
+    data.intl.eventP = 0; data.intl.schedule = [];
+    for (const key of Object.keys(data.intl.sigma)) data.intl.sigma[key] = 0;
+    const r = run(12, undefined, SEEDS[0], data);
+    let lower = 0, upper = 0, free = 0;
+    IDS.forEach(id => {
+      const c = r.start.cities[id], subsidy = X.yearStart(r.start, data).E.cities[id].subsidy;
+      const atLower = c.equalize <= .001;
+      const atUpper = Math.abs(c.equalize - subsidy * data.params.equalizeMaxShare.v) <= .001;
+      if (atLower) lower++;
+      else if (atUpper) upper++;
+      else {
+        free++;
+        const target = data.params.fiscalTargetRev.v * c.revYear, actual = operating(r, id);
+        ok(Math.abs(actual - target) <= .03,
+          `F13 비제약 도시 연 운영수지=${fmt(actual)}, 목표=${fmt(target)} (반올림 ≤.03억)`);
+      }
+    });
+    ok(lower + upper + free === IDS.length && (targetRatio !== .6 || free > 0), "F13 모든 도시 경계 분류·비제약 목표 검증 존재");
+    console.log(`B6 목표비율 ${targetRatio} 정액보정 경계: 하한 ${lower}, 상한 ${upper}, 비제약 ${free}`);
+  }
 });
 
 block("B7", () => {
@@ -493,31 +492,16 @@ block("B11", () => {
 });
 
 block("B12", () => {
-  // 실행 3분 제한을 위해 씨앗은 하나, 한 도시의 정책만 변경한다. 5×5×5와 36달은 모두 검사한다.
-  const winners = {}, bests = {}, lowWinners = [];
-  IDS.forEach(id => test(`${id} 주민세×산업세×서비스 격자`, () => {
-    const grid = [];
-    for (let taxRes = -2; taxRes <= 2; taxRes++) for (let taxInd = -2; taxInd <= 2; taxInd++)
-      for (let service = -2; service <= 2; service++) {
-        const r = run12(36, cid => cid === id ? { policy: { taxRes, taxInd, service } } : {});
-        grid.push({ key: `${taxRes},${taxInd},${service}`, taxRes, taxInd,
-          score: X.score(r.E, D)?.by?.[id]?.score });
-      }
-    const valid = grid.length === 125 && grid.every(p => finite(p.score));
-    ok(valid, `${id} 125개 조합 유한 점수=${grid.filter(p => finite(p.score)).length}/125`);
-    if (!valid) return;
-    const best = Math.max(...grid.map(p => p.score));
-    const top = grid.filter(p => Math.abs(p.score - best) <= 1e-9);
-    winners[id] = top.map(p => p.key); bests[id] = best;
-    // 공동 1위도 1위로 센다. 주민세와 산업세를 독립적으로 움직인다.
-    if (top.some(p => p.taxRes === -2 && p.taxInd === -2)) lowWinners.push(id);
-  }));
-  const complete = Object.keys(winners).length === IDS.length;
-  const common = complete ? winners[IDS[0]].filter(key => IDS.every(id => winners[id].includes(key))) : [];
-  ok(complete && common.length === 0,
-    `모든 도시 공통1위=${JSON.stringify(common)}, 도시별 1위=${JSON.stringify(winners)}, 점수=${JSON.stringify(bests)} (공통 조합 없음)`);
-  ok(complete && lowWinners.length <= 3,
-    `(-2,-2,·) 계열 1위=${lowWinners.length}/${IDS.length} ${JSON.stringify(lowWinners)} (≤3곳)`);
+  const host = require("./review/21-host-policy-grid");
+  const result = host.grid();
+  host.check(result);
+  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·최대감세 계열 ≤3도시");
+  const winners = IDS.filter(id => {
+    const diagonal = result[id].rows.filter(r => r.taxRes === r.taxInd);
+    ok(diagonal.length === 25 && diagonal.every(r => finite(r.score)), `${id} B3 실제 호스트 25칸`);
+    return diagonal.find(r => r.key === "-2,-2,2").score === Math.max(...diagonal.map(r => r.score));
+  });
+  ok(winners.length <= 2, `B3 실제 호스트 감세·서비스+2 1위 ${winners.length}/6 (≤2)`);
 });
 
 block("B13", () => {
@@ -554,7 +538,7 @@ block("B14", () => {
         const pop = r.states[m].cities[id].pop;
         // F25: 1월 공지 연액 = 분기 지급액×4. 정액 기본·보정을 빼고 12달 배분.
         const perCapSubsidy = (4 * jan?.rev?.subsidy - jan?.equalize - D.params.subBase?.v) / pop;
-        const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
+        const net = f?.rev?.resTax / pop + perCapSubsidy / 12 + f?.rev?.tariff / pop - f?.exp?.service / pop;
         ok(finite(net) && finite(f?.perResidentNet) && Math.abs(f.perResidentNet - net) < 1e-12,
           `${id} ${m + 1}달 perResidentNet=${f?.perResidentNet}, 기대=${net}억/명·달 (도시별 음수 허용)`);
         contribution += net * pop; population += pop;

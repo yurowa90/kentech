@@ -208,7 +208,7 @@ test("연계선·설비·MODS 수치", () => {
   console.log("카드 효과 실측", JSON.stringify({ hvdcLoss: 0.012, scableLoss, solarMWh: original.tot.renAvail, tandemMWh: tandem.tot.renAvail, sicMWh: sic.tot.renAvail }));
 });
 
-test("대량 공정 신규 투자만 할인·SMR 6턴 공사", () => {
+test("대량 공정 신규 투자만 할인·SMR 12턴 공사", () => {
   const S = game(); funded(S); const old = planOf(a, ["solar"]);
   ok(request(S, a, { type: "plan", rev: 1, plan: old }).ok, "대량 공정 이전 태양광 승인");
   select(a); const normalCost = bg.capex(old);
@@ -219,10 +219,10 @@ test("대량 공정 신규 투자만 할인·SMR 6턴 공사", () => {
   const N = game(); funded(N); adopt(N, a, ["smr"]);
   const p = planOf(a, ["smr"], true), key = "smr:" + p.builds[0].i;
   ok(request(N, a, { type: "plan", rev: 1, plan: p }).ok, "SMR 착공 승인");
-  for (let n = 1; n <= 6; n++) {
+  for (let n = 1; n <= 12; n++) {
     N.round = n; ok((C.modsFor(N, R, a).disabledBuilds || []).includes(key), `착공 포함 ${n}턴 SMR 미가동`);
   }
-  N.round = 7; ok(!(C.modsFor(N, R, a).disabledBuilds || []).includes(key), "6턴 공사 뒤 다음 턴 SMR 가동");
+  N.round = 13; ok(!(C.modsFor(N, R, a).disabledBuilds || []).includes(key), "12턴 공사 뒤 다음 턴 SMR 가동");
 });
 
 test("칭호와 점수 분리", () => {

@@ -4,6 +4,7 @@ import ast
 import json
 import math
 import subprocess
+import statistics
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -40,7 +41,7 @@ JS = r"""
       let prev = [];
       for (let m = 1; m <= 12; m++) {
         S.round = m; S.phase = "plan"; C.drawEvents(S, R);
-        const ev = S.events.filter(e => e.round === m).map(e => e.id);
+        const ev = S.events.filter(e => e.round === m && e.id !== "finedust_coal_cap").map(e => e.id);
         count += ev.length; if (ev.length >= 2) two++;
         if (ev.length > 1) invalid++;
         repeats += ev.filter(id => prev.includes(id)).length;
@@ -543,7 +544,7 @@ JS = r"""
         offerChecks++;
         ok(finite(o.eval?.by?.[id]?.checks?.mw?.have), `B8 회전${rotation} ${m}달 ${o.id} ${id} mw.have=${o.eval?.by?.[id]?.checks?.mw?.have}`);
       }));
-      run.hist.push({month: m, fiscal: clone(rep.fiscal), review: clone(rep.review),
+      run.hist.push({month: m, score: [12,24,36].includes(m) ? clone(X.score({...S.econ, len:m})) : null, fiscal: clone(rep.fiscal), review: clone(rep.review),
         cities: clone(S.econ.cities), energy: clone(res.team), offers: clone(rep.offers || [])});
       prior = rep.fiscal;
     }
@@ -637,6 +638,43 @@ def strategy_summary(out):
             "meanScoreGap": active[best] - active[worst] if active else None}
 
 
+def horizon_summary(out):
+    result = {}
+    if out.get("rotations") != len(out.get("strategies", [])):
+        return result  # 부분 회전은 도시별 9전략 비교가 아니다.
+    for month in (12, 24, 36):
+        runs = [r for r in out.get("runs", []) if len(r["hist"]) >= month]
+        if not runs:
+            continue
+        rows = []
+        for run in runs:
+            h = run["hist"][month - 1]
+            for city, strategy in run["assignment"].items():
+                c, f = h["cities"][city], h["fiscal"][city]
+                rows.append(dict(id=city, strategy=strategy, cash=c["cash"],
+                    debtRatio=max(0, -c["cash"]) / c["debtCap"], over=f["debtOver"],
+                    score=h["score"]["by"][city]["score"]))
+        strategies = out["strategies"]
+        means = {s: statistics.mean(r["score"] for r in rows if r["strategy"] == s) for s in strategies}
+        cash = {s: statistics.mean(r["cash"] for r in rows if r["strategy"] == s) for s in strategies}
+        winners = {}
+        nothing_ranks = {}
+        for city in out["ids"]:
+            group = [r for r in rows if r["id"] == city]
+            best = max(r["score"] for r in group)
+            winners[city] = [r["strategy"] for r in group if r["score"] == best]
+            nothing = next((r for r in group if r["strategy"] == "nothing"), None)
+            if nothing:
+                nothing_ranks[city] = 1 + sum(r["cash"] > nothing["cash"] for r in group)
+        samples = [f for run in runs for h in run["hist"][:month] for f in h["fiscal"].values()]
+        result[month] = dict(n=len(rows), overCities=sum(r["over"] for r in rows),
+            debtMedian=statistics.median(r["debtRatio"] for r in rows),
+            overCityMonths=sum(f["debtOver"] for f in samples), cityMonths=len(samples),
+            nothingCashRank=1 + sum(v > cash["nothing"] for v in cash.values()),
+            nothingCashCityRanks=nothing_ranks, meanScores=means, meanCash=cash, winners=winners)
+    return result
+
+
 def markdown(out):
     summary = strategy_summary(out)
     rows = [row for run in out.get("runs", []) for row in run.get("rows", [])]
@@ -678,6 +716,16 @@ def markdown(out):
     for key, title in (("monthEvents", "달 사건"), ("seasonEvents", "계절 사건 참고")):
         if key in out:
             lines += ["", f"{title}: `{json.dumps(out[key], ensure_ascii=False)}`"]
+    if out.get("horizons"):
+        lines += ["", "## 12·24·36달 재정·전략 비교", "",
+                  "| 달 | 한도 초과 도시 | 부채/한도 중앙값 | 한도 초과 도시·달 | nothing 평균 현금 순위 |", "|---|---:|---:|---:|---:|"]
+        for month, h in out["horizons"].items():
+            lines.append(f"| {month} | {h['overCities']}/{h['n']} | {h['debtMedian']:.3f} | {h['overCityMonths']}/{h['cityMonths']} | {h['nothingCashRank']}/9 |")
+        for month, h in out["horizons"].items():
+            lines += ["", f"### {month}달 전략별 평균", "", "| 전략 | 점수 | 현금 억 |", "|---|---:|---:|"]
+            lines += [f"| {s} | {h['meanScores'][s]:.3f} | {h['meanCash'][s]:.3f} |" for s in out["strategies"]]
+            lines += ["", f"도시별 1위: `{json.dumps(h['winners'], ensure_ascii=False)}`",
+                      f"nothing 도시별 현금 순위: `{json.dumps(h['nothingCashCityRanks'], ensure_ascii=False)}`"]
     checks = out.get("checks", [])
     bad = [message for passed, message in checks if not passed]
     lines += ["", f"checks {len(checks)} fail {len(bad)}", ""]
@@ -723,6 +771,7 @@ process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotatio
     out["checks"].extend([[False, message] for message in errors])
     out["url"] = "node (no network)" if args.node else args.url
     out["strategySummary"] = strategy_summary(out)
+    out["horizons"] = horizon_summary(out)
     if rotations == len(out["strategies"]):
         summary = out["strategySummary"]
         out["checks"].append([len(summary["completeCities"]) == len(out["ids"]), "D61 모든 도시 전략 비교"])

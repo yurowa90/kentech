@@ -1,5 +1,5 @@
 "use strict";
-// G2: ai-check.py's Node path omits tech-data and still writes connPerMonth.
+// G4: ai-check.py's Node path omits tech-data; exercise that additional contract here.
 // Exercise research with the real technology module, all styles, 6 cities.
 const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),vm=require("node:vm");
 const ctx=vm.createContext({console,document:{documentElement:{}},KCP:{route(){},on(){},esc:x=>x}});ctx.window=ctx;

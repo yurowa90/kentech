@@ -281,12 +281,12 @@ test("verify 10·33: 사건 탄소를 잔여 몫에서 분리하고 월 탄소�
 test("ECON-SPEC §14.1: SMR 운영 단가 보정은 달 모드 도입 기술에만 적용", () => {
   const S = game(); adopt(S, a, ["smr"]);
   const p = D.params.smrFuelMul;
-  ok(p?.v === 4 && p.grade === "G" && typeof p.note === "string", "RECAL-SPEC §7.4: SMR 4배는 명시적인 게임 가정");
+  ok(p?.v === 1.25 && p.grade === "G" && typeof p.note === "string", "RECAL-SPEC §7.4: SMR 1.25배는 명시적인 게임 가정");
   const normal = C.modsFor(S, R, a);
-  near(normal.fuelMul?.smr, 4, "달 모드 SMR 도입은 운영 단가4배");
+  near(normal.fuelMul?.smr, 1.25, "달 모드 SMR 도입은 운영 단가1.25배");
   S.econ.intl.cur.fuelMul = 1.4;
   const expensive = C.modsFor(S, R, a);
-  near(expensive.fuelMul?.smr, 4, "SMR 운영 보정은 LNG 국제 지수와 독립");
+  near(expensive.fuelMul?.smr, 1.25, "SMR 운영 보정은 LNG 국제 지수와 독립");
   near(expensive.fuelMul?.lng, 1.4, "LNG 국제 지수는 기존 배수 유지");
   const pending = clone(S); pending.teams[a].research.adoptR = { smr: 2 };
   ok(pending.round === 1 && !C.modsFor(pending, R, a).fuelMul?.smr, "다음 달 도입 예정은 아직 SMR 보정 없음");
@@ -312,10 +312,10 @@ test("ECON-SPEC §14.1: SMR 운영 단가 보정은 달 모드 도입 기술에�
   ok(after.tot.by.smr > 0, "보정 비교는 실제 SMR 발전 fixture");
   near(after.tot.by.smr, before.tot.by.smr, "단가 변경은 SMR 발전량 불변");
   near(after.co2, before.co2, "단가 변경은 실제 운영 CO₂ 불변");
-  near(after.cost.fuel - before.cost.fuel, after.tot.by.smr * 0.006, "RECAL-SPEC §7.4: SMR 발전MWh당 운영비0.002→0.008억");
+  near(after.cost.fuel - before.cost.fuel, after.tot.by.smr * 0.0005, "RECAL-SPEC §7.4: SMR 발전MWh당 운영비0.002→0.0025억");
   near(B.BLD.smr.mw, 20, "SMR 정격20MW 유지");
   near(B.BLD.smr.cost, 150, "SMR 건설150억 유지");
-  near(ctx.KCP.TECH_DATA.params.smrTurns.v, 6, "SMR 공사6턴 유지");
+  near(ctx.KCP.TECH_DATA.params.smrTurns.v, 12, "SMR 공사 round(55/4.4)=12턴");
 });
 
 console.log(`확정 결함: ${passes} 통과, ${fails} 실패`);

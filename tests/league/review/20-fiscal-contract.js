@@ -13,7 +13,7 @@ for(let m=0;m<36;m++){
   for(const id of IDS){
     const f=a.report.fiscal[id], c=a.E.cities[id];
     if(m%12===0){annual[id]=4*f.rev.subsidy;fixed[id]=D.params.subBase.v+f.equalize;}
-    const expected=(f.rev.resTax+(annual[id]-fixed[id])/12-f.exp.service)/c.pop;
+    const expected=(f.rev.resTax+(annual[id]-fixed[id])/12+f.rev.tariff-f.exp.service)/c.pop;
     assert.ok(Number.isFinite(f.perResidentNet));
     assert.ok(Math.abs(f.perResidentNet-expected)<1e-12,'monthly per-capita allocation');
     assert.equal(b.report.fiscal[id].perResidentNet,f.perResidentNet,'advance payment cannot alter allocation');

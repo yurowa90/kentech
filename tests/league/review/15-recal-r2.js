@@ -73,7 +73,7 @@ const initial = () => { const E = X.initCities(ids, data, { months: 36, seed: "r
   const singleton = X.initCities([a], data); const one = X.monthStep(singleton, inp(singleton, () => ({ energy: { costPerMWh: .02 } })), data);
   near(one.report.fiscal[a].rev.tariff, 100 * (.008 * (1 + data.params.tariffMarkup.v) - .02), "F25 혼자일 때 기준 원가", .001);
   const zero = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 0, unsPct: 100, co2: 0 } })), data);
-  near(zero.E.cities[a].co2Intensity, E.cities[a].co2Intensity, "F19 공급0 직전 탄소 유지");
+  near(zero.E.cities[a].co2Intensity, E.cities[a].co2Intensity, "F19 공급0 시작 탄소 사용");
   const half = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 50, unsPct: 50, co2: 41 } })), data);
   near(half.E.cities[a].co2Intensity, .4567 + .15 * (.82 - .4567), "F19·29 공급량 분모와 지연");
   near(r.report.region.goal.co2, 600 * .4567 * .7, "F20 2027 수요 기반 공동 목표");
@@ -97,7 +97,7 @@ const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0,
   near(input.assets.uni, 0, "없는 자료 id 대학 안전 접근");
 }
 {
-  // F21: 유효 계절별 무작위 사건 빈도. 확정 일정과 기상 연속 발생은 별도 취급.
+  // F21/B9: 확정 일정만 제외하고 기상도 다음 달 반복 금지.
   const counts = {}, total = {}, histogram = {}; let randomCount = 0, fixed = 0;
   for (let seed = 0; seed < 400; seed++) {
     const S = C.newState(`recal-events-${seed}`, R.id, 0, ids, { turns: 12 });
@@ -107,6 +107,7 @@ const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0,
       const events = S.events.filter(e => e.round === m), scheduled = events.filter(e => e.id === "finedust_coal_cap"), free = events.filter(e => e.id !== "finedust_coal_cap");
       ok(scheduled.length === ([1,2,3,12].includes(m) ? 1 : 0), "F21 계절관리 확정 월");
       ok(free.length <= 1 && !events.some(e => e.id === "light_load_curtailment"), "F21·22 추첨0/1·경제 경부하 제외");
+      ok(free.every(e => !S.events.some(prev => prev.round === m-1 && prev.id === e.id)), "B9 기상 포함 다음 달 반복 금지");
       randomCount += free.length; fixed += scheduled.length;
       for (const e of free) { const key = `${season}/${e.id}`; counts[key] = (counts[key] || 0) + 1; histogram[e.id] = (histogram[e.id] || 0) + 1; }
     }
@@ -141,11 +142,14 @@ const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0,
     ok(!["farm","livestock"].includes(kind)||["noise","view"].includes(it.kind),"F32 농축산은 소음·경관만");
     ok(typeof it.src==="string", "F31 민원 발생 설비 분리");
   }
+  for(const it of cp.items.filter(it => it.src === "diesel"))
+    ok(!cp.items.some(other => other.bi === it.bi && other.ti === it.ti && other.kind !== it.kind && ["noise","smoke"].includes(other.kind)), "F33 같은 디젤·수용자 소음/매연 중복 금지");
   const hp = plan(["solar","h2store"]);
   const plain = B.simulate(hp,7,{league:true,mods:{curtailP:1,demandMul:.01}});
   const mixed = B.simulate(hp,7,{league:true,mods:{curtailP:1,demandMul:.01,h2Co2:.88}});
-  ok(mixed.tot.h2mixMWh>=0 && mixed.tot.h2End>=0,"F42 수소 유한 재고");
+  ok(mixed.tot.h2mixMWh>0 && mixed.tot.h2End>=0,"F42 수소 유한 재고");
   near(mixed.tot.batOut+mixed.tot.h2mixMWh+mixed.tot.h2End*Math.sqrt(.35),plain.tot.batOut+plain.tot.h2End*Math.sqrt(.35),"F42 혼소 포함 수소 에너지 보존",1e-6);
-  ok(mixed.co2<=plain.co2+1e-8,"F42 잔량 범위 탄소 감축");
+  ok(plain.co2 - mixed.co2 > 0,"F42 잔량 범위 탄소 감축 > 0");
+  near(plain.cost.fuel - mixed.cost.fuel, mixed.tot.h2mixMWh * .008, "F42 혼소분 LNG 연료비 차감", 1e-6);
 }
 console.log(`R2 checks ${checks}, fail 0`);

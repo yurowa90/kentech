@@ -1,5 +1,5 @@
 "use strict";
-// Reuse the acceptance fixture exactly; diagnostics never alter its assertions.
+// G4: lib·도시별 근사 원가 격자는 진단 전용. B12 판정은 21-host-policy-grid.js.
 const fs = require('node:fs'), path = require('node:path');
 const source = fs.readFileSync(path.resolve(__dirname, '../balance.js'), 'utf8')
   .replace('function block(key, fn) {', 'function block(key, fn) { return;')
@@ -14,7 +14,7 @@ function grid(b3 = false) {
   return Object.fromEntries(IDS.map(id=>{
     const rows=[];
     for(let taxRes=-2;taxRes<=2;taxRes++)for(let taxInd=-2;taxInd<=2;taxInd++)for(let service=-2;service<=2;service++) {
-      if (!b3 || taxRes === taxInd) rows.push(measure(id,{taxRes,taxInd,service},b3 ? run : run12));
+      if (!b3 || taxRes === taxInd) rows.push(measure(id,{taxRes,taxInd,service},run));
     }
     const best=Math.max(...rows.map(r=>r.score)), top=rows.filter(r=>r.score===best);
     return [id,{top,base:rows.find(r=>r.key==='0,0,0'),low:rows.find(r=>r.key==='-2,-2,2')}];
@@ -23,9 +23,7 @@ function grid(b3 = false) {
 if(require.main===module){
   const overrides=JSON.parse(process.argv[2]||'{}');
   for(const [k,v] of Object.entries(overrides)){
-    // REF 3.8 / G3 explicitly permits these benefit cells; the loss cells remain M.
-    if (['serviceCurve.3','serviceCurve.4'].includes(k)) D.params.serviceCurve.v[Number(k.at(-1))]=v;
-    else {if(D.params[k]?.grade!=='G')throw Error('G only: '+k);D.params[k].v=v;}
+    if(D.params[k]?.grade!=='G')throw Error('G only: '+k);D.params[k].v=v;
   }
   const result=process.argv.includes('--quick')?Object.fromEntries(IDS.map(id=>[id,[-2,-1,0,1,2].flatMap(tax=>[-2,0,2].map(service=>measure(id,{taxRes:tax,taxInd:tax,service})))])):grid(process.argv.includes('--b3'));
   console.log(JSON.stringify({overrides,settings:Object.fromEntries(['fiscalTargetRev','subBase','subPerCap','subEq','tariffMarkup','taxGain','taxYardstick','eduMemory','serviceCurve','wScore'].map(k=>[k,D.params[k].v])),result},null,2));

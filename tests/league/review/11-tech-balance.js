@@ -134,6 +134,9 @@ if (selectedIds.length === ids.length) {
     return [id, rows.filter(r => r.score === best).map(r => r.strategy)];
   }));
   for (const strategy of Object.keys(STRATEGIES)) ok(!ids.every(id => report.winners[id].includes(strategy)), `T5 ${strategy} 6도시 모두 1위 금지(공동1위 포함)`);
+  report.smrFirstCities = ids.filter(id => report.winners[id].includes("smr")).length;
+  report.smrTargetMet = report.smrFirstCities <= 3;
+  console.log("SMR 도시1위", report.smrFirstCities, "/6; 목표 ≤3", report.smrTargetMet);
   console.log("평균·도시별1위", JSON.stringify({ average: report.average, gain: report.researchGain, winners: report.winners }));
 } else console.log("부분 실행: T5 전체 6도시 판정 미실행");
 report.passes = passes;

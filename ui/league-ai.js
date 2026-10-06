@@ -117,7 +117,10 @@
     // 신중 성향은 재생 여유를 더 요구한다. 기존 연구 문턱·위험 선호 계수만 사용한다.
     if (KCP.TECH_DATA) p.re100 = KCP.leagueCore.techOf(S, id).includes("re100") &&
       (S.results.at(-1)?.team[id]?.renPct || 0) >= KCP.TECH_DATA.params.re100Need.v * (2 - style.risk);
-    const floor = (c.approval0 ?? KCP.ECON_DATA.params.sat0.v) - KCP.ECON_DATA.params.approvalDrop.v;
+    const active = S.econ.order.map(key => S.econ.cities[key]);
+    const change = city => city.approval - (city.approval0 ?? city.approval);
+    const relative = change(c) - (active.length > 1 ? active.reduce((s, city) => s + change(city), 0) / active.length : 0);
+    const floor = -KCP.ECON_DATA.params.approvalDrop.v;
     const cash = c.cash - investment;
     const reserve = c.pop * KCP.ECON_DATA.params.svcCost.v *
       (value("aiCashReserveMonths") + value("aiSafeCashMonths") * (1 - style.risk));
@@ -125,7 +128,7 @@
       p.taxRes = p.taxInd = 1; p.service = 0;
     } else if (cash < reserve) {
       p.taxRes = p.taxInd = clampStep(1 - style.risk); p.service = 0;
-    } else if (c.approval <= floor + value("aiApprovalMargin")) {
+    } else if (relative <= floor + value("aiApprovalMargin")) {
       p.taxRes = p.taxInd = -1; p.service = 1;
     } else {
       p.taxRes = p.taxInd = clampStep(1 - 2 * style.risk);

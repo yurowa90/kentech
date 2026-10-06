@@ -384,7 +384,30 @@
       cities[id] = { research: researchView(S, id), grid: gridView(S.grid && S.grid[id]), curtailMWh: S.econRep && S.econRep.grid && S.econRep.grid[id] ? S.econRep.grid[id].curtailMWh : 0, name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c, S.econRep?.groups[id]), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
     });
     const report = S.econRep || null;
-    return { speeds: { eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, monthsPerTurn: KCP.ECON_DATA.params.eduSpeed.v, note: `주민·기업 이동 시간 ×${KCP.ECON_DATA.params.eduSpeed.v}(게임 1달 ≈ 현실 약 ${KCP.ECON_DATA.params.eduSpeed.v}달)` }, year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { len: E.len, coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, revYear: c.revYear, co2Intensity: c.co2Intensity, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
+    const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
+    const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
+    Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: 1, eduAirSpecified: 4,
+      smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed),
+      lngSpikeFrequency: 3, outageHoursPerPercent: 87.6, koreaOutageHours2019: 0.04,
+      islandLineLoss: 3, researchYears: [10, 30], complaintPoliticalEffect: [50, 200],
+      note: `주민·기업 이동과 SMR 공사 시간 ×${speed}(게임 1달 ≈ 현실 약 ${speed}달)`,
+      items: [
+        ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
+        ["eduMemory", `지지율 회복 기억 ×${P.eduMemory.v}: 임기 4년을 게임 12달에 압축`],
+        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년`],
+        ["eduAir", "대기 영향: 명세 ×4, 현재 적용 ×1(미구현 충돌)"],
+        ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
+        ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
+        ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
+        ["hazardFreq", `기상 사건 빈도 ×${P.hazardFreq.v}: 정책 판단 시간을 확보`],
+        ["lngSpikeFrequency", "LNG 급등은 현실보다 약 3배 자주: 충격 관찰"],
+        ["outageHoursPerPercent", "정전 1% = 연 87.6시간: 한국 평균 연 0.04시간(2019)보다 큰 교육용 눈금"],
+        ["islandLineLoss", "섬 연습 지도 송전 손실은 리그의 3배: 짧은 지도에서 손실 관찰"],
+        ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 약 55개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed)}달`],
+        ["researchYears", "연구 기간 수십 배 압축: 현실 10~30년 → 게임 수 달"],
+        ["complaintPoliticalEffect", "민원 정치 효과 약 50~200배 확대: 마을 민원을 도시 전체 만족에 반영"]
+      ].map(([key, note]) => ({ key, note })) });
+    return { speeds, year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { len: E.len, coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, revYear: c.revYear, co2Intensity0: c.co2Intensity0, co2Intensity: c.co2Intensity, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
   }
   // 공개 상태는 허용한 필드만 내보낸다. 키·서명·내부 자리 식별자·순번은 제외한다.
   function publicView(S, now) {
@@ -690,7 +713,7 @@
   function drawEvents(S, R) {
     const rd = roundsOf(S)[S.round - 1], act = activeOf(S);
     const pool = (R.events || []).filter(E => (!S.econ || !["finedust_coal_cap", "light_load_curtailment"].includes(E.id)) &&
-      (!S.rounds || E.hazardReal || !(S.events || []).some(ev => ev.round === S.round - 1 && ev.id === E.id)) &&
+      (!S.rounds || !(S.events || []).some(ev => ev.round === S.round - 1 && ev.id === E.id)) &&
       (E.seasons || []).includes(rd.season) && act.some(id => scopeHits(R, E, id)) && eventValid(S, R, E));
     const rnd = rng(hashStr((S.seedKey ?? S.room) + ":" + S.round)), out = [];
     // P(event)=monthEventP*w/sum(w)。그 계절의 나머지 가중을 고정하고 역산한다.
@@ -921,6 +944,7 @@
         entry.score += base ? base.pts : item.pts; complaints.set(key, entry);
       });
       return {
+        residentDemandShare: res.tot.dem > 0 ? res.town.reduce((s, t, i) => s + (["factory_big", "industry", "port"].includes(bg.TOWNS[i].kind) ? 0 : t.dem), 0) / res.tot.dem : 0,
         loss: res.tot.loss, idle: res.tot.idle, cpList: [...complaints.values()],
         ...(mods && mods.curtailP != null ? { curtailMWh: res.tot.curtailMWh } : {}),
         spareMW, H, dem: res.hrDem, uns, gx: res.gx || [], hosp: res.hrHosp, hospDem: res.hrHospDem, hospUns: res.hrHospUns,
@@ -1151,7 +1175,7 @@
   function econInput(S, R, id, r, wk, extra) {
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
-      energy: { bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? 0.92 : 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+      energy: { bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
         tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: { ...(S.teams[id].econPol || {}), save: (plan.policies || []).includes("save"), share: (plan.policies || []).includes("share") },
@@ -1175,6 +1199,7 @@
     ids.forEach(id => {
       const s = sims[id], r = res.team[id];
       r.exportFuel = settled.out[id].fuelX;
+      r.residentDemandShare = s.residentDemandShare;
       let peak = 0;
       for (let k = 1; k < s.H; k++) if (s.dem[k] > s.dem[peak]) peak = k;
       // 해당 시각만 재정산해 판매에 쓴 여유를 뺀다. 미접속 망의 부족은 섞지 않는다.
