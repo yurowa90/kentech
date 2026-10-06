@@ -256,8 +256,10 @@ block("B5", () => {
     ok(finite(c?.fin) && c.fin === 66.7, `${id} 한도50% 부채 fin=${c?.fin} (F14: 예산 채무 20%, 목표 66.7)`);
   }));
   const w = D.params.wScore?.v;
-  ok(["pop", "ind", "fin", "co2", "appr", "rel"].every(k => finite(w?.[k]) && Math.abs(w[k] - 1 / 6) < 1e-9) && !Object.hasOwn(w || {}, "cash"),
-    `점수 가중 ${JSON.stringify(w)} (RECAL-SPEC §1.1: 각 1/6, cash 제거)`);
+  const expected = { pop: .10, ind: .10, fin: .125, co2: .275, appr: .15, rel: .25 };
+  ok(Object.keys(expected).every(k => finite(w?.[k]) && Math.abs(w[k] - expected[k]) < 1e-9) &&
+    Math.abs(sum(Object.values(w)) - 1) < 1e-9 && !Object.hasOwn(w || {}, "cash"),
+    `점수 가중 ${JSON.stringify(w)} (RECAL-SPEC §7.4: T5·B16 G 재보정, 합1·cash 제외)`);
 });
 
 block("B6", () => {
