@@ -82,7 +82,7 @@ function causesContract(id, report) {
   check(`${id}: group explanation exists`, !!groups && Object.hasOwn(groups, 'why'));
   if (causes.length && groups) {
     // ECON-NEXT §0: why 객체의 key가 첫 원인의 key와 같아야 한다.
-    check(`${id}: why uses leading cause key`, groups.why?.key === causes[0].key,
+    check(`${id}: why uses leading cause key`, groups.approvalChangeCause?.key === causes[0].key && typeof groups.why === "string" && typeof groups.whyGrade === "string",
       `why=${JSON.stringify(groups.why)} first=${JSON.stringify(causes[0].key)}`);
   }
 }

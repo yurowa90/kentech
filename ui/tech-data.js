@@ -5,9 +5,9 @@
   const KCP = window.KCP;
   if (!KCP) return;
   const source = "docs/ECON-TECH-SPEC.md", evidence = "docs/ECON-TECH.md";
-  const p = (v, grade, note, sources = [source, evidence]) => ({ v, grade, note, sources });
+  const p = (v, grade, note, sources = [source, evidence]) => ({ v, grade, note, sources, refs: sources.filter(s => /^[A-Z]\d+$/.test(s)) });
   const params = {
-    roundSteps: p(4, "G", "리그 달 턴당 4주치; 샌드박스는 기존 주 계산"),
+    roundSteps: p(4.35, "M", "연구 달 환산 · 계산: 365.25/12/7≈4.35주 · 배속: 없음 · REF 12.7", [source]),
     eurekaFrac: p(1 / 3, "G", "조건 달에 남은 연구량의 1/3, 카드당 한 번"),
     licenseNeed: p(0.5, "G", "기술 이전의 필요 연구량 비율"),
     royalty: p(0.5, "G", "이전 연구 중 원 개발 도시에 월 사용료, 억"),
@@ -20,7 +20,7 @@
     scableLoss: p(0.5, "G", "초전도 연계선 손실 절반; 보도 1/4보다 보수적"),
     scableCooling: p(0.5, "G", "연계선당 월 냉각비 억; 양 끝이 도입하면 절반씩"),
     sicOutput: p(1.015, "P", "SiC 출력 · Hatanaka 외(2015) 최고 효율 99.1% 초과 [P95], 현실 개선 약 1% 추정 · 계산: 1+0.01×1.5 · 배속: 개선폭 ×1.5(G) · REF 12.3", ["P95"]),
-    tandemOutput: p(1.2, "P", "탠덤 출력 · Fraunhofer ISE(2026) 2024Q4 결정질 22.7%·탠덤 26.9%, 2030 전망 29/24 [I21][X19][I13] · 계산: 1.18~1.21 · 배속: 없음 · REF 12.2", ["I21", "X19", "I13"]),
+    tandemOutput: p(1.2, "P", "탠덤 출력 · Fraunhofer ISE(2026) 2024Q4 결정질 22.7%·optics.org(2024) 탠덤 모듈 26.9%, 2030 전망 29/24 [I21][X19][I13] · 계산: 1.18~1.21 · 배속: 없음 · REF 12.2", ["I21", "X19", "I13"]),
     tandemCost: p(1.2, "G", "설계 선택: 탠덤 W당 프리미엄 0 · NREL ATB(2025) 효율비 약 1.2 [I21][I13] · 계산: 출력 1.2×(1+프리미엄 0) · 배속: 없음 · REF 12.2", ["I21", "I13"]),
     nbatCapacity: p(1.25, "G", "새 배터리 16→20 MWh; 밀도 +40% 발표의 0.625배"),
     nbatCost: p(15, "G", "차세대 배터리 건설비 억"),
@@ -40,12 +40,12 @@
     drEffect: p(1.5, "G", "VPP 수요반응 감축량 배수; 실측 효과 미확인"),
     drCost: p(0.5, "G", "VPP 수요반응 정책비 배수"),
     vppCurtail: p(0.8, "G", "VPP 출력제어 손실 배수"),
-    heatDamage: p(0.7, "G", "예측 또는 VPP 폭염 추가 수요 피해 30% 감소 근사(중복 적용 없음)"),
+    heatDamage: p(0.7, "G", "VPP 폭염 추가 수요 피해 30% 감소 근사(중복 적용 없음)"),
     re100Need: p(30, "G", "RE100 연구 시작은 직전 운영 재생 비중 30% 이상"),
     eurekaSolar: p(10, "G", "탠덤 유레카 태양광 운영 기수"),
     eurekaTies: p(2, "G", "HVDC 유레카 내부 망까지 연결된 연계선 수"),
     eurekaDr: p(3, "G", "VPP 유레카 수요반응 운영 달 수"),
-    eurekaApproval: p(55, "G", "SMR 유레카 지지율"),
+    eurekaApproval: p(5, "G", "설계 선택: SMR 유레카는 시작 지지율 대비 허용 하락 5점 또는 시위 없음 · REF 11.8"),
     titleGrid: p(3, "G", "그리드 칭호 도입 장수"),
     titleOther: p(2, "G", "신소재·수소·AI 칭호 도입 장수"),
     titleSingle: p(1, "G", "환경·원자핵 갈래는 v1 카드 한 장"),

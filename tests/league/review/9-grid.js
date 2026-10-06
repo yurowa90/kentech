@@ -51,7 +51,7 @@ test("도시별 시작 H와 월 한도", () => {
     ok(JSON.stringify(S) === before, `gridStatus 입력 불변 ${id}`);
     near(g.peakMW, expectedPeak, `도시 피크 ${id}`);
     near(g.hostMW, expectedPeak * 0.4, `시작 H=피크×0.4 ${id}`);
-    near(g.monthlyMW, expectedPeak * 0.1, `월 한도=피크×0.1 ${id}`);
+    near(g.monthlyMW, expectedPeak * (0.00375 * 27), `월 한도=피크×0.1 ${id}`);
     near(g.waitingMW, 0, `빈 계획 대기 0 ${id}`);
     S.teams[id].plan = planOf(id, ["battery"]);
     const withBattery = C.gridStatus(S, R, bg, id);
@@ -63,8 +63,8 @@ test("도시별 시작 H와 월 한도", () => {
 });
 
 test("v1.4.1 등급·소수력 접속·옛 저장 1회 이행", () => {
-  for (const k of ["hostCapMul", "curtailLoadMul", "curtailSlope", "curtailKnee", "curtailMax", "curtailOffSeason", "curtailLoss"])
-    ok(D.params[k].grade === (["hostCapMul", "curtailSlope", "curtailKnee"].includes(k) ? "M" : "G"), `${k} RECAL-SPEC §1.1 근거/게임 가정 등급`);
+  for (const k of ["hostCapMul", "curtailLoadMul", "curtailSlope", "curtailKnee", "curtailMax", "curtailOffSeason", "curtailLossReal"])
+    ok(D.params[k].grade === (["hostCapMul", "curtailSlope", "curtailKnee", "curtailLossReal"].includes(k) ? "M" : "G"), `${k} RECAL-SPEC §1.1 근거/게임 가정 등급`);
   const S = game(), id = "hwaseong";
   S.round = 3;
   S.teams[id].plan = planOf(id, ["hydro", "solar", "solar", "solar", "solar"], true);
@@ -172,7 +172,7 @@ test("출력제어 계절식과 경제 전용 훅", () => {
   S.teams[id].plan = planOf(id, [...Array(10).fill("solar"), ...Array(3).fill("battery")]);
   for (let month = 1; month <= 18; month++) { S.round = month; C.refreshGrid(S, bg, true); }
   const g = S.grid[id], r = g.connectedMW / (0.4 * g.peakMW);
-  const spring = Math.min(0.6, Math.max(0, 1.7 * (r - 0.72))) * 0.06;
+  const spring = Math.min(0.6, Math.max(0, 1.3 * (r - 0.64))) * (0.018 * 3.3);
   ok(spring > 0, "제어식 양수 fixture");
   for (const [month, multiplier] of [[3, 1], [5, 1], [9, 1], [11, 1], [1, 0.3], [7, 0.3]]) {
     S.round = month;

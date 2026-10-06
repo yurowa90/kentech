@@ -316,7 +316,7 @@
         const weeks = horizon.reduce((sum, r) => sum + (r.mdays || r.days) / rd.days, 0);
         const worth = key => {
           const net = t => t.earn - t.pay - t.fuelX + t.saveFuel +
-            t.del.reduce((sum, mw) => sum + mw, 0) * value("aiTieValue");
+            t.del.reduce((sum, mw) => sum + mw, 0) * (value("aiVollMul") * value("normalCost"));
           return (net(after.out[key]) - net(before.out[key])) * weeks;
         };
         worthwhile = worth(id) > half && (incoming || worth(other) > half);
@@ -329,7 +329,7 @@
   }
 
   // 연구도 공개 규칙 안에서 고른다. 운영 가능한 공급을 먼저 확보한 뒤 인력을 짓는다.
-  function research(S, R, id, bg, styleName, plan) {
+  function research(S, R, id, bg, styleName, style, plan) {
     if (!KCP.TECH_DATA) return plan;
     const D = KCP.TECH_DATA, C = KCP.leagueCore, rs = C.researchView(S, id), p = k => D.params[k].v;
     plan.rq = rs.queue.filter(key => rs.stage[key] !== "done");
@@ -339,9 +339,17 @@
     if (!card) return plan;
     const have = supply(bg, S, id, plan);
     if (have.firm < have.peak) return plan;
+    const rounds = C.roundsOf(S), turn = Math.max(1, S.round);
+    const origin = rounds.slice(0, turn).reduce((a, rd, i) => rd.month === 1 ? i + 1 : a, 1);
+    const age = turn - origin - style.delay, annual = age === 0;
+    if (age < 0 || !annual && age % value(S.econ ? "aiGridRepairEvery" : "aiRepairEvery") !== 0) return plan;
+    if (style.risk === 0 && have.renew < have.peak * (value("aiRenewFloor") + value("aiRenewTarget"))) return plan;
     const labCost = bg.RS.labOpexR * p("aiLabs") * p("aiResearchReserve");
     const demoReserve = C.researchReserve(S, id, bg, { ...plan, rq: [card] });
-    const limit = C.budget(S, id) - C.fixedOf(S, R, id) - C.lossOf(S.teams[id].base, plan) - demoReserve - labCost;
+    const fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan);
+    const committed = S.teams[id].committed ?? (S.teams[id].base || []).reduce((a, x) => a + x.c, 0) + fixed;
+    const extra = Math.max(0, C.budget(S, id) - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
+    const limit = committed + extra - fixed - demoReserve - labCost;
     for (const [kind, count] of [["lab", p("aiLabs")], ["uni", p("aiUnis")]]) {
       if (plan.builds.filter(b => b.t === kind).length >= count) continue;
       const tile = bg.TILES.find(t => !plan.builds.some(b => b.i === t.i) && !bg.siteRule(kind, t));
@@ -364,7 +372,7 @@
       const original = assets(S.teams[id].plan);
       const constructed = build(S, R, id, bg, chosen, original);
       const styleName = Object.keys(styles).find(key => styles[key].risk === chosen.risk) || "balanced";
-      const result = research(S, R, id, bg, styleName, constructed);
+      const result = research(S, R, id, bg, styleName, chosen, constructed);
       // 공급 보강으로 실증 예약금까지 썼다면 연구를 대기한다. 진척은 호스트에 남는다.
       const C = KCP.leagueCore;
       if (KCP.TECH_DATA && C.spendOf(bg, S, R, id, result) > C.budget(S, id) && C.researchReserve(S, id, bg, result) > 0) result.rq = [];

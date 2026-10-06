@@ -109,15 +109,15 @@ test("verify 2: 공동 요청 취소 뒤 양쪽 단독 진행", () => {
   ok(request(S, a, { type: "joint", op: "cancel", card: "hvdc", other: b }).ok, "명시적인 공동 취소 승인");
   for (const id of [a, b]) ok(!C.researchView(S, id).joint.hvdc?.active, `${id} 취소 뒤 공동 비활성`);
   C.run(S, B, 1);
-  for (const id of [a, b]) near(C.researchView(S, id).prog.hvdc, 4, `${id} 취소 뒤 한 연구소 단독 4주`);
+  for (const id of [a, b]) near(C.researchView(S, id).prog.hvdc, 4.35, `${id} 취소 뒤 한 연구소 단독 4주`);
 });
 
 test("verify 2: 상대 큐 이탈은 공동 해제 후 자기 카드 진행", () => {
   const S = jointGame();
   ok(request(S, b, { type: "research", queue: ["sic"] }).ok, "상대 다른 카드 선택 승인");
   C.run(S, B, 1);
-  near(C.researchView(S, a).prog.hvdc, 4, "상대 이탈 뒤 hvdc 단독 4주");
-  near(C.researchView(S, b).prog.sic, 4, "다른 카드 sic 단독 4주");
+  near(C.researchView(S, a).prog.hvdc, 4.35, "상대 이탈 뒤 hvdc 단독 4주");
+  near(C.researchView(S, b).prog.sic, 4.35, "다른 카드 sic 단독 4주");
   ok(!C.researchView(S, a).joint.hvdc?.active, "이탈한 공동 관계 활성 해제");
 });
 
@@ -127,7 +127,7 @@ test("verify 2: 연결 단절 공동 카드 뒤의 연구는 계속 진행", () 
   S.teams[b].plan.lines = [];
   C.run(S, B, 1);
   near(C.researchView(S, a).prog.hvdc || 0, 0, "끊긴 공동 카드는 진척 대기");
-  near(C.researchView(S, a).prog.sic, 4, "막힌 공동 카드 뒤 sic는 4주 진행");
+  near(C.researchView(S, a).prog.sic, 4.35, "막힌 공동 카드 뒤 sic는 4주 진행");
 });
 
 test("verify 2: 미수락 공동 제안은 이전을 막지 않음", () => {
@@ -231,7 +231,8 @@ test("verify 8: 도시 월 변화와 최저 집단의 현재 불만 분리", () 
     const g = r.report.groups[a], change = g.approvalChangeCause, low = g.lowestGroupDissatisfaction;
     ok(change?.scope === "city-month-change" && !Object.hasOwn(change, "group"), "도시 변화 원인에는 최저 집단을 붙이지 않음");
     eq(change?.key, r.report.cities[a].causes[0]?.key ?? null, "도시 변화 원인은 이번 달 절댓값1위 항목");
-    eq(g.why, change, "구 why 호환 필드도 도시 월 변화 의미");
+    eq(g.why, change.text, "G2 why 문구는 도시 월 변화 의미");
+    ok(typeof g.whyGrade === "string", "G2 whyGrade 분리");
     const lowest = Object.keys(E.cities[a].groups).sort((u, v) => E.cities[a].groups[u].sat - E.cities[a].groups[v].sat)[0];
     ok(low?.scope === "lowest-group-level" && low.group === lowest, "별도 불만 필드는 실제 최저 만족 집단");
     near(low?.satisfaction, E.cities[a].groups[lowest].sat, "최저 집단 현재 만족도");

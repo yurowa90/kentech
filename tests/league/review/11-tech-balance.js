@@ -106,10 +106,13 @@ for (const focal of selectedIds) for (const strategy of Object.keys(STRATEGIES))
       if (!res.ok) { select(id); run.rejected.push({ month: m, id, response: res, cash: S.econ.cities[id].cash, debtCap: S.econ.cities[id].debtCap, budget: C.budget(S, id), spend: C.spendOf(B, S, R, id, proposals[id].plan), plan: proposals[id].plan }); }
     }
     const result = C.run(S, B, m * 100000 + 20), r = result.team[focal], city = S.econ.cities[focal];
-    run.months.push({ month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap,
+    run.months.push({ month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
+      growth: { pop: city.pop / city.pop0 / (S.econ.totals.pop / S.econ.totals.pop0) - 1, ind: city.ind / city.ind0 / (S.econ.totals.ind / S.econ.totals.ind0) - 1 },
       adopted: C.researchView(S, focal).adopted, builds: S.teams[focal].plan.builds.map(b => b.t) });
   }
-  run.score = X.score(S.econ).by[focal].score;
+  const scored = X.score(S.econ).by[focal];
+  run.score = scored.score; run.parts = scored.parts; run.coop = scored.coop;
+  run.state = S.econ;
   run.avgUns = run.months.reduce((sum, m) => sum + m.uns, 0) / run.months.length;
   run.adopted = C.researchView(S, focal).adopted;
   ok(Number.isFinite(run.score), `${focal}/${strategy} 유한 점수`);

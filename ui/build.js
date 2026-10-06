@@ -84,6 +84,11 @@
     return Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
   }
   const PACKS = KCP.BUILD_MAPS || {};
+  // REF 8.5 [S31], NASA POWER 2001–2020: 대표 격자 월평균 일강수×달 일수(mm).
+  // 다른 기후 계수는 유지한다. 모든 지역에 대표 격자를 사용하는 것은 M 가정이다.
+  Object.values(PACKS).forEach(pack => {
+    if (pack.climate && !pack.climate.precip_mm) pack.climate.precip_mm = [0.70, 1.13, 1.27, 2.55, 2.72, 4.16, 11.08, 8.15, 4.47, 1.65, 1.54, 0.83].map((v, m) => v * [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m]);
+  });
   // 혼자 하기에서도 모든 지도(연습 섬 + 리그 도시 6곳)를 고를 수 있다. 혼자 할 때 외부 연결점은 외부 전력망(수입)이다.
   const PACK_IDS = Object.keys(PACKS);
   // lg: 리그 모드. P.gates가 있으면 그 칸만 외부 연결점(이웃 도시 쪽)이 되고 나머지 'g' 칸은 경계 밖이 된다.
@@ -254,7 +259,7 @@
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
   // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂ O: 법정 0.4567 [L14] REF 9.4.
   const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.4567 }
-    : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0.1 });
+    : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0, bioCo2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
@@ -338,6 +343,8 @@
         day.winter = m === 11 || m <= 1;
         sunny = w === 0 ? sunny + 1 : 0;
         day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= 3 ? 0.7 : 0.85;
+        const sunnyStay = 0.45 + 0.55 * PW[m][0];
+        day.flowMean = PW[m][0] * (0.85 - 0.15 * sunnyStay ** 2) + PW[m][1] + PW[m][2] * 1.3;
         // 일사: 그 달 GHI × 성능비 0.8을 날씨 비율로 나눠 월평균을 맞춘다. 낮 길이는 위도·적위로.
         const dec = 23.44 * Math.sin(2 * Math.PI * (284 + doy + 1) / 365) * Math.PI / 180, lat = C.lat * Math.PI / 180;
         day.dayLen = (2 / 15) * Math.acos(clamp(-Math.tan(lat) * Math.tan(dec), -1, 1)) * 180 / Math.PI;
@@ -533,25 +540,31 @@
   const SMOKY = { diesel: 1, biomass: 1 };
   function complaints(st, runFrac) {
     const share = st.policies.includes("share"), items = [];
+    const residential = ["village", "town_s", "city", "city_m", "city_l"];
+    const receptors = [...residential, "hospital", "school"];
     TOWNS.forEach((W, ti) => {
-      const TT = TILES[W.tile];
+      const farm = ["farm", "livestock"].includes(W.kind);
+      if (!receptors.includes(W.kind) && !farm) return;
       st.builds.forEach((B, bi) => {
-        const d = hexDist(B.i, W.tile), BT = TILES[B.i];
-        if (B.t === "diesel") {
-          const f = runFrac ? runFrac[bi] || 0 : 0.6;
-          if (d <= 2 && TT.X - BT.X >= -0.01) items.push({ ti, kind: "smoke", bi, pts: (d <= 1 ? 30 : 18) * f });
-          else if (d <= 1) items.push({ ti, kind: "noise", bi, pts: 6 * f });
-        } else if (B.t === "biomass") {
-          const f = runFrac ? runFrac[bi] || 0 : 0.6;
-          if (d <= 1) items.push({ ti, kind: "smoke", bi, pts: 12 * f });
+        const d = hexDist(B.i, W.tile), f = runFrac ? runFrac[bi] || 0 : 0.6;
+        const add = (kind, pts) => items.push({ ti, kind, bi, src: B.t, pts: pts * (share && ["noise", "view"].includes(kind) && ["wind", "offshore", "solar"].includes(B.t) ? 0.5 : 1) });
+        if (["diesel", "biomass"].includes(B.t)) {
+          if (!farm && d <= 3) add("smoke", (B.t === "diesel" ? 30 : 12) * (d <= 1 ? 1 : d === 2 ? 0.6 : 0.3) * f);
+          if (B.t === "diesel" && d <= 1) add("noise", 6 * f);
         } else if (B.t === "wind") {
-          if (d <= 1) items.push({ ti, kind: "noise", bi, pts: share ? 7 : 14 });
-          else if (d === 2) items.push({ ti, kind: "view", bi, pts: share ? 2.5 : 5 });
+          if (d <= 1) add("noise", 14);
+          else if (d === 2) add("view", 3);
         } else if (B.t === "offshore") {
-          if (d <= 1) items.push({ ti, kind: "view", bi, pts: share ? 2 : 4 });
-        } else if (B.t === "solar" && d <= 1) items.push({ ti, kind: "view", bi, pts: share ? 2 : 4 });
-        if (BT.t === "forest" && d <= 3) items.push({ ti, kind: "green", bi, pts: 3 });
+          if (d <= 3 && residential.includes(W.kind)) add("view", 2);
+        } else if (B.t === "solar" && d <= 1) add("view", ["city", "city_m", "city_l"].includes(W.kind) ? 2 : 4);
       });
+    });
+    // 숲 훼손은 인접 수용자 수로 중복하지 않고 설비마다 한 번 기록한다.
+    st.builds.forEach((B, bi) => {
+      if (TILES[B.i].t !== "forest") return;
+      const near = TOWNS.map((W, ti) => ({ W, ti, d: hexDist(B.i, W.tile) }))
+        .filter(x => receptors.includes(x.W.kind) && x.d <= 3).sort((a, b) => a.d - b.d || a.ti - b.ti)[0];
+      if (near) items.push({ ti: near.ti, kind: "green", bi, src: B.t, pts: 3 });
     });
     const groups = new Map();
     items.forEach(it => {
@@ -596,8 +609,11 @@
       if (!C) return B.mw * Math.min(1, (v / M.rated) ** 3);
       return v < M.cutin ? 0 : B.mw * Math.min(1, (v ** 3 - M.cutin ** 3) / (M.rated ** 3 - M.cutin ** 3));
     }
-    if (g.kind === "tidal") return B.mw * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
-    if (g.kind === "hydro") return B.mw * (day.flow || 1);
+    if (g.kind === "tidal") return B.mw * 0.31 * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
+    if (g.kind === "hydro") {
+      const rain = C?.precip_mm, q = rain ? 0.5 + 0.5 * rain[MODS?.hydroMonth != null ? MODS.hydroMonth - 1 : day.m] / (rain.reduce((a, v) => a + v, 0) / 12) : 1;
+      return B.mw * Math.min(1, 0.25 * q * (day.flow || 1) / (day.flowMean || 1));
+    }
     return 0;
   }
 
@@ -639,7 +655,7 @@
     const flow = new Float32Array(Math.max(1, H * E));
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
-    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0 };
+    const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0, bioCo2: 0, h2mixMWh: 0 };
     if (curtail) { tot.curtailMWh = 0; tot.curtailCapturedMWh = 0; }
     let dk = 0;
     gens.forEach(g => {
@@ -670,7 +686,7 @@
       C.DL.sort((a, b) => (a.g.mc - b.g.mc) || byPrio(a, b));
     });
     const addFlow = (P, sent, k) => { const o = k * E; for (const [e, s] of P.path) flow[o + e] += s * sent; };
-    const hrHosp = new Uint8Array(H), hospTi = TOWNS.map(W => W.kind === "hospital");
+    const hrHosp = new Uint8Array(H), hrHospDem = new Float32Array(H), hrHospUns = new Float32Array(H), hospTi = TOWNS.map(W => W.kind === "hospital");
     const GX = !lgOut ? [] : N.comps.filter(C => C.disp.some(u => u.kind === "import")).map(C => {
       const own = C.disp.filter(u => u.kind !== "import"), capT = own.reduce((a, u) => a + u.D.cap, 0);
       const to = [];
@@ -679,7 +695,8 @@
         C, own, to, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
         disp: new Float32Array(H), dmc: new Float32Array(H), dco2: new Float32Array(H),
         mc: capT > 0 ? own.reduce((a, u) => a + u.mc * u.D.cap, 0) / capT : Infinity,
-        co2i: capT > 0 ? own.reduce((a, u) => a + u.D.co2 * u.D.cap, 0) / capT : 0
+        co2i: capT > 0 ? own.reduce((a, u) => a + u.D.co2 * u.D.cap, 0) / capT : 0,
+        bioCo2i: capT > 0 ? own.reduce((a, u) => a + (u.D.bioCo2 || 0) * u.D.cap, 0) / capT : 0, dbioCo2: new Float32Array(H)
       };
     });
     for (let d = 0; d < days; d++) {
@@ -710,7 +727,7 @@
         gens.forEach(g => {
           g.av = 0;
           if (isStorage(g)) { g.chg = 0; g.dis = 0; return; }
-          if (g.D) { g.out = 0; g.w = 0; return; }
+          if (g.D) { g.out = 0; g.w = 0; g.mixed = 0; return; }
           g.av = renOut(g, wx, h, k);
           if (g.live) tot.renAvail += g.av; else tot.idle += g.av;
           if (curtail) {
@@ -772,7 +789,17 @@
           C.disp.forEach(u => {
             if (u.out <= 1e-6) return;
             if (u.out < u.D.min) { u.w = u.D.min - u.out; tot.waste += u.w; u.out = u.D.min; }
-            tot.by[u.kind] += u.out; tot.fuel += u.out * u.mc; tot.co2 += u.out * u.D.co2; u.runH++;
+            tot.by[u.kind] += u.out; tot.fuel += u.out * u.mc; tot.co2 += u.out * u.D.co2;
+            tot.bioCo2 += u.out * (u.D.bioCo2 || 0); u.runH++;
+            // F42: 같은 망의 남은 수소만 혼소한다. 이미 방전한 양은 다시 쓰지 않는다.
+            if (u.kind === "lng" && MODS?.h2Co2 != null) {
+              let need = u.out * (1 - MODS.h2Co2);
+              for (const b of C.bat.filter(b => b.kind === "h2store")) {
+                const eff = storedEff(b, bEff), used = Math.max(0, Math.min(need, storedMW(b) - b.dis, b.soc * eff));
+                b.soc -= used / eff; b.dis += used; need -= used;
+                tot.co2 -= used * u.D.co2; u.mixed += used; tot.h2mixMWh += used;
+              }
+            }
             if (u.dk !== undefined && u.dk < 32) hrDiesel[k] |= 1 << u.dk;
           });
           // 균등: 덩어리 안의 부족분을 수요 비율대로 나눈다(병원도 같은 비율).
@@ -788,13 +815,13 @@
           G.ren[k] = G.C.ren.reduce((a, g) => a + Math.max(0, g.av), 0) + G.own.reduce((a, u) => a + (u.w || 0), 0);
           G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
           // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
-          let dq = 0, dm = 0, dc = 0;
-          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2; });
-          G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0;
+          let dq = 0, dm = 0, dc = 0, db = 0;
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc; dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
+          G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0; G.dbioCo2[k] = dq > 0 ? db / dq : 0;
         });
         rem.forEach((r, ti) => {
           const Dt = town[ti];
-          if (hospTi[ti] && r > 1e-4) hrHosp[k] = 1;
+          if (hospTi[ti]) { hrHospDem[k] += dem[ti]; hrHospUns[k] += Math.max(0, r); if (r > Math.max(0.005, dem[ti] * 0.02)) hrHosp[k] = 1; }
           Dt.dem += dem[ti];
           hrUns[k * NT + ti] = Math.max(0, r);
           if (r > outageCut(dem[ti])) {
@@ -834,10 +861,10 @@
     });
     const res = {
       days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
-      town, tot, cost, co2: tot.co2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
+      town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
-      hrHosp, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
-      gx: GX.map(G => ({ to: G.to, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i }))
+      hrHosp, hrHospDem, hrHospUns, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
+      gx: GX.map(G => ({ to: G.to, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
     };
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);

@@ -29,6 +29,13 @@ function annualDebtRevenue(rows, id) {
     sum(recurring) + sum(subsidies);
   return { recurring, subsidies, annual };
 }
+// RECAL F14: 첫해 시작 표준세입; 매년 1월 직전 연도 세금·분기 지원금 합계.
+function capRevenue(r, id, m) {
+  const yearStart = Math.floor(m / 12) * 12;
+  return yearStart === 0 ? r.start.cities[id].revYear : sum(r.reports.slice(yearStart - 12, yearStart).map(R => {
+    const v = R.fiscal[id].rev; return v.resTax + v.indTax + v.subsidy;
+  }));
+}
 let pass = 0, fail = 0;
 let section = "";
 const counts = {}, failures = [];
@@ -228,8 +235,8 @@ block("B4", () => {
   test("비싼 전력의 음수 차익", () => {
     // v1.2 우선: B11 — 원가를 10배 올린 도시도 공급량 가중 평균으로 차익 계산.
     const E = initial(), ins = inputs(E, id => id === SMALL ? { energy: { costPerMWh: FIXTURE.cost * 10 } } : {});
-    const avg = sum(IDS.map(id => ins[id].energy.demMWh * ins[id].energy.costPerMWh)) /
-      sum(IDS.map(id => ins[id].energy.demMWh));
+    const others = IDS.filter(id => id !== SMALL);
+    const avg = sum(others.map(id => ins[id].energy.demMWh * ins[id].energy.costPerMWh)) / sum(others.map(id => ins[id].energy.demMWh));
     const e = ins[SMALL].energy, want = e.demMWh * (avg * (1 + markup?.v) - e.costPerMWh);
     const f = X.monthStep(E, ins, D)?.report?.fiscal?.[SMALL];
     // v1.2 우선: B11 — 이 입력은 정전 0이므로 공급량=수요량.
@@ -242,11 +249,11 @@ block("B5", () => {
   const E = initial();
   IDS.forEach(id => test(`${id} 재정 점수`, () => {
     const parts = cash => { const e = clone(E); e.cities[id].cash = cash; return X.score(e, D)?.by?.[id]?.parts; };
-    const a = parts(E.cities[id].cash0 * 3), b = parts(0), c = parts(-E.cities[id].debtCap * 0.5);
+    const a = parts(E.cities[id].cash0 * 3), b = parts(0), c = parts(-0.20 * 2.2 * E.cities[id].revYear);
     const keys = Object.keys(a || {}).sort().join(",");
     ok(keys === ["pop", "ind", "fin", "co2", "appr", "rel"].sort().join(","), `${id} parts 키=${keys} (정확히 pop,ind,fin,co2,appr,rel)`);
     ok(a?.fin === 100 && b?.fin === 100, `${id} 현금3배/0 fin=${a?.fin}/${b?.fin} (목표 100/100)`);
-    ok(finite(c?.fin) && c.fin <= 60, `${id} 한도50% 부채 fin=${c?.fin} (목표 ≤60)`);
+    ok(finite(c?.fin) && c.fin === 66.7, `${id} 한도50% 부채 fin=${c?.fin} (F14: 예산 채무 20%, 목표 66.7)`);
   }));
   const w = D.params.wScore?.v;
   ok(["pop", "ind", "fin", "co2", "appr", "rel"].every(k => finite(w?.[k]) && Math.abs(w[k] - 1 / 6) < 1e-9) && !Object.hasOwn(w || {}, "cash"),
@@ -256,9 +263,14 @@ block("B5", () => {
 block("B6", () => {
   const r = run(12);
   IDS.forEach(id => test(`${id} 보통 수지`, () => {
-    const value = operating(r, id), ratio = value / D.start[id].cash0;
-    ok(finite(ratio) && ratio >= 0.4 && ratio <= 0.8,
-      `${id} 연 운영 수지 ${fmt(value)}억 / cash0=${fmt(ratio)} (목표 0.4~0.8)`);
+    const c = r.start.cities[id], baseSub = X.yearStart(r.start, D).E.cities[id].subsidy - c.equalize;
+    const startTax = 12 * (c.pop0 * D.params.resTax.v + c.ind0 * D.params.indTax.v);
+    const baseService = c.pop0 * (D.params.svcCost.v + c.groups.senior.share * D.params.svcCostSenior.v);
+    const baseMargin = c.pop0 / FIXTURE.people * FIXTURE.mwhPerDay * FIXTURE.days * FIXTURE.cost * D.params.tariffMarkup.v;
+    const raw = (D.params.fiscalTargetRev.v * (startTax + baseSub) - (startTax + 12 * baseMargin - 12 * baseService) - baseSub) / (1 - D.params.fiscalTargetRev.v);
+    const expected = Math.max(0, Math.min(raw, baseSub)); // equalizeMaxShare=0.5
+    ok(Math.abs(c.equalize - expected) < 0.02 && operating(r, id) > 0,
+      `${id} F13 시작 연 세입 목표 보정 ${fmt(c.equalize)}/${fmt(expected)}, 보통 운영수지 ${fmt(operating(r,id))}`);
   }));
 });
 
@@ -273,7 +285,7 @@ block("B7", () => {
         const rev = R.fiscal?.[id]?.rev;
         return rev?.resTax + rev?.indTax + rev?.subsidy;
       });
-      const want = annualDebtRevenue(rows, id).annual * D.params.debtCapRatio?.v;
+      const want = capRevenue(r, id, m) * D.params.debtCapRatio?.v;
       const control = baseline.states[m].cities[id].debtCap;
       // v1.3: 반복 세입만 평균×12, 지원금은 1회분. 월 20% 제한은 적용하지 않는다.
       ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
@@ -286,7 +298,7 @@ block("B7", () => {
         const rev = R.fiscal?.[id]?.rev;
         return rev?.resTax + rev?.indTax + rev?.subsidy;
       }));
-      const want = D.params.debtCapRatio?.v * rev12, cap = r.states[m].cities[id].debtCap;
+      const want = D.params.debtCapRatio?.v * capRevenue(r, id, m), cap = r.states[m].cities[id].debtCap;
       // v1.2 우선: B11 — 최근12달 세금·지원금만 포함, 전기 차익도 제외.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
         `${id} ${m + 1}달 최근12달 세금·지원금 한도=${fmt(cap)}, 목표=${fmt(want)}`);
@@ -294,7 +306,7 @@ block("B7", () => {
     for (const m of [0, 5]) {
       const rows = r.reports.slice(0, m + 1);
       const { annual } = annualDebtRevenue(rows, id);
-      const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * annual;
+      const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * capRevenue(r, id, m);
       // v1.3: 반복 세입 달 평균만 연환산하고 올해 1월 지원금은 한 번만 더한다.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
         `${id} ${m + 1}달 관측 평균 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (지원금은 1회분)`);
@@ -331,7 +343,7 @@ block("B10", () => {
   test("yearStart 지급 가드", () => {
     const E = initial(), before = JSON.stringify(E), one = X.yearStart(E, D), two = X.yearStart(one.E, D);
     ok(JSON.stringify(E) === before, "yearStart 입력 불변");
-    ok(one.E?.paidYear === E.year, `paidYear=${one.E?.paidYear} (목표 ${E.year})`);
+    ok(one.E?.paidQuarter === `${E.year}:1`, `paidYear=${one.E?.paidYear} (목표 ${E.year})`);
     IDS.forEach(id => {
       ok(one.E.cities[id].cash > E.cities[id].cash, `${id} 첫 yearStart 지급`);
       ok(two.E?.cities?.[id]?.cash === one.E.cities[id].cash,
@@ -384,8 +396,8 @@ function run12(months, change = () => ({}), seed = "balance-v1.2") {
   return { start, E, reports, states, supplied };
 }
 const served12 = e => e.servedMWh ?? e.demMWh * (1 - e.unsPct / 100);
-function averageCost12(ins) {
-  const live = IDS.map(id => ins[id].energy).filter(e => served12(e) > 0);
+function averageCost12(ins, excluded) {
+  const live = IDS.filter(id => id !== excluded).map(id => ins[id].energy).filter(e => served12(e) > 0);
   return sum(live.map(e => served12(e) * e.costPerMWh)) / sum(live.map(served12));
 }
 
@@ -395,7 +407,7 @@ block("B11", () => {
     const ins = r.supplied[0], avg = averageCost12(ins), markup = D.params.tariffMarkup?.v;
     IDS.forEach(id => {
       const e = ins[id].energy, f = r.reports[0].fiscal?.[id], served = served12(e);
-      const gross = served * avg * (1 + markup), margin = gross - served * e.costPerMWh;
+      const gross = served * averageCost12(ins, id) * (1 + markup), margin = gross - served * e.costPerMWh;
       ok(finite(f?.tariffGross) && finite(gross) && Math.abs(f.tariffGross - gross) <= 0.01,
         `${id} 공급=${fmt(served)}/${fmt(e.demMWh)}, 가중원가=${fmt(avg)}, tariffGross=${f?.tariffGross}, 목표=${fmt(gross)}`);
       ok(finite(f?.rev?.tariff) && finite(margin) && Math.abs(f.rev.tariff - margin) <= 0.01,
@@ -458,7 +470,7 @@ block("B11", () => {
         const rows = r.reports.slice(Math.max(0, m - 11), m + 1);
         // v1.3: B7과 같은 독립 기대식을 사용한다.
         const { recurring, subsidies, annual } = annualDebtRevenue(rows, id);
-        const want = annual * D.params.debtCapRatio?.v;
+        const want = capRevenue(r, id, m) * D.params.debtCapRatio?.v;
         const cap = r.reports[m].fiscal?.[id]?.debtCap;
         ok(recurring.every(finite) && subsidies.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
           `${label} ${id} ${m + 1}달 fiscal.debtCap=${fmt(cap)}, 반복 세입 연환산·지원금1회 목표=${fmt(want)}`);
@@ -528,11 +540,11 @@ block("B14", () => {
       const f = r.reports[m].fiscal?.[id], pop = r.states[m].cities[id].pop;
       // 정액 subBase와 equalize는 주민 한 명의 한계 기여가 아니다. 1월 지원금에서 제외한다.
       // 나머지 인구 비례 지원금/주민 수를 연 1인당 지원금으로 읽고 12달로 나눈다.
-      const perCapSubsidy = (f?.rev?.subsidy - f?.equalize - D.params.subBase?.v) / pop;
+      const perCapSubsidy = (4 * f?.rev?.subsidy - f?.equalize - D.params.subBase?.v) / pop;
       const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
       ok(finite(perCapSubsidy) && finite(net) && net > 0,
         `${id} ${m + 1}달 주민1명 월 순효과=${fmt(net * 1e8)}원, 주민세=${fmt(f?.rev?.resTax / pop * 1e8)}, 지원/12=${fmt(perCapSubsidy / 12 * 1e8)}, 서비스=${fmt(f?.exp?.service / pop * 1e8)} (순효과 >0)`);
-      const ratio = f?.equalize / f?.rev?.subsidy;
+      const ratio = f?.equalize / (4 * f?.rev?.subsidy);
       ok(finite(f?.equalize) && f.equalize >= 0 && finite(ratio) && ratio <= 0.5,
         `${id} ${m + 1}달 정액보정=${fmt(f?.equalize)}, 1월 지원=${fmt(f?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
     });
@@ -583,8 +595,8 @@ block("B17", () => {
       JSON.stringify(S.cities[id].policy) === JSON.stringify(ins[id].policy));
     ok(fixed, `${id} 13달 정책·인구·종사자 고정`);
     // RECAL-SPEC §1.1·§8 #6: cash0 상한을 새 연 세입 비율의 정확한 기대값으로 교체한다.
-    const firstWant = annualDebtRevenue(reports.slice(0, 1), id).annual * data.params.debtCapRatio?.v;
-    const laterWant = annualDebtRevenue(reports.slice(1, 13), id).annual * data.params.debtCapRatio?.v;
+    const firstWant = start.cities[id].revYear * data.params.debtCapRatio?.v;
+    const laterWant = annualDebtRevenue(reports.slice(0, 12), id).annual * data.params.debtCapRatio?.v;
     console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%, 목표=${fmt(firstWant)}/${fmt(laterWant)}`);
     ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && Math.abs(first - Math.round(firstWant * 10) / 10) < 1e-9,
       `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (연 세입×0.88=${fmt(firstWant)})`);

@@ -190,7 +190,7 @@ test("원인 key·변화 delta·why 연결 및 공급0 요금 보존", () => {
     ok(Array.isArray(causes) && causes.length <= 3 && causes.every(c => typeof c.key === "string" && typeof c.label === "string" && Number.isFinite(c.delta)), `${id} 원인 최대3·key/label/delta`);
     if (!causes?.length) continue;
     ok(causes.every((c, i) => i === 0 || Math.abs(causes[i - 1].delta) >= Math.abs(c.delta)), `${id} 월 변화 기여 절댓값 큰 순서`);
-    const why = report.groups[id].why;
+    const why = report.groups[id].approvalChangeCause;
     ok(why && (why.key ?? why.part) === causes[0].key, `${id} why는 첫 원인의 key`);
     causes.forEach(c => keys.add(c.key));
   }
@@ -212,8 +212,12 @@ test("D-62 민원별 대상·상한·절전·공유", () => {
   }
   const saving = X.monthStep(E, input(E, { [focal]: { policy: { save: true } } }), D);
   ok(Object.keys(D.groups).every(g => saving.E.cities[focal].groups[g].sat < baseline.E.cities[focal].groups[g].sat), "절전은 모든 집단 만족에 감점");
-  for (const g of Object.keys(D.groups)) near(baseline.E.cities[focal].groups[g].sat - saving.E.cities[focal].groups[g].sat,
-    5 * D.params.lambdaFast.v, `${g} 절전 목표 −5에 기존 월 반영률 적용`, 1e-8);
+  for (const g of Object.keys(D.groups)) {
+    // F10: 악화는 즉시 반영. 원인 기여도 같은 비대칭을 쓴다.
+    near(saving.report.groups[focal].contrib[g].save, -5, `${g} 절전 감점 즉시 반영`, 1e-8);
+    const terms = saving.report.groups[focal].contrib[g];
+    near(Object.values(terms).reduce((a, x) => a + x, 0), saving.E.cities[focal].groups[g].sat, `${g} 기여 합=만족`, 1e-8);
+  }
   const noComplaint = X.monthStep(E, input(E, { [focal]: { policy: { share: true } } }), D);
   near(noComplaint.E.cities[focal].approval, baseline.E.cities[focal].approval, "민원 없는 이익공유는 무조건 만족 보너스를 주지 않음", 1e-8);
   ok(saving.report.cities[focal].causes.some(c => c.key === "save" && c.delta < 0), "절전 감점은 원인 목록에 음의 기여로 연결");
