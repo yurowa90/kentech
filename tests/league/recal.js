@@ -102,6 +102,8 @@ function run(data, seed, months, change = () => ({}), mutate = () => {}) {
 function share(E, id, key = "pop") { return E.cities[id][key] / E.totals[key]; }
 const changePct = (r, id, key = "pop", E = r.E) => (share(E, id, key) / share(r.start, id, key) - 1) * 100;
 const relativePct = (a, b, id, key = "pop") => (share(a.E, id, key) / share(b.E, id, key) - 1) * 100;
+// SPEC §7.2 v1.0.1: paired city populations, not regional shares.
+const populationPct = (E, baseline, id) => (E.cities[id].pop / baseline.cities[id].pop - 1) * 100;
 function fixedIndustry(data) {
   const d = clone(data);
   d.params.betaIndReal.v = 0;
@@ -164,28 +166,32 @@ block("01 일자리 고리", "보정 뒤 종사자 +1%·다른 도시 비례 차
   });
 });
 
-block("02 정전 교차 점검", "대표 도시 정전 100% 12달; 지역 성장 제거한 시작 대비 주민 몫 변화", () => {
+block("02 정전 교차 점검", "대표 도시 정전 100% 12달; 같은 씨앗 무충격 대비 도시 인구 차이(v1.0.1), 게임 범위 v1.0.2", () => {
   for (const seed of SEEDS) for (const real of [true, false]) test(`${seed}/${real}`, () => {
-    const r = run(dataFor(real), seed, 12, id => id === FOCAL ? { energy: { unsPct: 100 } } : {});
-    const v = changePct(r, FOCAL), [lo, hi] = real ? [-3.9, -1.3] : [-8, -3];
-    check(`${seed} ${real ? "현실" : "게임"}`, between(v, lo, hi), `몫 변화=${fmt(v)}%, 목표=${lo}~${hi}%`);
+    const d = dataFor(real), base = run(d, seed, 12);
+    const r = run(d, seed, 12, id => id === FOCAL ? { energy: { unsPct: 100 } } : {});
+    const v = populationPct(r.E, base.E, FOCAL), [lo, hi] = real ? [-3.9, -1.3] : [-9, -3];
+    check(`${seed} ${real ? "현실" : "게임"}`, between(v, lo, hi), `무충격 대비 인구 차이=${fmt(v)}%, 목표=${lo}~${hi}%`);
   });
 });
-block("03 정전 5%", "대표 도시 정전 5% 12달; 시작 대비 주민 몫 변화(게임)", () => {
+block("03 정전 5%", "대표 도시 정전 5% 12달; 같은 씨앗 무충격 대비 도시 인구 차이(게임, v1.0.1·v1.0.2)", () => {
   for (const seed of SEEDS) test(seed, () => {
-    const r = run(dataFor(), seed, 12, id => id === FOCAL ? { energy: { unsPct: 5 } } : {});
-    const v = changePct(r, FOCAL);
-    check(seed, between(v, -2.5, -0.5), `몫 변화=${fmt(v)}%, 목표=-2.5~-0.5%`);
+    const d = dataFor(), base = run(d, seed, 12);
+    const r = run(d, seed, 12, id => id === FOCAL ? { energy: { unsPct: 5 } } : {});
+    const v = populationPct(r.E, base.E, FOCAL);
+    check(seed, between(v, -3.5, -0.5), `무충격 대비 인구 차이=${fmt(v)}%, 목표=-3.5~-0.5%`);
   });
 });
-block("04 회복", "6달 전면 정전 뒤 18달 정상; 시작 대비 6달 손실 중 24달까지 되찾은 몫(게임)", () => {
+block("04 회복", "6달 전면 정전 뒤 18달 정상; 같은 씨앗 무충격 대비 인구 차이의 최대 손실 중 24달까지 회복한 비율(게임, v1.0.1)", () => {
   for (const seed of SEEDS) test(seed, () => {
-    const r = run(dataFor(), seed, 24, (id, m) => id === FOCAL && m < 6 ? { energy: { unsPct: 100 } } : {});
-    const low = changePct(r, FOCAL, "pop", r.states[5]), end = changePct(r, FOCAL);
+    const d = dataFor(), base = run(d, seed, 24);
+    const r = run(d, seed, 24, (id, m) => id === FOCAL && m < 6 ? { energy: { unsPct: 100 } } : {});
+    const differences = r.states.map((E, m) => populationPct(E, base.states[m], FOCAL));
+    const low = Math.min(...differences), end = differences[23];
     const recovered = (low - end) / low * 100;
-    check(`${seed} 손실 발생`, low < -0.1, `6달 몫 변화=${fmt(low)}%`);
+    check(`${seed} 손실 발생`, low < -0.1, `최대 손실=${fmt(low)}%, 발생=${differences.indexOf(low) + 1}달`);
     check(seed, finite(recovered) && recovered >= 40 && low < 0,
-      `6달=${fmt(low)}%, 24달=${fmt(end)}%, 회복=${fmt(recovered)}%, 목표≥40%`);
+      `최대 손실=${fmt(low)}%, 24달=${fmt(end)}%, 회복=${fmt(recovered)}%, 목표≥40%`);
   });
 });
 block("05 무변화 표류", "모든 도시 보통 조건 36달; 도시·달 전체의 최대 절대 주민 몫 변화", () => {
@@ -213,12 +219,16 @@ function converged(data, seed, change) {
   d.params.kappaPopReal = { ...d.params.kappaPopReal, v: 0 };
   // A stationary long-run experiment must remove common regional growth too.
   d.params.gpYear.v = 0; d.params.giYear.v = 0;
+  // Freeze international noise and random events in this deep copy so the
+  // final 24 months measure convergence, not a moving external target.
+  for (const key of Object.keys(d.intl.sigma)) d.intl.sigma[key] = 0;
+  d.intl.eventP = 0;
   const r = run(d, seed, 600, change);
   const delta = Math.max(...IDS.map(id => Math.abs(share(r.E, id, "ind") - share(r.states[575], id, "ind")) * 100));
   check(`${seed} 장기 수렴`, delta < 0.001, `마지막 24달 최대 산업 몫 변화=${fmt(delta)}%p, 목표<0.001%p`);
   return r;
 }
-block("07 산업 세금", "현실 사본·주민 이동 끔·kappaIndReal=0.05; 산업세 -1단계 장기 산업 몫을 무충격과 비교", () => {
+block("07 산업 세금", "현실 사본·주민 이동 끔·kappaIndReal=0.05·국제 sigma/eventP=0; 산업세 -1단계 장기 산업 몫을 무충격과 비교", () => {
   for (const seed of SEEDS) test(seed, () => {
     const d = dataFor(true), base = converged(d, seed, () => ({}));
     const r = converged(d, seed, id => id === FOCAL ? { policy: { taxInd: -1 } } : {});
@@ -226,7 +236,7 @@ block("07 산업 세금", "현실 사본·주민 이동 끔·kappaIndReal=0.05; 
     check(seed, between(v, 0.15, 0.45), `장기 산업 몫 변화=${fmt(v)}%, 목표=0.15~0.45%`);
   });
 });
-block("08 요금 업종 차", "현실 사본·주민 이동 끔·κ_ind=0.05; 도시별 원가 -10% 장기 산업 몫 효과를 같은 무충격과 비교", () => {
+block("08 요금 업종 차", "현실 사본·주민 이동 끔·κ_ind=0.05·국제 sigma/eventP=0; 도시별 원가 -10% 장기 산업 몫 효과를 같은 무충격과 비교", () => {
   for (const seed of SEEDS) test(seed, () => {
     const d = dataFor(true), base = converged(d, seed, () => ({}));
     const values = [STEEL, LOW].map(target => {
@@ -239,7 +249,7 @@ block("08 요금 업종 차", "현실 사본·주민 이동 끔·κ_ind=0.05; �
   });
 });
 
-block("09 배속 정의", "REF 로짓 목표와 실제 첫 달 이동으로 κ 역산; 큰 정수 모집단으로 반올림 오차를 1e-9 미만으로 제한, β 배속 금지 함께 검증", () => {
+block("09 배속 정의", "반올림되지 않은 E.cities의 Leff·Aeff로 로짓 목표와 실제 첫 달 이동의 κ 역산; 큰 정수 모집단으로 반올림 오차를 1e-9 미만으로 제한, β 배속 금지 함께 검증", () => {
   for (const seed of SEEDS) test(seed, () => {
     for (const real of [true, false]) {
       const d = dataFor(real);
@@ -254,8 +264,9 @@ block("09 배속 정의", "REF 로짓 목표와 실제 첫 달 이동으로 κ �
       for (const [key, eff, beta, kappa] of [["pop", "Leff", 0.12, kp], ["ind", "Aeff", 0.08, ki]]) {
         // REF 2.1: startMix=1, normalized fixed-effect logit. Its common
         // mean cancels exactly, so no engine helper is used for the oracle.
+        // The report rounds these scores; state retains migration precision.
         const weights = IDS.map(id => share(before, id, key) * Math.exp(beta *
-          number(r.report.cities[id][eff], `report.cities.${id}.${eff}`) / 10));
+          number(r.E.cities[id][eff], `E.cities.${id}.${eff}`) / 10));
         const total = sum(weights);
         const gaps = IDS.map((id, i) => weights[i] / total * before.totals[key] - before.cities[id][key]);
         const moved = IDS.map(id => r.E.cities[id][key] - before.cities[id][key]);
