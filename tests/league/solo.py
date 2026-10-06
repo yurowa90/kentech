@@ -224,7 +224,8 @@ def play(checks, page, base, label):
     page.locator('[data-confidence="fairly"]').click()
     checks.ok(not page.locator('#lg-ready-confirm').is_disabled() and page.locator('[data-pred]').count() == 1,
               f'{label} U8 근거·주제 하나·확신이면 약속 가능')
-    checks.ok(shown(page, '#lg-calibration') and '12번은 적은 표본' in page.locator('#lg-calibration').inner_text(),
+    calib = page.locator('#lg-calibration').inner_text() if shown(page, '#lg-calibration') else ''
+    checks.ok(bool(re.search(r'기록이 쌓이면|기록이 \d+번뿐', calib)) and '순위에는 넣지 않아요' in calib,
               f'{label} U8 혼자 하기 확신 보정·작은 표본 표시')
     close_drawer(page)
 
@@ -306,10 +307,15 @@ def play(checks, page, base, label):
     open_panel(page, "result")
     checks.ok(page.locator('#lg-timeline [data-trend]').count() == 4 and shown(page, '.lg-season-chip'),
               f'{label} U5·U7 끝 화면 타임라인·실제 계절 칩')
+    practice_before = page.evaluate("() => { try { return JSON.parse(localStorage.getItem('kcp-league-solo-v1'))?.interview?.freeExperiment ?? null } catch (e) { return 'err' } }")
     page.locator('#lg-solo-same').click()
     page.wait_for_function("""() => KCP.league.state()?.S?.phase === 'plan' && KCP.league.state()?.S?.round === 1""")
+    page.wait_for_timeout(400)
     replay = read(page)
-    checks.ok(replay['S']['room'] == initial_room and replay['S']['active'] == observation['active'],
+    practice_after = page.evaluate("() => { try { return JSON.parse(localStorage.getItem('kcp-league-solo-v1'))?.interview?.freeExperiment ?? null } catch (e) { return 'err' } }")
+    checks.ok(practice_after == practice_before, f"{label} 같은 조건으로 다시 → 연습 방식(약속/자유 실험) 유지")
+    checks.ok(replay['S']['room'] == initial_room and replay['S']['active'] == observation['active'] and
+              replay['S'].get('seedKey') == state.get('seedKey') and replay['S'].get('salt') == state.get('salt'),
               f"{label} 같은 조건으로 다시 → 씨앗·참가 도시 보존")
     checks.ok(fingerprint(replay['S']) == initial_fingerprint,
               f"{label} 같은 조건으로 다시 → 첫 달 경제·계획·연계선 동일")

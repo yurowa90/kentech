@@ -946,7 +946,7 @@
   }
   function replaySolo() {
     if (L.role !== "solo" || L.snap.phase !== "end" || !L.initial) return;
-    const app = L.app, save = { v: 1, state: structuredClone(L.initial), initial: structuredClone(L.initial), previous: soloSummary(L.snap), team: L.team, style: L.style, interview: { docs: {}, journal: {} }, aiRound: 0 };
+    const app = L.app, save = { v: 1, state: structuredClone(L.initial), initial: structuredClone(L.initial), previous: soloSummary(L.snap), team: L.team, style: L.style, interview: { docs: {}, journal: {}, freeExperiment: L.interview?.freeExperiment }, aiRound: 0 };
     close(); writeSolo(save); startSolo(app, save);
   }
 
