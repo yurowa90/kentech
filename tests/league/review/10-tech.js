@@ -145,8 +145,8 @@ test("공동 연구 양방향 동의·연결·합산", () => {
   near(C.researchView(cut, a).prog.hvdc || 0, 0, "상대 내부망 단절 공동 연구 대기");
   near(C.researchView(cut, b).prog.hvdc || 0, 0, "상대 내부망 단절 양쪽 진척0");
   month(S, 1);
-  near(C.researchView(S, a).prog.hvdc, 8, "한 연구소씩 4주×(1+1)=8");
-  near(C.researchView(S, b).prog.hvdc, 8, "공동 진척 일치");
+  near(C.researchView(S, a).prog.hvdc, 8.7, "한 연구소씩 4주×(1+1)=8");
+  near(C.researchView(S, b).prog.hvdc, 8.7, "공동 진척 일치");
   month(S, 2); month(S, 3); S.round = 4;
   ok(C.researchView(S, a).adopted.includes("hvdc") && C.researchView(S, b).adopted.includes("hvdc"), "공동 카드 양쪽 도입");
 });
@@ -154,7 +154,7 @@ test("공동 연구 양방향 동의·연결·합산", () => {
 test("실증 한 턴·그다음 도입·공개 정보", () => {
   const S = game(); funded(S); S.teams[a].plan = planOf(a, ["lab", "lab", "uni"]);
   ok(request(S, a, { type: "research", queue: ["hvdc"] }).ok, "연구 요청 기존 queue 계약");
-  month(S, 1); near(C.researchView(S, a).prog.hvdc, 8, "새 대학 준비 중 연구소2×4주=8");
+  month(S, 1); near(C.researchView(S, a).prog.hvdc, 8.7, "새 대학 준비 중 연구소2×4주=8");
   month(S, 2); ok(C.researchView(S, a).stage.hvdc === "demo", "need 채운 턴 실증 시작");
   ok(!C.researchView(S, a).adopted.includes("hvdc"), "실증 시작에는 효과 미도입");
   month(S, 3); ok(!C.researchView(S, a).adopted.includes("hvdc"), "실증 마친 달까지 효과 미도입");
@@ -178,36 +178,37 @@ test("유레카 남은 양의 1/3·한 번", () => {
   const hs = adopt(H, a, []); hs.queue = ["hvdc"]; hs.prog.hvdc = 3; H.teams[a].plan.rq = ["hvdc"];
   const neighbors = R.ties.filter(t => t.a === a || t.b === a).map(t => t.a === a ? t.b : t.a);
   connect(H, a, neighbors[0]); connect(H, a, neighbors[1]);
-  month(H, 1); near(C.researchView(H, a).prog.hvdc, 10, "HVDC 남은 (12−3)/3 + 4주 진척=10");
+  month(H, 1); near(C.researchView(H, a).prog.hvdc, 10.35, "HVDC 남은 (12−3)/3 + 4주 진척=10");
 });
 
 test("연계선·설비·MODS 수치", () => {
   const S = game(false), tie = { a, b, cap: 4 };
-  near(C.effectiveTie(S, tie).loss, 0.02, "기본 연계선 손실2%");
-  adopt(S, a, ["hvdc"]); near(C.effectiveTie(S, tie).loss, 0.012, "HVDC 손실1.2%");
+  near(C.effectiveTie(S, tie).loss, 0.01, "RECAL-SPEC §1.3 기본 연계선 손실1%");
+  adopt(S, a, ["hvdc"]); near(C.effectiveTie(S, tie).loss, 0.01, "F41 HVDC 카드만으로 일반 선은 불변");
+  tie.kind = "hvdc"; near(C.effectiveTie(S, tie).loss, 0.012, "F41 HVDC 선 손실1.2%");
   adopt(S, a, ["hvdc", "scable"]);
   near(C.effectiveTie(S, tie).cap, 6, "초전도 용량4×1.5=6MW");
   near(C.effectiveTie(S, tie).loss, 0.006, "HVDC·초전도 손실0.6%");
   const scableLoss = C.effectiveTie(S, tie).loss;
   adopt(S, a, ["sic", "ccu", "h2mix", "vpp"]); const mods = C.modsFor(S, R, a);
   near(mods.renewOutput, 1.015, "SiC 출력 배수"); near(mods.co2Mul.coal, 0.4, "CCU 석탄 CO2 배수");
-  near(mods.coalCapMul, 0.85, "CCU 석탄 출력 배수"); near(mods.co2Mul.lng, 0.88, "수소 혼소 LNG CO2 배수");
+  near(mods.coalCapMul, 0.79, "CCU 석탄 출력 배수"); near(mods.h2Co2, 0.88, "F42 수소 존재 때 혼소 상한");
   near(mods.drEffect, 1.5, "VPP 수요반응 효과"); near(mods.drCost, 0.5, "VPP 수요반응 비용");
-  select(a); near(bg.BLD.tandem.cost / bg.BLD.solar.cost, 1.15, "탠덤 건설비 배수");
+  select(a); near(bg.BLD.tandem.cost / bg.BLD.solar.cost, 1.2, "RECAL-SPEC §1.3 탠덤 건설비 배수");
   near(bg.BLD.nbat.mwh / bg.M.batMWh, 1.25, "차세대 배터리 용량 배수");
-  near(bg.BLD.smr.mw, 20, "SMR 정격20MW"); near(bg.BLD.smr.cost, 150, "SMR 건설150억 G");
+  near(bg.BLD.smr.mw, 4 * 170 / 230, "G5 SMR 4모듈×170MWe÷230"); near(bg.BLD.smr.cost, (150 / 20) * (8000 / 4500) * (4 * 170 / 230), "G7 DOE FOAK 환산 단가 M");
   const p = planOf(a, ["solar"], true); p.seed = 982; p.season = "spring";
   const original = bg.simulate(clone(p), 7, { league: true, mods: {} });
   const sic = bg.simulate(clone(p), 7, { league: true, mods: { renewOutput: 1.015 } });
   near(sic.tot.renAvail / original.tot.renAvail, 1.015, "실제 SiC 재생 출력");
   const tp = clone(p); tp.builds[0].t = "tandem";
   const tandem = bg.simulate(tp, 7, { league: true, mods: {} });
-  near(tandem.tot.renAvail / original.tot.renAvail, 1.15, "실제 새 탠덤 출력");
+  near(tandem.tot.renAvail / original.tot.renAvail, 1.2, "RECAL-SPEC §1.3 실제 새 탠덤 출력");
   ok(JSON.stringify(bg.simulate(clone(p), 7, { league: true, mods: {} })) === JSON.stringify(original), "MODS 후속 실행 오염 없음");
   console.log("카드 효과 실측", JSON.stringify({ hvdcLoss: 0.012, scableLoss, solarMWh: original.tot.renAvail, tandemMWh: tandem.tot.renAvail, sicMWh: sic.tot.renAvail }));
 });
 
-test("대량 공정 신규 투자만 할인·SMR 6턴 공사", () => {
+test("대량 공정 신규 투자만 할인·SMR 12턴 공사", () => {
   const S = game(); funded(S); const old = planOf(a, ["solar"]);
   ok(request(S, a, { type: "plan", rev: 1, plan: old }).ok, "대량 공정 이전 태양광 승인");
   select(a); const normalCost = bg.capex(old);
@@ -218,10 +219,10 @@ test("대량 공정 신규 투자만 할인·SMR 6턴 공사", () => {
   const N = game(); funded(N); adopt(N, a, ["smr"]);
   const p = planOf(a, ["smr"], true), key = "smr:" + p.builds[0].i;
   ok(request(N, a, { type: "plan", rev: 1, plan: p }).ok, "SMR 착공 승인");
-  for (let n = 1; n <= 6; n++) {
+  for (let n = 1; n <= 12; n++) {
     N.round = n; ok((C.modsFor(N, R, a).disabledBuilds || []).includes(key), `착공 포함 ${n}턴 SMR 미가동`);
   }
-  N.round = 7; ok(!(C.modsFor(N, R, a).disabledBuilds || []).includes(key), "6턴 공사 뒤 다음 턴 SMR 가동");
+  N.round = 13; ok(!(C.modsFor(N, R, a).disabledBuilds || []).includes(key), "12턴 공사 뒤 다음 턴 SMR 가동");
 });
 
 test("칭호와 점수 분리", () => {
@@ -250,7 +251,7 @@ test("수소 실제 충방전·왕복35% 에너지 수지", () => {
 });
 
 test("CCU·혼소 실제 발전 탄소·VPP 실제 비용", () => {
-  for (const [fuel, card, carbonRatio, outputRatio] of [["coal", "ccu", 0.4, 0.85], ["lng", "h2mix", 0.88, 1]]) {
+  for (const [fuel, card, carbonRatio, outputRatio] of [["coal", "ccu", 0.4, 0.79], ["lng", "h2mix", 1, 1]]) {
     const matches = s => s.kind === "plant" && (fuel === "coal" ? s.fuel === "coal" : s.fuel !== "coal");
     const id = ids.find(id => { select(id); return bg.SITES.some(matches); });
     select(id); const source = bg.SITES.find(matches), sink = bg.SITES.find(s => s.dem);
@@ -276,13 +277,13 @@ test("기존 사건×기술 피해 완화", () => {
   const heat = C.modsFor(S, R, a).demandMul;
   for (const tech of [["fcst"], ["fcst", "vpp"]]) {
     adopt(S, a, tech); const mod = C.modsFor(S, R, a).demandMul;
-    ok(mod >= 1 && mod < heat, `${tech.join("+")} 폭염 추가 수요 피해 완화`);
+    ok(tech.includes("vpp") ? mod >= 1 && mod < heat : mod === heat, `${tech.join("+")} 폭염 추가 수요 피해 완화`);
   }
   S.events = [{ id: "finedust_coal_cap", round: 1 }]; adopt(S, a, []);
   const dust = C.modsFor(S, R, a).coalCapMul;
   adopt(S, a, ["ccu"]); const ccu = C.modsFor(S, R, a).coalCapMul;
   // 최종 검증 verify 13 / ECON-SPEC §13 정정: CO₂ 포집은 미세먼지 제한 완화 근거가 아니다.
-  near(ccu / 0.85, dust, "CCU 자체 출력 손실을 제외하면 계절관리제 제한은 동일");
+  near(ccu / 0.79, dust, "CCU 자체 출력 손실을 제외하면 계절관리제 제한은 동일");
   const storm = R.events.find(e => e.id === "typhoon_coast"), [left, right] = storm.effect.tieDown.split("~");
   const B = game(false); connect(B, left, right); B.events = [{ id: storm.id, round: 1 }];
   const safe = clone(B); adopt(safe, left, ["hvdc", "scable"]);

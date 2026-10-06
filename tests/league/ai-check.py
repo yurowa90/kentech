@@ -195,18 +195,18 @@ JS = r"""
     teams: { ...S.teams, [gridId]: { ...S.teams[gridId], plan: answer.plan } }
   }, R, bg, gridId, true);
   const params = KCP.ECON_DATA.params;
-  const savedMonthly = params.connPerMonth, savedHost = params.hostCapMul;
+  const savedMonthly = params.connPerMonthReal, savedHost = params.hostCapMul;
   try {
-    params.connPerMonth = { ...savedMonthly, v: 0 };
+    params.connPerMonthReal = { ...savedMonthly, v: 0 };
     const answer = calculate(gridCase, gridId, "careful");
     ok(variableAdded(gridCase, answer).length === 0, "월 처리량 0: 접속 대상 재생 추가 없음");
-    params.connPerMonth = savedMonthly;
+    params.connPerMonthReal = savedMonthly;
     params.hostCapMul = { ...savedHost, v: 0 };
     const stored = calculate(gridCase, gridId, "careful"), after = forecast(gridCase, stored);
     ok(variableAdded(gridCase, stored).length > 0 && after.waitingMW <= tolerance,
       "시작 H 0: ESS 확충 뒤 월 한도 안에서 전량 접속");
     ok(stored.plan.builds.some(b => bg.BLD[b.t].cls === "bat"), "접속 여유 부족: ESS 투자");
-  } finally { params.connPerMonth = savedMonthly; params.hostCapMul = savedHost; }
+  } finally { params.connPerMonthReal = savedMonthly; params.hostCapMul = savedHost; }
   const legacy = clone(gridCase); delete legacy.grid;
   const legacyAnswer = calculate(legacy, gridId, "careful");
   ok(forecast(legacy, legacyAnswer).waitingMW <= tolerance, "접속 이력 없는 저장: 호스트 복원으로 대기 방지");

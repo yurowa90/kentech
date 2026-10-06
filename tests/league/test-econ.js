@@ -173,7 +173,7 @@ ok(X.daysOf(2028, 2) === 29 && X.daysOf(2027, 2) === 28, "daysOf");
 { const c = V1.E.cities.pyeongtaek, d = X.demandMul(c); ok(Math.abs(d.res - c.pop / c.pop0) < 1e-3 && Math.abs(d.ind - c.ind / c.ind0) < 1e-3, "demandMul"); }
 ok(X.roundSum([0.5, 0.5, -1], 0).reduce((a, b) => a + b, 0) === 0, "roundSum");
 // 국제: CBAM 12턴부터, 사건 몇 개
-ok(V1.reports[12].intl.cbam === 1 && V1.reports[11].intl.cbam === 0, "CBAM 2028년 1월부터");
+ok(V1.reports[0].intl.cbam === 1 && V1.reports[12].intl.cbam === 1, "F16 CBAM 게임 시작부터");
 ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 국제 사건 발생");
 
 // ECON-BALANCE v1.3: 기대값은 정산 세금·지원금 원장으로 별도 계산한다.
@@ -182,15 +182,14 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   const clone = value => JSON.parse(JSON.stringify(value));
   const roundedCap = yearly => Math.round(D.params.debtCapRatio.v * yearly * 10) / 10;
   let E = X.initCities(IDS, D, { seed: "v1.3-ledger", months: 24 });
-  const ledger = [];
+  const ledger = [], annualById = Object.fromEntries(IDS.map(id => [id, E.cities[id].revYear]));
   for (let t = 0; t < 24; t++) {
     const input = varied(37)(E, t), result = X.monthStep(E, input, D);
     ledger.push(result.report.fiscal);
     IDS.forEach(id => {
-      const rows = ledger.slice(-12).map(f => f[id].rev);
-      const annual = t < 12
-        ? sum(rows.map(r => r.resTax + r.indTax)) / rows.length * 12 + ledger[0][id].rev.subsidy
-        : sum(rows.map(r => r.resTax + r.indTax + r.subsidy));
+      // F14: 첫해 보정 세입 고정, 다음 1월에 직전 12달 원장으로 갱신.
+      if (t > 0 && t % 12 === 0) annualById[id] = sum(ledger.slice(t - 12, t).map(f => f[id].rev.resTax + f[id].rev.indTax + f[id].rev.subsidy));
+      const annual = annualById[id];
       ok(result.E.cities[id].debtCap === roundedCap(annual), `v1.3 원장 기반 ${t + 1}달 한도 ${id}`);
       ok(result.E.cities[id].revenueHistory.length === Math.min(t + 1, 12), `v1.3 이력 창 ${t + 1}달 ${id}`);
     });
@@ -233,7 +232,7 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   // v1.3 동일 조건 목표. 검사 복제본에서만 성장·이동·국제 변동을 0으로 고정한다.
   // 게임 계수 변경이 아니며, 여섯 도시의 실제 시작 인구·산업·현금과 정책 0은 유지한다.
   const fixed = clone(D);
-  ["gpYear", "giYear", "kappaPop", "kappaInd"].forEach(k => { fixed.params[k].v = 0; });
+  ["gpYear", "giYear", "kappaPopReal", "kappaIndReal"].forEach(k => { fixed.params[k].v = 0; });
   Object.keys(fixed.intl.sigma).forEach(k => { fixed.intl.sigma[k] = 0; });
   fixed.intl.eventP = 0; fixed.intl.schedule = [];
   let same = X.initCities(IDS, fixed, { seed: "v1.3-fixed", months: 24 });
@@ -243,13 +242,15 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
     IDS.forEach(id => ok(same.cities[id].pop === initial.cities[id].pop && same.cities[id].ind === initial.cities[id].ind && same.cities[id].out === 1, `동일 인구·산업·산출 ${t + 1}달 ${id}`));
     caps.push(Object.fromEntries(IDS.map(id => [id, same.cities[id].debtCap])));
   }
-  console.log("\nv1.3 동일 조건: 도시 | cash0 | 첫 달 한도 | cash0×1.5 | 13달 한도 | 차이/첫 달");
+  console.log("\nv1.3 동일 조건: 도시 | cash0 | 첫 달 한도 | 연 세입×0.88 | 13달 한도 | 차이/첫 달");
   IDS.forEach(id => {
     const cash0 = initial.cities[id].cash0, first = caps[0][id], thirteenth = caps[12][id];
     const diff = Math.abs(thirteenth - first) / first;
-    ok(first <= cash0 * 1.5, `첫 달 한도 ≤ cash0×1.5 ${id}`);
+    // RECAL-SPEC §1.1·§8 #6: 한도는 투자재원 cash0가 아닌 연 세입 기준.
+    const expected = roundedCap(initial.cities[id].revYear);
+    ok(first === expected, `첫 달 한도 = 연 세입×0.88 ${id}`);
     ok(diff <= 0.3, `첫 달·13달 한도 차이 ≤ 30% ${id}`);
-    console.log(`${D.start[id].name} | ${cash0.toFixed(1)} | ${first.toFixed(1)} | ${(cash0 * 1.5).toFixed(1)} | ${thirteenth.toFixed(1)} | ${(diff * 100).toFixed(2)}%`);
+    console.log(`${D.start[id].name} | ${cash0.toFixed(1)} | ${first.toFixed(1)} | ${expected.toFixed(1)} | ${thirteenth.toFixed(1)} | ${(diff * 100).toFixed(2)}%`);
   });
 }
 

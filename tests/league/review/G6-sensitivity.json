@@ -1,0 +1,436 @@
+{
+  "d144-floor1": {
+    "meanScores": {
+      "research": 51.86666666666667,
+      "none": 46.45,
+      "smr": 76.2,
+      "hydrogen": 40.050000000000004
+    },
+    "researchGain": 5.416666666666664,
+    "smrFirstCities": 6,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "smr"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 9,
+      "pyeongtaek": 9,
+      "anseong": 9,
+      "dangjin": 9,
+      "asan": 9,
+      "cheonan": 9
+    }
+  },
+  "d288-floor1": {
+    "meanScores": {
+      "research": 51.86666666666667,
+      "none": 46.45,
+      "smr": 73.81666666666666,
+      "hydrogen": 40.050000000000004
+    },
+    "researchGain": 5.416666666666664,
+    "smrFirstCities": 5,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 14,
+      "pyeongtaek": 14,
+      "anseong": 14,
+      "dangjin": 14,
+      "asan": 14,
+      "cheonan": 14
+    }
+  },
+  "d360-floor1": {
+    "meanScores": {
+      "research": 51.86666666666667,
+      "none": 46.45,
+      "smr": 70.68333333333334,
+      "hydrogen": 40.050000000000004
+    },
+    "researchGain": 5.416666666666664,
+    "smrFirstCities": 5,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "d396-floor1": {
+    "meanScores": {
+      "research": 51.86666666666667,
+      "none": 46.45,
+      "smr": 62.68333333333334,
+      "hydrogen": 40.050000000000004
+    },
+    "researchGain": 5.416666666666664,
+    "smrFirstCities": 3,
+    "winners": {
+      "hwaseong": [
+        "hydrogen"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "none"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [
+      "asan SMR 전략 실제 착공"
+    ],
+    "started": {
+      "hwaseong": 18,
+      "pyeongtaek": 18,
+      "anseong": 18,
+      "dangjin": 18,
+      "asan": null,
+      "cheonan": 18
+    }
+  },
+  "d432-floor1": {
+    "meanScores": {
+      "research": 51.86666666666667,
+      "none": 46.45,
+      "smr": 59.61666666666667,
+      "hydrogen": 40.050000000000004
+    },
+    "researchGain": 5.416666666666664,
+    "smrFirstCities": 3,
+    "winners": {
+      "hwaseong": [
+        "hydrogen"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "none"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [
+      "asan SMR 전략 실제 착공"
+    ],
+    "started": {
+      "hwaseong": 20,
+      "pyeongtaek": 20,
+      "anseong": 20,
+      "dangjin": 20,
+      "asan": null,
+      "cheonan": 20
+    }
+  },
+  "d360-floor10": {
+    "meanScores": {
+      "research": 53.400000000000006,
+      "none": 51.0,
+      "smr": 70.68333333333334,
+      "hydrogen": 46.833333333333336
+    },
+    "researchGain": 2.4000000000000057,
+    "smrFirstCities": 5,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "d360-floor20": {
+    "meanScores": {
+      "research": 57.13333333333333,
+      "none": 56.233333333333334,
+      "smr": 70.68333333333334,
+      "hydrogen": 53.266666666666666
+    },
+    "researchGain": 0.8999999999999986,
+    "smrFirstCities": 5,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "d360-floor25": {
+    "meanScores": {
+      "research": 59.43333333333334,
+      "none": 58.96666666666667,
+      "smr": 70.68333333333334,
+      "hydrogen": 55.65
+    },
+    "researchGain": 0.46666666666666856,
+    "smrFirstCities": 4,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "none"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "d360-floor29": {
+    "meanScores": {
+      "research": 61.05,
+      "none": 60.9,
+      "smr": 70.93333333333334,
+      "hydrogen": 57.68333333333334
+    },
+    "researchGain": 0.14999999999999858,
+    "smrFirstCities": 4,
+    "winners": {
+      "hwaseong": [
+        "hydrogen",
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "none"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "d360-floor30": {
+    "meanScores": {
+      "research": 61.43333333333334,
+      "none": 61.36666666666667,
+      "smr": 71.03333333333333,
+      "hydrogen": 58.18333333333334
+    },
+    "researchGain": 0.06666666666666998,
+    "smrFirstCities": 3,
+    "winners": {
+      "hwaseong": [
+        "hydrogen"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "none"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 17,
+      "pyeongtaek": 17,
+      "anseong": 17,
+      "dangjin": 17,
+      "asan": 17,
+      "cheonan": 17
+    }
+  },
+  "baseline-floor30": {
+    "meanScores": {
+      "research": 61.43333333333334,
+      "none": 61.36666666666667,
+      "smr": 79.61666666666667,
+      "hydrogen": 58.18333333333334
+    },
+    "researchGain": 0.06666666666666998,
+    "smrFirstCities": 6,
+    "winners": {
+      "hwaseong": [
+        "smr"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "smr"
+      ],
+      "asan": [
+        "smr"
+      ],
+      "cheonan": [
+        "smr"
+      ]
+    },
+    "simulationFailures": [],
+    "started": {
+      "hwaseong": 4,
+      "pyeongtaek": 4,
+      "anseong": 4,
+      "dangjin": 4,
+      "asan": 4,
+      "cheonan": 4
+    }
+  }
+}

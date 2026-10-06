@@ -132,14 +132,14 @@
     H.ok(!!D.eureka && IDS.every(id => Array.isArray(D.eureka) ? D.eureka.some(e => e.id === id || e.card === id) : !!D.eureka[id]), "T2 카드마다 유레카 조건");
     H.ok(!!D.params && Object.keys(D.params).length > 0, "T3 params 존재");
     Object.entries(D.params || {}).forEach(([key, p]) => H.ok(!!p && text(p.grade) && text(p.note), `T3 params.${key} grade·note`));
-    H.test("T1 리그 한 달 연구 진척 4주", () => {
+    H.test("T1 리그 한 달 연구 진척 4.35주(F15, SPEC §1.3)", () => {
       // T1은 달 리그의 진척 계약이다. T5의 기존 #build 상수가 아닌 실제 월 운영을 검사한다.
       const { S, ids } = fixture(), id = ids[0], { C } = context();
       S.teams[id].plan = planFor(id, ["lab"]);
       if (!request(S, id, ["hvdc"]).ok) throw new Error("월 진척 연구 요청 거부");
       operate(S);
-      return C.publicView(S, 500).teams[id].research.stepsPerTurn === 4 &&
-        S.teams[id].research.prog.hvdc === 4;
+      return C.publicView(S, 500).teams[id].research.stepsPerTurn === 4.35 &&
+        S.teams[id].research.prog.hvdc === 4.35;
     });
     return H.checks;
   }
@@ -313,7 +313,7 @@
       if (!special(A, target, "license", origin, "hvdc").ok) throw new Error("절반 비용 fixture license 거부");
       const need = number(cardsOf().find(c => c.id === "hvdc").need);
       // T1 월 4주 × 연구소 인력 1. #build의 RS를 변조하지 않고 T2 절반 경계 양쪽을 비교한다.
-      const step = 4, epsilon = need / 1000, B = clone(A), normal = clone(A);
+      const step = 4.35, epsilon = need / 1000, B = clone(A), normal = clone(A);
       A.teams[target].research.prog.hvdc = need / 2 - step - epsilon;
       B.teams[target].research.prog.hvdc = normal.teams[target].research.prog.hvdc = need / 2 - step;
       normal.teams[target].research.licensedFrom = {};
@@ -371,7 +371,7 @@
       const cut = clone(S); cut.teams[b].plan.lines = []; operate(cut);
       if (![a, b].every(id => (cut.teams[id].research.prog.hvdc || 0) === 0))
         throw new Error("내부망 단절 뒤 공동 연구 진척");
-      const step = 4; // T1: 각 도시 연구소 인력 1 × 월 4주
+      const step = 4.35; // T1: 각 도시 연구소 인력 1 × 월 4주
       operate(solo); operate(S);
       for (const id of [a, b]) {
         const jointProgress = S.teams[id].research.prog.hvdc, soloProgress = solo.teams[id].research.prog.hvdc;

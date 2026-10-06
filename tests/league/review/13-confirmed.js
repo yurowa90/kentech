@@ -109,15 +109,15 @@ test("verify 2: 공동 요청 취소 뒤 양쪽 단독 진행", () => {
   ok(request(S, a, { type: "joint", op: "cancel", card: "hvdc", other: b }).ok, "명시적인 공동 취소 승인");
   for (const id of [a, b]) ok(!C.researchView(S, id).joint.hvdc?.active, `${id} 취소 뒤 공동 비활성`);
   C.run(S, B, 1);
-  for (const id of [a, b]) near(C.researchView(S, id).prog.hvdc, 4, `${id} 취소 뒤 한 연구소 단독 4주`);
+  for (const id of [a, b]) near(C.researchView(S, id).prog.hvdc, 4.35, `${id} 취소 뒤 한 연구소 단독 4주`);
 });
 
 test("verify 2: 상대 큐 이탈은 공동 해제 후 자기 카드 진행", () => {
   const S = jointGame();
   ok(request(S, b, { type: "research", queue: ["sic"] }).ok, "상대 다른 카드 선택 승인");
   C.run(S, B, 1);
-  near(C.researchView(S, a).prog.hvdc, 4, "상대 이탈 뒤 hvdc 단독 4주");
-  near(C.researchView(S, b).prog.sic, 4, "다른 카드 sic 단독 4주");
+  near(C.researchView(S, a).prog.hvdc, 4.35, "상대 이탈 뒤 hvdc 단독 4주");
+  near(C.researchView(S, b).prog.sic, 4.35, "다른 카드 sic 단독 4주");
   ok(!C.researchView(S, a).joint.hvdc?.active, "이탈한 공동 관계 활성 해제");
 });
 
@@ -127,7 +127,7 @@ test("verify 2: 연결 단절 공동 카드 뒤의 연구는 계속 진행", () 
   S.teams[b].plan.lines = [];
   C.run(S, B, 1);
   near(C.researchView(S, a).prog.hvdc || 0, 0, "끊긴 공동 카드는 진척 대기");
-  near(C.researchView(S, a).prog.sic, 4, "막힌 공동 카드 뒤 sic는 4주 진행");
+  near(C.researchView(S, a).prog.sic, 4.35, "막힌 공동 카드 뒤 sic는 4주 진행");
 });
 
 test("verify 2: 미수락 공동 제안은 이전을 막지 않음", () => {
@@ -143,13 +143,14 @@ test("verify 3·9: CO₂ 기여는 실제 공급량과 소비 배출", () => {
   const E = X.initCities(ids, D, { seed: "co2-contribution", months: 12 });
   const changes = [
     { unsPct: 100, servedMWh: 0, co2: 0, co2Local: 0 },
-    { unsPct: 50, servedMWh: 50, co2: 20, co2Local: 20 },
-    { servedMWh: 100, co2: 40, co2Local: 0, importMWh: 100 },
+    // RECAL-SPEC §1.1: 같은 계통 배출계수 0.4567의 공급·소비 반례를 유지.
+    { unsPct: 50, servedMWh: 50, co2: 22.835, co2Local: 22.835 },
+    { servedMWh: 100, co2: 45.67, co2Local: 0, importMWh: 100 },
     { servedMWh: 100, co2: 10, co2Local: 0, importMWh: 100 }
   ];
   changes.forEach((e, i) => {
     const { report } = X.monthStep(E, inputs(E, { [a]: e }), D);
-    near(report.contrib[a].co2Cut, i === 3 ? 30 : 0, `공급·소비 반례 ${i}: 미공급/화석수입 감축0·저탄소수입30`);
+    near(report.contrib[a].co2Cut, i === 3 ? 35.67 : 0, `공급·소비 반례 ${i}: 미공급/계통수입 감축0·저탄소수입35.67`);
   });
 });
 
@@ -230,7 +231,8 @@ test("verify 8: 도시 월 변화와 최저 집단의 현재 불만 분리", () 
     const g = r.report.groups[a], change = g.approvalChangeCause, low = g.lowestGroupDissatisfaction;
     ok(change?.scope === "city-month-change" && !Object.hasOwn(change, "group"), "도시 변화 원인에는 최저 집단을 붙이지 않음");
     eq(change?.key, r.report.cities[a].causes[0]?.key ?? null, "도시 변화 원인은 이번 달 절댓값1위 항목");
-    eq(g.why, change, "구 why 호환 필드도 도시 월 변화 의미");
+    eq(g.why, change.text, "G2 why 문구는 도시 월 변화 의미");
+    ok(typeof g.whyGrade === "string", "G2 whyGrade 분리");
     const lowest = Object.keys(E.cities[a].groups).sort((u, v) => E.cities[a].groups[u].sat - E.cities[a].groups[v].sat)[0];
     ok(low?.scope === "lowest-group-level" && low.group === lowest, "별도 불만 필드는 실제 최저 만족 집단");
     near(low?.satisfaction, E.cities[a].groups[lowest].sat, "최저 집단 현재 만족도");
@@ -279,7 +281,7 @@ test("verify 10·33: 사건 탄소를 잔여 몫에서 분리하고 월 탄소�
 test("ECON-SPEC §14.1: SMR 운영 단가 보정은 달 모드 도입 기술에만 적용", () => {
   const S = game(); adopt(S, a, ["smr"]);
   const p = D.params.smrFuelMul;
-  ok(p?.v === 1.25 && p.grade === "G" && typeof p.note === "string", "SMR 1.25배는 명시적인 게임 가정");
+  ok(p?.v === 1.25 && p.grade === "G" && typeof p.note === "string", "RECAL-SPEC §7.4: SMR 1.25배는 명시적인 게임 가정");
   const normal = C.modsFor(S, R, a);
   near(normal.fuelMul?.smr, 1.25, "달 모드 SMR 도입은 운영 단가1.25배");
   S.econ.intl.cur.fuelMul = 1.4;
@@ -310,10 +312,10 @@ test("ECON-SPEC §14.1: SMR 운영 단가 보정은 달 모드 도입 기술에�
   ok(after.tot.by.smr > 0, "보정 비교는 실제 SMR 발전 fixture");
   near(after.tot.by.smr, before.tot.by.smr, "단가 변경은 SMR 발전량 불변");
   near(after.co2, before.co2, "단가 변경은 실제 운영 CO₂ 불변");
-  near(after.cost.fuel - before.cost.fuel, after.tot.by.smr * 0.0005, "SMR 발전MWh당 운영비0.002→0.0025억");
-  near(B.BLD.smr.mw, 20, "SMR 정격20MW 유지");
-  near(B.BLD.smr.cost, 150, "SMR 건설150억 유지");
-  near(ctx.KCP.TECH_DATA.params.smrTurns.v, 6, "SMR 공사6턴 유지");
+  near(after.cost.fuel - before.cost.fuel, after.tot.by.smr * 0.0005, "RECAL-SPEC §7.4: SMR 발전MWh당 운영비0.002→0.0025억");
+  near(B.BLD.smr.mw, 4 * 170 / 230, "G5 SMR 4모듈 축척");
+  near(B.BLD.smr.cost, (150 / 20) * (8000 / 4500) * (4 * 170 / 230), "G7 DOE FOAK 환산 단가");
+  near(ctx.KCP.TECH_DATA.params.smrTurns.v, 12, "SMR 공사 round(55/4.4)=12턴");
 });
 
 console.log(`확정 결함: ${passes} 통과, ${fails} 실패`);

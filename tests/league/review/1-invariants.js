@@ -11,6 +11,7 @@ for (let s = 0; s < 40; s++) {
   subsidyCount = {};
   // ECON-BALANCE v1.3: 지원금까지 달 평균 ×12인 v1.2 단언 대신 실제 원장으로 검산.
   // 엔진의 revenueHistory/revYear를 기대값 계산에 사용하지 않는다.
+  const fixedYear = {};
   const debtLedger = Object.fromEntries(IDS.map(id => [id, []]));
   const { E, reps } = run({ seed: "inv" + s, months: 36, f, opts: s % 5 === 0 ? { cash: { anseong: -5000 } } : {}, onStep: (Ep, r) => {
     const E2 = r.E, R2 = r.report;
@@ -25,10 +26,9 @@ for (let s = 0; s < 40; s++) {
       bad(Math.abs(lhs - F.cashAfter) < 1e-9, `identity ${id} t${Ep.t} diff ${lhs - F.cashAfter}`);
       if (F.rev.subsidy > 0) subsidyCount[id] = (subsidyCount[id] || 0) + 1;
       debtLedger[id].push({ tax: F.rev.resTax + F.rev.indTax, subsidy: F.rev.subsidy });
-      const window = debtLedger[id].slice(-12);
-      const estimate = Ep.t < 12
-        ? sum(window.map(r => r.tax)) * 12 / window.length + debtLedger[id][0].subsidy
-        : sum(window.map(r => r.tax + r.subsidy));
+      if (Ep.t === 0) fixedYear[id] = Ep.cities[id].revYear;
+      else if (Ep.month === 1) fixedYear[id] = sum(debtLedger[id].slice(-13, -1).map(r => r.tax + r.subsidy));
+      const estimate = fixedYear[id];
       const expectedCap = D.params.debtCapRatio.v * estimate;
       // 한도는 억 단위 소수 첫째 자리로 반올림한다. 독립 합산의 이진 소수 경계에서
       // 기대값을 먼저 반올림해 비교하지 않고 반 눈금(0.05억)+부동소수점 오차만 허용한다.
@@ -39,7 +39,7 @@ for (let s = 0; s < 40; s++) {
     R2.score.rank.forEach(x => { bad(x.score >= 0 && x.score <= 100, "score range"); Object.values(x.parts).forEach(v => bad(v >= 0 && v <= 100, "part range")); });
     scan(R2, "report"); scan(E2, "E");
   } });
-  bad(Object.values(subsidyCount).every(n => n === 3), "subsidy paid exactly 3x in 36 months: " + JSON.stringify(subsidyCount));
+  bad(Object.values(subsidyCount).every(n => n === 12), "subsidy paid exactly 12x in 36 months: " + JSON.stringify(subsidyCount));
   // determinism
   const a = run({ seed: "inv" + s, months: 36, f: (() => { const R = prng(s + 7); return () => ({ e: { uns: R() * 5 } }); })() });
   const b = run({ seed: "inv" + s, months: 36, f: (() => { const R = prng(s + 7); return () => ({ e: { uns: R() * 5 } }); })() });
@@ -72,7 +72,7 @@ console.log("yearStart twice in same year: anseong cash", c0, "->", c1.toFixed(2
     bad(JSON.stringify(legacy) === before, "legacy resume input immutable");
     IDS.forEach(id => {
       const fiscal = resumed.report.fiscal[id], city = resumed.E.cities[id];
-      const estimate = 12 * (fiscal.rev.resTax + fiscal.rev.indTax) + current.cities[id].subsidy;
+      const estimate = current.cities[id].revYear;
       bad(city.revenueVersion === 2 && city.revenueHistory.length === 1, `legacy reset ${id}`);
       bad(city.debtCap === Math.round(D.params.debtCapRatio.v * estimate * 10) / 10, `legacy midyear annual subsidy once ${id}`);
     });

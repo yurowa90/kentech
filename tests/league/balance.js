@@ -29,6 +29,13 @@ function annualDebtRevenue(rows, id) {
     sum(recurring) + sum(subsidies);
   return { recurring, subsidies, annual };
 }
+// RECAL F14: 첫해 시작 표준세입; 매년 1월 직전 연도 세금·분기 지원금 합계.
+function capRevenue(r, id, m) {
+  const yearStart = Math.floor(m / 12) * 12;
+  return yearStart === 0 ? r.start.cities[id].revYear : sum(r.reports.slice(yearStart - 12, yearStart).map(R => {
+    const v = R.fiscal[id].rev; return v.resTax + v.indTax + v.subsidy;
+  }));
+}
 let pass = 0, fail = 0;
 let section = "";
 const counts = {}, failures = [];
@@ -97,9 +104,9 @@ function param(key, grade, expected) {
 
 block("B1", () => {
   param("betaPopReal", "M");
-  // v1.2 우선: B15 — 산업 탄력은 주민 값 준용이므로 독립 추정(M)이 아닌 G.
-  param("betaIndReal", "G");
-  param("eduSpeed", "G"); param("startMix", "G");
+  // RECAL-SPEC §1.1·F01: 법인세 고용 탄력과 짝지은 산업 탄력(M).
+  param("betaIndReal", "M");
+  param("eduSpeed", "G"); param("startMix", "P");
   // ECON-BALANCE B1(v1.1): startMix 값은 회복·안정 목표로 정한다(0.2 고정 → 0..1 범위). 행동 목표는 아래 단언이 판정.
   ok(D.params.startMix && D.params.startMix.v >= 0 && D.params.startMix.v <= 1, `params.startMix 0..1 (${D.params.startMix && D.params.startMix.v})`);
   const stable = SEEDS.map(seed => run(36, undefined, seed));
@@ -153,7 +160,7 @@ block("B2", () => {
 });
 
 block("B3", () => {
-  const base = run(12);
+  const base = run(12), base36 = run(36);
   // 세금은 첫 달 주민 수에 대해 발생하므로 첫 달 상태로 나눈다.
   const first = IDS.map(id => base.reports[0].fiscal?.[id]?.rev?.resTax / base.states[0].cities[id].pop);
   const err = (Math.max(...first) - Math.min(...first)) / mean(first);
@@ -164,28 +171,21 @@ block("B3", () => {
     const high = run(12, cid => cid === id ? { policy: { taxRes: 2, taxInd: 2, service: -2 } } : {});
     const l = operating(low, id), delta = operating(high, id) - operating(base, id);
     const drop = high.E.cities[id].approval - base.E.cities[id].approval;
-    ok(l < 0, `${id} 저세율·서비스+2 연 운영 수지 ${fmt(l)}억 (목표 <0)`);
+    // v1.6.1: 상대 기준과 복원된 절대 적자를 함께 검증한다.
+    ok(finite(l) && l < 0, `${id} 저세율·서비스+2 연 운영수지 ${fmt(l)}억 (절대 적자)`);
+    const low36 = run(36, cid => cid === id ? { policy: { taxRes: -2, taxInd: -2, service: 2 } } : {});
+    const baseAnnual = operating(base, id);
+    const cashDelta = (low36.E.cities[id].cash - low36.start.cities[id].cash) -
+      (base36.E.cities[id].cash - base36.start.cities[id].cash);
+    ok(finite(l) && finite(baseAnnual) && l < baseAnnual,
+      `${id} 저세율·서비스+2 연 운영 수지 ${fmt(l)}억, 정책0 ${fmt(baseAnnual)}억 (목표 정책0 미만)`);
+    ok(finite(cashDelta) && cashDelta < 0,
+      `${id} 저세율·서비스+2 36달 누적 현금 차이 ${fmt(cashDelta)}억 (목표 정책0 미만)`);
     ok(delta >= 0.3 * D.start[id].cash0, `${id} 고세율 수지 개선 ${fmt(delta)}억 (목표 ≥${fmt(0.3 * D.start[id].cash0)})`);
     ok(drop <= -8, `${id} 고세율 지지율 차이 ${fmt(drop)}점 (목표 ≤-8)`);
   }));
-  const winners = []; let completed = 0;
-  IDS.forEach(id => test(`${id} 5×5 정책 격자`, () => {
-    const grid = [];
-    for (let tax = -2; tax <= 2; tax++) for (let service = -2; service <= 2; service++) {
-      const r = run(36, cid => cid === id ? { policy: { taxRes: tax, taxInd: tax, service } } : {});
-      const score = X.score(r.E, D)?.by?.[id]?.score;
-      if (!finite(score)) throw new Error(`${id} score.by.score 없음`);
-      grid.push({ tax, service, score });
-    }
-    const best = Math.max(...grid.map(x => x.score));
-    const target = grid.find(x => x.tax === -2 && x.service === 2);
-    if (target.score === best) winners.push(id); // 공동 1위도 지배 전략으로 센다.
-    completed++;
-    ok(grid.length === 25, `${id} 격자 25칸 실행`);
-  }));
-  ok(winners.length <= 2 && completed === IDS.length,
-    `저세율·서비스+2 36달 1위 ${winners.length}곳 ${winners.join(",")} (목표 ≤2곳, 격자 완료 ${completed}/${IDS.length}, 같은 씨앗·한 도시만 정책 변경)`);
-  // 계수 '약 3배', '0.5 수준'은 권고: 정확한 수치 대신 위 행동 목표로 판정한다.
+  // 정책 격자의 판정 입력은 B12 v1.6.1과 통일한다. 25칸 대각선도 아래 B12에서 단언.
+
 });
 
 block("B4", () => {
@@ -228,8 +228,8 @@ block("B4", () => {
   test("비싼 전력의 음수 차익", () => {
     // v1.2 우선: B11 — 원가를 10배 올린 도시도 공급량 가중 평균으로 차익 계산.
     const E = initial(), ins = inputs(E, id => id === SMALL ? { energy: { costPerMWh: FIXTURE.cost * 10 } } : {});
-    const avg = sum(IDS.map(id => ins[id].energy.demMWh * ins[id].energy.costPerMWh)) /
-      sum(IDS.map(id => ins[id].energy.demMWh));
+    const others = IDS.filter(id => id !== SMALL);
+    const avg = sum(others.map(id => ins[id].energy.demMWh * ins[id].energy.costPerMWh)) / sum(others.map(id => ins[id].energy.demMWh));
     const e = ins[SMALL].energy, want = e.demMWh * (avg * (1 + markup?.v) - e.costPerMWh);
     const f = X.monthStep(E, ins, D)?.report?.fiscal?.[SMALL];
     // v1.2 우선: B11 — 이 입력은 정전 0이므로 공급량=수요량.
@@ -239,27 +239,49 @@ block("B4", () => {
 });
 
 block("B5", () => {
+  param("scorePartFloor", "G", 1);
   const E = initial();
   IDS.forEach(id => test(`${id} 재정 점수`, () => {
     const parts = cash => { const e = clone(E); e.cities[id].cash = cash; return X.score(e, D)?.by?.[id]?.parts; };
-    const a = parts(E.cities[id].cash0 * 3), b = parts(0), c = parts(-E.cities[id].debtCap * 0.5);
+    const a = parts(E.cities[id].cash0 * 3), b = parts(0), c = parts(-0.20 * 2.2 * E.cities[id].revYear);
     const keys = Object.keys(a || {}).sort().join(",");
     ok(keys === ["pop", "ind", "fin", "co2", "appr", "rel"].sort().join(","), `${id} parts 키=${keys} (정확히 pop,ind,fin,co2,appr,rel)`);
     ok(a?.fin === 100 && b?.fin === 100, `${id} 현금3배/0 fin=${a?.fin}/${b?.fin} (목표 100/100)`);
-    ok(finite(c?.fin) && c.fin <= 60, `${id} 한도50% 부채 fin=${c?.fin} (목표 ≤60)`);
+    ok(finite(c?.fin) && c.fin === 66.7, `${id} 한도50% 부채 fin=${c?.fin} (F14: 예산 채무 20%, 목표 66.7)`);
   }));
   const w = D.params.wScore?.v;
-  ok(finite(w?.fin) && w.fin > 0 && w.fin < 0.15 && !Object.hasOwn(w || {}, "cash"),
-    `점수 가중 ${JSON.stringify(w)} (fin>0,<0.15, cash 제거)`);
+  const expected = { pop: .10, ind: .10, fin: .125, co2: .275, appr: .15, rel: .25 };
+  ok(Object.keys(expected).every(k => finite(w?.[k]) && Math.abs(w[k] - expected[k]) < 1e-9) &&
+    Math.abs(sum(Object.values(w)) - 1) < 1e-9 && !Object.hasOwn(w || {}, "cash"),
+    `점수 가중 ${JSON.stringify(w)} (RECAL-SPEC §7.4: T5·B16 G 재보정, 합1·cash 제외)`);
 });
 
 block("B6", () => {
-  const r = run(12);
-  IDS.forEach(id => test(`${id} 보통 수지`, () => {
-    const value = operating(r, id), ratio = value / D.start[id].cash0;
-    ok(finite(ratio) && ratio >= 0.4 && ratio <= 0.8,
-      `${id} 연 운영 수지 ${fmt(value)}억 / cash0=${fmt(ratio)} (목표 0.4~0.8)`);
-  }));
+  // F13 목표 자체를 검증: 상·하한 여부만 판별하고 구현의 보정식을 재계산하지 않는다.
+  for (const targetRatio of [D.params.fiscalTargetRev.v, .6]) {
+    const data = clone(D);
+    data.params.fiscalTargetRev.v = targetRatio; // .6은 비제약 분기를 실제로 실행하는 별도 검사 입력.
+    for (const key of ["eduSpeed", "gpYear", "giYear"]) data.params[key].v = 0;
+    data.intl.eventP = 0; data.intl.schedule = [];
+    for (const key of Object.keys(data.intl.sigma)) data.intl.sigma[key] = 0;
+    const r = run(12, undefined, SEEDS[0], data);
+    let lower = 0, upper = 0, free = 0;
+    IDS.forEach(id => {
+      const c = r.start.cities[id], subsidy = X.yearStart(r.start, data).E.cities[id].subsidy;
+      const atLower = c.equalize <= .001;
+      const atUpper = Math.abs(c.equalize - subsidy * data.params.equalizeMaxShare.v) <= .001;
+      if (atLower) lower++;
+      else if (atUpper) upper++;
+      else {
+        free++;
+        const target = data.params.fiscalTargetRev.v * c.revYear, actual = operating(r, id);
+        ok(Math.abs(actual - target) <= .03,
+          `F13 비제약 도시 연 운영수지=${fmt(actual)}, 목표=${fmt(target)} (반올림 ≤.03억)`);
+      }
+    });
+    ok(lower + upper + free === IDS.length && (targetRatio !== .6 || free > 0), "F13 모든 도시 경계 분류·비제약 목표 검증 존재");
+    console.log(`B6 목표비율 ${targetRatio} 정액보정 경계: 하한 ${lower}, 상한 ${upper}, 비제약 ${free}`);
+  }
 });
 
 block("B7", () => {
@@ -273,7 +295,7 @@ block("B7", () => {
         const rev = R.fiscal?.[id]?.rev;
         return rev?.resTax + rev?.indTax + rev?.subsidy;
       });
-      const want = annualDebtRevenue(rows, id).annual * D.params.debtCapRatio?.v;
+      const want = capRevenue(r, id, m) * D.params.debtCapRatio?.v;
       const control = baseline.states[m].cities[id].debtCap;
       // v1.3: 반복 세입만 평균×12, 지원금은 1회분. 월 20% 제한은 적용하지 않는다.
       ok(eligible.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
@@ -286,7 +308,7 @@ block("B7", () => {
         const rev = R.fiscal?.[id]?.rev;
         return rev?.resTax + rev?.indTax + rev?.subsidy;
       }));
-      const want = D.params.debtCapRatio?.v * rev12, cap = r.states[m].cities[id].debtCap;
+      const want = D.params.debtCapRatio?.v * capRevenue(r, id, m), cap = r.states[m].cities[id].debtCap;
       // v1.2 우선: B11 — 최근12달 세금·지원금만 포함, 전기 차익도 제외.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
         `${id} ${m + 1}달 최근12달 세금·지원금 한도=${fmt(cap)}, 목표=${fmt(want)}`);
@@ -294,7 +316,7 @@ block("B7", () => {
     for (const m of [0, 5]) {
       const rows = r.reports.slice(0, m + 1);
       const { annual } = annualDebtRevenue(rows, id);
-      const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * annual;
+      const cap = r.states[m].cities[id].debtCap, want = D.params.debtCapRatio?.v * capRevenue(r, id, m);
       // v1.3: 반복 세입 달 평균만 연환산하고 올해 1월 지원금은 한 번만 더한다.
       ok(finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
         `${id} ${m + 1}달 관측 평균 연환산 한도=${fmt(cap)}, 목표=${fmt(want)} (지원금은 1회분)`);
@@ -331,7 +353,7 @@ block("B10", () => {
   test("yearStart 지급 가드", () => {
     const E = initial(), before = JSON.stringify(E), one = X.yearStart(E, D), two = X.yearStart(one.E, D);
     ok(JSON.stringify(E) === before, "yearStart 입력 불변");
-    ok(one.E?.paidYear === E.year, `paidYear=${one.E?.paidYear} (목표 ${E.year})`);
+    ok(one.E?.paidQuarter === `${E.year}:1`, `paidYear=${one.E?.paidYear} (목표 ${E.year})`);
     IDS.forEach(id => {
       ok(one.E.cities[id].cash > E.cities[id].cash, `${id} 첫 yearStart 지급`);
       ok(two.E?.cities?.[id]?.cash === one.E.cities[id].cash,
@@ -384,8 +406,8 @@ function run12(months, change = () => ({}), seed = "balance-v1.2") {
   return { start, E, reports, states, supplied };
 }
 const served12 = e => e.servedMWh ?? e.demMWh * (1 - e.unsPct / 100);
-function averageCost12(ins) {
-  const live = IDS.map(id => ins[id].energy).filter(e => served12(e) > 0);
+function averageCost12(ins, excluded) {
+  const live = IDS.filter(id => id !== excluded).map(id => ins[id].energy).filter(e => served12(e) > 0);
   return sum(live.map(e => served12(e) * e.costPerMWh)) / sum(live.map(served12));
 }
 
@@ -395,7 +417,7 @@ block("B11", () => {
     const ins = r.supplied[0], avg = averageCost12(ins), markup = D.params.tariffMarkup?.v;
     IDS.forEach(id => {
       const e = ins[id].energy, f = r.reports[0].fiscal?.[id], served = served12(e);
-      const gross = served * avg * (1 + markup), margin = gross - served * e.costPerMWh;
+      const gross = served * averageCost12(ins, id) * (1 + markup), margin = gross - served * e.costPerMWh;
       ok(finite(f?.tariffGross) && finite(gross) && Math.abs(f.tariffGross - gross) <= 0.01,
         `${id} 공급=${fmt(served)}/${fmt(e.demMWh)}, 가중원가=${fmt(avg)}, tariffGross=${f?.tariffGross}, 목표=${fmt(gross)}`);
       ok(finite(f?.rev?.tariff) && finite(margin) && Math.abs(f.rev.tariff - margin) <= 0.01,
@@ -458,7 +480,7 @@ block("B11", () => {
         const rows = r.reports.slice(Math.max(0, m - 11), m + 1);
         // v1.3: B7과 같은 독립 기대식을 사용한다.
         const { recurring, subsidies, annual } = annualDebtRevenue(rows, id);
-        const want = annual * D.params.debtCapRatio?.v;
+        const want = capRevenue(r, id, m) * D.params.debtCapRatio?.v;
         const cap = r.reports[m].fiscal?.[id]?.debtCap;
         ok(recurring.every(finite) && subsidies.every(finite) && finite(want) && finite(cap) && Math.abs(cap - want) <= 0.1,
           `${label} ${id} ${m + 1}달 fiscal.debtCap=${fmt(cap)}, 반복 세입 연환산·지원금1회 목표=${fmt(want)}`);
@@ -471,31 +493,16 @@ block("B11", () => {
 });
 
 block("B12", () => {
-  // 실행 3분 제한을 위해 씨앗은 하나, 한 도시의 정책만 변경한다. 5×5×5와 36달은 모두 검사한다.
-  const winners = {}, bests = {}, lowWinners = [];
-  IDS.forEach(id => test(`${id} 주민세×산업세×서비스 격자`, () => {
-    const grid = [];
-    for (let taxRes = -2; taxRes <= 2; taxRes++) for (let taxInd = -2; taxInd <= 2; taxInd++)
-      for (let service = -2; service <= 2; service++) {
-        const r = run12(36, cid => cid === id ? { policy: { taxRes, taxInd, service } } : {});
-        grid.push({ key: `${taxRes},${taxInd},${service}`, taxRes, taxInd,
-          score: X.score(r.E, D)?.by?.[id]?.score });
-      }
-    const valid = grid.length === 125 && grid.every(p => finite(p.score));
-    ok(valid, `${id} 125개 조합 유한 점수=${grid.filter(p => finite(p.score)).length}/125`);
-    if (!valid) return;
-    const best = Math.max(...grid.map(p => p.score));
-    const top = grid.filter(p => Math.abs(p.score - best) <= 1e-9);
-    winners[id] = top.map(p => p.key); bests[id] = best;
-    // 공동 1위도 1위로 센다. 주민세와 산업세를 독립적으로 움직인다.
-    if (top.some(p => p.taxRes === -2 && p.taxInd === -2)) lowWinners.push(id);
-  }));
-  const complete = Object.keys(winners).length === IDS.length;
-  const common = complete ? winners[IDS[0]].filter(key => IDS.every(id => winners[id].includes(key))) : [];
-  ok(complete && common.length === 0,
-    `모든 도시 공통1위=${JSON.stringify(common)}, 도시별 1위=${JSON.stringify(winners)}, 점수=${JSON.stringify(bests)} (공통 조합 없음)`);
-  ok(complete && lowWinners.length <= 3,
-    `(-2,-2,·) 계열 1위=${lowWinners.length}/${IDS.length} ${JSON.stringify(lowWinners)} (≤3곳)`);
+  const host = require("./review/21-host-policy-grid");
+  const result = host.grid();
+  host.check(result);
+  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·최대감세 계열 ≤3도시");
+  const winners = IDS.filter(id => {
+    const diagonal = result[id].rows.filter(r => r.taxRes === r.taxInd);
+    ok(diagonal.length === 25 && diagonal.every(r => finite(r.score)), `${id} B3 실제 호스트 25칸`);
+    return diagonal.find(r => r.key === "-2,-2,2").score === Math.max(...diagonal.map(r => r.score));
+  });
+  ok(winners.length <= 2, `B3 실제 호스트 감세·서비스+2 1위 ${winners.length}/6 (≤2)`);
 });
 
 block("B13", () => {
@@ -522,35 +529,53 @@ block("B13", () => {
 });
 
 block("B14", () => {
-  test("정책0 주민의 재정 기여와 정액 보정 상한", () => {
+  test("정책0 지역 평균 주민 기여·화면 필드·정액 보정 상한", () => {
     const r = run12(36);
-    for (const m of [0, 12, 24]) IDS.forEach(id => {
-      const f = r.reports[m].fiscal?.[id], pop = r.states[m].cities[id].pop;
-      // 정액 subBase와 equalize는 주민 한 명의 한계 기여가 아니다. 1월 지원금에서 제외한다.
-      // 나머지 인구 비례 지원금/주민 수를 연 1인당 지원금으로 읽고 12달로 나눈다.
-      const perCapSubsidy = (f?.rev?.subsidy - f?.equalize - D.params.subBase?.v) / pop;
-      const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
-      ok(finite(perCapSubsidy) && finite(net) && net > 0,
-        `${id} ${m + 1}달 주민1명 월 순효과=${fmt(net * 1e8)}원, 주민세=${fmt(f?.rev?.resTax / pop * 1e8)}, 지원/12=${fmt(perCapSubsidy / 12 * 1e8)}, 서비스=${fmt(f?.exp?.service / pop * 1e8)} (순효과 >0)`);
-      const ratio = f?.equalize / f?.rev?.subsidy;
-      ok(finite(f?.equalize) && f.equalize >= 0 && finite(ratio) && ratio <= 0.5,
-        `${id} ${m + 1}달 정액보정=${fmt(f?.equalize)}, 1월 지원=${fmt(f?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
-    });
+    for (let m = 0; m < 36; m++) {
+      const annual = Math.floor(m / 12) * 12;
+      let contribution = 0, population = 0;
+      IDS.forEach(id => {
+        const f = r.reports[m].fiscal?.[id], jan = r.reports[annual].fiscal?.[id];
+        const pop = r.states[m].cities[id].pop;
+        // F25: 1월 공지 연액 = 분기 지급액×4. 정액 기본·보정을 빼고 12달 배분.
+        const perCapSubsidy = (4 * jan?.rev?.subsidy - jan?.equalize - D.params.subBase?.v) / pop;
+        const net = f?.rev?.resTax / pop + perCapSubsidy / 12 + f?.rev?.tariff / pop - f?.exp?.service / pop;
+        ok(finite(net) && finite(f?.perResidentNet) && Math.abs(f.perResidentNet - net) < 1e-12,
+          `${id} ${m + 1}달 perResidentNet=${f?.perResidentNet}, 기대=${net}억/명·달 (도시별 음수 허용)`);
+        contribution += net * pop; population += pop;
+        if (m === annual) {
+          const ratio = jan?.equalize / (4 * jan?.rev?.subsidy);
+          ok(finite(jan?.equalize) && jan.equalize >= 0 && finite(ratio) && ratio <= 0.5,
+            `${id} ${m + 1}달 정액보정=${fmt(jan?.equalize)}, 1월 공지 연액=${fmt(4 * jan?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
+        }
+      });
+      const average = contribution / population;
+      ok(finite(average) && average >= 0,
+        `${m + 1}달 지역 인구 가중 평균 주민1명 월 순효과=${fmt(average * 1e8)}원 (≥0)`);
+    }
   });
 });
 
 block("B15", () => {
-  const speed = D.params.eduSpeed?.v, kappa = D.params.kappaPop?.v, beta = D.params.betaPopReal?.v;
-  // 공개 β_game 별도 필드가 없는 계약: 현실 탄력×교육 배속을 게임 탄력으로 읽는다.
-  const betaGame = finite(D.params.betaPop?.v) ? D.params.betaPop.v : beta * speed;
-  const evidenceRate = 0.0008, declaredRate = speed * evidenceRate, gameRate = kappa * betaGame;
-  const err = Math.abs(gameRate / declaredRate - 1);
-  ok([speed, kappa, betaGame, declaredRate, gameRate, err].every(finite) && speed > 0 && err <= 0.1,
-    `eduSpeed=${speed}, κ_game=${kappa}, β_game=${betaGame}, 표시속도=${declaredRate}, 게임속도=${gameRate}, 상대오차=${fmt(err * 100)}% (≤10%)`);
-  // 명세가 '주민 값 준용'으로 지목한 산업 탄력은 숫자가 같아도 직접 측정치(M)가 아니다.
-  const p = D.params.betaIndReal;
-  ok(p?.grade === "G" && finite(p?.v) && typeof p.note === "string" && p.note.length > 0,
-    `주민 값 준용 params.betaIndReal=${JSON.stringify(p)} (G·유한값·note)`);
+  // RECAL-SPEC §7.2·§7.3: 실제 move 진입 인자를 계측해 β 불변·κ 시간 압축 확인.
+  const fs = require("node:fs"), vm = require("node:vm"), calls = [];
+  const source = fs.readFileSync(path.resolve(__dirname, "../../ui/econ.js"), "utf8")
+    .replace("function move(E, key, eff, beta, kappa, totNew, data) {",
+      "function move(E, key, eff, beta, kappa, totNew, data) { recordMove(key, beta, kappa);");
+  const sandbox = { window: { KCP: { ECON_DATA: D } }, recordMove: (key, beta, kappa) => calls.push({ key, beta, kappa }) };
+  vm.runInNewContext(source, sandbox);
+  for (const speed of [1, 4.4]) {
+    const data = clone(D); data.params.eduSpeed.v = speed;
+    const engine = sandbox.window.KCP.econ, E = engine.initCities(IDS, data);
+    calls.length = 0; engine.monthStep(E, inputs(E), data);
+    for (const [key, beta, real] of [["pop", 0.12, 0.009], ["ind", 0.08, 0.005]]) {
+      const call = calls.find(c => c.key === key);
+      ok(call && Math.abs(call.beta - beta) < 1e-9 && Math.abs(call.kappa - real * speed) < 1e-9,
+        `${key} eduSpeed=${speed}: β=${call?.beta}, κ=${call?.kappa} (β=${beta}, κ=${real * speed})`);
+    }
+  }
+  param("eduSpeed", "G", 4.4);
+  param("betaIndReal", "M", 0.08);
 });
 
 block("B17", () => {
@@ -574,12 +599,12 @@ block("B17", () => {
       S.cities[id].ind === start.cities[id].ind &&
       JSON.stringify(S.cities[id].policy) === JSON.stringify(ins[id].policy));
     ok(fixed, `${id} 13달 정책·인구·종사자 고정`);
-    // v1.3: 기존 상한·변동률 단언을 유지하고 공통 기대식의 한도도 함께 측정한다.
-    const firstWant = annualDebtRevenue(reports.slice(0, 1), id).annual * data.params.debtCapRatio?.v;
-    const laterWant = annualDebtRevenue(reports.slice(1, 13), id).annual * data.params.debtCapRatio?.v;
+    // RECAL-SPEC §1.1·§8 #6: cash0 상한을 새 연 세입 비율의 정확한 기대값으로 교체한다.
+    const firstWant = start.cities[id].revYear * data.params.debtCapRatio?.v;
+    const laterWant = annualDebtRevenue(reports.slice(0, 12), id).annual * data.params.debtCapRatio?.v;
     console.log(`B17 측정 ${id} cash0=${fmt(cash0)}, 첫달=${fmt(first)}, 13달째=${fmt(later)}, 차이=${fmt(delta * 100)}%, 목표=${fmt(firstWant)}/${fmt(laterWant)}`);
-    ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && first <= cash0 * 1.5,
-      `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (≤${fmt(cash0 * 1.5)})`);
+    ok(finite(cash0) && cash0 > 0 && finite(first) && first > 0 && Math.abs(first - Math.round(firstWant * 10) / 10) < 1e-9,
+      `${id} 첫달 한도=${fmt(first)}, cash0=${fmt(cash0)} (연 세입×0.88=${fmt(firstWant)})`);
     ok(fixed && finite(first) && first > 0 && finite(later) && finite(delta) && delta <= 0.3,
       `${id} 첫달/13달째 한도=${fmt(first)}/${fmt(later)}, 첫달 대비 차이=${fmt(delta * 100)}% (≤30%)`);
   }));
