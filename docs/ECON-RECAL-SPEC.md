@@ -173,7 +173,7 @@
 | F16 | `outIdx()` cbam·`industryAttract()` w.carbon·intl 사건 | 0.02 × steel × xs × (co2Int/0.45), CBAM이면 w.carbon += 0.3 × steelX | cbam = steel × xs × cbamEuShare × cbamDrop × cbamPhase[연도] × eduCbam(연도 키가 없으면 가장 가까운 값). 실제 CBAM에서 w.carbon = wA.carbon(가중 추가 없음). 가상 사건 eu_indirect(이름 'EU, 철강 간접배출 포함 결정(가상)', sched 아님, 기본 꺼짐 또는 진행자 선택)일 때만 carbonWeight × steelX를 더하고 전력 탄소 연동을 켠다 | 7.13–7.15 |
 | F17 | 바이오매스 CO₂(build.js·league-core.js) | 0.1t/MWh를 co2에 합산 | co2에는 0, 별도 bioCo2(정보 항목)로 집계해 화면에 '바이오 CO₂(국가 총량 밖)' | 9.5 |
 | F18 | `score()` rel(econ.js) | 100 × (1 − unsS/unsZeroL) | 100 × (1 − unsS/scoreUnsZero) | 5.10 |
-| F19 | `score()` co2·`groupTargets()` co2(econ.js) | 100 × exp(−co2pc/scoreCo2Ref) | I = 소비 CO₂/공급 MWh(λslow 지연). G9: 시작 지도의 기존 설비만 고정 전선으로 연결해 첫 달 운전한 소비 CO₂/공급 MWh를 co2Intensity0로 저장한다. 원가도 그 운전의 연료비/공급량을 쓴다. 기존 발전소가 없는 네 도시의 비율은 정의되지 않으므로 normalCo2·normalCost 대체값을 명시한다. 공급 0인 달은 직전 집약도 유지, 직전 값이 없을 때만 시작값을 쓴다. 값 = clamp(100 × (scoreCo2Worst − I)/(scoreCo2Worst − scoreCo2Best)). co2pc는 화면용으로 남겨도 된다 | 13.5 |
+| F19 | `score()` co2·`groupTargets()` co2(econ.js) | 100 × exp(−co2pc/scoreCo2Ref) | I = 소비 CO₂/공급 MWh(λslow 지연). G10: 시작 지도의 기존 설비만 고정 전선으로 연결해 첫 달 운전한다. 부족 MWh에 normalCo2·normalCost를 곱해 실제 탄소·연료비에 각각 더하고 전체 수요 MWh로 나눈 값을 시작 탄소·원가로 저장한다. 무발전 네 도시는 같은 혼합 규칙의 공급 0 특수 경우이며 대체값임을 명시한다. 공급 0인 달은 직전 집약도 유지, 직전 값이 없을 때만 시작값을 쓴다. 값 = clamp(100 × (scoreCo2Worst − I)/(scoreCo2Worst − scoreCo2Best)). co2pc는 화면용으로 남겨도 된다 | 13.5 |
 | F20 | 지역 CO₂ 목표(econ.js `monthStep()` region, league-core.js `goalsOf()`) | 대표 7일 3,000t × 달 일수/7(호스트는 실제 TWh 몫으로 축소) | goal = 지역 수요 MWh(demMWh 합) × normalCo2 × (1 − coopCo2Cut × min(1, (연도 − 2018)/12)) × coopEase. 2027년 계수 0.70. 호스트 goalsOf와 단독 기본값이 같은 식을 쓴다 | 13.6 |
 | F21 | 사건 추첨(league-core.js) | monthEventP로 0/1개를 정한 뒤 weight로 고름. finedust_coal_cap은 겨울 무작위, typhoon은 tieDown 선이 있는 방에서만 | 두 단계 추첨은 유지하고, 기상 사건의 weight를 '함의 빈도 = monthEventP × w_e ÷ Σw(그 계절 유효 사건) = P_real × hazardFreq'가 되게 다시 정한다: 태풍 여름 0.056·가을 0.026, 황사 봄 0.077(P_real 0.56·0.26·0.77). P_real이 없는 사건은 지금 weight 유지. finedust_coal_cap은 12·1·2·3월 확정 일정(추첨·B9 집계에서 제외). typhoon은 선이 없어도 발생하고 tieDown 효과만 선이 있을 때 | 13.7, 9.13 |
 | F22 | 접속·출력제어(league-core.js) | connPerMonth, curtailLoss 키 | connPerMonthReal × eduConn, curtailLossReal × eduCurtail. 경제 모드에서는 light_load_curtailment를 추첨하지 않는다 | 8.12, 8.14, 8.15 |
@@ -393,6 +393,13 @@ T5는 양쪽 모두 36달 건설+운영·연료+구매 총지출로 맞춘다. �
 **G9 검증 결과.** 호스트 정책 격자 감세2/6·증세3/6, 정책0 호스트36달 및 일반 기본 봇 지방채 초과0. 일반 재생71.783>디젤46.600, nothing은12·24·36달 모두6도시 꼴찌다. T5 B16 통과, 연구 이득+9.417점, SMR1위4/6으로 희망 목표≤3은 미달이다. balance807/0·test-econ1,286,685/0·next/tech/sec/review 실패0·ai-check6,589/0·bots36 18,098/0. recal.js는 파일과 실패 상세까지 기존과 같은251/8을 유지한다.
 
 남은 충돌: (31) 기존 발전소가 없는 네 도시의 시작 비율은 실측 운전값이 아닌 명시적 대체값, (32) 당진 석탄 최소출력으로 시작 집약도1.062581이 절대 최악 기준 .82를 넘어 작은 감축은 여전히0점(30% 감축12달은0→5.7), (33) 7.5억/게임MW는 구형150/20의 G 가격지수이며 환율 유도값이 아님, (34) v1.0.2 허용 범위 확대는 결과를 본 뒤의 사후 변경, (35) 공통 총지출 한도의7전략에서도 SMR1위4/6으로 희망 목표≤3 미달이다. O·P·M 값·기하평균·부분점수 하한·recal.js를 이 충돌을 가리기 위해 바꾸지 않는다.
+
+
+**G10 독립 검토 보완(2026-10-07).** F19 시작 보정의 부분 공급 도시도 부족분을 normalCo2=.4567·normalCost=.008로 보충한 가중 평균을 쓴다. 발전소가 없는 도시는 같은 규칙의 공급 0 특수 경우이다. 학생 운영 중 공급 0인 달의 직전 집약도 보존은 유지한다. B12는 계열별 ≤3 외에 세율 축별 한 방향의 6도시 독식을 금지한다. G10 결과는 감세·증세 계열 각각 3/6, 주민세 인상/인하 4/6·2/6, 산업세 인상/인하 3/6·5/6이다. `aiLocalFuelWeight=4`는 종류 내 입지에만 쓰고 종류 간 비교는 실제 연료비 차이×예상 발전량+건설비로 바꾼다. `aiFuelMonths=36`, `aiResearchDebtShare=0`(새 연구 인력의 차입 금지)을 사용하며 `aiDebtRepair`는 삭제한다. 공급 여유·접속량·보완 페이스 값은 유지한다. T5는 월별 누계+부동소수 허용 오차 0.000001억으로 단언을 복원한다. 최종 연구 이득 +4.483점·B16 통과·SMR 1위 2/6으로 G9의 충돌 (35)는 이 비교 집합에서 해소됐다. 탄소 100 상한과 추가 씨앗의 부채 초과는 아래에 남긴다. 실제 수치·변경 키·검사는 [G10 보고](../tests/league/review/G10-report.md)를 따른다.
+
+**남은 충돌 (36): 저탄소 전략의 탄소 부분점수 100 상한.** 절대 기준 점수의 상한과 바이오매스 영토 배출 0 회계 때문에 저탄소 전략끼리 구별되지 않는다. 근거 키·점수식은 불변이다. 사용자 결정 후보로 별도 보고되는 `bioCo2`의 일부 반영 여부를 남긴다. 회계 경계·비율·근거를 결정하기 전에는 구현하지 않으며 탄소 0 설비를 몰래 선호하는 AI 가중으로 대체하지 않는다.
+
+**남은 충돌 (37): 정책0의 씨앗 간 재정 안정성.** 지정된 공통 씨앗에서는 호스트·기본 봇 36달 초과 0이지만 별도 alpha/beta/gamma/delta/epsilon에서 화성의 초과 달은 0/8/11/3/10이다. 다른 다섯 도시는 초과 0이다. 고정 씨앗 수용 결과를 모든 씨앗의 안전 보증으로 확대하지 않는다.
 
 ## 9. 결정이 필요한 항목(새 D-번호 후보)
 

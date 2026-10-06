@@ -497,7 +497,7 @@ block("B12", () => {
   const host = require("./review/21-host-policy-grid");
   const result = host.grid();
   host.check(result);
-  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·감세·증세 계열 각각 ≤3도시");
+  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·감세·증세 계열 각각 ≤3도시·세율 축별 6도시 독식 없음");
   const winners = IDS.filter(id => {
     const diagonal = result[id].rows.filter(r => r.taxRes === r.taxInd);
     ok(diagonal.length === 25 && diagonal.every(r => finite(r.score)), `${id} B3 실제 호스트 25칸`);

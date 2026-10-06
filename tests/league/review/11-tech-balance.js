@@ -105,6 +105,8 @@ function focalPlan(S, id, strategy) {
 // 기본 건설·세금·부채 대응은 balanced로 통일하고 기존 AI 협상을 재사용한다.
 const alternatives = new Set(["renew", "ties", "hybrid"]);
 const references = {};
+const budgetTolerance = 1e-6; // 원장 부동소수 누계 오차만 허용(억), 실질 지출 초과 허용 아님
+report.budgetTolerance = budgetTolerance;
 const tradeForecastMargin = 1.25; // G: 공개 계획 운전 예상의 연료·수요 변화 여유
 report.tradeForecastMargin = tradeForecastMargin;
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -294,11 +296,11 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   run.avgUns = run.months.reduce((sum, m) => sum + m.uns, 0) / run.months.length;
   run.adopted = C.researchView(S, focal).adopted;
   if (alternatives.has(strategy)) {
-    const excess = run.account.matchedSpend - references[focal].account.matchedSpend;
+    const excess = Math.max(...run.months.map(m => m.cumulativeMatchedSpend - references[focal].months[m.month - 1].cumulativeMatchedSpend));
     fitHistory.push({attempt: fitAttempt + 1, capitalLimit: Number.isFinite(capitalLimit) ? capitalLimit : null,
       construction: run.account.construction, operation: run.account.operation, purchase: run.account.purchase,
       spent: run.account.matchedSpend, target: references[focal].account.matchedSpend, excess});
-    if (excess > 1e-6 && fitAttempt < 11 && capitalLimit !== 0) {
+    if (excess > budgetTolerance && fitAttempt < 11 && capitalLimit !== 0) {
       ok(run.avgUns <= 5, `${focal}/${strategy} 예산 사전 반복도 평균 정전 ≤5%`);
       // 관측 초과액만큼 다음 시도의 건설 상한을 낮춘다. 운영·연료·구매는 항상 실제 지출로 계산.
       capitalLimit = Math.max(0, run.account.construction - excess);
@@ -306,8 +308,8 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
       console.log('예산 맞춤 재실행', JSON.stringify({focal,strategy,fitAttempt,excess,capitalLimit}));
       continue;
     }
-    for (const month of run.months) ok(month.cumulativeMatchedSpend <= references[focal].account.matchedSpend + 1e-6,
-      `${focal}/${strategy}/${month.month} 실제 누적 총지출 ≤ SMR 36달 한도`);
+    for (const month of run.months) ok(month.cumulativeMatchedSpend <= references[focal].months[month.month - 1].cumulativeMatchedSpend + budgetTolerance,
+      `${focal}/${strategy}/${month.month} 실제 누적 총지출 ≤ 같은 달 SMR 누계 + 허용 오차`);
     run.budget = { fitHistory, capitalLimit: Number.isFinite(capitalLimit) ? capitalLimit : null, target: references[focal].account.matchedSpend, spent: run.account.matchedSpend,
       unspent: references[focal].account.matchedSpend - run.account.matchedSpend,
       execution: run.account.matchedSpend / references[focal].account.matchedSpend,

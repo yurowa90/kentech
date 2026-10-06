@@ -23,7 +23,7 @@ for (const id of ids) {
   ok(JSON.stringify(clean.lines) === JSON.stringify(plan.lines), '시작 기준 합법 전선 보존 ' + id);
   // 모델의 반올림 전 실제 공급·탄소를 독립적으로 읽는다.
   const sim = B.simulate({ ...clean, season: 'winter', seed: 0 }, 7, { league: true });
-  const supplied = Math.max(0, sim.tot.dem - sim.unsTotal), intensity = supplied > 1e-6 ? sim.co2 / supplied : D.params.normalCo2.v;
+  const supplied = Math.max(0, sim.tot.dem - sim.unsTotal), intensity = (sim.co2 + sim.unsTotal * D.params.normalCo2.v) / sim.tot.dem;
   ok(plan.builds.length === 0 && (supplied > 1e-6) === B.SITES.some(s => s.kind === 'plant'), '지도 기존 설비 유무와 공급 일치 ' + id);
   near(supplied + sim.unsTotal, sim.tot.dem, '공급·미공급 총량 보존 ' + id);
   near(S.econ.cities[id].co2Intensity0, intensity, '실제 소비 탄소/공급 MWh ' + id);

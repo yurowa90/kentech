@@ -68,17 +68,23 @@ function grid(fixture=hostTape()) {
   }
   return result;
 }
+function axes(result) {
+  return Object.fromEntries(['taxRes','taxInd'].flatMap(axis => [-1,1].map(sign =>
+    [`${axis}${sign < 0 ? 'Down' : 'Up'}`, Object.keys(result).filter(id => result[id].top.some(r => sign*r[axis]>0)).length])));
+}
 function check(result) {
   const ids=Object.keys(result), common=result[ids[0]].top.filter(r=>ids.every(id=>result[id].top.some(p=>p.key===r.key)));
   assert.ok(ids.length===6 && ids.every(id=>result[id].rows.length===125 && result[id].rows.every(r=>Number.isFinite(r.score))));
   assert.equal(common.length,0,'B12 모든 도시 공통 1위 금지');
+  const counts=axes(result); console.log('B12 세율 축별 1위 도시 수', JSON.stringify(counts));
+  for(const [axis,count] of Object.entries(counts)) assert.ok(count<6, `B12 ${axis} 한 방향 6도시 독식 금지: ${count}`);
   for (const sign of [-1, 1]) assert.ok(ids.filter(id=>result[id].top.some(r=>
     sign*r.taxRes>=0 && sign*r.taxInd>=0 && sign*(r.taxRes+r.taxInd)>0)).length<=3,
     `B12 ${sign<0?'감세':'증세'} 계열(두 세율 같은 방향·하나 이상 변경) 1위 ≤3`);
 }
-module.exports={hostTape,replay,grid,check};
+module.exports={hostTape,replay,grid,check,axes};
 if(require.main===module) {
   const result=grid();
   if(process.env.G4_GRID_OUT) fs.writeFileSync(process.env.G4_GRID_OUT,JSON.stringify(result,null,2));
-  check(result); console.log('B12 host grid 750 combinations; pass 34 fail 0');
+  check(result); console.log('B12 host grid 750 combinations; pass 38 fail 0');
 }

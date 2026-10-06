@@ -555,9 +555,15 @@ JS = r"""
           const without = {...plan, builds: plan.builds.filter(b => !change.storageKeys.includes(b.t + ":" + b.i))};
           const counter = C.simTeam(BG, R, id, without, rnd, Number.MAX_VALUE, mods);
           const source = counter.k.curt + (counter.curtailMWh || 0);
+          const connected = change.storageKeys.every(key => plan.builds.some(b => b.t + ":" + b.i === key)) &&
+            (res.team[id].grid?.waitingMW || 0) <= 1e-6;
+          if (connected) {
+            change.observedMonths = (change.observedMonths || 0) + 1;
+            ok(Number.isFinite(source) && Number.isFinite(actualSpill) && actualSpill <= source + 1e-6,
+              `B18 storage ${id}/${m} 같은 급전의 ESS 제거 대조: 버림 비증가`);
+          }
           if (source - actualSpill > 1e-6) {
             change.chargeSourceMWh = source; change.capturedMWh = source - actualSpill; change.verifiedAtMonth = m;
-            ok(change.capturedMWh > 0, `B18 storage ${id}/${m} 접속 뒤 실제 ESS 버림 감소 대조`);
           }
         }
       }
@@ -620,6 +626,9 @@ JS = r"""
   if (rotations === strategies.length) {
     const added = out.runs.flatMap(r => r.planRequests).filter(p => p.strategy === "storage")
       .flatMap(p => p.changes);
+    const observed = added.filter(c => c.storageKeys && c.observedMonths > 0);
+    ok(observed.length > 0 && observed.some(c => c.verifiedAtMonth && c.capturedMWh > 1e-6),
+      "B18 storage 접속용 ESS 실제 관측 중 적어도 하나는 버림 감소(양수 분기 밖에서 단언)");
     ok(added.length > 0 && sum(added.map(c => c.capturedMWh)) > 0,
       `B18 storage 실제 ESS 추가 ${added.length}회·충전으로 버림 감소 ${sum(added.map(c => c.capturedMWh))}MWh`);
   }
@@ -864,10 +873,18 @@ process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotatio
             out["checks"].append([wins < len(out["ids"]), f"D61 {strategy} 도시별 1위 {wins}/{len(out['ids'])}: 독식 없음"])
     for month, horizon in out["horizons"].items():
         for city, rank in horizon["nothingScoreCityRanks"].items():
-            out["checks"].append([rank > 3, f"G6 {month}달 {city} nothing 점수 {rank}/9위: 상위3위 아님"])
+            out["checks"].append([rank == 9, f"G10 {month}달 {city} nothing 점수 {rank}/9위: 꼴찌"])
         for strategy in out["strategies"]:
             wins = sum(strategy in w for w in horizon["winners"].values())
             out["checks"].append([wins < len(out["ids"]), f"B16 {month}달 {strategy} 도시1위 {wins}/6: 독식 없음"])
+    if months == 36 and rotations == len(out["strategies"]):
+        for run in out["runs"]:
+            for row in run["rows"]:
+                if row["strategy"] == "base":
+                    over = sum(h["fiscal"][row["id"]]["debtOver"] for h in run["hist"])
+                    out["checks"].append([over == 0, f"G10 정책0 base {row['id']} 지방채 초과 {over}달"])
+        means = out["horizons"][36]["meanScores"]
+        out["checks"].append([means["renew"] > means["diesel"], "G10 36달 재생 평균 > 디젤 평균"])
     result_dir = args.output_dir or Path(__file__).resolve().parents[1] / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
     report = markdown(out)
