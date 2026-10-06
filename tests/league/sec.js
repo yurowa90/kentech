@@ -29,7 +29,7 @@ const mutations = {
   claim_ack: ["league.js", 'if (!L.claimAccepted) return;', 'if (false) return;', "F3-4 첫 snap만으로"],
   lost_seat: ["league.js", 'if (previousSeat != null && me.seatVersion !== previousSeat)', 'if (!me.seated && previousSeat != null && me.seatVersion !== previousSeat)', "F3-4 kick 직후 새 기기"],
   claim_reject: ["league.js", '      releaseSeat();\n      BG.toast(msg);', '      BG.toast(msg);', "F3-4 taken 자리 선택"],
-  early_request: ["league-net.js", 'if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : T.lastN || 0, T.retired?.[m.kid] || 0)) return reject("replay");', '', "F3-5 진행자 sid·순번·크기"],
+  early_request: ["league-net.js", 'if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : lastN(), T.retired?.[m.kid] || 0)) return reject("replay");', '', "F3-5 진행자 sid·순번·크기"],
   request_queue: ["league-net.js", '(queued.get(team) || 0) >= 16', 'false', "F3-5 진행자 검증 대기열"],
   early_host: ["league-net.js", 'if (queued >= 16 || !cheap(incoming) || incoming.event !== event)', 'if (queued >= 16 || incoming.event !== event)', "F3-5 팀 sid·순번·크기"],
   host_queue: ["league-net.js", 'queued >= 16', 'false', "F3-5 팀 검증 대기열"],
@@ -48,6 +48,17 @@ const mutations = {
   restart_sid: ["league.js", 'L.S.sid = NET.sessionId();', 'L.S.sid ||= NET.sessionId();', "F3-11 진행자 시작마다"],
   restore_base: ["league-net.js", '([k, c]) => ({ k, c })', '([k, c]) => ({ k, c: c + 1 })', "F3-12 운영 자료 축약 복원"],
   restore_grid: ["league-net.js", '([key, allocatedMW]) => ({ key, allocatedMW })', '([key, allocatedMW]) => ({ key, allocatedMW: 0 })', "F3-12 운영 자료 축약 복원"],
+  state_crit_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "crit" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 ready(568) → crit(567)"],
+  state_plan_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "plan" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 준비 → 계획"],
+  state_replay: ["league-net.js", 'stateNs?.values[m.type] || 0', 'm.type === "crit" ? 0 : stateNs?.values[m.type] || 0', "F4 같은 type 옛 n"],
+  state_max: ["league-net.js", 'T.lastN = Math.max(T.lastN || 0, m.n);', 'T.lastN = m.n;', "F4 역순 반영 뒤에도 퇴거용"],
+  state_seat: ["league-net.js", 'T.lastNByType?.seat === epoch && T.lastNByType.kid === m.kid', 'T.lastNByType', "F4 새 키·자리"],
+  state_ack: ["league.js", 'sent.acked = true;', 'return;', "F4 최신 상태 ack"],
+  state_ack_n: ["league.js", 'sent.n === m.n && ', '', "F4 이전·다른 대상 ack"],
+  state_ack_queued: ["league.js", 'session.stateRequests[type] = stateRequest;', 'session.sending?.then(() => { session.stateRequests[type] = stateRequest; });', "F4 서명 대기 중 이전 ack"],
+  state_cooldown: ["league.js", 'Date.now() - sent.sentAt >= 2000', 'true', "F4 1999ms"],
+  state_ack_timer: ["league.js", '(type !== "plan" || !sent.acked || sent.rev !== L.rev)', 'true', "F4 ack 후 계획 재전송 중단"],
+  state_unsent_crit: ["league.js", 'type !== "plan" || !sent.acked || sent.rev !== L.rev', 'type === "hello" || !sent.acked', "F4 이전 ack 뒤 아직 보내지 않은 기준 편집"],
 
 };
 if (process.env.F2_MUTATION) {
@@ -106,7 +117,7 @@ async function security() {
   const renamed = { ...await sign(a, team, { type: "ready", ready: false }), team: ids[1] };
   ok(!(await receive(renamed)).ok, "대상 팀에도 같은 키 등록: 바깥 팀 이름 변조 거절");
   const secret = JSON.stringify(C.publicView(S, 2));
-  for (const needle of [a.publicKey.x, a.publicKey.y, a.privateKey.d, S.teams[team].token, high.sig, '"publicKey"', '"privateKey"', '"sig"', '"token"', '"lastN"']) ok(!secret.includes(needle), "공개 상태에서 인증 자료 제외: " + needle.slice(0, 12));
+  for (const needle of [a.publicKey.x, a.publicKey.y, a.privateKey.d, S.teams[team].token, high.sig, '"publicKey"', '"privateKey"', '"sig"', '"token"', '"lastN"', '"lastNByType"']) ok(!secret.includes(needle), "공개 상태에서 인증 자료 제외: " + needle.slice(0, 12));
   const before = applied.length;
   const first = await sign(a, team, { type: "ready", ready: false });
   const second = await sign(a, team, { type: "ready", ready: true });
@@ -118,7 +129,7 @@ async function security() {
     const valid = await N.verifyEnvelope(wire, key); active--; return valid;
   });
   const results = await Promise.all([delayed(second), delayed(first), delayed(third)]);
-  ok(results[0].ok && !results[1].ok && results[2].ok, "뒤섞인 동시 도착: 단조 증가 순번만 반영");
+  ok(results[0].ok && !results[1].ok && results[2].ok, "뒤섞인 같은 type 동시 도착: 단조 증가 순번만 반영");
   ok(maxActive === 1 && applied.slice(before).every((n, i, all) => i === 0 || n > all[i - 1]), "팀별 검증·반영 직렬 처리");
   const restored = JSON.parse(JSON.stringify(S));
   ok(!(await N.receiver(restored, m => C.reduce(restored, m, 4, BG))(third)).ok, "진행자 저장 복원 뒤 되풀이 거절");
@@ -146,6 +157,51 @@ async function security() {
   ok((await N.receiver(legacy, m => C.reduce(legacy, m, 2, BG))(await claim(a))).ok, "옛 자리 kick 뒤 새 키 착석");
   const internal = state();
   ok(C.reduce(internal, { type: "claim", team, token: "solo-city-" + team }, 0, BG).ok && C.reduce(internal, { type: "ready", team, token: "solo-city-" + team, ready: true }, 0, BG).ok, "혼자 하기의 내부 무서명 경로 유지");
+}
+async function floor4Network() {
+  const S = state(), team = ids[0], key = await N.createIdentity();
+  S.phase = "plan"; S.round = 1;
+  const sign = (request, n) => N.signEnvelope({ ...key, n: 0 }, team,
+    { sid: S.sid, seat: S.teams[team].seatVersion || 0, rd: S.round, ph: S.phase, ...request }, n);
+  const receive = N.receiver(S, m => C.reduce(S, m, 1, BG));
+  await receive(await sign({ type: "claim", publicKey: key.publicKey }, 1));
+  const crit = await sign({ type: "crit", chips: ["rel"], line: 57, choice: "keep" }, 567);
+  const ready = await sign({ type: "ready", ready: true }, 568);
+  const readyResult = await receive(ready), critResult = await receive(crit);
+  ok(readyResult.ok && critResult.ok && S.teams[team].ready && S.teams[team].crit.line === 57,
+    "F4 ready(568) → crit(567) 역순 도착도 둘 다 반영");
+  const oldCrit = await sign({ type: "crit", chips: ["pop"], line: 12, choice: "change" }, 566);
+  ok((await receive(oldCrit)).err === "replay" && S.teams[team].crit.line === 57,
+    "F4 같은 type 옛 n은 replay·기준 유지");
+  const plan = { builds: [], lines: [] }, rev = S.teams[team].rev + 1;
+  const planned = await sign({ type: "plan", plan, rev }, 569);
+  const readyAgain = await sign({ type: "ready", ready: false }, 570);
+  await receive(readyAgain);
+  ok((await receive(planned)).ok && S.teams[team].rev === rev && S.teams[team].plan.lines.length === 0,
+    "F4 준비 → 계획 역순 도착도 마지막 계획 반영");
+  ok(S.teams[team].lastN === 570, "F4 역순 반영 뒤에도 퇴거용 최대 순번 보존");
+  for (const type of ["hello", "plan", "econ", "crit", "ready"]) {
+    const data = { hello: {}, plan: { plan, rev: rev + 1 }, econ: { taxRes: 1 },
+      crit: { chips: ["pop"], line: 60, choice: "change" }, ready: { ready: true } }[type];
+    const wire = await sign({ type, ...data }, 580);
+    ok((await receive(wire)).ok, `F4 ${type}는 다른 type과 같은 n도 허용`);
+    const restored = JSON.parse(JSON.stringify(S));
+    const restoredReceive = N.receiver(restored, m => C.reduce(restored, m, 1, BG));
+    for (const n of [580, 579]) ok((await restoredReceive(await sign({ type, ...data }, n))).err === "replay",
+      `F4 ${type} 저장 복원 뒤 같거나 옛 n(${n}) replay`);
+  }
+  C.host(S, "kick", 2, team);
+  ok((await receive(crit)).err === "seat", "F4 type 순번이 있어도 kick 이전 상태 봉투 거절");
+  ok((await receive(await sign({ type: "claim", publicKey: key.publicKey }, 581))).ok,
+    "F4 같은 키 재착석은 퇴거 순번보다 커야 허용");
+  ok((await receive(await sign({ type: "hello" }, 580))).err === "replay",
+    "F4 새 자리의 상태 요청도 retired 이하 차단");
+  const otherKey = await N.createIdentity();
+  C.host(S, "kick", 3, team);
+  const signOther = (type, n) => N.signEnvelope({ ...otherKey, n: 0 }, team,
+    { type, publicKey: otherKey.publicKey, sid: S.sid, seat: S.teams[team].seatVersion }, n);
+  await receive(await signOther("claim", 1));
+  ok((await receive(await signOther("hello", 2))).ok, "F4 새 키·자리에 이전 type 순번을 적용하지 않음");
 }
 async function hostSecurity() {
   const host = await N.createIdentity(), attacker = await N.createIdentity(), binding = await N.hostBinding(host.publicKey);
@@ -234,17 +290,18 @@ async function uiProtocol() {
   const vm = require("node:vm"), fs = require("node:fs");
   const storage = () => { const values = new Map(); return { writes: 0, fail: false, getItem: k => values.get(k) || null, setItem(k, v) { if (this.fail) throw Error("full"); this.writes++; values.set(k, v); }, removeItem: k => values.delete(k) }; };
   const localStorage = storage(), sessionStorage = storage(), connections = [], timers = new Map(), events = {}, dom = {};
-  let notices = [], cryptoAvailable = true, timerId = 0;
+  let notices = [], cryptoAvailable = true, timerId = 0, uiNow = null;
+  class UIDate extends Date { static now() { return uiNow ?? Date.now(); } }
   const net = { ...N, secure: () => cryptoAvailable, open() {
     const handlers = {}, sent = [], conn = { sent, on: (event, fn) => { handlers[event] = fn; }, onStatus() {}, close() {}, send: (event, payload) => { sent.push({ event, payload }); return true; }, emit: (event, payload) => handlers[event]?.(payload) };
     connections.push(conn); return conn;
   } };
   const uiK = { ...K, leagueNet: net, buildGame: { ...BG, toast: text => notices.push(text) }, route() {}, on() {} };
-  const context = { window: { KCP: uiK, localStorage, sessionStorage, addEventListener: (e, fn) => { events[e] = fn; } }, document: { getElementById: id => dom[id] || null, addEventListener() {} }, location: { hash: "#league/team", origin: "https://fixture", pathname: "/" }, setInterval: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms, interval: true }); return id; }, clearInterval: id => timers.delete(id), setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), structuredClone, TextEncoder, Date, console, queueMicrotask, btoa, atob };
+  const context = { window: { KCP: uiK, localStorage, sessionStorage, addEventListener: (e, fn) => { events[e] = fn; } }, document: { getElementById: id => dom[id] || null, addEventListener() {} }, location: { hash: "#league/team", origin: "https://fixture", pathname: "/" }, setInterval: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms, interval: true }); return id; }, clearInterval: id => timers.delete(id), setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), structuredClone, TextEncoder, Date: UIDate, console, queueMicrotask, btoa, atob };
   const source = fs.readFileSync(path.resolve(__dirname, "../../ui/league.js"), "utf8");
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, `
     renderHost = () => {}; mountCity = () => { KCP.mounts = (KCP.mounts || 0) + 1; }; seatPicker = () => {}; renderPanel = () => {}; sendPlan = () => { KCP.planSends = (KCP.planSends || 0) + 1; };
-    KCP.secUI = { normalizeRoom, newRoom, validRoom, displayRoom, onSnap, send, teamSave, teamView, hostView, hostInit, close, saveHost, flushHost, joinLink, replaySolo,
+    KCP.secUI = { normalizeRoom, newRoom, validRoom, displayRoom, onSnap, send, queueCrit, teamSave, teamView, hostView, hostInit, close, saveHost, flushHost, joinLink, replaySolo,
       replayFixture: () => { startSolo = (app, save) => { KCP.replayed = save; }; },
       set: value => { L = value; }, get: () => L };
   })();`), context);
@@ -321,6 +378,65 @@ async function uiProtocol() {
     ok(!ui.get().pendingRequests.has(body.id), type + " ack 후 대기 해제");
   }
   const tick = () => [...timers.values()].find(t => t.ms === 5000 && t.interval).fn();
+  uiNow = Date.now();
+  const originalSnap = ui.get().snap;
+  ui.get().snap = structuredClone(originalSnap); ui.get().snap.phase = "plan";
+  ui.get().snap.teams[team].ready = false;
+  const stateFields = { ready: "wantReady", crit: "pendingCrit", econ: "pendingPol" };
+  for (const [type, field] of Object.entries(stateFields)) {
+    const extra = type === "ready" ? { ready: true } : type === "crit"
+      ? { chips: ["rel"], line: 57, choice: "keep" } : { taxRes: 1 };
+    if (type === "econ") ui.get().pendingPol = extra;
+    ui.send(type, extra); await ui.get().sending;
+    const previous = N.requestBody(conn.sent.at(-1).payload);
+    const next = type === "ready" ? { ready: false } : { ...extra, ...(type === "crit" ? { line: 58 } : { taxRes: 2 }) };
+    if (type === "econ") ui.get().pendingPol = next;
+    ui.send(type, next); await ui.get().sending;
+    const current = N.requestBody(conn.sent.at(-1).payload), value = ui.get()[field];
+    for (const reply of [previous, { ...current, n: current.n + 1 }, { ...current, kid: "wrong" }, { ...current, team: ids[1] }])
+      await conn.emit("ack", await hostWire("ack", reply));
+    ok(ui.get()[field] === value, "F4 이전·다른 대상 ack는 새 " + type + " 대기를 보존");
+    await conn.emit("ack", await hostWire("ack", current));
+    ok(ui.get()[field] === null, "F4 최신 상태 ack만으로 " + type + " 대기 해제(스냅 없음)");
+  }
+  // 최신 편집이 아직 서명 대기 중일 때도 이전 ack가 이를 완료 처리하면 안 된다.
+  const oldReady = N.requestBody(conn.sent.findLast(x => N.requestBody(x.payload).type === "ready").payload);
+  let releaseSigning;
+  ui.get().sending = new Promise(resolve => { releaseSigning = resolve; });
+  ui.send("ready", { ready: false });
+  await conn.emit("ack", await hostWire("ack", oldReady));
+  ok(ui.get().wantReady === false && !ui.get().stateRequests.ready.acked,
+    "F4 서명 대기 중 이전 ack는 같은 값의 새 요청도 보존");
+  releaseSigning(); await ui.get().sending;
+  ui.send("hello"); ui.send("plan", { plan: S.teams[team].plan, rev: S.teams[team].rev + 1 });
+  ui.send("ready", { ready: true });
+  ui.send("crit", { chips: ["rel"], line: 60, choice: "keep" });
+  ui.get().pendingPol = { taxRes: 1 }; ui.send("econ", ui.get().pendingPol);
+  await ui.get().sending;
+  ui.get().rev = ui.get().snap.teams[team].rev + 1;
+  const beforeCooldown = conn.sent.length, beforePlans = uiK.planSends || 0;
+  uiNow += 1999; tick(); await ui.get().sending;
+  ok(conn.sent.length === beforeCooldown && (uiK.planSends || 0) === beforePlans,
+    "F4 1999ms 안에는 모든 상태 type 타이머 재전송 없음");
+  uiNow++; tick(); await ui.get().sending;
+  const retriedTypes = conn.sent.slice(beforeCooldown).map(x => N.requestBody(x.payload).type);
+  ok(["hello", "econ", "crit", "ready"].every(type => retriedTypes.includes(type)) && uiK.planSends === beforePlans + 1,
+    "F4 2000ms부터 미확인 상태 요청 재전송");
+  for (const type of ["plan", "econ", "crit", "ready"]) {
+    const body = N.requestBody(conn.sent.findLast(x => N.requestBody(x.payload).type === type).payload);
+    await conn.emit("ack", await hostWire("ack", body));
+  }
+  const beforeAckTick = conn.sent.length, plansAfterAck = uiK.planSends;
+  uiNow += 5000; tick(); await ui.get().sending;
+  ok(uiK.planSends === plansAfterAck && conn.sent.slice(beforeAckTick).every(x => N.requestBody(x.payload).type === "hello"),
+    "F4 ack 후 계획 재전송 중단·나머지 상태 대기 해제·hello 접속 확인 유지");
+  ui.queueCrit({ chips: ["rel"], line: 61, choice: "keep" });
+  const beforeEditTick = conn.sent.length;
+  tick(); await ui.get().sending;
+  ok(conn.sent.slice(beforeEditTick).some(x => { const m = N.requestBody(x.payload); return m.type === "crit" && m.line === 61; }),
+    "F4 이전 ack 뒤 아직 보내지 않은 기준 편집도 타이머 전송");
+  ui.get().pendingCrit = null;
+  ui.get().snap = originalSnap; ui.get().stateRequests = {}; uiNow = null;
   ui.send("price", { price: 0.4 }); await ui.get().sending;
   const timeoutBody = N.requestBody(conn.sent.at(-1).payload), pending = ui.get().pendingRequests.get(timeoutBody.id);
   ui.get().lastHostAt = Date.now() - 11000; ui.get().hostWarning = true; pending.sentAt = Date.now() - 6000;
@@ -608,6 +724,6 @@ function floor3Restore() {
   }
 }
 
-async function main() { await security(); await hostSecurity(); await floor3Network(); floor3Restore(); await transport(); await uiProtocol(); seeds(); if (!process.argv.includes("--quick")) { await measure(); await measure(null, "careful"); } console.log(`checks ${checks} fail 0`); }
+async function main() { await security(); await floor4Network(); await hostSecurity(); await floor3Network(); floor3Restore(); await transport(); await uiProtocol(); seeds(); if (!process.argv.includes("--quick")) { await measure(); await measure(null, "careful"); } console.log(`checks ${checks} fail 0`); }
 module.exports = { measure, C, K };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
