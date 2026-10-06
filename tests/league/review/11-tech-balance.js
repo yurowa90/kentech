@@ -1,5 +1,5 @@
 "use strict";
-// 독립 전략 검산: ECON-TECH-SPEC T5. 36달, 4전략×6도시, 같은 방 씨앗.
+// 독립 전략 검산: ECON-TECH-SPEC T5 v1.1. 36달, 7전략×6도시, 같은 방 씨앗.
 // 판정 G: 연구 몰빵−연구0 평균 점수는 (0,15], 공통 6도시 지배 전략 없음.
 // 연구0도 건설·정책을 운영한다. 기준 AI의 확정 공급 확보를 모든 전략에 재사용한다.
 // 각 판의 다른 5도시는 균형 AI. 기대 점수·순위는 구현에서 복사하지 않는다.
@@ -7,7 +7,7 @@
 // 수정 근거: T5에는 세율0 고정 제한이 없다. 모든 전략에 같은 AI 재정 대응을 적용하고,
 // 특화 해금 설비 착공 전에는 선택 투자를 미뤄 자금을 모은다. 필수 공급은 계속 확보한다.
 // 도시 제외·점수 문턱 변경은 하지 않는다. 원 결과는 /tmp/kcp-tech-balance-fixed-policy.*.
-const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
+const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), crypto = require("node:crypto");
 const ROOT = path.resolve(__dirname, "../../.."), OUT = process.env.TECH_BALANCE_OUT || "/tmp/kcp-tech-balance.json";
 const ctx = vm.createContext({ console, document: { documentElement: {} }, KCP: { route() {}, on() {}, esc: x => x } });
 ctx.window = ctx;
@@ -24,29 +24,34 @@ if (process.env.G6_VARIANT) require("./g6-variants").apply(ctx.KCP, process.env.
 if (process.env.G7_VARIANT) require("./g7-variants").apply(ctx.KCP, process.env.G7_VARIANT);
 const R = C.regionOf("south"), ids = R.teams.map(t => t.id), clone = x => JSON.parse(JSON.stringify(x));
 const STRATEGIES = {
+  smr: ["smr", "grid", "fcst", "vpp", "sic", "ccu"],
   research: ["grid", "fcst", "bms", "vpp", "sic", "tandem", "mass", "nbat", "ccu", "hvdc", "scable", "re100"],
   none: [],
-  smr: ["smr", "grid", "fcst", "vpp", "sic", "ccu"],
-  hydrogen: ["h2store", "h2mix", "grid", "fcst", "vpp", "bms", "sic", "tandem", "nbat", "mass"]
+  hydrogen: ["h2store", "h2mix", "grid", "fcst", "vpp", "bms", "sic", "tandem", "nbat", "mass"],
+  renew: [], ties: [], hybrid: []
 };
-const names = { research: "연구 몰빵", none: "연구 0", smr: "SMR 조기", hydrogen: "수소 장주기" };
-const report = { contract: "ECON-TECH-SPEC T5", seed: "tech-strategy-common", months: 36, smrFuelMul: D.params.smrFuelMul.v, runs: [], failures: [] };
+const names = { research: "연구 몰빵", none: "연구 0", smr: "SMR 조기", hydrogen: "수소 장주기", renew: "동일예산 재생+저장", ties: "동일예산 연계선", hybrid: "동일예산 재생+저장·연계선" };
+const report = { contract: "ECON-TECH-SPEC T5 v1.1 (2026-10-06)", strategies: names, seed: "tech-strategy-common", months: 36, smrFuelMul: D.params.smrFuelMul.v, runs: [], failures: [] };
+report.sources = Object.fromEntries(["tests/league/review/11-tech-balance.js", ...["build-maps", "tech-data", "build", "econ-data", "econ", "league-data", "league-core", "league-ai"].map(n => `ui/${n}.js`)]
+  .map(file => [file, crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, file))).digest("hex")]));
 let passes = 0;
 function ok(test, label) { if (test) passes++; else { report.failures.push(label); console.log("FAIL:", label); } }
 function select(id) { B.selectPack(C.teamDef(R, id).pack, "league"); }
 function affordable(S, id, p) { return C.spendOf(B, S, R, id, p) <= C.budget(S, id); }
-function add(S, id, plan, type) {
+function add(S, id, plan, type, accepts = () => true) {
   const used = new Set(plan.builds.map(b => b.i));
   const anchors = [...new Set(plan.lines.flatMap(l => l.p))];
   if (!anchors.length) anchors.push(B.SITES.find(s => s.dem).tile);
   const tiles = B.TILES.filter(t => !used.has(t.i) && !B.siteRule(type, t));
   tiles.sort((a, b) => Math.min(...anchors.map(i => Math.hypot(a.X - B.TILES[i].X, a.Y - B.TILES[i].Y))) - Math.min(...anchors.map(i => Math.hypot(b.X - B.TILES[i].X, b.Y - B.TILES[i].Y))) || a.i - b.i);
   for (const tile of tiles) {
+    const minimal = { ...plan, builds: [...plan.builds, { t: type, i: tile.i }] };
+    if (!accepts(minimal)) continue;
     const nearest = anchors.slice().sort((a, b) => Math.hypot(tile.X - B.TILES[a].X, tile.Y - B.TILES[a].Y) - Math.hypot(tile.X - B.TILES[b].X, tile.Y - B.TILES[b].Y))[0];
     const route = B.routePath(nearest, tile.i); if (!route) continue;
     const p = clone(plan); p.builds.push({ t: type, i: tile.i });
     for (let i = 0; i < route.length - 1; i += 79) p.lines.push({ p: route.slice(i, i + 80) });
-    if (affordable(S, id, p)) return p;
+    if (affordable(S, id, p) && accepts(p)) return p;
   }
   return plan;
 }
@@ -96,38 +101,175 @@ function focalPlan(S, id, strategy) {
   if (rs.adopted.includes("vpp")) p.policies = ["dr"];
   return { plan: p, econPol: answer.econPol };
 }
+// 같은 예산 실험 어댑터. 실제 상태·가격·AI 계수는 유지하고 AI가 보는 예산만 제한한다.
+// 기본 건설·세금·부채 대응·협상은 leagueAI.plan의 기존 성향을 재사용한다.
+const alternatives = new Set(["renew", "ties", "hybrid"]);
+const references = {};
+const sum = xs => xs.reduce((a, b) => a + b, 0);
+function investment(S, id, plan) {
+  select(id);
+  return Math.max(0, C.spendOf(B, S, R, id, plan) + C.tieShare(S, R, id) - (S.teams[id].stock || 0)) +
+    plan.builds.filter(b => b.t === "lab").length * B.RS.labOpexR;
+}
+// 연계선은 준공 후 자동 거래하므로 건설비만 제한하면 구매비로 같은 예산을 우회한다.
+// 남은 모든 월의 최악 수입량(전 용량×시간×이웃 판매가, 초전도 최대 용량 포함)을
+// 예약한다. 미래 SMR 지출은 현재로 당겨 쓰지 않고 각 월 누계의 최솟값으로만 제한한다.
+// 예약은 비용이 아니며 실제 결제만 matchedSpend에 기록한다. 이웃 가격은 모든 판에서 기본값.
+function envelopeRoom(S, id, run, extraTie = null) {
+  const active = S.ties.filter(t => t.st === "built" && [t.a, t.b].includes(id));
+  if (extraTie && !active.some(t => C.tieId(t) === C.tieId(extraTie))) active.push(extraTie);
+  const hourly = sum(active.map(t => t.cap * ctx.KCP.TECH_DATA.params.scableCap.v * S.teams[t.a === id ? t.b : t.a].price));
+  let reserve = 0, room = Infinity;
+  const rounds = C.roundsOf(S);
+  for (let m = S.round; m <= report.months; m++) {
+    reserve += hourly * 24 * rounds[m - 1].mdays + (active.length ? 0.03 : 0);
+    room = Math.min(room, references[id].months[m - 1].cumulativeInvestment - run.account.matchedSpend - reserve);
+  }
+  return Math.max(0, room);
+}
+function alternativePlan(S, id, strategy, run) {
+  const room = envelopeRoom(S, id, run);
+  const previous = S.teams[id].plan || { builds: [], lines: [] };
+  const style = strategy === "ties" ? "bold" : "careful";
+  // 기존 AI가 같은 달 집행 가능한 돈만 보게 한다. 실제 현금·부채를 주입하지 않는다.
+  ctx.KCP.leagueCore = { ...C, budget: (state, key) => key === id ? Math.min(C.budget(state, key),
+    (state.teams[key].stock || 0) - C.tieShare(state, R, key) + room) : C.budget(state, key) };
+  let answer;
+  try { answer = AI.plan(S, R, id, B, style); } finally { ctx.KCP.leagueCore = C; }
+  select(id);
+  let plan = clone(answer.plan);
+  plan.rq = [];
+  plan.builds = plan.builds.filter(b => !["uni", "lab"].includes(b.t) || previous.builds.some(x => x.t === b.t && x.i === b.i));
+  const accepts = p => investment(S, id, p) <= room + 1e-8;
+  if (!accepts(plan)) plan = clone(previous);
+  if (strategy === "renew") plan = renewablePlan(S, id, plan, room);
+  // 혼합은 첫 연계선 준공을 우선해 자금을 모으고, 이후 남은 예산으로 재생 묶음을 추가한다.
+  return { plan, econPol: answer.econPol, allowance: room };
+}
+function renewablePlan(S, id, original, room) {
+  select(id);
+  let plan = clone(original);
+  const fits = p => investment(S, id, p) <= room + 1e-8;
+  // 점수 최적화가 아닌 사전 고정 투자 묶음, 입지는 기존 SMR add 함수 재사용.
+  // 기존 신중 AI의 저장 비율·소수력 상한·ESS 접속 여유를 따른다.
+  // 태양광→풍력→소수력 순서로 합법 묶음을 추가하며 월 처리량 초과는 실제 대기한다.
+  const mw = (p, cls) => sum(p.builds.filter(b => B.BLD[b.t]?.cls === cls).map(b => B.BLD[b.t].mw));
+  const hydroLimit = B.peakDemand({}, false) * D.params.aiHydroMaxShare.v;
+  const gridOf = p => {
+    const g = C.gridStatus({ ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: p } } }, R, B, id, true);
+    select(id); return g;
+  };
+  for (let step = 0; step < B.TILES.length; step++) {
+    let next = plan;
+    for (const type of ["solar", "wind", "hydro"]) {
+      if (type === "hydro" && sum(plan.builds.filter(b => b.t === type).map(b => B.BLD[b.t].mw)) + B.BLD[type].mw > hydroLimit) continue;
+      let candidate = add(S, id, plan, type, fits);
+      if (candidate === plan) continue;
+      const needsStorage = p => {
+        const g = gridOf(p);
+        return mw(p, "bat") < mw(p, "ren") * D.params.aiStorageShare.v ||
+          sum(g.entries.map(e => e.mw)) > g.hostMW + 1e-8;
+      };
+      while (needsStorage(candidate)) {
+        const battery = add(S, id, candidate, "battery", fits);
+        if (battery === candidate) break;
+        candidate = battery;
+      }
+      if (needsStorage(candidate)) continue;
+      next = candidate; break;
+    }
+    if (next === plan) break;
+    plan = next;
+  }
+  return plan;
+}
+
+function cooperate(S, focal, strategy, run, month) {
+  if (!["ties", "hybrid"].includes(strategy)) return;
+  // 초안 계산 당시에는 이웃 계획이 비어 있을 수 있어, 확정 계획으로 기존 AI 협상만 다시 묻는다.
+  const neighbors = R.ties.filter(t => [t.a, t.b].includes(focal)).map(t => t.a === focal ? t.b : t.a);
+  for (const id of [focal, ...neighbors]) {
+    const answer = AI.plan(S, R, id, B, id === focal ? "bold" : "balanced");
+    for (const action of answer.ties) {
+      if (id !== focal && action.other !== focal) continue;
+      if (!["propose", "accept", "cancel"].includes(action.type)) continue;
+      const half = C.tieCost(R, { a: id, b: action.other, cap: action.cap, kind: action.kind }) / 2;
+      const definition = C.tieDef(R, id, action.other);
+      const candidate = { ...definition, cap: action.cap, kind: action.kind };
+      if (action.type !== "cancel" && investment(S, focal, S.teams[focal].plan) + half >
+        envelopeRoom(S, focal, run, candidate) + 1e-8) continue;
+      const result = C.reduce(S, { type: "tie", team: id, token: "test-bot", other: action.other,
+        op: action.type, cap: action.cap, kind: action.kind }, month * 100000 + 2, B);
+      ok(result.ok, `${focal}/${strategy}/${month} 연계선 ${action.type}: ${result.err || ""}`);
+      run.tieRequests.push({ month, id, ...action, result });
+    }
+  }
+}
+
 const selectedIds = process.env.TECH_BALANCE_CITY ? ids.filter(id => id === process.env.TECH_BALANCE_CITY) : ids;
-const selectedStrategies = process.env.TECH_BALANCE_STRATEGY ? Object.keys(STRATEGIES).filter(s => s === process.env.TECH_BALANCE_STRATEGY) : Object.keys(STRATEGIES);
+const requested = process.env.TECH_BALANCE_STRATEGY;
+const selectedStrategies = requested ? Object.keys(STRATEGIES).filter(s => s === requested || alternatives.has(requested) && s === "smr") : Object.keys(STRATEGIES);
 if (!selectedIds.length || !selectedStrategies.length) throw Error("기술 진단 선택 오류");
 for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   const S = C.newState(report.seed, R.id, 0, ids, { turns: 36 });
   ids.forEach(id => { S.teams[id].token = "test-bot"; });
-  const run = { id: focal, name: D.start[focal].name, strategy, months: [], rejected: [], account: { tariff: 0, tariffGross: 0, service: 0, interest: 0, construction: 0 } }; report.runs.push(run);
+  const run = { id: focal, name: D.start[focal].name, strategy, months: [], rejected: [], tieRequests: [], account: { tariff: 0, tariffGross: 0, service: 0, interest: 0, construction: 0, researchOperation: 0, purchase: 0, investment: 0, matchedSpend: 0 } }; report.runs.push(run);
   for (let m = 1; m <= 36; m++) {
     C.host(S, "next", m * 100000);
-    const proposals = Object.fromEntries(ids.map(id => [id, id === focal ? focalPlan(S, id, strategy) : AI.plan(S, R, id, B, "balanced")]));
+    const proposals = Object.fromEntries(ids.map(id => [id, id === focal ? (alternatives.has(strategy) ? alternativePlan(S, id, strategy, run) : focalPlan(S, id, strategy)) : AI.plan(S, R, id, B, "balanced")]));
     for (const id of ids) {
       const ask = msg => C.reduce(S, { team: id, token: "test-bot", ...msg }, m * 100000 + 1, B);
       const pol = ask({ type: "econ", ...proposals[id].econPol });
       ok(pol.ok, `${focal}/${strategy}/${m}/${id} 정책 ${pol.err || ""}`);
       const res = ask({ type: "plan", rev: S.teams[id].rev + 1, plan: proposals[id].plan });
       ok(res.ok, `${focal}/${strategy}/${m}/${id} 건설 ${res.err || ""}`);
+      if (id === focal && alternatives.has(strategy) && res.ok)
+        ok(JSON.stringify(S.teams[id].plan.builds) === JSON.stringify(proposals[id].plan.builds),
+          `${focal}/${strategy}/${m} 호스트가 설비를 잘라내지 않고 계획 그대로 승인`);
       if (!res.ok) { select(id); run.rejected.push({ month: m, id, response: res, cash: S.econ.cities[id].cash, debtCap: S.econ.cities[id].debtCap, budget: C.budget(S, id), spend: C.spendOf(B, S, R, id, proposals[id].plan), plan: proposals[id].plan }); }
+    }
+    cooperate(S, focal, strategy, run, m);
+    if (strategy === "hybrid" && S.ties.some(t => t.st === "built" && [t.a, t.b].includes(focal))) {
+      const room = envelopeRoom(S, focal, run);
+      const plan = renewablePlan(S, focal, S.teams[focal].plan, room);
+      const res = C.reduce(S, { type: "plan", team: focal, token: "test-bot", rev: S.teams[focal].rev + 1, plan }, m * 100000 + 3, B);
+      ok(res.ok, `${focal}/hybrid/${m} 연계선 협상 뒤 재생 투자 ${res.err || ""}`);
+      ok(JSON.stringify(S.teams[focal].plan.builds) === JSON.stringify(plan.builds), `${focal}/hybrid/${m} 추가 계획 그대로 승인`);
+      proposals[focal].allowance = room;
     }
     const result = C.run(S, B, m * 100000 + 20), r = result.team[focal], city = S.econ.cities[focal];
     const fiscal = result.econ.fiscal[focal];
     run.account.tariff += fiscal.rev.tariff; run.account.tariffGross += fiscal.tariffGross;
     run.account.service += fiscal.exp.service; run.account.interest += fiscal.exp.interest;
     run.account.construction += fiscal.exp.capex;
-    run.months.push({ score: [12, 24, 36].includes(m) ? X.score({...S.econ, len: m}).by[focal] : null, month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
+    run.account.researchOperation += r.cost.research;
+    run.account.purchase += r.pay * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days;
+    run.account.investment += fiscal.exp.capex + r.cost.research;
+    run.account.matchedSpend = run.account.investment + run.account.purchase;
+    if (alternatives.has(strategy)) ok(run.account.matchedSpend <= references[focal].months[m - 1].cumulativeInvestment + 1e-6,
+      `${focal}/${strategy}/${m} 누적 지출 ${run.account.matchedSpend} ≤ SMR ${references[focal].months[m - 1].cumulativeInvestment}`);
+    run.months.push({ budget: alternatives.has(strategy) ? {
+      target: references[focal].months[m - 1].cumulativeInvestment,
+      spent: run.account.matchedSpend,
+      unspent: references[focal].months[m - 1].cumulativeInvestment - run.account.matchedSpend,
+      constructionAllowance: proposals[focal].allowance
+    } : null, cumulativeMatchedSpend: run.account.matchedSpend, purchase: r.pay * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, cumulativeInvestment: run.account.investment, investment: fiscal.exp.capex + r.cost.research, construction: fiscal.exp.capex, researchOperation: r.cost.research, ties: clone(S.ties), importMWh: r.imp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, exportMWh: r.exp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, grid: r.grid, score: [12, 24, 36].includes(m) ? X.score({...S.econ, len: m}).by[focal] : null, month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
       growth: { pop: city.pop / city.pop0 / (S.econ.totals.pop / S.econ.totals.pop0) - 1, ind: city.ind / city.ind0 / (S.econ.totals.ind / S.econ.totals.ind0) - 1 },
       adopted: C.researchView(S, focal).adopted, builds: S.teams[focal].plan.builds.map(b => b.t) });
   }
+  if (strategy === "smr") references[focal] = run;
   const scored = X.score(S.econ).by[focal];
   run.score = scored.score; run.parts = scored.parts; run.coop = scored.coop;
   run.state = S.econ;
   run.avgUns = run.months.reduce((sum, m) => sum + m.uns, 0) / run.months.length;
   run.adopted = C.researchView(S, focal).adopted;
+  if (alternatives.has(strategy)) {
+    run.budget = { target: references[focal].account.investment, spent: run.account.matchedSpend,
+      unspent: references[focal].account.investment - run.account.matchedSpend,
+      execution: run.account.matchedSpend / references[focal].account.investment,
+      maxPrefixOverspend: Math.max(...run.months.map(m => m.budget.spent - m.budget.target)) };
+    ok(run.adopted.length === 0, `${focal}/${strategy} 추가 연구비 없이 투자 대안 실행`);
+  }
   ok(Number.isFinite(run.score), `${focal}/${strategy} 유한 점수`);
   // B18 공통 실용성 기준: 36달 평균 정전 5% 이하여야 전력 운영 전략으로 비교 가능.
   ok(run.avgUns <= 5, `${focal}/${strategy} 평균 정전 ${run.avgUns.toFixed(3)}% >5%`);
@@ -138,6 +280,11 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
 }
 if (selectedIds.length === ids.length && selectedStrategies.length === Object.keys(STRATEGIES).length) {
+  for (const strategy of ["ties", "hybrid"]) {
+    const runs = report.runs.filter(r => r.strategy === strategy);
+    ok(runs.some(r => r.tieRequests.some(t => t.type === "accept" && t.result.ok)), `${strategy} AI 협상으로 실제 연계선 준공`);
+    ok(runs.some(r => r.months.some(m => m.importMWh > 0 || m.exportMWh > 0)), `${strategy} 실제 이웃 거래 발생`);
+  }
   const avg = key => report.runs.filter(r => r.strategy === key).reduce((s, r) => s + r.score, 0) / ids.length;
   report.average = Object.fromEntries(Object.keys(STRATEGIES).map(k => [k, avg(k)]));
   report.researchGain = avg("research") - avg("none");
@@ -149,7 +296,7 @@ if (selectedIds.length === ids.length && selectedStrategies.length === Object.ke
   for (const strategy of Object.keys(STRATEGIES)) ok(!ids.every(id => report.winners[id].includes(strategy)), `T5 ${strategy} 6도시 모두 1위 금지(공동1위 포함)`);
   report.smrFirstCities = ids.filter(id => report.winners[id].includes("smr")).length;
   report.smrTargetMet = report.smrFirstCities <= 3;
-  ok(report.smrTargetMet, `G7 SMR 1위 ${report.smrFirstCities}/6, 목표 ≤3(공동1위 포함)`);
+  // v1.1: SMR≤3은 G 희망 목표이며 실패 수에 넣지 않는다. B16 독식 금지는 위에서 검사한다.
   // 점수는 기하평균이므로 가중 부분점수를 선형 합산하지 않는다.
   // 로그 차이의 정확 분해(LMDI). 관찰된 점수 차이의 회계이며 정책의 인과 효과는 아니다.
   const w = D.params.wScore.v, wsum = Object.values(w).reduce((a, b) => a + b, 0);
