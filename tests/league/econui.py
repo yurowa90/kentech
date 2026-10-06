@@ -583,6 +583,10 @@ def economic(checks, context, base, label, pages):
                       team.locator('#lg-result-reasons').count() == 1 and team.locator('#lg-result-details').count() == 1 and
                       not team.locator('#lg-result-details').evaluate('el => el.open'), f'{label} U2 결과 숫자 셋·원인·자세히 접힘')
             checks.ok(shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
+            checks.ok('[object Object]' not in team.locator('#lg-panel').inner_text(), f'{label} U2 결과 서랍에 객체 문자열 없음')
+            # 서랍은 한 번에 하나: 모바일에서는 결과 서랍이 지도 렌즈를 덮으므로 닫고 렌즈를 누른다.
+            if team.locator('#lg-panel [data-pclose]').count():
+                team.locator('#lg-panel [data-pclose]').click()
             team.locator('[data-lens="result"]').click()
             try:  # 렌즈는 다음 그리기 때 요약 카드를 숨긴다.
                 team.wait_for_function("() => document.querySelector('#lg-map-result')?.hidden === true", timeout=3000)
@@ -590,6 +594,7 @@ def economic(checks, context, base, label, pages):
                 pass
             checks.ok(not shown(team, '#lg-map-result'), f'{label} U2 운영 결과 렌즈 끄기')
             team.locator('[data-lens="result"]').click()
+            open_panel(team, 'result')
             checks.ok(shown(team, '#lg-promise-result') and shown(team, '#lg-evidence-direction'),
                       f'{label} U8 예측 대 실제·근거 방향 비교')
             checks.ok(team.locator('#lg-calibration').count() == 0, f'{label} U8 멀티 확신 보정 숫자 없음')

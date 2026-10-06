@@ -1757,7 +1757,7 @@
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · 정전 시간은 도시 전체 부족 시간, CO₂는 생산 기준</p>
       <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, 2))}${unit}</dd><small>지난달 대비 Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, 2))}${du}` : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
-      <p id="lg-result-causes">가장 큰 변화 원인(${esc(rep?.groups?.[id]?.whyGrade || "G")}): ${esc(rep?.groups?.[id]?.why || rep?.groups?.[id]?.approvalChangeCause?.text || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
+      <p id="lg-result-causes">가장 큰 변화 원인(${esc(rep?.groups?.[id]?.whyGrade || "G")}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
       <p id="lg-result-ledger">장부(억): ${ledger ? `달 초 ${esc(fmt(ledger.open, 2))} + 수입 ${esc(fmt(ledger.income, 2))} − 신규 투자 ${esc(fmt(ledger.invest, 2))} − 운영비 ${esc(fmt(ledger.opex, 2))} = 달 말 ${esc(fmt(ledger.close, 2))} · 이번 ${V.econ ? "달" : "턴"} 총지출 ${esc(fmt(ledger.invest + ledger.opex, 2))}` : "자료 없음"}</p><p class="lg-hint">억 = 게임 단위 · 장부는 이미 월 기준이에요.</p>
       ${co2AttributionHTML(V, res, id)}${coopHTML(V, res, id)}${migrationBenefitHTML(V, res, id)}
@@ -2287,6 +2287,11 @@
     }
     const msg = { stale: "지난 단계 요청이에요. 현재 화면에서 다시 확인해요.", phase: "지금 단계에서는 바꿀 수 없어요.", built: "이미 연결된 연계선이에요.", noprop: "제안이 없어요.", notie: "이웃이 아닙니다.", noev: "이번 라운드 우리 도시 사건이 아닙니다.", noopt: "없는 대응이에요." }[m.err] || (String(m.err).startsWith("budget:") ? `${teamName(String(m.err).slice(7))} 예산이 모자랍니다.` : "요청을 처리하지 못했어요.");
     BG.toast(turnText(msg));
+  }
+  // 지지율 변화 원인: 재보정 엔진은 why가 문장, 옛 엔진은 {key, text} 객체다. 객체를 그대로 찍지 않는다.
+  function whyText(g) {
+    const why = g?.why;
+    return typeof why === "string" ? why : why?.text || g?.approvalChangeCause?.text || "";
   }
   function onSnap(V) {
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
