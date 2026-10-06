@@ -268,9 +268,22 @@ JS = r"""
     let plan = assets(original);
     const changes = [], supply = firmSupply(S, id, plan), city = S.econ.cities[id];
     if (city.cash < -city.debtCap || supply.firm < supply.target) return {plan, changes};
-    // 같은 G 목표를 사용하되 균형 AI의 (1-risk) 할인 없이 재생에 맞는 저장을 확보한다.
-    const target = sum(plan.builds.filter(b => BG.BLD[b.t]?.cls === "ren").map(b => BG.BLD[b.t].mw)) *
-      KCP.ECON_DATA.params.aiStorageShare.v;
+    // 저장 전략은 기존 AI의 재생 목표(신중 기준)까지 태양광을 매달 한 묶음씩 투자한다.
+    // 공급·실제 예산은 유지하며 접속 여유가 부족하면 ESS를 같은 묶음으로 확보한다.
+    const renewableTarget = BG.peakDemand({}, false) *
+      (KCP.ECON_DATA.params.aiRenewFloor.v + KCP.ECON_DATA.params.aiRenewTarget.v);
+    if (variableMW(plan) < renewableTarget && forecastGrid(S, id, plan).waitingMW <= 1e-6) {
+      let candidate = placeTypes(plan, ["solar"]);
+      if (candidate && hostingRoom(S, id, candidate) < 0) candidate = placeTypes(plan, ["solar", "battery"]);
+      if (candidate && hostingRoom(S, id, candidate) >= 0 &&
+          C.spendOf(BG, S, R, id, candidate) <= C.budget(S, id) + 1e-6) {
+        const added = candidate.builds.filter(b => BG.BLD[b.t].cls === "bat" && !plan.builds.some(x => x.i === b.i));
+        if (added.length) changes.push({removed: [], added: added.map(b => b.t), mw: 0, addedMW: 0,
+          storageMW: sum(added.map(b => BG.BLD[b.t].mw)), storageKeys: added.map(b => b.t + ":" + b.i),
+          chargeSourceMWh: 0, capturedMWh: 0});
+        plan = candidate;
+      }
+    }
     const spill = candidate => {
       const draft = {...S, teams: {...S.teams, [id]: {...S.teams[id], plan: candidate}}};
       const forecast = C.simTeam(BG, R, id, candidate,
@@ -284,8 +297,8 @@ JS = r"""
     const types = Object.keys(BG.BLD).filter(t => BG.BLD[t].cls === "bat" &&
       (!BG.BLD[t].tech || C.techOf(S, id).includes(BG.BLD[t].tech)))
       .sort((a, b) => BG.BLD[a].cost / BG.BLD[a].mw - BG.BLD[b].cost / BG.BLD[b].mw);
-    let available = essMW(plan) < target ? spill(plan) : 0;
-    while (essMW(plan) < target && available > 1e-6) {
+    let available = spill(plan);
+    while (available > 1e-6) {
       let next = null, nextSpill = available, chosen = null;
       for (const type of types) {
         const candidate = placeTypes(plan, [type]);
@@ -316,7 +329,7 @@ JS = r"""
     const prior = new Set((S.teams[id].plan?.builds || []).map(b => C.itemKey("b", b)));
     // 이미 운영한 설비는 유지한다. AI가 이번 달 새로 제안한 설비만 전환한다.
     const sources = original.builds.filter(b => !prior.has(C.itemKey("b", b)) &&
-      (strategy === "diesel" ? ["ren", "bat"].includes(BG.BLD[b.t]?.cls) : fossil(b.t)));
+      (strategy === "diesel" ? (["ren", "bat"].includes(BG.BLD[b.t]?.cls) || b.t === "biomass") : fossil(b.t)));
     const legalTypes = cls => Object.keys(BG.BLD).filter(t => BG.BLD[t].cls === cls &&
       BG.BLD[t].mw > 0 && BG.TILES.some(tile => !BG.siteRule(t, tile)));
     const dispatch = legalTypes("disp").filter(fossil).sort((a, b) =>
@@ -528,6 +541,26 @@ JS = r"""
       const res = C.run(S, BG, at + 50), rep = res?.econ;
       ok(!!rep?.fiscal, `회전${rotation} ${m}달 econ report 계약`);
       if (!rep) throw new Error(`${m}달 econ 보고서 없음`);
+      // 접속용 ESS 묶음은 재생 설비가 실제 접속된 뒤 충전 효과를 확인한다.
+      // 같은 접속 완료 발전·날씨·수요에서 해당 ESS만 뺀 운전과 대조한다.
+      for (const id of ids.filter(id => assignment[id] === "storage")) {
+        const pending = run.planRequests.filter(p => p.id === id).flatMap(p => p.changes)
+          .filter(c => c.storageKeys && !c.verifiedAtMonth);
+        if (!pending.length) continue;
+        select(id);
+        const plan = S.teams[id].plan, mods = C.modsFor(S, R, id), rnd = {...C.roundsOf(S)[m - 1], seed: res.seed};
+        const actual = C.simTeam(BG, R, id, plan, rnd, Number.MAX_VALUE, mods);
+        const actualSpill = actual.k.curt + (actual.curtailMWh || 0);
+        for (const change of pending) {
+          const without = {...plan, builds: plan.builds.filter(b => !change.storageKeys.includes(b.t + ":" + b.i))};
+          const counter = C.simTeam(BG, R, id, without, rnd, Number.MAX_VALUE, mods);
+          const source = counter.k.curt + (counter.curtailMWh || 0);
+          if (source - actualSpill > 1e-6) {
+            change.chargeSourceMWh = source; change.capturedMWh = source - actualSpill; change.verifiedAtMonth = m;
+            ok(change.capturedMWh > 0, `B18 storage ${id}/${m} 접속 뒤 실제 ESS 버림 감소 대조`);
+          }
+        }
+      }
       const coop = X.score(S.econ);
       ok(ids.every(id => coop.by[id].coop === coop.by[ids[0]].coop), `D61 회전${rotation} ${m}달 같은 공동 보너스`);
       ids.forEach(id => {

@@ -16,8 +16,9 @@ JS = r"""
   // policies는 생략 가능하지만 반환한 정책·연구 순서는 정리/승인 뒤에도 그대로여야 한다.
   const planFields = p => ({...assets(p), rq: p.rq, policies: p.policies || []});
   const checks = [], runs = [], timings = [], snapshots = {};
-  // 작업 T 수용 기준(G): 승인 직후 대기 ≤ 기준 피크 10%, 운영 뒤에는 새 대기를 남기지 않음.
-  const queueLimit = 0.1, tolerance = 1e-6;
+  // G9 건설 페이스: 최대 4달 안에 전량 접속, 미처리 대기가 있으면 새 묶음 금지.
+  const queueMonths = KCP.ECON_DATA.params.aiConnectionMonths.v, tolerance = 1e-6;
+  const births = {};
   let acceptanceCase;
   const ok = (pass, message) => checks.push([!!pass, message]);
   const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -121,9 +122,19 @@ JS = r"""
           ok(hydroMW <= grid.peakMW * 0.2 + tolerance,
             `${style}/${id}/${month} 소수력 ≤ 시작 피크 20%: ${hydroMW}/${grid.peakMW}`);
           sample.waiting.push(grid.waitingMW);
-          ok(grid.waitingMW <= grid.peakMW * queueLimit + tolerance,
-            `${style}/${id}/${month} 계획 뒤 대기 ≤ 피크 10%: ${grid.waitingMW}/${grid.peakMW}`);
-          ok(projected.waitingMW <= tolerance, `${style}/${id}/${month} 이번 달 전량 접속 예상`);
+          ok(grid.waitingMW <= grid.monthlyMW * queueMonths + tolerance,
+            `${style}/${id}/${month} 계획 뒤 대기 ≤ ${queueMonths}달 접속량`);
+          ok((projected.waitingMW - projected.reservedMW) <= grid.monthlyMW * (queueMonths - 1) + tolerance,
+            `${style}/${id}/${month} 이번 달 뒤 남은 대기 ≤ ${queueMonths - 1}달 접속량`);
+          const tracker = births[style + ":" + id] ||= {};
+          for (const e of grid.entries) {
+            if (!(e.key in tracker)) tracker[e.key] = month;
+          }
+          // 기존 미접속이 있을 때 추가 묶음으로 예약을 밀어내지 않는다.
+          const oldKeys = new Set((old.builds || []).map(b => b.t + ":" + b.i));
+          const pendingOld = grid.entries.some(e => oldKeys.has(e.key) && e.allocatedMW < e.mw - tolerance);
+          if (pendingOld) ok(grid.entries.every(e => oldKeys.has(e.key)),
+            `${style}/${id}/${month} 기존 대기 중 새 접속 설비 추가 금지`);
           ok(projected.connectedMW + projected.reservedMW <= projected.hostMW + tolerance,
             `${style}/${id}/${month} 접속·예약 ≤ H`);
         }
@@ -145,8 +156,13 @@ JS = r"""
         row.cities[id].uns.push(uns);
         row.cities[id].ren.push(result.team[id].renPct);
         row.cities[id].operatedWaiting.push(result.team[id].grid.waitingMW);
-        if (style !== "nothing") ok(result.team[id].grid.waitingMW <= tolerance,
-          `${style}/${id}/${month} 실제 운영 뒤 접속 대기 0`);
+        if (style !== "nothing") {
+          const g = S.grid[id], tracker = births[style + ":" + id];
+          ok((g.waitingMW - g.reservedMW) <= g.monthlyMW * (queueMonths - 1) + tolerance,
+            `${style}/${id}/${month} 운영 뒤 대기 상한`);
+          for (const e of g.entries) ok(e.allocatedMW >= e.mw - tolerance || month - tracker[e.key] < queueMonths - 1,
+            `${style}/${id}/${month}/${e.key} ${queueMonths}달 이내 전량 접속`);
+        }
         row.tradedMWh += result.team[id].imp || 0;
       });
     }
@@ -203,8 +219,16 @@ JS = r"""
     params.connPerMonthReal = savedMonthly;
     params.hostCapMul = { ...savedHost, v: 0 };
     const stored = calculate(gridCase, gridId, "careful"), after = forecast(gridCase, stored);
-    ok(variableAdded(gridCase, stored).length > 0 && after.waitingMW <= tolerance,
-      "시작 H 0: ESS 확충 뒤 월 한도 안에서 전량 접속");
+    const next = {...gridCase, round: gridCase.round + 1,
+      grid: {...gridCase.grid, [gridId]: after},
+      teams: {...gridCase.teams, [gridId]: {...gridCase.teams[gridId], plan: stored.plan}}};
+    let finished;
+    for (let turn = 1; turn < queueMonths; turn++) {
+      finished = C.gridStatus(next, R, bg, gridId, true);
+      next.grid[gridId] = finished; next.round++;
+    }
+    ok(variableAdded(gridCase, stored).length > 0 && finished.waitingMW <= tolerance,
+      "시작 H 0: ESS 확충 뒤 실제 월 처리 반복으로 기한 내 전량 접속");
     ok(stored.plan.builds.some(b => bg.BLD[b.t].cls === "bat"), "접속 여유 부족: ESS 투자");
   } finally { params.connPerMonthReal = savedMonthly; params.hostCapMul = savedHost; }
   const legacy = clone(gridCase); delete legacy.grid;
@@ -241,8 +265,8 @@ JS = r"""
     ok(variableAdded(queued, sameMonth).length === 0, "같은 달 재계획: 접속 처리량 재사용 금지");
     queued.round++;
     const nextMonth = calculate(queued, gridId, "careful"), projected = forecast(queued, nextMonth);
-    ok(variableAdded(queued, nextMonth).length > 0 && projected.waitingMW <= tolerance,
-      "다음 달: 기존 미예약 몫 차감 뒤 남은 처리량만 사용");
+    ok(variableAdded(queued, nextMonth).length === 0 && projected.waitingMW <= tolerance,
+      "다음 달: 새 묶음 없이 기존 부분 예약을 전량 접속");
   }
 
   // 지지율·현금·부채 입력에 대한 반응. 연초 이후인 3월에 시험한다.

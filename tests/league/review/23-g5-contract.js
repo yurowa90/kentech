@@ -23,18 +23,19 @@ for (const id of ids) {
   ok(JSON.stringify(clean.lines) === JSON.stringify(plan.lines), '시작 기준 합법 전선 보존 ' + id);
   // 모델의 반올림 전 실제 공급·탄소를 독립적으로 읽는다.
   const sim = B.simulate({ ...clean, season: 'winter', seed: 0 }, 7, { league: true });
-  const supplied = sim.tot.dem - sim.unsTotal, intensity = sim.co2 / supplied;
-  ok(supplied > 0 && sim.unsTotal < 1e-6, '정상 기준은 전량 공급 ' + id);
+  const supplied = Math.max(0, sim.tot.dem - sim.unsTotal), intensity = supplied > 1e-6 ? sim.co2 / supplied : D.params.normalCo2.v;
+  ok(plan.builds.length === 0 && (supplied > 1e-6) === B.SITES.some(s => s.kind === 'plant'), '지도 기존 설비 유무와 공급 일치 ' + id);
+  near(supplied + sim.unsTotal, sim.tot.dem, '공급·미공급 총량 보존 ' + id);
   near(S.econ.cities[id].co2Intensity0, intensity, '실제 소비 탄소/공급 MWh ' + id);
   near(noAI.econ.cities[id].co2Intensity0, intensity, '씨앗·게임 길이·AI 로드 독립 ' + id);
   ok(S.teams[id].plan === null, '기준 계획은 플레이어 자산에 설치하지 않음 ' + id);
   starts[id] = { intensity, carbonPart: X.score(S.econ).by[id].parts.co2, co2: sim.co2, supplied };
 }
-// 직렬화 이후 이전 추적값이 달라져도 공급0이면 처음 공개한 탄소 부분점수로 돌아온다.
+// 공급0인 달에는 직전 탄소 성과를 유지한다.
 const initial = clone(S.econ), empty = Object.fromEntries(ids.map(id => [id, { energy: { demMWh: 100, servedMWh: 0, co2: 0, unsPct: 100 } }]));
 for (const id of ids) initial.cities[id].co2Intensity = 0.1;
 const zero = X.monthStep(initial, empty);
-for (const id of ids) near(X.score(zero.E).by[id].parts.co2, starts[id].carbonPart, 'nothing 시작 탄소 점수 ' + id);
+for (const id of ids) near(zero.E.cities[id].co2Intensity, .1, '공급0 직전 탄소 집약도 유지 ' + id);
 near(T.params.smrMW.v, 4 * 170 / 230, 'SMR 발전소 4모듈 축척');
 near(T.params.smrCost.v / T.params.smrMW.v, (150 / 20) * (8000 / 4500), 'G7 DOE FOAK MW당 환산 단가');
 near(T.params.smrMin.v, .8, '최소 출력비 유지');
@@ -67,7 +68,7 @@ for (const style of ['careful', 'balanced', 'bold']) for (const stage of ['warn'
     ok(C.reduce(draft, { team: target, token: 'g5-test-token', ...msg }, 102, B).ok, '사람과 같은 요청으로 승인');
 }
 const safe = clone(S);
-safe.teams[target].plan = clone(D.normalStartPlans[target]);
+safe.teams[target].plan = AI.plan(safe, R, target, B, 'balanced').plan;
 safe.econ.cities[target].cash = -safe.econ.cities[target].revYear * (D.params.debtWarnRatio.v + .01);
 const held = AI.plan(safe, R, target, B, 'balanced').plan;
 ok(JSON.stringify(held.builds) === JSON.stringify(safe.teams[target].plan.builds), '주의·충분한 공급이면 선택 건설 보류');
