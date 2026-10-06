@@ -132,7 +132,7 @@ JS = r"""
   ok(C.publicView(L7, 41).teams.pyeongtaek.fcx === null, "no forecast tech → no precise forecast");
   L7.teams.pyeongtaek.rs.adoptR.fcst = 1; L7.events = [{ id: "heatwave_peak", round: L7.round, x: 1.3 }];
   const fx = C.publicView(L7, 42).teams.pyeongtaek.fcx.heatwave_peak;
-  ok(fx[0] <= 1.3 && fx[1] >= 1.3 && fx[1] - fx[0] <= 0.5 + 1e-9 && fx[1] - fx[0] < 1, "forecast tech: half-width range containing actual (" + fx + ")");
+  ok(fx[0] <= 1.3 && fx[1] >= 1.3 && fx[1] - fx[0] <= 0.7 + 1e-9 && fx[1] - fx[0] < 1, "forecast tech: narrowed range (×0.7, ECON-RECAL-SPEC §1.3·REF 12.7) containing actual (" + fx + ")");
   return out;
 }
 """

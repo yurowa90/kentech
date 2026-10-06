@@ -403,6 +403,10 @@ def u_plan_contract(checks, team, host, tid, label):
     tool.focus(); tool.press('Enter')
     checks.ok(all(team.locator(f'[data-lens="{key}"]').get_attribute('aria-pressed') == 'true'
               for key in ('complaints', 'grid')), f'{label} U3 설비 선택 시 민원·전력망 자동 렌즈')
+    try:  # 렌즈 글은 다음 그리기 때 채워진다.
+        team.wait_for_function("() => { const g = document.querySelector('#lg-lens-grid'); return g && !g.hidden && g.textContent.trim() }", timeout=3000)
+    except Exception:
+        pass
     checks.ok(shown(team, '#lg-lens-grid'), f'{label} U3 계산한 접속 여유 미리보기')
     team.locator('[data-lens="complaints"]').focus(); team.locator('[data-lens="complaints"]').press('Enter')
     checks.ok(team.locator('[data-lens="complaints"]').get_attribute('aria-pressed') == 'false',
