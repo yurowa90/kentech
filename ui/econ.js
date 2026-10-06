@@ -352,6 +352,8 @@
       if (C.revenueHistory.length === 12) C.revYear = Math.max(0, sum(C.revenueHistory));
       C.debtCap = r1(pv(data, "debtCapRatio") * C.revYear);
       C.subsidy = subsidyOf(C, data);
+      // B14: 1월에 공지한 연액에서 정액 항목을 분리해 비지급 달에도 같은 기준 사용.
+      C.subsidyFixed = pv(data, "subBase") + equalizeOf(C, data);
     });
     E.fiscalYear = E.year;
   }
@@ -610,8 +612,13 @@
       if (c.revenueHistory.length > 12) c.revenueHistory.shift();
       const over = c.cash < -c.debtCap;
       const ratio = debtRatio(c, data), stage = over || ratio >= 0.40 - 1e-12 ? "crisis" : -c.cash >= P("debtWarnRatio") * c.revYear - 1e-12 ? "warn" : "ok";
+      // 억/명·달. 실제 주민세 + 공지 연액 중 인구 배분분/12 − 서비스 비용.
+      // 정액 지원은 제외하며, 소액·음수 기여를 보존하도록 억 단위 반올림하지 않는다.
+      const fixedSubsidy = fin(c.subsidyFixed, P("subBase") + equalizeOf(c, data));
+      const perResidentNet = (rev.resTax + (c.subsidy - fixedSubsidy) / 12 - exp.service) / Math.max(1, c.pop);
       if (over || stage !== "ok") news.push(`${c.name} 재정 ${stage === "crisis" || over ? "위기: 새 건설·유료 대응 제한, 재정 점수 0" : "주의: 채무비율 25% 이상"}${over ? " — 운영 적자로 한도 초과 부채가 계속 쌓이고 있어요" : ""}`);
       fiscal[id] = { tariffGross: r3(servedOf(e) * reg.otherCost[id] * (1 + P("tariffMarkup"))), eventBonus: r3(e.bonus), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: revT, expTotal: expT, cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, debtRatio: ratio, debtStage: stage, spendable: spendable(c), out: o };
+      fiscal[id].perResidentNet = perResidentNet;
       // 지연 추적(정전·CO₂·재생)
       const co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       c.unsS += lam * (e.unsPct - c.unsS);

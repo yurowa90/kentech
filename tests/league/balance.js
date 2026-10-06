@@ -160,7 +160,7 @@ block("B2", () => {
 });
 
 block("B3", () => {
-  const base = run(12);
+  const base = run(12), base36 = run(36);
   // 세금은 첫 달 주민 수에 대해 발생하므로 첫 달 상태로 나눈다.
   const first = IDS.map(id => base.reports[0].fiscal?.[id]?.rev?.resTax / base.states[0].cities[id].pop);
   const err = (Math.max(...first) - Math.min(...first)) / mean(first);
@@ -171,7 +171,15 @@ block("B3", () => {
     const high = run(12, cid => cid === id ? { policy: { taxRes: 2, taxInd: 2, service: -2 } } : {});
     const l = operating(low, id), delta = operating(high, id) - operating(base, id);
     const drop = high.E.cities[id].approval - base.E.cities[id].approval;
-    ok(l < 0, `${id} 저세율·서비스+2 연 운영 수지 ${fmt(l)}억 (목표 <0)`);
+    // v1.6: 절대 적자 대신 같은 씨앗 정책0 대비 연 수지·36달 누적 현금 감소.
+    const low36 = run(36, cid => cid === id ? { policy: { taxRes: -2, taxInd: -2, service: 2 } } : {});
+    const baseAnnual = operating(base, id);
+    const cashDelta = (low36.E.cities[id].cash - low36.start.cities[id].cash) -
+      (base36.E.cities[id].cash - base36.start.cities[id].cash);
+    ok(finite(l) && finite(baseAnnual) && l < baseAnnual,
+      `${id} 저세율·서비스+2 연 운영 수지 ${fmt(l)}억, 정책0 ${fmt(baseAnnual)}억 (목표 정책0 미만)`);
+    ok(finite(cashDelta) && cashDelta < 0,
+      `${id} 저세율·서비스+2 36달 누적 현금 차이 ${fmt(cashDelta)}억 (목표 정책0 미만)`);
     ok(delta >= 0.3 * D.start[id].cash0, `${id} 고세율 수지 개선 ${fmt(delta)}억 (목표 ≥${fmt(0.3 * D.start[id].cash0)})`);
     ok(drop <= -8, `${id} 고세율 지지율 차이 ${fmt(drop)}점 (목표 ≤-8)`);
   }));
@@ -536,20 +544,30 @@ block("B13", () => {
 });
 
 block("B14", () => {
-  test("정책0 주민의 재정 기여와 정액 보정 상한", () => {
+  test("정책0 지역 평균 주민 기여·화면 필드·정액 보정 상한", () => {
     const r = run12(36);
-    for (const m of [0, 12, 24]) IDS.forEach(id => {
-      const f = r.reports[m].fiscal?.[id], pop = r.states[m].cities[id].pop;
-      // 정액 subBase와 equalize는 주민 한 명의 한계 기여가 아니다. 1월 지원금에서 제외한다.
-      // 나머지 인구 비례 지원금/주민 수를 연 1인당 지원금으로 읽고 12달로 나눈다.
-      const perCapSubsidy = (4 * f?.rev?.subsidy - f?.equalize - D.params.subBase?.v) / pop;
-      const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
-      ok(finite(perCapSubsidy) && finite(net) && net > 0,
-        `${id} ${m + 1}달 주민1명 월 순효과=${fmt(net * 1e8)}원, 주민세=${fmt(f?.rev?.resTax / pop * 1e8)}, 지원/12=${fmt(perCapSubsidy / 12 * 1e8)}, 서비스=${fmt(f?.exp?.service / pop * 1e8)} (순효과 >0)`);
-      const ratio = f?.equalize / (4 * f?.rev?.subsidy);
-      ok(finite(f?.equalize) && f.equalize >= 0 && finite(ratio) && ratio <= 0.5,
-        `${id} ${m + 1}달 정액보정=${fmt(f?.equalize)}, 1월 지원=${fmt(f?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
-    });
+    for (let m = 0; m < 36; m++) {
+      const annual = Math.floor(m / 12) * 12;
+      let contribution = 0, population = 0;
+      IDS.forEach(id => {
+        const f = r.reports[m].fiscal?.[id], jan = r.reports[annual].fiscal?.[id];
+        const pop = r.states[m].cities[id].pop;
+        // F25: 1월 공지 연액 = 분기 지급액×4. 정액 기본·보정을 빼고 12달 배분.
+        const perCapSubsidy = (4 * jan?.rev?.subsidy - jan?.equalize - D.params.subBase?.v) / pop;
+        const net = f?.rev?.resTax / pop + perCapSubsidy / 12 - f?.exp?.service / pop;
+        ok(finite(net) && finite(f?.perResidentNet) && Math.abs(f.perResidentNet - net) < 1e-12,
+          `${id} ${m + 1}달 perResidentNet=${f?.perResidentNet}, 기대=${net}억/명·달 (도시별 음수 허용)`);
+        contribution += net * pop; population += pop;
+        if (m === annual) {
+          const ratio = jan?.equalize / (4 * jan?.rev?.subsidy);
+          ok(finite(jan?.equalize) && jan.equalize >= 0 && finite(ratio) && ratio <= 0.5,
+            `${id} ${m + 1}달 정액보정=${fmt(jan?.equalize)}, 1월 공지 연액=${fmt(4 * jan?.rev?.subsidy)}, 비율=${fmt(ratio * 100)}% (≤50%)`);
+        }
+      });
+      const average = contribution / population;
+      ok(finite(average) && average >= 0,
+        `${m + 1}달 지역 인구 가중 평균 주민1명 월 순효과=${fmt(average * 1e8)}원 (≥0)`);
+    }
   });
 });
 

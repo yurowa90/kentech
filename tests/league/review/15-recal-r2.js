@@ -68,9 +68,10 @@ const initial = () => { const E = X.initCities(ids, data, { months: 36, seed: "r
 {
   const E = initial();
   const r = X.monthStep(E, inp(E, id => ({ energy: { costPerMWh: id === a ? .02 : .008 } })), data);
-  near(r.report.fiscal[a].rev.tariff, 100 * (.008 * 1.02 - .02), "F25 남의 평균 차익", .001);
+  // G3: 가산율 고정 1.02 대신 G 설정을 사용. 자기 제외 원가·정확한 차익·허용 오차 유지.
+  near(r.report.fiscal[a].rev.tariff, 100 * (.008 * (1 + data.params.tariffMarkup.v) - .02), "F25 남의 평균 차익", .001);
   const singleton = X.initCities([a], data); const one = X.monthStep(singleton, inp(singleton, () => ({ energy: { costPerMWh: .02 } })), data);
-  near(one.report.fiscal[a].rev.tariff, 100 * (.008 * 1.02 - .02), "F25 혼자일 때 기준 원가", .001);
+  near(one.report.fiscal[a].rev.tariff, 100 * (.008 * (1 + data.params.tariffMarkup.v) - .02), "F25 혼자일 때 기준 원가", .001);
   const zero = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 0, unsPct: 100, co2: 0 } })), data);
   near(zero.E.cities[a].co2Intensity, E.cities[a].co2Intensity, "F19 공급0 직전 탄소 유지");
   const half = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 50, unsPct: 50, co2: 41 } })), data);
