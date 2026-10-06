@@ -158,12 +158,15 @@
     const safetyTarget = initial.peak * (1 + value("aiSupplyReserve") + value("aiSafeReserve") * (1 - style.risk));
     // 안전 공급은 첫 달·성향 지연과 무관하다. 재생 정격과 빈 저장장치는 보증으로 세지 않는다.
     const unsafe = initial.firm < safetyTarget;
-    if (stage === "warn" && !unsafe) return plan;
+    const fiscal = S.econRep?.fiscal?.[id];
+    const recover = value("aiDebtRepair") && city?.cash < 0 && fiscal &&
+      fiscal.revTotal - (fiscal.expTotal - fiscal.exp.capex) < 0;
+    if (stage === "warn" && !unsafe && !recover) return plan;
     if (!unsafe && !scheduled) return plan;
     const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
     const committed = S.teams[id].committed ??
       (S.teams[id].base || []).reduce((sum, x) => sum + x.c, 0) + fixed;
-    const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
+    const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : recover ? value("aiDebtRepair") : value("aiRepairInvest"));
     const choiceCap = committed + extra - fixed;
     const cap = unsafe ? budget - fixed : choiceCap;
     if (bg.capex(plan) >= cap) return plan;
@@ -215,15 +218,18 @@
     // 기존 대기의 미예약 몫부터 처리한다. 같은 달 운영을 마쳤다면 처리량은 다시 주지 않는다.
     const waiting = grid ? grid.waitingMW - grid.reservedMW : 0;
     let gridRoom = grid ? grid.headroomMW - waiting : Infinity;
-    let gridMonth = grid ? Math.max(0, (grid.round === S.round ? 0 : grid.monthlyMW) - waiting) : Infinity;
+    // 월 처리량보다 큰 최소 설비도 유한 기간 안에 접속할 수 있다.
+    // 기존 미접속이 남으면 새 묶음을 추가하지 않아 대기를 누적시키지 않는다.
+    let gridMonth = grid ? (waiting > 1e-8 || grid.round === S.round ? 0 :
+      grid.monthlyMW * value("aiConnectionMonths")) : Infinity;
     const reachesDemand = bg.SITES.some(s => s.dem && roots.has(s.tile));
     let route = routes(bg, roots);
     while (used.size < bg.TILES.length) {
       const safety = have.firm < safetyTarget;
-      if (stage === "warn" && !safety) break;
+      if (stage === "warn" && !safety && !recover) break;
       const firmNeed = Math.max(0, safetyTarget + (scheduled ? have.peak * value("aiBoldExpansion") * style.risk : 0) - have.firm);
       const renewReady = scheduled && (!grid || age >= value("aiGridRenewDelay") * style.risk);
-      const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - have.renew) : 0;
+      const renewNeed = renewReady ? Math.max(0, have.peak * (value("aiRenewFloor") + value("aiRenewTarget") * (recover && style.risk < 1 ? 1 : 1 - style.risk)) - have.renew) : 0;
       const hydroAllowed = t => !grid || t !== "hydro" || hydroMW + bg.BLD[t].mw <= hydroLimit;
       const nextLimited = viable.filter(t => hydroAllowed(t) && bg.BLD[t].hostLimited && bg.BLD[t].mw <= gridMonth &&
         legal[t].some(i => !used.has(i))).map(t => bg.BLD[t].mw);
@@ -237,7 +243,7 @@
       viable.forEach(t => {
         const b = bg.BLD[t], battery = b.cls === "bat";
         if (!hydroAllowed(t)) return;
-        // 설비 일부만 예약하면 발전은 0이다. 정격 전체가 이번 달 두 한도에 들어가야 한다.
+        // 일부 예약 중인 설비의 발전은 0. 전체 정격은 접속 상한과 G 기간의 건설 묶음 안에 둔다.
         if (b.hostLimited && b.mw > Math.min(gridRoom, gridMonth)) return;
         const need = b.cls === "disp" ? firmNeed : b.cls === "ren" ? renewNeed : storageNeed;
         if (need <= 0 || safety && b.cls !== "disp") return;
@@ -247,7 +253,7 @@
           const cost = bg.capex({ builds: [{ t, i }], lines: [] }) + route.dist[i];
           if (cost > buildBudget) return;
           const rank = KCP.econ.hashStr(`${seed}:${t}:${i}`);
-          const socialCost = cost + complaintCost[t][i];
+          const socialCost = (cost + complaintCost[t][i]) / (S.econ && t === "biomass" && bg.TILES[i].livestock ? value("aiLocalFuelWeight") : 1);
           if (!best || socialCost < best.socialCost || socialCost === best.socialCost && rank < best.rank) best = { t, i, cost, socialCost, rank };
         });
         if (!best || bg.capex(plan) + best.cost > (safety ? cap : choiceCap)) return;

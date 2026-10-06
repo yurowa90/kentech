@@ -31,7 +31,7 @@ const STRATEGIES = {
   renew: [], ties: [], hybrid: []
 };
 const names = { research: "연구 몰빵", none: "연구 0", smr: "SMR 조기", hydrogen: "수소 장주기", renew: "동일예산 재생+저장", ties: "동일예산 연계선", hybrid: "동일예산 재생+저장·연계선" };
-const report = { contract: "ECON-TECH-SPEC T5 v1.1 (2026-10-06)", strategies: names, seed: "tech-strategy-common", months: 36, smrFuelMul: D.params.smrFuelMul.v, runs: [], failures: [] };
+const report = { contract: "ECON-TECH-SPEC T5 v1.1 G9 대칭 총지출 (2026-10-07)", strategies: names, seed: "tech-strategy-common", months: 36, smrFuelMul: D.params.smrFuelMul.v, runs: [], failures: [] };
 report.sources = Object.fromEntries(["tests/league/review/11-tech-balance.js", ...["build-maps", "tech-data", "build", "econ-data", "econ", "league-data", "league-core", "league-ai"].map(n => `ui/${n}.js`)]
   .map(file => [file, crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, file))).digest("hex")]));
 let passes = 0;
@@ -102,35 +102,60 @@ function focalPlan(S, id, strategy) {
   return { plan: p, econPol: answer.econPol };
 }
 // 같은 예산 실험 어댑터. 실제 상태·가격·AI 계수는 유지하고 AI가 보는 예산만 제한한다.
-// 기본 건설·세금·부채 대응·협상은 leagueAI.plan의 기존 성향을 재사용한다.
+// 기본 건설·세금·부채 대응은 balanced로 통일하고 기존 AI 협상을 재사용한다.
 const alternatives = new Set(["renew", "ties", "hybrid"]);
 const references = {};
+const tradeForecastMargin = 1.25; // G: 공개 계획 운전 예상의 연료·수요 변화 여유
+report.tradeForecastMargin = tradeForecastMargin;
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 function investment(S, id, plan) {
   select(id);
   return Math.max(0, C.spendOf(B, S, R, id, plan) + C.tieShare(S, R, id) - (S.teams[id].stock || 0)) +
     plan.builds.filter(b => b.t === "lab").length * B.RS.labOpexR;
 }
-// 연계선은 준공 후 자동 거래하므로 건설비만 제한하면 구매비로 같은 예산을 우회한다.
-// 남은 모든 월의 최악 수입량(전 용량×시간×이웃 판매가, 초전도 최대 용량 포함)을
-// 예약한다. 미래 SMR 지출은 현재로 당겨 쓰지 않고 각 월 누계의 최솟값으로만 제한한다.
-// 예약은 비용이 아니며 실제 결제만 matchedSpend에 기록한다. 이웃 가격은 모든 판에서 기본값.
+// G9: 양쪽 모두 36달 건설+운영·연료+구매 총지출로 비교한다.
+// 건설은 SMR의 월별 건설·연구 투자 속도를 따르고, 운영 절약을 즉시 재투자하지 않는다.
+// 미래 전 용량 구매를 예약하지 않는다. 공개 계획의 실제 급전·거래 예상으로 구매와
+// 수출 추가 연료를 함께 예약(25% 예상 여유)한다. 예약은 실제 지출에 더하지 않는다.
+// 이번 달 운영비는 전월 실적(달력 보정)과 같은 달 SMR 실적 중 큰 값으로 예상한다.
 function envelopeRoom(S, id, run, extraTie = null) {
-  const active = S.ties.filter(t => t.st === "built" && [t.a, t.b].includes(id));
+  const ref = references[id], index = S.round - 1, rounds = C.roundsOf(S);
+  const active = S.ties.filter(t => t.st === "built");
   if (extraTie && !active.some(t => C.tieId(t) === C.tieId(extraTie))) active.push(extraTie);
-  const hourly = sum(active.map(t => t.cap * ctx.KCP.TECH_DATA.params.scableCap.v * S.teams[t.a === id ? t.b : t.a].price));
-  let reserve = 0, room = Infinity;
-  const rounds = C.roundsOf(S);
-  for (let m = S.round; m <= report.months; m++) {
-    reserve += hourly * 24 * rounds[m - 1].mdays + (active.length ? 0.03 : 0);
-    room = Math.min(room, references[id].months[m - 1].cumulativeInvestment - run.account.matchedSpend - reserve);
+  let incremental = 0;
+  if (active.some(t => [t.a, t.b].includes(id))) {
+    const sims = {}, prices = {};
+    for (const key of ids) {
+      const p = S.teams[key].plan || {builds:[],lines:[]};
+      const publicState = {...S, events: []};
+      sims[key] = C.simTeam(B, R, key, p, {...rounds[index], seed: X.hashStr(`${S.seedKey ?? S.room}:${S.round}:budget`)},
+        Number.MAX_VALUE, C.trialMods(publicState, R, key));
+      prices[key] = S.teams[key].price;
+    }
+    const without = C.settle([], sims, prices, sims[id].H, rounds[index].days).out[id];
+    const withTies = C.settle(active.map(t => C.effectiveTie(S,t)), sims, prices, sims[id].H, rounds[index].days).out[id];
+    const gross = row => row.fuelX - row.saveFuel + row.pay;
+    // 수입 구매비뿐 아니라 수출용 추가 연료도 포함. 판매액은 지출에서 빼지 않는다.
+    incremental = Math.max(0, gross(withTies) - gross(without)) / rounds[index].days;
   }
+  const previous = run.months.at(-1);
+  const current = Math.max(ref.months[index].operation + ref.months[index].purchase,
+    previous ? (previous.operation + previous.purchase) * rounds[index].mdays / rounds[Math.max(0,index-1)].mdays : 0);
+  let reserve = 0, room = Infinity;
+  for (let m = index; m < report.months; m++) {
+    reserve += (m === index ? current : ref.months[m].operation + ref.months[m].purchase) + incremental * rounds[m].mdays * tradeForecastMargin;
+    room = Math.min(room, ref.months[m].cumulativeMatchedSpend - run.account.matchedSpend - reserve);
+  }
+  // SMR 가동 전의 일시적 운영 절약을 영구 투자재원으로 앞당겨 쓰지 않는다.
+  // 건설 속도도 같은 달 SMR의 건설·연구 운영 누계 안에 둔다.
+  room = Math.min(room, ref.months[index].cumulativeInvestment - run.account.investment,
+    run.capitalLimit - run.account.construction);
   return Math.max(0, room);
 }
 function alternativePlan(S, id, strategy, run) {
   const room = envelopeRoom(S, id, run);
   const previous = S.teams[id].plan || { builds: [], lines: [] };
-  const style = strategy === "ties" ? "bold" : "careful";
+  const style = "balanced"; // 동일 기본 공급·재정 정책, 기술 투자 대상만 교체
   // 기존 AI가 같은 달 집행 가능한 돈만 보게 한다. 실제 현금·부채를 주입하지 않는다.
   ctx.KCP.leagueCore = { ...C, budget: (state, key) => key === id ? Math.min(C.budget(state, key),
     (state.teams[key].stock || 0) - C.tieShare(state, R, key) + room) : C.budget(state, key) };
@@ -211,9 +236,13 @@ const requested = process.env.TECH_BALANCE_STRATEGY;
 const selectedStrategies = requested ? Object.keys(STRATEGIES).filter(s => s === requested || alternatives.has(requested) && s === "smr") : Object.keys(STRATEGIES);
 if (!selectedIds.length || !selectedStrategies.length) throw Error("기술 진단 선택 오류");
 for (const focal of selectedIds) for (const strategy of selectedStrategies) {
+  // 비용만으로 예산을 맞추는 사전 반복. 점수·순위는 투자 한도 선택에 사용하지 않는다.
+  const fitHistory = [];
+  let capitalLimit = Infinity;
+  for (let fitAttempt = 0; fitAttempt < 12; fitAttempt++) {
   const S = C.newState(report.seed, R.id, 0, ids, { turns: 36 });
   ids.forEach(id => { S.teams[id].token = "test-bot"; });
-  const run = { id: focal, name: D.start[focal].name, strategy, months: [], rejected: [], tieRequests: [], account: { tariff: 0, tariffGross: 0, service: 0, interest: 0, construction: 0, researchOperation: 0, purchase: 0, investment: 0, matchedSpend: 0 } }; report.runs.push(run);
+  const run = { capitalLimit, id: focal, name: D.start[focal].name, strategy, months: [], rejected: [], tieRequests: [], account: { tariff: 0, tariffGross: 0, service: 0, interest: 0, construction: 0, researchOperation: 0, purchase: 0, operation: 0, investment: 0, matchedSpend: 0 } }; report.runs.push(run);
   for (let m = 1; m <= 36; m++) {
     C.host(S, "next", m * 100000);
     const proposals = Object.fromEntries(ids.map(id => [id, id === focal ? (alternatives.has(strategy) ? alternativePlan(S, id, strategy, run) : focalPlan(S, id, strategy)) : AI.plan(S, R, id, B, "balanced")]));
@@ -245,15 +274,16 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
     run.account.researchOperation += r.cost.research;
     run.account.purchase += r.pay * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days;
     run.account.investment += fiscal.exp.capex + r.cost.research;
-    run.account.matchedSpend = run.account.investment + run.account.purchase;
-    if (alternatives.has(strategy)) ok(run.account.matchedSpend <= references[focal].months[m - 1].cumulativeInvestment + 1e-6,
-      `${focal}/${strategy}/${m} 누적 지출 ${run.account.matchedSpend} ≤ SMR ${references[focal].months[m - 1].cumulativeInvestment}`);
+    const wk = C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days;
+    const operation = (r.cost.fuel + r.cost.policy) * wk + (r.cost.resp || 0) + (r.cost.research || 0);
+    run.account.operation += operation;
+    run.account.matchedSpend = run.account.construction + run.account.operation + run.account.purchase;
     run.months.push({ budget: alternatives.has(strategy) ? {
-      target: references[focal].months[m - 1].cumulativeInvestment,
+      target: references[focal].months[m - 1].cumulativeMatchedSpend,
       spent: run.account.matchedSpend,
-      unspent: references[focal].months[m - 1].cumulativeInvestment - run.account.matchedSpend,
+      unspent: references[focal].months[m - 1].cumulativeMatchedSpend - run.account.matchedSpend,
       constructionAllowance: proposals[focal].allowance
-    } : null, cumulativeMatchedSpend: run.account.matchedSpend, purchase: r.pay * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, cumulativeInvestment: run.account.investment, investment: fiscal.exp.capex + r.cost.research, construction: fiscal.exp.capex, researchOperation: r.cost.research, ties: clone(S.ties), importMWh: r.imp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, exportMWh: r.exp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, grid: r.grid, score: [12, 24, 36].includes(m) ? X.score({...S.econ, len: m}).by[focal] : null, month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
+    } : null, operation, cumulativeMatchedSpend: run.account.matchedSpend, purchase: r.pay * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, cumulativeInvestment: run.account.investment, investment: fiscal.exp.capex + r.cost.research, construction: fiscal.exp.capex, researchOperation: r.cost.research, ties: clone(S.ties), importMWh: r.imp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, exportMWh: r.exp * C.roundsOf(S)[m - 1].mdays / C.roundsOf(S)[m - 1].days, grid: r.grid, score: [12, 24, 36].includes(m) ? X.score({...S.econ, len: m}).by[focal] : null, month: m, uns: r.unsPct, ren: r.renPct, cash: city.cash, debtCap: city.debtCap, debtRatio: S.econRep.fiscal[focal].debtRatio, debtStage: S.econRep.fiscal[focal].debtStage, unrest: city.unrest,
       growth: { pop: city.pop / city.pop0 / (S.econ.totals.pop / S.econ.totals.pop0) - 1, ind: city.ind / city.ind0 / (S.econ.totals.ind / S.econ.totals.ind0) - 1 },
       adopted: C.researchView(S, focal).adopted, builds: S.teams[focal].plan.builds.map(b => b.t) });
   }
@@ -264,9 +294,23 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   run.avgUns = run.months.reduce((sum, m) => sum + m.uns, 0) / run.months.length;
   run.adopted = C.researchView(S, focal).adopted;
   if (alternatives.has(strategy)) {
-    run.budget = { target: references[focal].account.investment, spent: run.account.matchedSpend,
-      unspent: references[focal].account.investment - run.account.matchedSpend,
-      execution: run.account.matchedSpend / references[focal].account.investment,
+    const excess = run.account.matchedSpend - references[focal].account.matchedSpend;
+    fitHistory.push({attempt: fitAttempt + 1, capitalLimit: Number.isFinite(capitalLimit) ? capitalLimit : null,
+      construction: run.account.construction, operation: run.account.operation, purchase: run.account.purchase,
+      spent: run.account.matchedSpend, target: references[focal].account.matchedSpend, excess});
+    if (excess > 1e-6 && fitAttempt < 11 && capitalLimit !== 0) {
+      ok(run.avgUns <= 5, `${focal}/${strategy} 예산 사전 반복도 평균 정전 ≤5%`);
+      // 관측 초과액만큼 다음 시도의 건설 상한을 낮춘다. 운영·연료·구매는 항상 실제 지출로 계산.
+      capitalLimit = Math.max(0, run.account.construction - excess);
+      report.runs.pop();
+      console.log('예산 맞춤 재실행', JSON.stringify({focal,strategy,fitAttempt,excess,capitalLimit}));
+      continue;
+    }
+    for (const month of run.months) ok(month.cumulativeMatchedSpend <= references[focal].account.matchedSpend + 1e-6,
+      `${focal}/${strategy}/${month.month} 실제 누적 총지출 ≤ SMR 36달 한도`);
+    run.budget = { fitHistory, capitalLimit: Number.isFinite(capitalLimit) ? capitalLimit : null, target: references[focal].account.matchedSpend, spent: run.account.matchedSpend,
+      unspent: references[focal].account.matchedSpend - run.account.matchedSpend,
+      execution: run.account.matchedSpend / references[focal].account.matchedSpend,
       maxPrefixOverspend: Math.max(...run.months.map(m => m.budget.spent - m.budget.target)) };
     ok(run.adopted.length === 0, `${focal}/${strategy} 추가 연구비 없이 투자 대안 실행`);
   }
@@ -278,6 +322,8 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   if (strategy === "hydrogen") ok(run.months.some(m => m.builds.includes("h2store")), `${focal} 수소 전략 실제 저장 건설`);
   console.log(JSON.stringify({ city: run.name, strategy: names[strategy], score: run.score, avgUns: +run.avgUns.toFixed(3), cards: run.adopted.length }));
   fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
+  break;
+  }
 }
 if (selectedIds.length === ids.length && selectedStrategies.length === Object.keys(STRATEGIES).length) {
   for (const strategy of ["ties", "hybrid"]) {

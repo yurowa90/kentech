@@ -627,7 +627,7 @@
       c.unsS += lam * (e.unsPct - c.unsS);
       c.co2pc += P("lambdaSlow") * (co2 / Math.max(1, c.pop / 1000) - c.co2pc);
       if (servedOf(e) > 0) c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))) + P("lambdaSlow") * (co2IntOf(e, data) - fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))));
-      else c.co2Intensity = fin(c.co2Intensity0, fin(c.co2Intensity, P("co2IntDef")));
+      else c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef")));
       c.renS += P("lambdaSlow") * (e.renPct - c.renS);
     });
     // 7) 집단 만족 → 지지율

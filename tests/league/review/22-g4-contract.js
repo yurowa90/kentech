@@ -28,7 +28,7 @@ ids.forEach(id=>{empty[id].energy.servedMWh=0;empty[id].energy.unsPct=100;empty[
 for(const previous of [null,.1,.9]) {
  const E=clone(carbonStart); ids.forEach(id=>{if(previous===null)delete E.cities[id].co2Intensity;else E.cities[id].co2Intensity=previous;});
  const zero=X.monthStep(E,empty,D);
- for(const id of ids){near(zero.E.cities[id].co2Intensity,carbonStart.cities[id].co2Intensity0,'F19 공급0 시작 탄소 보존');near(X.score(zero.E,D).by[id].parts.co2,X.score(carbonStart,D).by[id].parts.co2,'F19 공급0 탄소점수 개선 없음');}
+ for(const id of ids){near(zero.E.cities[id].co2Intensity,previous ?? carbonStart.cities[id].co2Intensity0,'F19 공급0 직전 탄소 보존');near(X.score(zero.E,D).by[id].parts.co2,X.score(E,D).by[id].parts.co2,'F19 공급0 탄소점수 변화 없음');}
 }
 const speeds=C.publicView(firstState,0).econ.speeds;
 for(const key of ['eduSpeed','eduMemory','reviewEvery','eduCbam','eduConn','eduCurtail','hazardFreq'])near(speeds[key],P[key].v,'공개 배속 '+key);

@@ -403,7 +403,7 @@
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
         ["eduMemory", `지지율 회복 기억 ×${P.eduMemory.v}: 임기 4년을 게임 12달에 압축`],
         ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년`],
-        ["eduAir", "대기 영향: 명세 ×4, 현재 적용 ×1(미구현 충돌)"],
+        ["eduAir", "대기 영향: 현재 ×1, 추가 확대 없음"],
         ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
         ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
@@ -1172,7 +1172,7 @@
     const rd = roundsOf(S)[0], wk = rd.mdays / rd.days, P = KCP.ECON_DATA.params, base = {};
     preserveMap(bg, () => activeOf(S).forEach(id => {
       // 기준 배치는 학생의 자산이 아니며 비용·연구·사건을 보정에 청구하지 않는다.
-      // 공급이 없는 빈 지도 대신 정책0의 고정 정상 공급 계획을 실제로 운전한다.
+      // 지도에 있는 발전소만 고정 전선으로 연결해 운전한다. 부족한 공급은 기준 설비를 추가해 메우지 않는다.
       const normalPlan = KCP.ECON_DATA.normalStartPlans[id];
       const normal = simTeam(bg, R, id, normalPlan || {}, { season: rd.season, days: rd.days, seed: 0 }, Number.MAX_VALUE, {}).k;
       const dem = normal.dem, served = Math.max(0, dem - normal.uns);
@@ -1181,7 +1181,7 @@
       const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
       base[id] = econInput(initial, R, id, { dem, uns: 0, unsPct: 0, hospH: 0,
         co2Prod: intensity * dem, co2Cons: intensity * dem, renPct: P.normalRen.v,
-        exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: P.normalCost.v * dem, policy: 0 } }, wk);
+        exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: served > 1e-6 ? normal.fuel / served * dem : P.normalCost.v * dem, policy: 0 } }, wk);
     }));
     S.econ = KCP.econ.calibrate(S.econ, base); S.econCal = true;
   }

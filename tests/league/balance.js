@@ -268,6 +268,7 @@ block("B6", () => {
     let lower = 0, upper = 0, free = 0;
     IDS.forEach(id => {
       const c = r.start.cities[id], subsidy = X.yearStart(r.start, data).E.cities[id].subsidy;
+      ok(operating(r, id) > 0, `B6 ${id} 보통 조건 연 운영수지 > 0`);
       const atLower = c.equalize <= .001;
       const atUpper = Math.abs(c.equalize - subsidy * data.params.equalizeMaxShare.v) <= .001;
       if (atLower) lower++;
@@ -496,7 +497,7 @@ block("B12", () => {
   const host = require("./review/21-host-policy-grid");
   const result = host.grid();
   host.check(result);
-  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·최대감세 계열 ≤3도시");
+  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·감세·증세 계열 각각 ≤3도시");
   const winners = IDS.filter(id => {
     const diagonal = result[id].rows.filter(r => r.taxRes === r.taxInd);
     ok(diagonal.length === 25 && diagonal.every(r => finite(r.score)), `${id} B3 실제 호스트 25칸`);
