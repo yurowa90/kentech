@@ -167,10 +167,14 @@
         const m = requestBody(wire), T = S.teams[team];
         if (!m || m.team !== team || typeof m.type !== "string" || !Number.isSafeInteger(m.n) || m.n <= 0 || bytes(wire.body).length > MAX_BYTES) return { ok: false, err: "bad" };
         const claim = m.type === "claim", epoch = T.seatVersion || 0;
+        const stateful = ["hello", "plan", "econ", "crit", "ready"].includes(m.type);
+        // kick 뒤 새 키/자리는 독립된 순번 공간이다. lastN은 퇴거 차단용 최댓값으로 남긴다.
+        const stateNs = T.lastNByType?.seat === epoch && T.lastNByType.kid === m.kid ? T.lastNByType : null;
+        const lastN = () => stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0;
         const reject = err => ({ ok: false, err, request: m });
         if (!S.sid || m.sid !== S.sid) return reject("session");
         if (m.seat !== epoch) return reject("seat");
-        if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : T.lastN || 0, T.retired?.[m.kid] || 0)) return reject("replay");
+        if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : lastN(), T.retired?.[m.kid] || 0)) return reject("replay");
         if (m.id != null && (typeof m.id !== "string" || m.id.length > 64 || !Number.isSafeInteger(m.born) || m.born <= 0 || m.born > m.n)) return reject("bad");
         const key = claim ? m.publicKey : T.publicKey;
         if (!key || !await verify(wire, key)) return reject("signature");
@@ -179,8 +183,12 @@
         if ((T.seatVersion || 0) !== epoch || m.seat !== epoch) return reject("seat");
         if (claim && T.token && (T.token !== token || !T.publicKey)) return reject(T.publicKey ? "taken" : "legacy");
         if (!claim && (!T.publicKey || T.token !== token)) return reject("seat");
-        if (m.n <= Math.max(T.lastN || 0, T.retired?.[token] || 0)) return reject("replay");
-        T.lastN = m.n;
+        if (m.n <= Math.max(lastN(), T.retired?.[token] || 0)) return reject("replay");
+        if (stateful) {
+          T.lastNByType = stateNs || { seat: epoch, kid: token, values: {} };
+          T.lastNByType.values[m.type] = m.n;
+        }
+        T.lastN = Math.max(T.lastN || 0, m.n);
         // 같은 요청 id를 새 순번으로 재전송해도 거래·연구를 두 번 적용하지 않는다.
         const cached = typeof m.id === "string" && T.receipts?.find(x => x.id === m.id && x.kid === token);
         if (cached) return { ...cached.result, quiet: true, request: m, verified: true };

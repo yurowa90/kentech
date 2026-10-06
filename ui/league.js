@@ -2080,16 +2080,22 @@
         if (!L.team) return;
         if (!L.snap) return;
         if (!L.claimAccepted) { send("claim"); return; }
-        send("hello");
+        const canRetry = type => {
+          const sent = L.stateRequests?.[type];
+          if (!sent || sent.team !== L.team || sent.sid !== L.snap.sid || sent.seat !== L.snap.teams[L.team]?.seatVersion) return true;
+          // 기준의 숫자 편집은 전송 전 pending만 바뀔 수 있다. ack는 그 새 편집을 막지 않는다.
+          return Date.now() - sent.sentAt >= 2000 && (type !== "plan" || !sent.acked || sent.rev !== L.rev);
+        };
+        if (canRetry("hello")) send("hello");
         for (const pending of L.pendingRequests.values()) if (Date.now() - pending.sentAt >= 5000) retryRequest(pending);
         const me = L.snap && L.snap.teams[L.team];
         if (!me) return;
-        if (["lobby", "plan"].includes(L.snap.phase) && me.rev < L.rev) sendPlan();
+        if (["lobby", "plan"].includes(L.snap.phase) && me.rev < L.rev && canRetry("plan")) sendPlan();
         if (L.snap.phase === "plan") {
-          if (L.pendingPol) send("econ", L.pendingPol);
-          if (L.pendingCrit && validCritLine(L.pendingCrit.line) && L.pendingCrit.chips.length && L.pendingCrit.choice) send("crit", L.pendingCrit);
+          if (L.pendingPol && canRetry("econ")) send("econ", L.pendingPol);
+          if (L.pendingCrit && validCritLine(L.pendingCrit.line) && L.pendingCrit.chips.length && L.pendingCrit.choice && canRetry("crit")) send("crit", L.pendingCrit);
         }
-        if (readyAllowed(L.snap) && L.wantReady != null && !!me.ready !== L.wantReady) send("ready", { ready: L.wantReady });
+        if (readyAllowed(L.snap) && L.wantReady != null && !!me.ready !== L.wantReady && canRetry("ready")) send("ready", { ready: L.wantReady });
       }, 5000));
       L.timers.push(setInterval(tickTimer, 1000));
     }
@@ -2122,6 +2128,11 @@
     const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
     const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
     if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); }
+    // 대기열에 넣을 때 최신 요청을 표시해 이전 ack가 새 편집을 지우지 못하게 한다.
+    const stateRequest = ["hello", "plan", "econ", "crit", "ready"].includes(type)
+      ? { team, sid: request.sid, seat: request.seat, sentAt: Date.now(), n: null,
+          pol: L.pendingPol, crit: L.pendingCrit, ready: L.wantReady, rev: request.rev } : null;
+    if (stateRequest) { session.stateRequests ||= {}; session.stateRequests[type] = stateRequest; }
     // 서명도 직렬 처리해 느린 기기에서 뒤 요청이 앞서 전송되지 않게 한다.
     session.sending = (session.sending || Promise.resolve()).then(async () => {
       if (L !== session || L.team !== team) return;
@@ -2133,6 +2144,7 @@
       // 저장 실패 시 미등록 키로 자리를 잡지 않는다. 예전 토큰 방식으로 돌아가지 않는다.
       if (!teamSave()) throw new Error("seat-save");
       if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; }
+      if (stateRequest) { stateRequest.n = NET.requestBody(envelope).n; stateRequest.sentAt = Date.now(); }
       if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = Date.now() + 5000; }
       session.conn.send("req", envelope);
     }).catch(() => {
@@ -2187,6 +2199,13 @@
     if (pending && pending.n !== m.n) return;
     if (event === "ack") {
       if (pending) L.pendingRequests.delete(m.id);
+      const sent = L.stateRequests?.[m.type];
+      if (sent && sent.n === m.n && sent.team === L.team && sent.sid === L.snap?.sid && sent.seat === L.snap?.teams[L.team]?.seatVersion) {
+        sent.acked = true;
+        if (m.type === "ready" && L.wantReady === sent.ready) L.wantReady = null;
+        if (m.type === "crit" && L.pendingCrit === sent.crit) L.pendingCrit = null;
+        if (m.type === "econ" && L.pendingPol === sent.pol) L.pendingPol = null;
+      }
       if (m.type === "claim" && m.n === L.claimN && m.seat === L.claimSeat) {
         L.claimAccepted = true; L.seat = m.seat;
         const old = L.migrationFrom;

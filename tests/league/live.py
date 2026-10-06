@@ -147,6 +147,7 @@ class Wire:
         self.nacks = self.callback_errors = self.blocked = 0
         self.requests, self.errors = Counter(), Counter()
         self.pending, self.latencies = None, []
+        self.team = None
 
     def attach(self, page):
         page.on("console", lambda m: self.errors.update([m.type])
@@ -190,12 +191,13 @@ class Wire:
                 data = data["data"]
             p = self.pending
             if sent and event == "req":
+                self.team = data.get("team")
                 self.requests[data.get("type")] += 1
                 if p and p["start"] is None and p["request"](data):
                     p["start"] = time.perf_counter()
             elif sent and event == "snap":
                 self.sent_snaps += 1
-            elif not sent and event == "nack":
+            elif not sent and event == "nack" and self.team is not None and data.get("team") == self.team:
                 self.nacks += 1
             elif not sent and event == "snap":
                 self.snaps += 1
@@ -425,9 +427,13 @@ def scenario(checks, host, teams, base, project, key, markers):
         for tid, (page, wire) in teams.items():
             def ready_action():
                 page.click("#lg-ready")
-                # 정책 변경은 큰 결정이다. UI가 요청하는 예측 확인도 따라간다.
-                if page.locator("#lg-ready-confirm").count():
-                    page.click("#lg-ready-confirm")
+                page.wait_for_selector("#lg-predict")
+                checks.require(page.locator("#lg-ready-confirm").is_disabled(),
+                               f"{month}달 {tid} 하루 전 약속 입력 전 준비 확인 비활성")
+                page.locator("[data-evidence]:not([disabled])").first.click()
+                page.locator("[data-pred]").select_option("down")
+                page.locator('[data-confidence="fairly"]').click()
+                page.click("#lg-ready-confirm")
 
             timed(checks, host, page, wire, f"{month}달 {tid} ready", "ready", ready_action,
                   lambda v: v["teams"][tid]["ready"] is True,
@@ -490,10 +496,10 @@ def report_wires(checks, pages):
             checks.ok(wire.nacks == 0, f"{label} 요청 거부 {wire.nacks} (기대 0)")
             checks.ok(all(wire.requests[k] >= 3 for k in ("plan", "econ", "ready")) and wire.requests["crit"] >= 1 and
                       wire.requests["tie"] >= 2,
-                      f"{label} 3달 plan·econ·crit·ready 및 연계선 요청 관찰")
+                      f"{label} 3달 plan·econ·ready, 1달 crit 및 연계선 요청 관찰")
         samples.extend(wire.latencies)
     if pages:
-        checks.ok(len(samples) >= 27, f"지연 표본 {len(samples)} (3팀×(2요청×3달+기준 1) + 제안/수락 6)")
+        checks.ok(len(samples) >= 36, f"지연 표본 {len(samples)} (기대 최소 36: 3팀×(3요청×3달+기준 1) + 제안/수락 6)")
         if samples:
             print(f"latency n={len(samples)} median={statistics.median(samples):.1f} ms "
                   f"max={max(samples):.1f} ms", flush=True)
