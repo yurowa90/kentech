@@ -590,6 +590,7 @@
     const $ = selector => root.querySelector(selector);
     const $$ = selector => Array.from(root.querySelectorAll(selector));
     const live = text => { if (alive) $("#ig-live").textContent = text; };
+    const emit = (name, payload) => { if (alive && typeof KCP.emit === "function") KCP.emit(name, payload); };
     const persist = () => { if (alive) save(); };
     const plan = () => G.locked ? G.locked.plan : G;
     const displayRun = () => G.locked || G.latestRun;
@@ -768,6 +769,7 @@
       $("#ig-lock-status").textContent = G.locked ? runMatches(G.locked, G) ? "계획 확정" : "계획 확정 · 확정 계획을 표시합니다" : "편집 중";
       $("#ig-one-line").disabled = !G.locked;
       $("#ig-go").disabled = !G.locked || !G.oneLine.trim();
+      emit("ig:paint", { G, preview, run: displayRun() });
     }
     function invalidate(physical) {
       if (physical) G.rev++;
@@ -1042,6 +1044,23 @@
       $$("button, select, input, textarea, summary, [role=slider]").forEach(el => { el.style.scrollMarginTop = `${margin}px`; });
     }
     paintTabs();
+    // 섬 장면(games/s-island-grid-scene.js)은 이 계약으로만 계획을 읽고, 사용자가 장면에서 누른 조작만 아래 함수로 전달한다.
+    emit("ig:prep", { root, api: {
+      G, editable, plan, displayRun,
+      alive: () => alive,
+      preview: () => preview,
+      select: (row, b) => selectCell(row, b),
+      set: (row, b, value) => setCell(row, b, value),
+      status: () => ({
+        crit: validCrit(G.crit),
+        plan: G.bat.some(v => v !== 0) || G.n.some(v => v > 0) || G.dr.some(Boolean),
+        principles: !!(G.shed && G.curt),
+        baseline: validBaseline(G.baseline) && Object.hasOwn(scenarios, G.predict),
+        tested: G.tests > 0,
+        locked: !!G.locked,
+        oneLine: !!G.oneLine.trim()
+      })
+    } });
     // 최초 렌더에서도 이전 시험은 복원하되 시험 완료를 새로 만들지 않는다.
     renderedRun = undefined;
     paint();
@@ -1050,6 +1069,7 @@
 
   KCP.games[id] = {
     brief, renderPrep, questions, recap, reflectExtra,
-    model: { EPS, weather, allocate, simulate, compute, display2, expected, worstIds, predictionMatches, meetsBaseline, correctionKey, approvalMatches, individualKeys, defaults, normalize, validateRun, planSnapshot, correctionRecord, runMatches, questionKeys: state => questions(state).map(q => q.k) }
+    model: { EPS, weather, allocate, simulate, compute, display2, expected, worstIds, predictionMatches, meetsBaseline, correctionKey, approvalMatches, individualKeys, defaults, normalize, validateRun, planSnapshot, correctionRecord, runMatches, questionKeys: state => questions(state).map(q => q.k),
+      labels: { D, T, F, WIND, scenarioIds, scenarios, criteria, shedNames, curtNames, feeders, times } }
   };
 })();
