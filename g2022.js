@@ -23,7 +23,7 @@
     H3: "mtn", H4: "mtn", H5: "mtn", H6: "mtn", I2: "bird", I3: "bird", I4: "bird", I5: "bird", I6: "bird",
     J3: "whale", J4: "whale", J6: "whale",
   };
-  const FNAME = { whale: ["고", "야생동물 서식지(고래)"], fish: ["어", "물고기 서식지·어장"], oil: ["유", "유전"], farm: ["농", "농경지"], mtn: ["산", "산악지대"], heritage: ["문", "문화재"], deer: ["동", "야생동물 서식지(사슴)"], bird: ["새", "야생동물 서식지(새)"] };
+  const FNAME = { whale: ["고", "야생동물 서식지(고래)"], fish: ["어", "물고기 서식지"], oil: ["유", "유전"], farm: ["농", "농경지"], mtn: ["산", "산악지대"], heritage: ["문", "문화재"], deer: ["동", "야생동물 서식지(사슴)"], bird: ["새", "야생동물 서식지(새)"] };
   const VILL = {
     배멧: { cell: "B9", need: 60, desc: "어족이 풍부한 해안가에 위치하여 어업과 농업이 발달했다. 출산율이 높은 편이지만 젊은 층의 인구 유출이 많이 일어나고 있다. 지난 KENTECH 시의원 선거 때 투표율은 40% 수준이다. 주민들은 건강에 관심이 많다." },
     참살이: { cell: "D2", need: 80, desc: "광물 산업과 어업 중심 사회이나, 갈수록 어획량이 줄어들어 새로운 산업적 활로 개척이 필요하다. 마을의 인구는 수 년 간 변화가 없고, 지난 KENTECH 시의원 선거 때 투표율은 60% 수준이다. 주민들은 산에서 야생 동물 사냥을 즐긴다." },
@@ -86,11 +86,11 @@
   const step = (id, dir) => { const [r, c] = rc(id); const d = { S: [1, 0], SW: [1, -1], W: [0, -1], N: [-1, 0], E: [0, 1] }[dir]; return idOf(r + d[0], c + d[1]); };
 
   function canPlace(type, id) {
-    if (VCELL[id]) return "마을 좌표에는 발전소를 지을 수 없습니다";
+    if (VCELL[id]) return "마을 좌표에는 발전소를 지을 수 없습니다 (연습실 규칙)";
     if (type === "fossil" && FEAT[id] !== "oil") return "화석 연료 발전소는 유전이 위치한 좌표에만 설치할 수 있습니다";
     if (type === "nuclear") {
       if (terr(id) !== "land") return "원자력 발전소는 육상에만 설치할 수 있습니다";
-      if (!orth(id).some((n) => terr(n) !== "land")) return "원자력 발전소는 냉각을 위해 주변(상하좌우)에 물이 있어야 합니다";
+      if (!orth(id).some((n) => terr(n) !== "land")) return "원자력 발전소는 냉각을 위해 주변에 물이 있어야 합니다 (연습실 판정: 상하좌우 칸에 바다나 호수)";
     }
     return "";
   }
@@ -211,8 +211,8 @@
           </ul>
         </div>
         <div class="task"><b>문제</b><ol>
-          <li>KENTECH 도시에 4종류의 [발전 설비]를 1개씩 설치하려고 한다. 각 [발전 설비] 별로 경제, 사회, 환경 측면에서 설치하기에 적합하다고 생각하는 위치의 좌표를 한 개씩 선택하고 이유를 설명하시오. (조건 1: 1개의 좌표에는 1개의 발전소만 설치. 조건 2: 전선 연결 비용은 무시.)</li>
-          <li>[배멧], [참살이], [빛가람]에 각각 60, 80, 100의 전기 에너지를 공급해야 한다. 경제적, 사회적, 환경적 측면을 종합적으로 고려하여 가장 적합하다고 생각하는 위치에 [발전 설비]를 설치하고 [마을]과 전선으로 연결하시오. (발전 설비 종류와 개수 자유, 전선은 가로·세로로만 연결하며 길이에 따라 비용 증가)</li></ol></div>`;
+          <li>KENTECH 도시에 4종류의 [발전 설비]를 1개씩 설치하려고 한다. 각 [발전 설비] 별로 경제, 사회, 환경 측면에서 설치하기에 적합하다고 생각하는 위치의 좌표(예: A,1)를 한 개씩 선택하고 이유를 설명하시오. (조건 1: 1개의 좌표에는 1개의 발전소만 설치. 조건 2: [발전 설비]와 [마을]을 전선으로 연결하는 비용은 무시.)</li>
+          <li>[배멧], [참살이], [빛가람]에 각각 60, 80, 100의 전기 에너지를 공급해야 한다. 경제적, 사회적, 환경적 측면을 종합적으로 고려하여 가장 적합하다고 생각하는 위치에 [발전 설비]를 설치하고 [마을]과 전선으로 연결하시오. (조건 1: 1개의 좌표에 1개의 발전소만 설치. 조건 2: [발전 설비] 종류와 개수는 자유. 조건 3: 전선은 가로 또는 세로로만 연결하며, 길이에 따라 비용 증가. 조건 4: [발전 설비] 카드 내용과 아래 표의 특성을 함께 고려.)</li></ol></div>`;
     },
 
     renderPrep(root, state, save, next) {
@@ -235,7 +235,7 @@
               <div class="legend" style="margin-top:8px">
                 <span><i style="background:var(--sea)"></i>바다</span><span><i style="background:var(--land)"></i>육지</span><span><i style="background:var(--lake)"></i>호수</span>
                 ${Object.values(FNAME).map(([s, n]) => `<span><b>${s}</b> ${n}</span>`).join("")}
-                <span><i style="box-shadow:inset 0 0 0 2px var(--bad);background:transparent"></i>바람을 따라 이동하는 미세먼지·방사성 물질</span><span><i style="outline:2px dashed var(--warn);outline-offset:-2px;background:transparent"></i>사고 시 해류 경로</span>
+                <span><i style="box-shadow:inset 0 0 0 2px var(--bad);background:transparent"></i>바람을 따라 이동하는 미세먼지·방사성 물질 (재구성)</span><span><i style="outline:2px dashed var(--warn);outline-offset:-2px;background:transparent"></i>사고 시 해류 경로 (재구성)</span>
               </div>
               <p class="hint" style="margin-top:6px">일사량 ${"A~B 5, C~E 10, F~H 15, I~J 20"}. 태양광 생산량은 일사량, 풍력 생산량은 풍속과 같습니다. 칸에 마우스를 올리면 좌표 정보가 보입니다.</p>
             </section>
@@ -301,7 +301,7 @@
             <div class="table-wrap"><table class="supply"><thead><tr><th>마을</th><th class="num">필요</th><th class="num">공급</th><th>상태</th></tr></thead><tbody>
               ${Object.entries(VILL).map(([n, v]) => `<tr><td>${n}</td><td class="num">${v.need}</td><td class="num">${s.got[n]}</td><td>${s.got[n] >= v.need ? '<span class="chip ok">충족</span>' : `<span class="chip bad">${v.need - s.got[n]} 부족</span>`}</td></tr>`).join("")}
             </tbody></table></div>
-            <p class="small" style="margin-top:6px">발전 비용 <b class="num">${s.plantCost}</b> + 전선 길이 <b class="num">${s.wire}</b>칸 = 총비용 <b class="num">${s.total}</b> <span class="hint">(가정: 전선 1칸당 비용 1)</span></p>
+            <p class="small" style="margin-top:6px">발전 비용 <b class="num">${s.plantCost}</b> + 전선 길이 <b class="num">${s.wire}</b>칸 = 총비용 <b class="num">${s.total}</b> <span class="hint">(가정: 전선 1칸당 비용 1, 발전소마다 마을까지 따로 잇는 거리로 계산. 보고서 예시처럼 전선을 함께 쓰면 더 짧아질 수 있음)</span></p>
             <div class="table-wrap" style="margin-top:8px"><table class="supply"><thead><tr><th>발전소</th><th>좌표</th><th class="num">생산</th><th>연결 마을</th><th class="num">전선</th><th></th></tr></thead><tbody>
               ${G.q2.map((p, i) => `<tr><td>${PT[p.type].n}</td><td class="num">${p.cell}</td><td class="num">${out(p.type, p.cell)}</td>
                 <td><select data-to="${i}" id="to-${i}" aria-label="${p.cell} 연결 마을">${Object.keys(VILL).map((n) => `<option ${p.to === n ? "selected" : ""}>${n}</option>`).join("")}</select></td>
@@ -363,15 +363,16 @@
             <li><b>태양광 I7</b>: 일사량이 가장 높은 I·J 라인 중 해상(J)은 어렵고, I라인의 새 서식지를 피했다.</li>
             <li><b>풍력 B1</b>: 풍량이 가장 큰 곳은 바다. 어업과 생태계를 피해 마을에 가까운 곳을 골랐다.</li>
           </ul>
+          <p class="hint">지도의 빨간 테두리와 점선은 보고서가 아니라 연습실의 영향 분석(재구성)입니다.</p>
           <p class="hint">보고서는 이것이 "모범답안이 아닌, 가능한 무수한 답변 조합 중 하나"라고 밝혔습니다.</p></details>
         <details class="reveal"><summary>2번 문항 예시 답변 · 극단적인 풍력 발전 선택 <span class="tag-official">보고서 요약</span></summary>
           <ul class="small" style="margin:0;padding-left:1.1em">
             <li>화석: 탄소 배출과 미세먼지가 마을로 가는 것을 막을 수 없어 제외.</li>
             <li>원자력: 사고 시 해류를 타고 맵 전체를 순환하며, 어업에 종사하는 배멧·참살이의 건강과 생계에 치명적이라 제외.</li>
             <li>태양광: 일사량이 강한 곳에 새 서식지와 산맥이 있고, 피하면 마을까지 멀어 제외.</li>
-            <li>풍력: 외곽 바다의 풍속이 높다. 어업 구역과 고래 출몰 지역을 피해, 배멧에는 A6·A7·B6 풍력으로 독립된 에너지망(20×3=60)을 만든다.</li>
+            <li>풍력: 외곽 바다의 풍속이 높다. 어업 구역과 고래 출몰 지역을 피해, 배멧에는 A6·A7·B6 풍력으로 독립된 에너지망(20×3=60)을 만든다. 비슷하게 참살이와 빛가람도 풍력만으로 공급한다(보고서 지도: 참살이 A1·A2·A4·B1, 빛가람 F1~J1).</li>
           </ul>
-          <p class="small" style="margin-top:6px">면접관은 이런 극단적 선택에 "바람이 멈추면?" 같은 후속 질문을 던질 수 있습니다. 한 가지로 몰아간 선택일수록 한계와 보완책을 스스로 말할 준비가 필요합니다.</p></details>`;
+          <p class="small" style="margin-top:6px"><span class="tag-mine">연습실 코멘트</span> 보고서에 후속 질문 예시는 없지만, 이런 극단적 선택에는 "바람이 멈추면?" 같은 질문을 예상해 볼 만합니다. 한 가지로 몰아간 선택일수록 한계와 보완책을 스스로 말할 준비가 필요합니다.</p></details>`;
     },
   };
 })();
