@@ -286,6 +286,9 @@ def scenario(checks, context, base, label, mode, pages):
     if mode != "solo":
         checks.ok(set(initial["ids"]) == set(IDS), f"{label} U5 활성 도시 정확히 6개")
     checks.ok(initial["econ"] == (mode != "season"), f"{label} U5 경제/계절 fixture")
+    checks.ok([n.get_attribute('data-run') for n in team.locator('[data-run]:visible').all()] ==
+              (['7', '30', '90'] if mode == 'solo' else ['7']),
+              f'{label} E C10 멀티 1주·혼자 하기 세 기간')
     if mode != "season":
         checks.ok(initial["rounds"] == 12, f"{label} U5 경제 모드 12달")
         checks.ok(not shown(team, "#lg-panel"), f"{label} U1 첫 지도는 일지 서랍 닫힘")
@@ -378,6 +381,9 @@ def scenario(checks, context, base, label, mode, pages):
     peek(checks, team, observation, other, label + "-direct")
     team.click("#lg-peek-back")
     returned(checks, team, host, tid, count, drawer, label, "peek-back")
+    checks.ok([n.get_attribute('data-run') for n in team.locator('[data-run]:visible').all()] ==
+              (['7', '30', '90'] if mode == 'solo' else ['7']),
+              f'{label} E C10 관전 복귀 뒤 기간 표시 복원')
     # 우리 도시 버튼은 관전 없이 복귀한다. 키보드 Enter로 목록도 검증한다.
     team.click('[data-panel="region"]')
     team.wait_for_selector("#lg-regionmap")

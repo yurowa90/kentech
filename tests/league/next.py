@@ -443,25 +443,26 @@ def results(host, team, checks, fixture):
     close_panel(team)
 
 
-def record_trial(team, checks):
-    # ECON-NEXT names BG.lastTrial() but no run-button id. Interpret the
-    # visible one-month trial action as the measurement used in the result tab.
+def record_trial(team, checks, days=7):
+    # E: 멀티는 1주, 혼자 하기는 1달 시험 기록·비교 경로를 계속 검사한다.
     team.evaluate("""() => {
       if(typeof KCP.buildGame.lastTrial!=='function') throw Error('BG.lastTrial API missing');
     }""")
-    controls = visible(team.get_by_role("button", name=re.compile(r"시험.*(?:1달|1개월)|(?:1달|1개월).*시험|^1달(?:\s*운영)?$")))
-    if not controls:
-        panel(team, r"^건설$")
-    button(team, r"시험.*(?:1달|1개월)|(?:1달|1개월).*시험|^1달(?:\s*운영)?$").click()
+    duration = '1주' if days == 7 else '1달'
+    checks.ok([n.get_attribute('data-run') for n in team.locator('[data-run]:visible').all()] ==
+              (['7'] if days == 7 else ['7', '30', '90']), 'E visible trial periods match multiplayer / solo')
+    button(team, rf"^시험 {duration}$").click()
     team.wait_for_function("() => /날씨는/.test(document.querySelector('#bd-run-wx')?.textContent || '')")
     month = team.evaluate("() => KCP.leagueCore.roundsOf(KCP.league.state().snap)[KCP.league.state().snap.round-1].month")
     checks.ok(f'{month}월 (날씨는 ' in team.locator('#bd-run-wx').inner_text(),
               '#32 시험 운전 날씨 칩의 현재 달과 날씨 기준월')
-    team.wait_for_function("() => !!KCP.buildGame.lastTrial()")
+    team.wait_for_selector('#bd-res-title')
     checks.ok(f'· {month}월 (날씨는 ' in team.locator('#bd-res-title').inner_text(),
               '#32 시험 성적표의 현재 달과 날씨 기준월')
     trial = team.evaluate("() => KCP.buildGame.lastTrial()")
-    checks.ok(isinstance(trial, dict) and bool(trial), "one-month UI trial records BG.lastTrial for result comparison")
+    checks.ok(isinstance(trial, dict) and trial.get('days') == days and
+              all(isinstance(trial.get(k), (int, float)) for k in ('unsPct', 'outH', 'co2', 'cost', 'capex', 'opex')),
+              f"{duration} UI trial records exact duration and comparison metrics in BG.lastTrial")
     checks.ok(team.evaluate("document.documentElement.classList.contains('bd-drawer-open')") and
               not team.locator('#lg-panel').is_visible(), 'U2 first trial keeps its score sheet')
     ready = team.locator('#lg-ready')
@@ -480,7 +481,7 @@ def record_trial(team, checks):
           r.left>=bounds.left && r.right<=bounds.right && r.top>=bounds.top && r.bottom<=bounds.bottom);
       });
     })"""), 'D-A8 390 머리 칩의 이름·숫자 전체가 칩 안에 표시')
-    no_overflow(team, checks, "one-month trial")
+    no_overflow(team, checks, duration + " trial")
 
 
 def peek(team, checks, fixture):
@@ -631,6 +632,10 @@ def solo(context, base, checks, pages):
     start.click()
     page.wait_for_url(re.compile(r".*#league/solo$"))
     page.wait_for_function("() => !!(KCP.league.state().S || KCP.league.state().snap)")
+    page.locator('#lg-guide-close').click()
+    record_trial(page, checks, 30)
+    month_trial = page.evaluate('() => KCP.buildGame.lastTrial()')
+    close_panel(page)
     before = page.evaluate(READ)["S"]
     dialogs = []
 
@@ -654,16 +659,39 @@ def solo(context, base, checks, pages):
     page.remove_listener("dialog", cancel)
     # Fast-forward only this end-screen fixture with public next(). No event
     # or learning UI is replaced; confirmation above is exercised by clicks.
+    compared_month_trial = False
     for _ in range(30):
         state = page.evaluate(READ)["S"]
         if state["phase"] == "end":
             break
+        if state['phase'] == 'review' and state['round'] == 1:
+            compared_month_trial = True
+            panel(page, r'^결과$')
+            detail = page.locator('#lg-result-details')
+            if not detail.evaluate('el => el.open'):
+                detail.locator(':scope > summary').click()
+            expect(page.locator('#lg-trial-compare table')).to_be_visible()
+            result = state['results'][0]
+            actual = result['team'][page.evaluate(READ)['team']]
+            monthly = 31  # 첫 운영은 1월. 대표 운전 기간과 각 시험 기간을 따로 환산한다.
+            values = page.locator('#lg-trial-compare tbody tr').evaluate_all('''rows => rows.map(row =>
+              [...row.querySelectorAll('td')].map(n => Number(n.textContent.replace(/[^0-9.−-]/g,'').replace('−','-'))))''')
+            expected = [[month_trial['unsPct'], actual['unsPct']],
+                        [month_trial['outH'] * monthly / 30, actual['outH'] * monthly / result['days']],
+                        [month_trial['co2'] * monthly / 30, actual['co2Prod'] * monthly / result['days']],
+                        [month_trial['opex'] * monthly / 30,
+                         (actual['cost']['fuel'] + actual['cost']['policy']) * monthly / result['days']]]
+            checks.ok(len(values) == 4 and all(len(row) == 2 for row in values) and
+                      all(abs(a-b) <= .0051 for row, wanted in zip(values, expected) for a, b in zip(row, wanted)),
+                      'E 혼자 1달 시험·실제 비교: 비율 유지·시간/CO₂/운영비 각각 31일 환산')
+            close_panel(page)
         page.evaluate("() => KCP.league.next()")
         page.wait_for_function("""([round,phase]) => {
           const L=KCP.league.state(), S=L.S||L.snap;
           return S.phase==='end' || S.round!==round || S.phase!==phase;
         }""", arg=[state["round"], state["phase"]])
     ended = page.evaluate(READ)["S"]
+    checks.ok(compared_month_trial, 'E 혼자 1달 시험의 첫 달 비교 검사를 실제로 수행')
     checks.ok(ended["phase"] == "end", "solo fixture reaches completed game")
     # Match phrase literally; merely showing a generic 다시 button is insufficient.
     retry = button(page, r"같은\s*조건으로\s*다시")
@@ -700,7 +728,7 @@ def main():
                 host, team, fixture = pair
                 checks.run("host first screen", lambda: host_first_screen(host, checks, fixture))
                 checks.run("left money consistency", lambda: left_consistency(host, team, checks, fixture))
-                checks.run("one-month UI trial record", lambda: record_trial(team, checks))
+                checks.run("one-week multiplayer UI trial record", lambda: record_trial(team, checks))
                 checks.run("trialMods leak", lambda: trial_no_leak(team, checks))
                 checks.run("result contracts", lambda: results(host, team, checks, fixture))
                 checks.run("U5 mobile observation", lambda: peek(team, checks, fixture))
