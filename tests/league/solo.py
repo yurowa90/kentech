@@ -205,6 +205,9 @@ def resume(checks, page, label):
 def play(checks, page, base, label):
     page.goto(base + "#league")
     checks.test(f"{label} U3 로비 #lg-solo 카드", lambda: shown(page, "#lg-solo"))
+    checks.ok('분기 초(1·4·7·10월)에 1/4씩' in page.locator('#lg-turnmsg').inner_text() and
+              '해마다 1월에 국가 재정지원금' not in page.locator('#lg-turnmsg').inner_text(),
+              f'{label} D-A6 로비 분기 지급 설명')
     overflow(checks, page, label + " 로비")
     screenshot(checks, page, f"econui-solo-{label}-lobby.png")
     checks.ok(page.locator('#lg-class-time option').count() == 3 and page.locator('#lg-class-time').input_value() == '100',
@@ -215,7 +218,14 @@ def play(checks, page, base, label):
     page.locator('#lg-guide-close').click()
     page.locator('#bd-help').focus(); page.locator('#bd-help').press('Enter')
     checks.ok(shown(page, '#lg-help'), f'{label} U1 혼자 하기 리그 도움말 다시 보기')
+    help_text = page.locator('#lg-help').inner_text()
+    checks.ok('분기 초(1·4·7·10월)에 1/4씩' in help_text and
+              '지방채 한도' in help_text and '빚' in help_text,
+              f'{label} D-A6 도움말 분기 지급·지방채 설명')
     page.locator('#lg-panel').press('Escape')
+    page.locator('[data-run="7"]').click()
+    page.wait_for_function('() => !!KCP.buildGame.lastTrial()')
+    trial_uns = page.evaluate('() => KCP.buildGame.lastTrial().unsPct')
     page.locator('#lg-ready').click()
     checks.ok(shown(page, '#lg-predict-skip'), f'{label} U8 혼자 자유 실험에서만 건너뛰기')
     checks.ok(page.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 빈 근거 제출 금지')
@@ -284,6 +294,27 @@ def play(checks, page, base, label):
             reviews.add(state["round"])
             checks.ok(len(state.get("results", [])) == state["round"],
                       f"{label} U3 {state['round']}달 버튼 진행 → 운영 결과")
+            if state['round'] == 1:
+                open_panel(page, 'result')
+                actual = state['results'][-1]['team'][observation['player']]['unsPct']
+                expected = round(actual - trial_uns, 2)
+                top = page.locator('#lg-result-deltas > div').first.inner_text()
+                prediction = page.locator('#lg-promise-result [data-compare="uns"]').inner_text()
+                def shown_delta(text):
+                    match = re.search(r'시험 1주 대비(?: Δ)?\s*([+−-]?\d+(?:\.\d+)?)%p', text)
+                    return float(match.group(1).replace('−', '-')) if match else None
+                checks.ok('시험 1주 대비' in top and '시험 1주 대비' in prediction and
+                          shown_delta(top) == shown_delta(prediction) == expected,
+                          f'{label} D-A1 첫 달 위·예측 Δ = 시험 1주 대비 같은 값')
+                checks.ok(page.evaluate('''() => {
+                  const p=document.querySelector('#lg-panel'), h=p.querySelector('.lg-ptabs');
+                  const m=p.querySelector('#lg-calibration meter'), before=p.scrollTop;
+                  p.scrollTop += m.getBoundingClientRect().top-h.getBoundingClientRect().top-h.offsetHeight/2;
+                  const a=h.getBoundingClientRect(), b=m.getBoundingClientRect();
+                  const covered=b.top<a.bottom && b.bottom>a.top &&
+                    h.contains(document.elementFromPoint(a.left+a.width/2, Math.max(a.top,b.top)+1));
+                  p.scrollTop=before; return covered;
+                }'''), f'{label} D-A7 스크롤한 확신 막대 위에 고정 제목 표시')
             overflow(checks, page, f"{label} {state['round']}달 결과")
             if not reloaded:
                 observation = resume(checks, page, label)

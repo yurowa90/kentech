@@ -515,6 +515,9 @@ def economic(checks, context, base, label, pages):
       const expected = V.teams[id].left.toLocaleString('ko-KR', {maximumFractionDigits:1}) + '억';
       return [...document.querySelectorAll('[data-money="left"]')].every(el => el.textContent === expected);
     }"""))
+    checks.ok('남은 돈에는 지방채 한도(빚)를 포함해요' in team.locator('#lg-city').inner_text() and
+              '남은 돈에는 지방채 한도(빚)를 포함해요' in host.locator('.lg-host').inner_text(),
+              f'{label} D-A15 팀·진행자 남은 돈에 지방채 한도 포함 설명')
     checks.test(f"{label} D-60 시작 통계 일괄 표지 없음", lambda:
                 '시작값: 공식 통계' not in team.locator('#lg-city').inner_text() and
                 '억 = 게임 단위' in team.locator('#lg-city').inner_text())

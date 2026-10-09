@@ -79,7 +79,19 @@
     return S;
   }
 
-  function log(S, text, now) { S.log.push({ at: now || 0, t: String(text).slice(0, 120) }); if (S.log.length > LOG_MAX) S.log.splice(0, S.log.length - LOG_MAX); }
+  function log(S, text, now) {
+    let message = String(text);
+    const prefix = "국가 재정지원금 연액: ", suffix = "(분기별 1/4 지급)";
+    if (message.startsWith(prefix)) {
+      const cities = message.slice(prefix.length).replaceAll(suffix, "").split(" · ");
+      let shown = cities.length;
+      const compact = () => prefix + cities.slice(0, shown).join(" · ") + (shown < cities.length ? ` 외 ${cities.length - shown}곳` : "") + ` ${suffix}`;
+      while (shown > 0 && compact().length > 120) shown--;
+      message = compact();
+    }
+    S.log.push({ at: now || 0, t: message.slice(0, 120) });
+    if (S.log.length > LOG_MAX) S.log.splice(0, S.log.length - LOG_MAX);
+  }
 
   // 팀 예산: 처음 예산에서 라운드마다 25%씩 투자금이 더 들어온다. 연계선 몫은 빠진다.
   function packOf(R, id) { const t = teamDef(R, id); return t && KCP.BUILD_MAPS ? KCP.BUILD_MAPS[t.pack] : null; }
