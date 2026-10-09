@@ -294,6 +294,9 @@ def money_near_label(node):
 
 def left_consistency(host, team, checks, fixture):
     state = advance(host, team, "plan")
+    goals = host.locator('#lg-host-goals').inner_text()
+    checks.ok('CO₂ 운영 뒤 확정' in goals and not re.search(r'CO₂ ≤ 0\s*t', goals),
+              'D-A3 첫 계획 CO₂ 목표를 0으로 확정 표시하지 않음')
     # Remove current-month events only for this display fixture. Actual event
     # gate and hidden event-size checks have their own scenarios below.
     host.evaluate("() => { KCP.league.state().S.events = []; }")
@@ -349,6 +352,23 @@ def left_consistency(host, team, checks, fixture):
 def results(host, team, checks, fixture):
     state = advance(host, team, "review")
     panel(team, r"결과")
+    checks.ok(team.evaluate("""() => {
+      const toast=document.querySelector('#bd-toast'), t=toast.getBoundingClientRect();
+      return toast.dataset.show==='true' && ['.lg-ptabs','#lg-result-heading'].every(key => {
+        const h=document.querySelector(key).getBoundingClientRect();
+        return t.right<=h.left || t.left>=h.right || t.bottom<=h.top || t.top>=h.bottom;
+      });
+    }"""), 'D-A9 결과 토스트와 서랍·결과 제목의 겹침 없음')
+    annual = [line for line in host.locator('#lg-log li').all_inner_texts()
+              if line.startswith('국가 재정지원금 연액:')]
+    checks.ok(len(annual) == 1 and all(name in annual[0] for name in fixture['names']) and
+              annual[0].count('(분기별 1/4 지급)') == 1 and len(annual[0]) <= 120,
+              'D-A5 120자 안에서 지원금 여섯 도시·지급 설명 모두 표시')
+    goals = host.locator('#lg-host-goals').inner_text()
+    target = state['results'][-1]['econ']['region']['goal']['co2']
+    shown_goal = re.search(r'CO₂ ≤ ([\d,]+)\s*t', goals)
+    checks.ok(shown_goal is not None and abs(float(shown_goal.group(1).replace(',', '')) - target) <= .5,
+              'D-A3 결과 CO₂ 목표 = 해당 달 평가 보고서 값')
     checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
     for key in ('lg-result-reasons', 'lg-result-details'):
         detail = team.locator('#' + key)
@@ -414,6 +434,11 @@ def results(host, team, checks, fixture):
               and len(set(positions)) == 3, "shared goals: region / contribution / city in order")
     checks.ok(text_present(team, r"공동\s*보너스"), "shared bonus visible")
     single_line(team, checks, r"자리\s*탓|송전\s*손실|미연결", "placement explanation one line")
+    cause = team.locator('#lg-result-causes').inner_text()
+    co2 = team.locator('#lg-result-deltas > div').nth(2).inner_text()
+    checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause) and
+              not re.search(r'\d+\.\d+\s*t', co2),
+              'D-A11 지지율 원인 한 자리·음수 − 표시, CO₂와 Δ 정수 표시')
     no_overflow(team, checks, "result")
     close_panel(team)
 
@@ -447,6 +472,14 @@ def record_trial(team, checks):
     result.click()
     checks.ok(not team.evaluate("document.documentElement.classList.contains('bd-drawer-open')") and
               team.locator('#lg-panel').is_visible(), 'U2 trial → league result closes build drawer')
+    checks.ok(team.locator('#bd-hud .bd-cap').evaluate_all("""caps => caps.length===5 && caps.every(cap => {
+      const bounds=cap.getBoundingClientRect();
+      return [...cap.querySelectorAll('.v2-cap-k,.v2-cap-v')].every(value => {
+        const range=document.createRange(); range.selectNodeContents(value);
+        return value.scrollWidth<=value.clientWidth && [...range.getClientRects()].every(r =>
+          r.left>=bounds.left && r.right<=bounds.right && r.top>=bounds.top && r.bottom<=bounds.bottom);
+      });
+    })"""), 'D-A8 390 머리 칩의 이름·숫자 전체가 칩 안에 표시')
     no_overflow(team, checks, "one-month trial")
 
 
@@ -547,7 +580,25 @@ def event_gate_and_journal(host, team, checks, fixture):
         save[0].click()
     reply.press("Tab")
     close_panel(team)
+    next_change = '저장 설비를 먼저 확인해요 <가상 검사>'
+    panel(team, r"일지")
+    team.locator('[data-j="next"]').fill(next_change)
+    team.locator('[data-j="next"]').press('Tab')
+    close_panel(team)
+    prior_goal = host.evaluate("() => KCP.league.state().S.results.at(-1).econ.region.goal.co2")
     advance(host, team, "plan")
+    goals = host.locator('#lg-host-goals').inner_text()
+    reference = re.search(r'지난달 평가 목표 ≤ ([\d,]+)\s*t', goals)
+    checks.ok('CO₂ 운영 뒤 확정' in goals and reference is not None and
+              abs(float(reference.group(1).replace(',', '')) - prior_goal) <= .5,
+              'D-A3 다음 계획 참고값 = 지난달 평가 목표')
+    team.locator('#lg-ready').click()
+    checks.ok(team.locator('#lg-previous-change').inner_text().endswith(next_change) and
+              team.locator('#lg-previous-change').evaluate("""el => {
+                const p=document.querySelector('#lg-panel').getBoundingClientRect(), r=el.getBoundingClientRect();
+                const h=document.querySelector('.lg-ptabs').getBoundingClientRect();
+                return r.top>=h.bottom && r.bottom<=p.bottom && !el.querySelector('input,textarea');
+              }"""), 'D-S8 준비 직후 약속 카드 위에 지난달 다음 변경을 안전하게 표시')
     panel(team, r"일지")
     checks.ok(text_present(team, re.escape(answer)), "next-month journal includes exact prior counterquestion answer")
     checks.ok(text_present(team, r"다음에\s*바꿀\s*것"), "next-month journal includes 다음에 바꿀 것")
