@@ -11,7 +11,7 @@
   - `claude/kentech-league-v3` (리그 3차: 현금 흐름, 철거 30% 회수, 사건 예보·대응, 연구 — 에너지공학대학·기후에너지데이터연구소, D-56)
   - `claude/kentech-league-econ` (초기 인계 당시 경제 층 브랜치).
 - 2026-10-04 로컬: 경제 보정·화면·검사·컴퓨터 도시 변경은 `claude/kentech-league-econ-balance`에 합쳐졌고, 문서 마무리 작업은 `wip/econ-docs`에서 진행했다. 변경 이력은 `git log --oneline 0f2cc6a..HEAD`로 확인한다.
-- 이번 문서 최신화 위치는 `~/Projects/kentech-wt/econ-docs`, 브랜치 `wip/docs`, 기준 `9ef96d1`이다. PR #12의 마지막 전체 검사 기준은 `cc8fd25`이며, 현재 작업본에는 G10 구현·보고가 들어 있다. 이번에는 이 파일만 수정하며 커밋·외부 전송은 하지 않는다.
+- 2026-10-09 최신화 기준은 `9ef96d1`(재보정 10차 병합)이다. PR #12의 마지막 전체 검사 기준은 `cc8fd25`이며, 그 뒤 G10 구현·보고가 들어갔다.
 - 외부 질의 통로: PR #10 `claude/gpt-bridge`, 입력 파일 `.github/gpt/ask.md`. 저장소 API 자격증명이 필요한 별도 경로이며 이번 로컬 문서 작업에서는 사용하지 않았다.
 
 ## 2. 사용자 요구(원문 요지)
