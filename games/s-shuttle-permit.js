@@ -107,7 +107,9 @@
       expected += lambda; actual += y;
       return {c, ...e, mode, r, p, cost, provide, Nyear, lambda, y};
     });
-    return {rows, share, expected, actual, benefit, comp:s.liab === "L2" ? s.assume.proof : 1, operatorCost:rows.reduce((sum, e) => sum + e.lambda * 30 * opShare, 0), tailPct:100 * (1 - cdf(actual - 1, expected)), publicCost:s.liab === "L3" ? expected * 30 * .5 : 0, delay:s.tests.length, waitAlt:s.assume.alt * s.tests.length / 12, altReduced:s.assume.alt * .6 * share, altRemaining:s.assume.alt * (1 - .6 * share)};
+    // 결함 5: 시험 뒤 확정한 제공 비율의 운행을 시험 기간에도 했다고 가정한 상한 비교.
+    // 기존 저장의 result는 normalizedCopy에서 plan으로 재계산하므로 저장 버전/키는 유지한다.
+    return {rows, share, expected, actual, benefit, comp:s.liab === "L2" ? s.assume.proof : 1, operatorCost:rows.reduce((sum, e) => sum + e.lambda * 30 * opShare, 0), tailPct:100 * (1 - cdf(actual - 1, expected)), publicCost:s.liab === "L3" ? expected * 30 * .5 : 0, delay:s.tests.length, waitAlt:s.assume.alt * .6 * share * s.tests.length / 12, waitShuttle:expected * s.tests.length / 12, waitNet:(s.assume.alt * .6 * share - expected) * s.tests.length / 12, altReduced:s.assume.alt * .6 * share, altRemaining:s.assume.alt * (1 - .6 * share)};
   }
   function planOf(g) { return {...normalizePlan(g), reason:g.reason, decisions:g.decisions}; }
   function validLockedPlan(p) {
@@ -180,18 +182,18 @@
     },
     intent:["정지 거리의 물리적 조건과 시험 자료의 통계적 불확실성을 구분한다.", "한정된 시험을 어느 조건과 속도에 쓸지 선택하며 증거의 적용 범위를 검토한다.", "허가와 금지가 서로 다른 사람에게 남기는 위험과 서비스 공백을 함께 살핀다.", "근거 없는 세 가정을 드러내고 가정 변경이 판단에 미치는 영향을 비교한다.", "기준을 먼저 말하고, 얻는 것과 잃는 것을 함께 설명하며, 반문 뒤 판단을 재검토한다."]
   };
-  // 카드마다 주 질문 하나와 짧은 보조 질문 하나까지만 둔다(답변 15분). 확정 뒤 7장, 확정 전 6장.
-  const card = (k, tag, main, sub) => ({k, tag, main, sub: sub || ""});
-  const text = c => ({k:c.k, tag:c.tag, q:c.sub ? `${c.main} ${c.sub}` : c.main});
+  // 검토 결함 8: 카드마다 요청 하나. 인증 기준 비교는 성찰로 옮겨 책임 질문과 분리한다.
+  const card = (k, tag, main) => ({k, tag, main});
+  const text = c => ({k:c.k, tag:c.tag, q:c.main});
   const samePlan = (a, b) => JSON.stringify(normalizePlan(a)) === JSON.stringify(normalizePlan(b));
   function questions(state) {
     const G = normalizedCopy(state && state.game);
-    const c1 = {k:"sp-c1", tag:"공통 1 · 판단 기준", q:"허가 조건을 설명해 주세요. 판단 기준 세 가지와 우선순위를 먼저 말하고, 그 선택에서 얻는 것과 잃는 것을 한 문장에 담아 주세요."};
-    const c2 = {k:"sp-c2", tag:"공통 2 · 가정", q:"가정판의 사고 전환 비율, 결함 입증 비율, 대안 이동 위험 가운데 결론을 가장 크게 좌우한 것은 무엇인가요? 대안 이동 위험을 0으로 두어도 결정을 유지하나요?"};
-    const counter = {k:"sp-counter", tag:"반문 · 판단 재검토", q:"한 위원은 “허가하지 않는 것이 가장 안전하다”고 말하고, 다른 위원은 “야간 노동자의 귀갓길이 지금 위험하다”고 말합니다. 두 의견을 듣고 답을 고칠지 유지할지 정하고, 그 이유를 말해 주세요. 보완할 조건이 있다면 하나만 덧붙여 주세요."};
-    const div = {k:"sp-div", tag:"발산 · 새로운 증거", q:"시험 주행 말고 안전 증거를 얻는 방법 두 가지를 제안해 주세요. 각 방법이 놓칠 수 있는 위험은 무엇인가요?"};
+    const c1 = {k:"sp-c1", tag:"공통 1 · 기준 먼저 · 얻는 것과 잃는 것", q:"어떤 허가 기준을 앞세웠는지 먼저 밝히고, 그 선택에서 얻는 것과 잃는 것을 한 문장에 담아 주세요."};
+    const c2 = {k:"sp-c2", tag:"공통 2 · 가정", q:"가정판의 사고 전환 비율, 결함 입증 비율, 대안 이동 위험 가운데 결론을 가장 크게 좌우한 것은 무엇인가요?"};
+    const counter = {k:"sp-counter", tag:"반문 · 고침·유지와 이유", q:"한 위원은 “허가하지 않는 것이 가장 안전하다”고 말하고, 다른 위원은 “야간 노동자의 귀갓길이 지금 위험하다”고 말합니다. 두 의견을 듣고 답을 고치거나 유지할 이유를 말해 주세요."};
+    const div = {k:"sp-div", tag:"발산 · 새로운 증거", q:"시험 주행 말고 안전 증거를 얻는 방법 하나를 제안해 주세요."};
     if (!G.locked) return [c1, c2,
-      {k:"sp-hum", tag:"공통 3 · 인문적 통찰", q:"자율주행 셔틀은 사람 운전자보다 얼마나 더 안전해야 허가받아야 할까요? 같은 사고라도 기계가 낸 사고를 더 무겁게 느낀다면, 그 느낌을 인증 기준에 반영할지도 말해 주세요."},
+      {k:"sp-hum", tag:"공통 3 · 인문적 통찰", q:"자율주행 셔틀은 사람 운전자보다 얼마나 더 안전해야 허가받아야 할까요?"},
       {k:"sp-prep", tag:"준비 확인", q:"아직 허가를 확정하지 않았습니다. 어떤 증거를 더 확인하고 어떤 조건에서 결정을 내릴지 설명해 주세요."}, counter, div];
     const P = G.locked.plan, R = G.locked.result, row = c => R.rows.find(r => r.c === c);
     const kind = mode => mode === "auto" ? "무인" : "요원 탑승";
@@ -199,51 +201,46 @@
     const over = ORDER.filter(c => P.v[c] > safe(C[c].R, C[c].lo)).sort((a, b) => (P.v[b] - safe(C[b].R, C[b].lo)) - (P.v[a] - safe(C[a].R, C[a].lo)) || ORDER.indexOf(a) - ORDER.indexOf(b));
     if (over.length) {
       const c = over[0];
-      place = card("sp-boundary", "개별 · 정지 경계", `${C[c].name}의 허용 속도는 ${P.v[c]} km/h이고, 감속도 범위 하한으로 계산한 정지 경계는 ${fmt(safe(C[c].R, C[c].lo))} km/h입니다. 감속도가 낮은 쪽이면 여유 거리를 남겨 멈출 수 없는데, 이 선택을 유지하나요?`, "유지한다면 어떤 운영 조건을 붙이겠습니까?");
+      place = card("sp-boundary", "개별 · 정지 경계", `${C[c].name}의 허용 속도는 ${P.v[c]} km/h이고, 감속도 범위 하한으로 계산한 정지 경계는 ${fmt(safe(C[c].R, C[c].lo))} km/h입니다. 감속도가 낮은 쪽이면 여유 거리를 남겨 멈출 수 없는데, 이 선택을 유지하나요?`);
     } else if (P.v.fog === 0) {
-      place = card("sp-fog-ban", "개별 · 운행 금지", "안개 낀 밤은 운행 금지를 선택했습니다. 그 밤의 귀갓길과 이동 비용은 누가 맡나요?", "그 공백을 줄일 방법을 하나 제안해 주세요.");
+      place = card("sp-fog-ban", "개별 · 운행 금지", "안개 낀 밤은 운행 금지를 선택했습니다. 그 밤의 귀갓길과 이동 비용은 누가 맡나요?");
     } else if (permits(row("fog").mode)) {
       const e = row("fog");
-      place = card("sp-fog-permit", "개별 · 안개 증거", `안개 낀 밤의 인증에는 ${e.km} km, 위험 상황 ${e.X}건이 포함되어 ${kind(e.mode)} 허가가 나왔습니다(점추정 ${fmt(e.point)}, 상한 ${fmt(e.upper)}건/1만 km). 이 증거가 충분하다고 본 이유는 무엇인가요?`, "허가와 운영사의 실제 제공 여부도 구분해 주세요.");
+      place = card("sp-fog-permit", "개별 · 안개 증거", `안개 낀 밤의 인증에는 ${e.km} km, 위험 상황 ${e.X}건이 포함되어 ${kind(e.mode)} 허가가 나왔습니다(점추정 ${fmt(e.point)}, 상한 ${fmt(e.upper)}건/1만 km). 이 증거가 충분하다고 본 이유는 무엇인가요?`);
     } else {
       const e = row("fog");
-      place = card("sp-fog-denied", "개별 · 증거 부족과 공백", `안개 낀 밤에 ${P.v.fog} km/h를 제안했지만 ${e.N === 0 ? "포함할 증거가 없어" : "선택한 인증 기준을 충족하지 못해"} 불허되었습니다. 기준을 유지하며 어떤 증거를 더 모으겠습니까?`, "기다리는 동안의 이동 지원도 하나 제안해 주세요.");
+      place = card("sp-fog-denied", "개별 · 증거 부족과 공백", `안개 낀 밤에 ${P.v.fog} km/h를 제안했지만 ${e.N === 0 ? "포함할 증거가 없어" : "선택한 인증 기준을 충족하지 못해"} 불허되었습니다. 기준을 유지하며 어떤 증거를 더 모으겠습니까?`);
     }
     const counts = ORDER.map(c => P.tests.filter(t => t.c === c).length), top = Math.max(...counts), low = Math.min(...counts), n = P.tests.length;
     const excluded = R.rows.find(e => permits(e.mode) && e.lowX > 0), opRows = R.rows.filter(e => e.op && permits(e.mode));
     let evidenceCard;
     if (R.expected > 0 && R.actual >= 1.5 * R.expected) {
-      evidenceCard = card("sp-outlier", "개별 · 결과와 운", `실현 사고는 ${R.actual}건으로 모형의 예상 ${fmt(R.expected)}건보다 1.5배 이상 많았습니다. 이 모형에서 예상 ${fmt(R.expected)}건일 때 ${R.actual}건 이상이 나올 확률은 약 ${fmt(R.tailPct, 1)}%입니다. 이 한 번의 결과만으로 앞선 판단을 평가해도 될까요?`, "인증 기준, 가정, 우연 가운데 무엇부터 점검할지도 말해 주세요.");
+      evidenceCard = card("sp-outlier", "개별 · 결과와 운", `실현 사고는 ${R.actual}건으로 모형의 예상 ${fmt(R.expected)}건보다 1.5배 이상 많았습니다. 이 모형에서 예상 ${fmt(R.expected)}건일 때 ${R.actual}건 이상이 나올 확률은 약 ${fmt(R.tailPct, 1)}%입니다. 이 한 번의 결과만으로 앞선 판단을 평가해도 될까요?`);
     } else if (excluded) {
       const e = excluded;
-      evidenceCard = card("sp-excluded", "개별 · 빠진 기록", `${C[e.c].name}에서 허용 속도보다 느린 시험의 위험 상황 ${e.lowX}건이 증거에서 빠진 채 ${kind(e.mode)} 허가가 나왔습니다. 빠진 기록까지 넣으면 판단이 달라지나요?`, "허용 속도를 그렇게 정한 이유도 말해 주세요.");
+      evidenceCard = card("sp-excluded", "개별 · 빠진 기록", `${C[e.c].name}에서 허용 속도보다 느린 시험의 위험 상황 ${e.lowX}건이 증거에서 빠진 채 ${kind(e.mode)} 허가가 나왔습니다. 빠진 기록까지 넣으면 판단이 달라지나요?`);
     } else if (P.useOp && opRows.length) {
-      evidenceCard = card("sp-op", "개별 · 운영사 자료", `독립 검증 없는 운영사 자료를 반영해 ${opRows.map(e => C[e.c].name).join(", ")}의 허가 근거로 썼습니다. 허용 속도 조건 때문에 운영사 자료 중 실제로 증거에 들어간 부분은 어디까지였나요?`, "그 자료가 쉬운 구간에 치우쳤을 가능성은 어떻게 따졌나요?");
+      evidenceCard = card("sp-op", "개별 · 운영사 자료", `독립 검증 없는 운영사 자료를 반영해 ${opRows.map(e => C[e.c].name).join(", ")}의 허가 근거로 썼습니다. 쉬운 구간에 치우쳤을 가능성이 있습니다. 허용 속도 조건 때문에 운영사 자료 중 실제로 증거에 들어간 부분은 어디까지였나요?`);
     } else if (top >= 7) {
-      evidenceCard = card("sp-concentrate", "개별 · 시험 집중", `추가 시험 ${n}회 중 ${top}회를 ${C[ORDER[counts.indexOf(top)]].name}에 썼습니다. 다른 조건의 증거는 무엇으로 확보하나요?`, `시험에 쓴 ${n}개월, 그 기다림의 비용은 누가 지나요?`);
+      evidenceCard = card("sp-concentrate", "개별 · 시험 집중", `추가 시험 ${n}회 중 ${top}회를 ${C[ORDER[counts.indexOf(top)]].name}에 썼습니다. 다른 조건의 증거는 무엇으로 확보하나요?`);
     } else if (low > 0 && top - low <= 1) {
       const strict = R.rows.filter(e => P.v[e.c] > 0 && e.N > 0 && e.upper <= 3).length;
       evidenceCard = card("sp-spread", "개별 · 시험 분산", `추가 시험을 맑음 ${counts[0]}회, 비 ${counts[1]}회, 안개 ${counts[2]}회로 나눴고 상한 기준을 충족한 조건은 ${strict}개입니다. 집중과 분산 중 어떤 증거 전략이 더 적절했을까요?`);
     } else if (n === 0) {
-      evidenceCard = card("sp-evidence", "개별 · 자료 선택", `추가 시험을 하지 않았습니다. ${P.useOp ? "운영사 자료로 허가된 조건도 없었습니다." : "운영사 자료도 제외했습니다."} 증거가 없는 조건을 어떻게 다루었나요?`, "시험을 시작할 기준도 말해 주세요.");
+      evidenceCard = card("sp-evidence", "개별 · 자료 선택", `추가 시험을 하지 않았습니다. ${P.useOp ? "운영사 자료로 허가된 조건도 없었습니다." : "운영사 자료도 제외했습니다."} 증거가 없는 조건을 어떻게 다루었나요?`);
     } else {
-      evidenceCard = card("sp-evidence", "개별 · 자료 선택", `추가 시험에 ${n}개월을 썼습니다. 그 기다림의 비용은 누가 지나요?`, "시험을 더 하거나 여기서 멈출 기준도 말해 주세요.");
+      evidenceCard = card("sp-evidence", "개별 · 자료 선택", `추가 시험에 ${n}개월을 썼습니다. 그 기다림의 비용은 누가 지나요?`);
     }
-    // 재결정이면 보조 질문 대신 결정을 바꾸었는지(또는 유지했는지) 묻는다.
+    // 재결정이면 증거 질문 대신 결정을 바꾸었는지(또는 유지했는지) 묻는다.
     if (P.decisions >= 2) {
       const redo = !G.prev ? "앞선 결정의 1년 결과를 본 뒤 다시 결정했습니다. 무엇을 보고 바꾸거나 그대로 두었나요?"
         : samePlan(G.prev, P) ? "앞선 결정의 1년 결과를 본 뒤에도 같은 계획으로 다시 결정했습니다. 무엇을 보고 그대로 두었나요?"
         : "앞선 결정의 1년 결과를 본 뒤 계획을 바꾸었습니다. 무엇을 보고 바꾸었나요?";
-      evidenceCard = card(evidenceCard.k, evidenceCard.tag, `${redo} ${evidenceCard.main}`);
+      evidenceCard = card(evidenceCard.k, "개별 · 재결정", redo);
     }
-    const ruleSub = {
-      R1:"사람 운전자의 위험도 추정치뿐인데, 셔틀에만 상한 기준을 요구하는 것이 적절한가요?",
-      R2:"점추정 기준의 약점 가운데 12개월 재심사로도 남는 것은 무엇인가요?",
-      R3:"12개월 뒤 무엇을 확인해야 무인 전환이나 운행 중단을 정할 수 있을까요?"
-    };
     const withdrawn = R.rows.filter(e => permits(e.mode) && !e.provide), loss = withdrawn.map(e => C[e.c].name).join(", ");
     const liabQ = P.liab === "L1" ? (withdrawn.length ? `무과실 책임을 선택한 이 모형에서 ${KCP.josa(loss, "은/는")} 허가됐지만 운영사가 제공하지 않습니다. 피해자 보호를 유지하면서 이 공백을 줄일 방안은 무엇인가요?` : "무과실 책임으로 피해자의 입증 부담을 줄였습니다. 운영사 부담이 커져 일부 운행을 포기한다면 이 규칙을 유지하겠습니까?") : P.liab === "L2" ? "피해자가 결함을 입증해야 보상받습니다. 알고리즘과 운행 기록에 접근하기 어렵다면 어떤 절차를 추가하겠습니까?" : "공동 기금에서 공공이 보상의 절반을 부담합니다. 운영사의 안전 투자 유인이 약해지지 않게 할 장치는 무엇인가요?";
-    const governance = card(`sp-governance-${P.rule}-${P.liab}${P.liab === "L1" && withdrawn.length ? "-withdraw" : ""}`, "개별 · 인증과 책임", liabQ, ruleSub[P.rule]);
+    const governance = card(`sp-governance-${P.rule}-${P.liab}${P.liab === "L1" && withdrawn.length ? "-withdraw" : ""}`, "개별 · 사고 책임", liabQ);
     return [c1, c2, ...[place, evidenceCard, governance].map(text), counter, div];
   }
   function recap(state) {
@@ -260,7 +257,7 @@
     ];
     if (R) {
       const decisions = R.rows.map(e => `${C[e.c].name}: ${MODE[e.mode]} · ${provideText(e)}`).join("\n");
-      items.push({t:"조건별 결정", d:decisions, text:decisions}, {t:"가정에 따라 달라지는 1년 결과", d:`제공 ${fmt(R.share * 100, 1)}% · 예상 사고 ${fmt(R.expected)}건/년 · 실현 ${R.actual}건 · 예상 공공 보상 부담 ${fmt(R.publicCost)} 가상 비용단위/년 · 예상 운영사 배상 부담 ${fmt(R.operatorCost)} 가상 비용단위/년. 보상 대상 비율은 ${fmt(R.comp * 100, 1)}%라는 모형 값. 시험 기간 중 대안 이동 예상 사고 ${fmt(R.waitAlt)}건(근거 없는 가정).`});
+      items.push({t:"조건별 결정", d:decisions, text:decisions}, {t:"가정에 따라 달라지는 1년 결과", d:`제공 ${fmt(R.share * 100, 1)}% · 예상 사고 ${fmt(R.expected)}건/년 · 실현 ${R.actual}건 · 예상 공공 보상 부담 ${fmt(R.publicCost)} 가상 비용단위/년 · 예상 운영사 배상 부담 ${fmt(R.operatorCost)} 가상 비용단위/년. 보상 대상 비율은 ${fmt(R.comp * 100, 1)}%라는 모형 값. 시험 기간에 줄일 수 있었던 대안 이동 사고 상한 ${fmt(R.waitAlt)}건 · 같은 기간 셔틀 예상 사고 ${fmt(R.waitShuttle)}건 · 순감소 상한 ${fmt(R.waitNet)}건(가정 비교).`});
     }
     items.push({t:"판단 설명", d:P.reason || "아직 적지 않음"});
     return items;
@@ -390,8 +387,8 @@
       ["public", "예상 공공 보상 부담", `${fmt(R.publicCost)} 가상 비용단위/년`], ["operator", "예상 운영사 배상 부담", `${fmt(R.operatorCost)} 가상 비용단위/년`]
     ];
     const compare = [["chosen", "선택한 가정", R], ["zero", "대안 위험 0", evaluate({...P, assume:{...P.assume, alt:0}})], ["default", "대안 위험 기본값 1.50", evaluate({...P, assume:{...P.assume, alt:1.5}})]];
-    const unit = {benefit:"", wait:"건"}, tag = " <span class=\"chip\">근거 없는 가정</span>";
-    const compareRows = [["expected", "셔틀 예상 사고(건/년)", "expected", ""], ["benefit", "이동 편익 지수(0~100)", "benefit", ""], ["reduced", "대안 이동 예상 사고 감소(건/년)", "altReduced", tag], ["remaining", "대안 이동 예상 사고 잔여(건/년)", "altRemaining", tag], ["wait", "시험 기간 중 대안 이동 예상 사고(건)", "waitAlt", tag]].map(([key, label, field, chip]) => `<tr><th scope="row">${label}${chip}</th>${compare.map(([id, title, value]) => cell(title, `${fmt(value[field], key === "benefit" ? 1 : 2)}${Object.hasOwn(unit, key) ? unit[key] : "건/년"}`, `sp-cmp-${id}-${key}`)).join("")}</tr>`);
+    const unit = {benefit:"", wait:"건", waitShuttle:"건", waitNet:"건"}, tag = " <span class=\"chip\">근거 없는 가정</span>";
+    const compareRows = [["expected", "셔틀 예상 사고(건/년)", "expected", ""], ["benefit", "이동 편익 지수(0~100)", "benefit", ""], ["reduced", "대안 이동 예상 사고 감소(건/년)", "altReduced", tag], ["remaining", "대안 이동 예상 사고 잔여(건/년)", "altRemaining", tag], ["wait", "시험 기간에 셔틀이 줄일 수 있었던 대안 이동 사고 상한(건)", "waitAlt", tag], ["waitShuttle", "같은 기간 셔틀 예상 사고(건)", "waitShuttle", ""], ["waitNet", "같은 기간 예상 사고 순감소 상한(건)", "waitNet", tag]].map(([key, label, field, chip]) => `<tr><th scope="row">${label}${chip}</th>${compare.map(([id, title, value]) => cell(title, `${fmt(value[field], key === "benefit" ? 1 : 2)}${Object.hasOwn(unit, key) ? unit[key] : "건/년"}`, `sp-cmp-${id}-${key}`)).join("")}</tr>`);
     const sensitivity = [
       ["선택값 그대로", {}], ["전환 비율 둘 다 절반", {auto:P.assume.auto / 2, staff:P.assume.staff / 2}],
       ["전환 비율 둘 다 두 배(무인 최대 0.20)", {auto:Math.min(.20, 2 * P.assume.auto), staff:Math.min(.20, 2 * P.assume.auto, 2 * P.assume.staff)}],
@@ -410,7 +407,7 @@
       </section>
       <section id="sp-compare" class="sp-compare"><h3>가정을 바꾸면 이렇게 달라진다</h3>${table("sp-alt-compare", "대안 이동 위험 가정 비교", ["비교 항목", ...compare.map(r => r[1])], compareRows)}
         <p class="small muted">지수 100은 이 계산식의 범위이며 점수·만족도·권리 충족률이 아닙니다.</p>
-        <p id="sp-wait-note" class="small muted">시험 기간 중 대안 이동 예상 사고 = 시험 개월 수 ÷ 12 × 대안 이동 위험입니다. 시험하는 동안 셔틀이 다니지 않으므로 그 기간의 대안 이동 위험 전체를 보여 줍니다. 셔틀을 바로 운행했다면 줄었을 몫은 그 일부이며, 시험 없이 어떤 조건이 허가됐을지에 달려 있어 계산하지 않습니다. 기다림에도 위험이 따르고, 서두름에도 위험이 따릅니다.</p>
+        <p id="sp-wait-note" class="small muted">시험 기간에 줄일 수 있었던 대안 이동 사고 상한 = 0.6 × 대안 이동 위험 × 시험 개월 수 ÷ 12 × 제공 비율입니다. 시험 뒤 확정한 허가와 제공 비율로 처음부터 운행했다고 가정한 비교입니다. 같은 기간 셔틀 예상 사고를 빼면 순감소 상한이며, 음수이면 예상 사고가 늘어납니다. 시험 없이 같은 허가를 받을 수 있었다는 뜻은 아닙니다.</p>
         ${table("sp-sensitivity", "다른 두 가정도 바꾸어 보기", sh, sensitivity.map(([title, patch]) => {
           const e = evaluateAssumptions(P, patch);
           return `<tr><th scope="row">${title}</th>${cell(sh[1], `${fmt(e.share * 100, 1)}%`)}${cell(sh[2], `${fmt(e.expected)}건/년`)}${cell(sh[3], `${fmt(e.comp * 100, 1)}%`)}${cell(sh[4], `${fmt(e.publicCost)} 가상 비용단위/년`)}${cell(sh[5], `${fmt(e.operatorCost)} 가상 비용단위/년`)}</tr>`;
@@ -642,6 +639,7 @@
     paintInputs(); paintBoundary(); paintEvidence(); paintChoices(); paintLock();
     if (changedVersion) { KCP.toast("계산 규칙이 달라 게임 계획을 초기화했습니다. 메모는 남아 있습니다."); save(); }
   }
+  // 검토 결함 3: Kalra·Groves(2017) 요약은 2차 출처만 확인된 상태다. 외부 네트워크를 쓰지 않았으며 원문 대조가 필요하다.
   const REFLECT = `<div id="sp-reflect" class="sp-reflect stack">
     <p>다음은 서로 다른 기준에 무게를 둔 가상의 답입니다. 같은 자료를 보고 다른 결정을 할 수 있습니다. 예시의 약점까지 자신의 답과 비교하세요.</p>
     <details id="sp-example-mobility" class="reveal sp-reveal">
@@ -650,16 +648,16 @@
       <p><b>선택:</b> 맑음 40, 비 40, 안개 30 km/h를 제안하고 운영사 자료를 반영했습니다. 추가 시험 없이 R2 점추정 기준과 L3 공동 기금을 골랐습니다. 매월 조건별 기록 공개와 12개월 뒤 재심사를 의무로 붙였고 기본 가정을 썼습니다.</p>
       <p><b>모형 결과:</b> 세 조건 모두 무인 허가·제공, 제공 100.0%, 예상 사고 1.27건/년, 실현 사고 2건, 보상 대상 100.0%입니다. 예상 공공 보상 부담과 운영사 배상 부담은 각각 19.05 가상 비용단위/년입니다. 대안 이동 예상 사고 감소는 0.90건/년, 잔여는 0.60건/년입니다.</p>
       <p><b>얻는 것과 잃는 것:</b> 모든 밤에 운행하고 피해자의 결함 입증 부담을 덜지만, 짧고 편향될 수 있는 자료로 허가해 도로 이용자에게 미확인 위험을 남기고 공공 부담과 운영사 안전 투자 유인 약화 문제를 만듭니다.</p>
-      <p><b>약점:</b> 안개 자료 300 km·0건은 점추정 0이지만 상한은 100.00건/1만 km입니다. 자료 공개는 이미 겪은 위험을 없애지 못합니다. 대안 이동 위험을 0으로 두면 사고 감소라는 수치 근거는 사라지고, 이동 접근성 자체를 얼마나 중시하는지 다시 설명해야 합니다.</p>
+      <p><b>약점:</b> 안개 자료 300 km·0건은 점추정 0이지만 상한은 100.00건/1만 km입니다. 안개의 숨은 기저 위험 상황률 3.5는 비교 기준 3.0건/1만 km보다 높습니다. 자료 공개는 이미 겪은 위험을 없애지 못합니다. 대안 이동 위험을 0으로 두면 사고 감소라는 수치 근거는 사라지고, 이동 접근성 자체를 얼마나 중시하는지 다시 설명해야 합니다.</p>
       <p><b>반문 뒤:</b> 운행 기록에 대한 피해자의 접근권과 독립 검증 절차를 추가하겠습니다. 이 절차의 효과가 계산에 이미 들어 있다고 주장하지는 않겠습니다. 이 예시는 공공 기금이 위험한 운행을 떠받친다는 비판을 해결하지 못했습니다.</p>
     </details>
     <details id="sp-example-proof" class="reveal sp-reveal">
       <summary>사전 입증을 먼저 둔 판단 <span class="tag-mine">가상의 답</span></summary>
       <p><b>기준과 무게:</b> 도로 이용자에게 위험을 부과하기 전의 입증과 피해자 보상은 높음, 빠른 도입은 낮음으로 두었습니다.</p>
       <p><b>선택:</b> 맑음 40 km/h, 비와 안개는 0으로 정했습니다. 운영사 자료는 제외하고 맑음 40 km/h 시험에 10회를 썼습니다. R1 엄격 기준과 L1 운영사 무과실 책임, 기본 가정을 택했습니다. 20,000 km에서 위험 상황 1건, 상한 2.37건/1만 km로 맑음만 무인 허가했고 비와 안개는 금지로 남았습니다.</p>
-      <p><b>모형 결과:</b> 제공 65.0%, 예상 사고 0.52건/년, 실현 사고 0건, 보상 대상 100.0%, 예상 공공 보상 부담 0.00, 운영사 배상 부담 15.60 가상 비용단위/년입니다. 이동 편익 지수는 65.0, 대안 이동 예상 사고 감소는 0.59건/년, 잔여는 0.92건/년입니다. 시험 10개월 동안의 대안 이동 예상 사고는 1.25건입니다.</p>
+      <p><b>모형 결과:</b> 제공 65.0%, 예상 사고 0.52건/년, 실현 사고 0건, 보상 대상 100.0%, 예상 공공 보상 부담 0.00, 운영사 배상 부담 15.60 가상 비용단위/년입니다. 이동 편익 지수는 65.0, 대안 이동 예상 사고 감소는 0.59건/년, 잔여는 0.92건/년입니다. 시험 10개월 동안 줄일 수 있었던 대안 이동 사고 상한은 0.49건, 같은 기간 셔틀 예상 사고는 0.43건, 순감소 상한은 0.05건입니다(반올림 전 계산).</p>
       <p><b>얻는 것과 잃는 것:</b> 정한 증거 기준을 일관되게 적용하고 보상 입증 부담을 줄이는 원칙을 세웠지만, 시험에 10개월을 쓰고도 비와 안개가 낀 밤의 서비스 공백은 남았습니다.</p>
-      <p><b>약점:</b> 특정 조건에 집중한 시험으로 다른 날씨의 증거는 얻지 못했습니다. 실현 사고가 0건이어도 예상 사고는 0.52건/년이며 도시 전체의 위험이 0이라는 뜻으로 읽을 수 없습니다. 엄격한 시험 비용이 작은 사업자의 진입에 미칠 영향도 따로 검토해야 합니다. 기본 가정이라면 시험하는 10개월 동안 대안 이동에서 예상 사고 1.25건이 생깁니다. 셔틀이 일찍 다녔다면 그중 얼마를 줄였을지는 모형이 계산하지 않지만, 기다림에도 사고 위험이 따른다는 점은 이 판단이 답해야 할 몫입니다.</p>
+      <p><b>약점:</b> 특정 조건에 집중한 시험으로 다른 날씨의 증거는 얻지 못했습니다. 실현 사고가 0건이어도 예상 사고는 0.52건/년이며 도시 전체의 위험이 0이라는 뜻으로 읽을 수 없습니다. 엄격한 시험 비용이 작은 사업자의 진입에 미칠 영향도 따로 검토해야 합니다. 같은 허가로 처음부터 운행했다고 가정하면 시험 10개월의 대안 이동 사고 감소 상한은 0.49건이지만 셔틀 사고도 0.43건 예상되어, 순감소 상한은 약 0.05건입니다. 이 가정 비교만으로 시험을 생략할 수 있다고 판단할 수는 없습니다.</p>
       <p><b>반문 뒤:</b> 증거 기준은 유지하되 귀가 지원과 다른 교통수단을 병행하겠습니다. 추가 시험의 독립성뿐 아니라 노선 대표성도 확인하겠습니다. 그 비용과 대안의 위험은 현재 모형이 알려 주지 않습니다.</p>
     </details>
     <details id="sp-example-staged" class="reveal sp-reveal">
@@ -668,7 +666,7 @@
       <p><b>선택:</b> 맑음 40, 비 40, 안개 30 km/h, 운영사 자료 반영, 추가 시험 없음, R3 이중 기준과 L3 공동 기금, 기본 가정을 골랐습니다. 제출 자료만으로 맑음은 무인, 비와 안개는 요원 탑승 허가가 됩니다. 매월 기록을 공개하고 12개월 뒤 무인 전환·유지·중단을 재심사하겠습니다.</p>
       <p><b>모형 결과:</b> 제공 100.0%, 예상 사고 0.90건/년(원값 0.895), 실현 사고 2건, 보상 대상 100.0%입니다. 예상 공공 보상 부담과 운영사 배상 부담은 각각 13.43 가상 비용단위/년입니다. 대안 이동 예상 사고 감소는 0.90건/년, 잔여는 0.60건/년입니다. 앞의 이동권 예시와는 공동 기금 선택이 같고, R2와 R3의 증거 단계 구분에서 차이가 납니다.</p>
       <p><b>얻는 것과 잃는 것:</b> 운행하면서 증거를 보완할 기회를 얻고 피해자의 결함 입증 부담을 줄이지만, 시범 기간의 위험은 이미 도로 이용자가 지며 요원과 공공 보상의 부담도 생깁니다.</p>
-      <p><b>약점:</b> 요원이 사고 전환 비율을 절반으로 낮춘다는 근거는 없습니다. 운영사 자료의 편향도 그대로 남습니다. 서비스가 시작된 뒤에는 중단 결정을 정치적으로 되돌리기 어려울 수 있습니다.</p>
+      <p><b>약점:</b> 안개의 숨은 기저 위험 상황률 3.5는 비교 기준 3.0건/1만 km보다 높습니다. 요원 탑승은 사고 전환 비율을 낮추는 가정이며 이 기저율 자체를 낮추지는 않습니다. 요원이 사고 전환 비율을 절반으로 낮춘다는 근거는 없습니다. 운영사 자료의 편향도 그대로 남습니다. 서비스가 시작된 뒤에는 중단 결정을 정치적으로 되돌리기 어려울 수 있습니다.</p>
       <p><b>반문 뒤:</b> 재심사 전에 거리·위험 상황·보상 접근 절차의 점검 항목과 중단 절차를 공개하겠습니다. 어떤 지표를 얼마만큼 충족해야 하는지 별도로 합의하겠습니다. 사후 감시가 위험을 자동으로 줄인다고 계산하지는 않겠습니다.</p>
     </details>
     <details id="sp-science" class="reveal sp-reveal">
@@ -680,7 +678,7 @@
       <p><b>0건의 뜻:</b> 서로 독립인 n번의 기회에서 사건 확률이 p로 같다면 0건일 확률은 (1−p)ⁿ입니다. 이를 0.05로 놓으면 p=1−0.05^(1/n)이고, p가 작을 때 ln(1−p)≈−p를 써서 p≈−ln(0.05)/n≈3/n입니다. n이 작을 때 3/n이 확률 범위를 넘으면 근사식을 그대로 쓰면 안 됩니다.</p>
       <p><b>거리로 셀 때:</b> 이 게임은 이항 시행 횟수 대신 거리 노출 N(1만 km)에서 포아송 사건 수를 셉니다. 0건일 확률 exp(−rN)=0.05를 풀면 r의 상한은 2.9957/N입니다. 게임 표는 이를 3.00/N으로 근사합니다. 300 km는 N=0.03이므로 0건이어도 상한은 100.00건/1만 km입니다. km를 이항 시행 수와 무조건 같다고 둘 수는 없습니다.</p>
       <p><b>왜 사고가 아니라 위험 상황을 셀까:</b> 사망 사고처럼 심각한 사고는 너무 드물어 시험 주행으로 직접 입증하기 어렵습니다. 미국 RAND 연구소의 계산(Kalra·Paddock, 2016)에 따르면, 사람 운전자의 사망 사고율(1억 마일당 1.09건)보다 낮다는 것을 95% 신뢰로 보이려면 사고 없이 약 2억 7,500만 마일을 달려야 합니다. 이 게임의 3/N 근사와 같은 계산입니다(3 ÷ 1.09건/1억 마일 ≈ 2.75억 마일). 그래서 이 게임은 더 자주 일어나는 위험 상황을 세고, 위험 상황이 사고로 이어지는 비율은 검증되지 않은 가정으로 따로 둡니다. 증거의 사슬에서 가장 약한 고리가 이 전환입니다.</p>
-      <p><b>예산의 한계:</b> 비 오는 밤의 숨은 기저율 1.6건/1만 km는 기준 3.0보다 낮습니다. 그래도 정지 경계 아래 속도에서 10회 예산을 모두 써서 2만 km를 시험하면 위험 상황은 평균 3.2건이고, R1 상한 기준(2만 km에서 1건 이하)을 통과할 확률은 약 17%입니다. 이 게임의 고정된 시험 결과는 40 km/h에서 5건, 상한 5.26건/1만 km입니다. 평균적인 결과로 통과를 기대하려면 4만 km 안팎이 필요합니다. 엄격한 기준의 불허는 ‘위험하다’가 아니라 ‘아직 보이지 못했다’는 뜻일 수 있습니다. RAND의 다른 연구(Kalra·Groves, 2017)는 사람보다 조금 더 안전할 때 도입하는 쪽이 훨씬 안전해질 때까지 기다리는 쪽보다 장기적으로 더 많은 생명을 구할 수 있다고 추정했습니다. 다만 그 추정은 운행 중에 기술이 빨리 나아진다는 가정에 기대며, 이른 허가가 신뢰를 잃게 할 위험은 따로 남습니다.</p>
+      <p><b>예산의 한계:</b> 비 오는 밤의 숨은 기저율 1.6건/1만 km는 기준 3.0보다 낮습니다. 그래도 정지 경계 아래 속도에서 10회 예산을 모두 써서 2만 km를 시험하면 위험 상황은 평균 3.2건이고, R1 상한 기준(2만 km에서 1건 이하)을 통과할 확률은 약 17%입니다. 이 게임의 고정된 시험 결과는 40 km/h에서 5건, 상한 5.26건/1만 km입니다. 평균적인 결과로 통과를 기대하려면 4만 km 안팎이 필요합니다. 엄격한 기준의 불허는 ‘위험하다’가 아니라 ‘아직 보이지 못했다’는 뜻일 수 있습니다. RAND의 다른 연구(Kalra·Groves, 2017)는 사람보다 조금 더 안전할 때 도입하는 쪽이 훨씬 안전해질 때까지 기다리는 쪽보다 장기적으로 더 많은 생명을 구할 수 있다고 추정했습니다. 그 차이의 크기는 운행 중 기술이 얼마나 빨리 나아지는지와 보급 속도에 크게 달려 있으며, 이른 허가가 신뢰를 잃게 할 위험은 따로 남습니다.</p>
       <p><b>시험의 적용 범위:</b> 느린 시험의 무사건 기록은 빠른 운행을 보증하지 않습니다. 반대로 이 모형은 30 km/h 미만에서 느린 속도의 추가 위험 항을 더하므로 매우 느린 운행도 빠른 시험만으로 판단할 수 없습니다. 그래서 그 구간은 같은 속도 시험을 요구합니다. 여러 속도를 합친 점추정은 그 시험들의 거리 가중 평균이고, 현재 허용 속도의 정확한 추정치라고 단정하지 않습니다.</p>
       <p><b>표본 편향과 95%:</b> 쉬운 구간에 치우친 자료는 길어도 전체 노선을 대표하지 못할 수 있습니다. 통상적인 95% 상한은 같은 시험 설계로 표본을 새로 뽑는 일을 반복할 때의 절차적 성질이며, 현재 위험률이 그 아래일 확률이 반드시 95%라는 뜻은 아닙니다. 결과를 보고 시험 조건과 중단 시점을 고르는 이 게임의 운영에는 결과를 본 뒤의 선택이 신뢰 수준을 흐리는 문제가 남습니다. 사람 운전자 기준 3.0도 가상 추정치입니다.</p>
     </details>
@@ -696,7 +694,7 @@
       <p id="sp-teacher-link"><b>교사용 연결:</b> 날씨와 속도에 따라 허가 범위를 나누는 이 게임의 설계는, 자율주행 시스템이 안전하게 작동하도록 설계된 조건의 범위인 운행가능영역(ODD, Operational Design Domain) 개념과 닮았습니다. SAE 분류의 레벨 4는 이 영역 안에서 사람의 개입 없이 주행하는 단계입니다. 한국에서는 「자율주행자동차 상용화 촉진 및 지원에 관한 법률」 개정으로 2025년 3월 20일부터 안전기준이 없는 레벨 4 이상 자율주행차의 성능을 정부가 인증하는 제도가 시행되었습니다. 실제 인증의 절차와 기준은 이 게임과 다르며, 이 문장은 실제 법 제도의 해설이 아닙니다.</p>
       <p>1년 결과의 실현 사고는 조건마다 고정된 난수 하나로 뽑습니다. 이 난수는 비에서 나쁜 쪽 상위 약 15%, 안개에서 약 11%, 맑음에서 평균보다 조금 좋은 쪽(하위 약 37%)에 놓여 있어, 비는 그 조건의 예상 사고가 약 0.16건, 안개는 약 0.11건만 넘어도 실현 사고가 1건 이상 나옵니다. 이 사실은 결정 전에도 문제 상황과 판단 설명 칸에 공개했습니다. 실현 사고는 셔틀에서만 뽑고 대안 이동의 위험은 예상값으로만 보여 주므로, 두 값은 같은 무게로 견줄 수 없습니다. 같은 시드의 같은 선택은 같은 결과를 만듭니다. 이것은 비교를 위한 장치이며 앞으로 현실에서 일어날 일을 예측한 것이 아닙니다. 좋은 결과가 나왔다는 이유만으로 결정의 근거가 충분했다고 결론 내리지 마세요.</p>
     </details>
-    <p class="sp-reflect-prompt">예시와 달리 무게를 둔 기준은 무엇인가요? 다음 심사에서 바꿀 조건 한 가지와, 그대로 유지할 기준 한 가지를 공통 성찰 메모에 적으세요.</p>
+    <p class="sp-reflect-prompt">사람 운전자의 위험도가 추정치라는 점을 고려하면, 셔틀은 얼마나 더 안전해야 허가받아야 할까요?</p><p class="sp-reflect-prompt">선택한 인증 기준의 약점 가운데 12개월 재심사로도 남는 것은 무엇인가요?</p><p class="sp-reflect-prompt">예시와 달리 무게를 둔 기준은 무엇인가요? 다음 심사에서 바꿀 조건 한 가지와, 그대로 유지할 기준 한 가지를 공통 성찰 메모에 적으세요.</p>
   </div>`;
   function reflectExtra(state) {
     return normalizedCopy(state && state.game).locked ? REFLECT : `<p class="sp-note small muted">아직 허가를 확정하지 않았습니다. 준비실에서 결정한 뒤 예시와 모형 해설을 비교하세요.</p>`;

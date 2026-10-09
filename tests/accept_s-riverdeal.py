@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,7 +140,7 @@ def _lock_n(c, reason=REASON):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-riverdeal'].questions(KCP.load('s-riverdeal'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-riverdeal'].questions(KCP.load('s-riverdeal'))"))
 
 
 def _keys(c, expected, aid):
@@ -202,7 +203,9 @@ def t_12_1_normal(c: Ctx):
     c.expect(c.page.locator("#rd-pane-model").is_visible(),"12.1-7 확정 뒤 자료 사용 가능")
     _has(c,"#rd-pane-model",["염분 침입","기수역","홍수기 제한수위"],"자료 개정")
     c.page.locator("#rd-tab-clauses").click()
-    _has(c,"#rd-pane-clauses",["댐 용수공급 조정기준","관심→주의→경계→심각","하천유지용수(주의)","농업용수(경계)","생활·공업용수(심각)","강제하지 않고"],"자료 개정")
+    # 명세 3절·4.3: 조항 칸은 감량 순서의 선택 가능함을 확인한다.
+    # 법령과 게임의 차이를 설명하는 “강제하지 않는 선택지”는 10절 성찰의 한계 칸에서 검사한다.
+    _has(c,"#rd-pane-clauses",["댐 용수공급 조정기준","관심→주의→경계→심각","하천유지용수(주의)","농업용수(경계)","생활·공업용수(심각)","여러 선택지 가운데 하나"],"자료 개정")
     c.page.locator("#rd-tab-basin").click()
     _has(c,"#rd-pane-basin",["물 높이 단위가 아닙니다."],"자료 개정")
     c.check("12.1-7 준비실")
@@ -516,7 +519,7 @@ def t_12_3_question_examples(c: Ctx):
         c.phase("room")
         _keys(c,keys,"12.3-8" if mode=="role" else "12.3-7")
         texts=" ".join(q["q"] for q in _questions(c))
-        for value in (["84.00","1개"] if p["ag"]==43 else ["2.739","27.26","3.627","55억","염분 침입"] if p["ag"]==42 else ["0.000"]):
+        for value in (["84.00","1개"] if p["ag"]==43 else ["2.739","27.26","3.627","55억"] if p["ag"]==42 else ["0.000"]):
             c.expect(value in texts,"12.3-7 질문 주요 수치 일치")
         before=_questions(c)
         # locked 데이터와 독립인 편집 초안 변경이 질문을 바꾸지 않는다.
@@ -655,6 +658,8 @@ def t_12_4_reflection(c: Ctx):
             c.expect(c.page.locator("#rd-example-eco").get_attribute("open") is None,"12.4-1 다른 예시는 독립 닫힘")
     for loc in c.page.locator("#exwrap details").all():
         loc.evaluate("e=>e.open=true")
+    # 명세 3절·4.3의 활동 약속과 10절 모형 한계: “강제하지 않는 선택지”는 성찰에서 확인한다.
+    _has(c,"#rd-model-limits",["강제하지 않는 선택지"],"N1 감량 순서 설명 위치")
     # 성찰 개정: 3자 합의 비율, 실제 댐 감량 순서, 염분 침입, FAO-33 근거와 적용 한계.
     _has(c,"#rd-model-limits",["11,602,477","94.2%","5.0%","0.7%","0.003%","관심→주의→경계→심각","하천유지유량","환경생태유량","염분 침입","기수역"],"성찰 개정")
     _has(c,"#rd-science-crop",["FAO","33호","Ky","50%","83%"],"성찰 개정")

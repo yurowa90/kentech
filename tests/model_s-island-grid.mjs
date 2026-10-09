@@ -1,4 +1,10 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 // 기대값: 사용자 제공 수정 명세 4.2, 5, 6, 8, 12절. 구현 계산을 복제하지 않는다.
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 
@@ -335,10 +341,13 @@ test('4·저장·예시 표 공개', () => {
   }
 });
 test('5·낮음 질문 문안', () => {
-  const qs = st => Object.fromEntries(game.questions(st).map(q=>[q.k,q.q]));
+  const qs = st => {const rows=game.questions(st);
+    for(const q of rows) check(`결함 8 ${q.k} 요청 하나`,requestCount(q.q),1);
+    return Object.fromEntries(rows.map(q=>[q.k,q.q]));};
   const b = qs(questionState(plans.B,['emission','fair']));
   check('5 c1 얻는 것·잃는 것 한 문장',b['ig-c1'].includes('얻는 것과 잃는 것을 한 문장으로'),true);
-  check('5 c1 조사',b['ig-c1'].includes('‘배출·대기오염 최소’와 둘째 기준 ‘피해의 공정한 분배’가'),true);
+  // N4·N6: 두 기준 중 무엇을 앞세웠는지 먼저 밝히는 문안.
+  check('5 c1 조사',b['ig-c1'].includes('‘배출·대기오염 최소’와 둘째 기준 ‘피해의 공정한 분배’ 가운데 어떤 기준을 앞세웠는지 먼저 밝히고'),true);
   check('c3-hit 조사',b['ig-c3-hit'].includes('‘S2 오후 구름’은 처음'),true);
   const s1 = qs(questionState(plans.B,['emission','fair'],undefined,'S1'))['ig-c3-miss'];
   for (const word of ['‘S1 예보대로’를 골랐습니다','‘S2 오후 구름’입니다','어느 날씨에 몰릴지','첫 시험 계획과 같습니다']) check(`c3-miss 다른 날씨/${word}`,s1.includes(word),true);
@@ -357,11 +366,13 @@ test('5·낮음 질문 문안', () => {
   check('가중치 질문 같은 값 설명',w.includes('두 값이 같지만'),true);
   const w1 = qs(questionState({...clone(plans.B),shed:'R1',weights:[4,1.2]},['emission','fair']))['ig-b-weights'];
   check('가중치 질문 R1 값 다름(11.1650 대 11.1559)',w1.includes('11.16')&&!w1.includes('두 값이 같지만'),true);
+  // N4: 계산 보조 물음 대신 저장 대안 제안과 규모 근거를 한 요청으로 복원.
   const alt = b['ig-storage-alt'];
-  for (const word of ['16 MWh','100 m','몇 톤']) check(`발산/${word}`,alt.includes(word),true);
+  // 명세 8절 발산 질문: 저장 방법 하나와 섬에서의 규모 어림을 한 요청으로 묻는다.
+  for (const word of ['16 MWh','100 m','저장 방법 하나를','그 규모가 섬에서 현실적인지 어림한 근거와 함께 제안해 주세요']) check(`발산/${word}`,alt.includes(word),true);
   for (const word of ['9.8×10⁵','0.27 kWh','5.9']) check(`발산 답 미노출/${word}`,alt.includes(word),false);
-  check('발산 물음 하나',(alt.match(/\?/g)||[]).length,1);
-  check('반문 물음표',['R1','R2','R3'].every(shed=>/유지하겠습니까\? 그 이유를 말해 주세요\.$/.test(qs(questionState({...clone(plans.B),shed},['emission','fair']))[`ig-r-${shed.toLowerCase()}`])),true);
+  check('발산 요청 하나',requestCount(alt),1);
+  check('반문 물음표',['R1','R2','R3'].every(shed=>/고치거나 유지할 이유를 말해 주세요\.$/.test(qs(questionState({...clone(plans.B),shed},['emission','fair']))[`ig-r-${shed.toLowerCase()}`])),true);
   const dcs = questionState(plans.H,['emission','fair'],{scenario:'S2',limit:0},'S3');
   const dq = game.questions(dcs).find(q=>q.k==='ig-b-dcharge');
   check('dcharge 질문 문안',!!dq && dq.q.includes('충전하지 않았다면') && !dq.q.includes('재생 발전이 남지 않는'),true);

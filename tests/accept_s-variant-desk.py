@@ -8,6 +8,7 @@ import copy
 import math
 import re
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 GAME = "s-variant-desk"
@@ -53,7 +54,7 @@ def _load(c):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-variant-desk'].questions(KCP.load('s-variant-desk'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-variant-desk'].questions(KCP.load('s-variant-desk'))"))
 
 
 def _prep(c):
@@ -335,7 +336,9 @@ def t_12_1_3_detail_privacy(c: Ctx):
     c.page.locator("#vd-card-P-01").click()
     c.eq(_text(c, "#vd-card-score"), "20", f"{aid} 상세 점수20")
     _has(c, "#vd-detail", "병원성으로 보고하면 검토할 조치", aid)
-    _has(c, "#vd-detail", "의미불명 변이(VUS)를 임상 결정에 쓰지 말라고 권고합니다", aid)
+    # N1: VUS 분류 설명을 앞세운 새 문구의 대명사와 지침 구절을 확인한다.
+    _has(c, "#vd-detail", "의미불명 변이(VUS)는 보고 시점의 증거로 정하는 분류", aid)
+    _has(c, "#vd-detail", "이를 임상 결정에 쓰지 말라고 권고합니다", aid)
     c.expect("혈족 연락 가능 사례" in c.page.locator("#vd-card-P-01").inner_text(), f"{aid} P-01 혈족 표식 문구")
     for text in ("40~70%", "가계 내 공동분리", "집단 내 빈도", "기능 실험", "컴퓨터 예측",
                  "같은 위치의 다른 변이 보고", "가상 자료"):
@@ -413,14 +416,16 @@ def t_12_1_7_uncertain(c: Ctx):
         _has(c, "#vd-uncertain", id_, aid)
         c.page.locator(f"#vd-card-{id_}").click()
         _has(c, "#vd-detail", "현재 자료로는 판단할 수 없다 — 이 게임이 정한 추적 뒤에도 판단하지 못한 가상 사례", aid)
-        _has(c, "#vd-detail", "보고해도 조치 대신 재검토·재연락 등록", aid)
+        _has(c, "#vd-detail", "보고에 따른 조치 요청과 재검토·재연락 등록을 함께 표시", aid)
         _has(c, "#vd-detail", "미확정", aid)
         c.expect(not re.search(r"발병 범위[^<]*\d+\.\d+%", _text(c, "#vd-detail")), f"{aid} U 발병 숫자 없음")
         c.expect("이 게임이 정한 분류(가상의 추적 결과): 병원성" not in _text(c, "#vd-detail"), f"{aid} U 숨은 병원성 없음")
     for kind in ("r", "rc"):
         c.eq(sum(int(x) for x in c.page.locator(f"#vd-matrix-{kind} [data-vd-cell]").all_text_contents()), 12, f"{aid} U 제외 분모12")
     _has(c, "#vd-uncertain", "미확정 — 발병 범위를 추정하지 않음", aid)
-    _has(c, "#vd-uncertain", "의미불명 변이(VUS)를 임상 결정에 쓰지 말라고 권고합니다", aid)
+    # N1: 성찰에서도 동일한 VUS 분류 설명과 지침 문구를 확인한다.
+    _has(c, "#vd-uncertain", "의미불명 변이(VUS)는 보고 시점의 증거로 정하는 분류", aid)
+    _has(c, "#vd-uncertain", "이를 임상 결정에 쓰지 말라고 권고합니다", aid)
 
 
 def t_12_2_default(c: Ctx):
@@ -487,8 +492,9 @@ def t_12_3_1_extreme_report(c: Ctx):
         _matrix(c, k, [6, 6, 0, 0], aid)
         _metrics(c, k, ["6/6", "0/6", ppv], aid)
     _f(c, [6, 6, 0, 0], aid)
-    # 검토 H2: 보고한 미확정 4장은 조치 요청이 아니라 재검토·재연락 등록으로 센다.
-    _resources(c, [8, 2, 4, 5], 16, aid)
+    # 결함 0·7: 미확정 4장의 요청 [2,0,2,2]도 합산하고 재연락을 병기한다.
+    _resources(c, [10, 2, 6, 7], 16, aid)
+    _has(c, "#vd-uncertain-actions", "정기 영상 검사 2건", aid)
     c.eq(_text(c, "#vd-recontact"), "4", f"{aid} 재검토·재연락 등록 4건")
     _final(c, list(range(1, 17)), aid)
     # 검토 M6: 비병원성인데 보고한 카드와 그 부담을 따로 보여 준다.
@@ -533,7 +539,7 @@ def t_12_3_3_prediction_policy(c: Ctx):
     _matrix(c, "r", [2, 2, 4, 4], aid)
     _matrix(c, "rc", [5, 3, 1, 3], aid)
     _f(c, [1, 1, 5, 5], aid)
-    _resources(c, [2, 1, 1, 0], 9, aid)
+    _resources(c, [3, 1, 1, 0], 9, aid)
     c.eq(_text(c, "#vd-recontact"), "1", f"{aid} 보고한 미확정 P-13은 재검토·재연락 등록")
     _has(c, "#vd-consult-removed", "P-04", aid)
     _onset(c, "50-80", "50~80%", "0.0~5.5%", aid)
@@ -542,7 +548,7 @@ def t_12_3_3_prediction_policy(c: Ctx):
     _has(c, "#vd-uncertain", "P-13", aid)
     _has(c, "#vd-uncertain", "미확정 — 발병 범위를 추정하지 않음", aid)
     c.page.locator("#vd-lock").click()
-    _keys(c, _expected_keys("consult", "prediction", "nocare-off"), aid)
+    _keys(c, _expected_keys("consult", "prediction", "relatives-on"), aid)
 
 
 def t_12_3_4_policy_changes(c: Ctx):
@@ -786,15 +792,15 @@ def _policy_branch_test(extra, values, result, evidence, key):
     return run
 
 
-# 검토 M5: 결과를 바꾼 스위치마다 켬·끔 양쪽에 반문이 있다. 각 버킷을 독립 컨텍스트에서 실행한다.
-t_12_4_5_branch_minors = _policy_branch_test({}, [True, True, True, False], "balance", "evidence-pair", "minors-on")
-t_12_4_5_branch_minors_off = _policy_branch_test({}, [True, False, True, False], "balance", "evidence-pair", "minors-off")
-t_12_4_5_branch_secondary = _policy_branch_test({"t2": 3}, [True]*4, "balance", "evidence-pair", "secondary-on")
-t_12_4_5_branch_secondary_off = _policy_branch_test({"t2": 3}, [False]*4, "balance", "evidence-pair", "secondary-off")
-t_12_4_5_branch_nocare = _policy_branch_test({"t2": 2}, [True]*4, "balance", "evidence-pair", "nocare-on")
-t_12_4_5_branch_nocare_off = _policy_branch_test({"t2": 2}, [False]*4, "balance", "evidence-pair", "nocare-off")
-t_12_4_5_branch_relatives = _policy_branch_test({"t2": 0}, [True]*4, "balance", "evidence-pair", "relatives-on")
-t_12_4_5_branch_relatives_off = _policy_branch_test({"t2": 0}, [False]*4, "balance", "evidence-pair", "relatives-off")
+# 명세 8.4 + 총괄 B: 정책 전 카드 분류가 같은 상태에서 켬/끔 양쪽을 묻는다.
+# 미성년·조치 수단은 목적 안 카드, 중복 표식은 2차 발견에서 다룬다. 다른 정책 값으로 후보를 거르지 않는다.
+for _key, _target in (("minors", "P-11"), ("nocare", "P-08"), ("secondary", "P-12"), ("relatives", "P-09")):
+    for _on in (True, False):
+        _extra = {"t1": 47, "t2": 46, "overrides": {_target: {"to": "R", "reason": "이 카드의 정책 갈등을 검토합니다."}}}
+        _values = [True, True, True, False]
+        _values[{"secondary": 0, "minors": 1, "nocare": 2, "relatives": 3}[_key]] = _on
+        globals()[f"t_12_4_5_branch_{_key}_{'on' if _on else 'off'}"] = _policy_branch_test(
+            _extra, _values, "more-miss", "manual", f"{_key}-{'on' if _on else 'off'}")
 
 
 def t_12_4_5_consult_filter(c: Ctx):
@@ -989,10 +995,10 @@ def t_12_5_reflect_gate(c: Ctx):
     c.page.locator("#openEx").click()
     for text in ("가. 놓침 줄이기 우선", "나. 과한 개입 피하기 우선", "다. 선택권 중심", "확률 해설", "이 모형이 단순화한 것"):
         _has(c, "#exwrap", text, aid)
-    # 검토 M1·M4·H2·Low: 실제 지침과의 차이, 예시 가의 정책 켬, VUS 재분류, 차별 금지 조항을 밝힌다.
+    # 검토 M1·M4·H2·Low: 실제 지침과의 차이, 결함 9 예시 가의 혼합 정책, VUS 재분류, 차별 금지 조항을 밝힌다.
     exwrap = c.page.locator("#exwrap").text_content()
     for text in ("다섯 단계", "(BA1)", "(PVS1)", "de novo", "생식세포 변이만", "Pejaver", "Mersch", "약 90%",
-                 "제46조", "ACMG SF", "정책 네 개를 모두 켜서", "P-01의 참여자는 혈족 연락을 거부했는데",
+                 "제46조", "ACMG SF", "미성년 참여자의 성인기 위험 보고와 참여자 거부 시 혈족 고지 검토는 끄겠습니다", "참여자 상담 11건",
                  "0.1~2.1%", "4.3~35.3%"):
         c.expect(text in exwrap, f"{aid} 성찰 해설에 {text}")
     c.expect("현재 과학으로" not in exwrap, f"{aid} ‘현재 과학으로 알 수 없다’ 표현 없음")

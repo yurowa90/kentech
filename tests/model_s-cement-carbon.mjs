@@ -1,7 +1,13 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 /* 기대값 출처: 사용자 제공 구현 명세 v2의 5·6·8·12절.
  * 구현 소스는 vm 로드 및 공개 model API 호출에만 사용한다.
  * 실행: node tests/model_s-cement-carbon.mjs (의존성 없음)
  */
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 
@@ -65,6 +71,21 @@ function locked(plan, value = 'below', revisited = false, criteria = ['sure','pr
     prediction:{value,plan:{...plan}},predictDraft:value,revisited,oneLine:'가상 검사 계획',
     locked:{version:1,plan:{...plan},criteria,prediction:{value,plan:{...plan}},oneLine:'가상 검사 계획',revisited}}};
 }
+
+// 결함 2: 문구의 총량·원단위 비교를 독립 질량/에너지 수지로 확인했다.
+// A: K=1.5, clay=.15, H=5.1, G0=K*.65*44/56+(H*.8+clay*2)*.095+H*.2*.085.
+// C=.54*(G0-.056*K*.8)/(1-.168*.54); 물리=G0+.056*(3*C-K*.8)-C+.9*C*.0005.
+// 간접=(.2+.1*C)*.35. 같은 수요 감축은 P=1.4,K=1.05,clay=0으로 독립 계산.
+// B: K=.7,H=2.38,clay=.35,e=.1; 물리=.61797, 간접=(.14+H*.1/3.6)*.35.
+attempt('결함 2 총량과 원단위',()=>{
+  const a=invoke('calc',PLANS.C,'delay'), b=invoke('calc',PLANS.D,'delay');
+  const reduced=invoke('calc',{...PLANS.C,d:30},'delay');
+  check('결함 2 A 총량',a.physical+a.indirect,.7032179892882281,1e-12);
+  check('결함 2 B 총량',b.physical+b.indirect,.6901088888888889,1e-12);
+  check('결함 2 같은 수요 감축 총량',reduced.physical+reduced.indirect,.4817399859889143,1e-12);
+  check('결함 2 A 원단위',(a.physical+a.indirect)/2,.35160899464411405,1e-12);
+  check('결함 2 B 원단위',(b.physical+b.indirect)/1.4,.4929349206349206,1e-12);
+});
 
 // 6.2: 행 순서와 6사례의 252칸. 6자리 표의 반올림 허용 오차만 적용한다.
 const INTERMEDIATE = {
@@ -205,18 +226,29 @@ for (const [name,value,revisited,count,c4,individual] of QUESTION_CASES) attempt
   check(`8 ${name} 문항수`,qs.length,count);
   check(`8 ${name} 공통 순서`,qs.slice(0,5).map(q=>q.k), ['cc-c1','cc-c2',name==='H'?'cc-c3-diff':name==='B'||name==='F'?'cc-c3-diff':'cc-c3-match',c4,'cc-c5-outside']);
   check(`8 ${name} 후보 순서`,qs.slice(5).map(q=>q.k),individual);
-  check(`8 ${name} 핵심 표시`,qs.map(q=>q.tag.includes('핵심')),[true,false,false,true,false,...individual.map(()=>false)]);
-  // 카드마다 주된 요청은 하나: 물음표 문장은 최대 1개(반문 카드는 인용한 반문 1개 + 고치기/유지 1개).
-  truth(`8 ${name} 카드당 요청 하나`,qs.every(q=>(q.q.replace(/“[^”]*”/g,'').match(/\?/g)||[]).length<=1));
+  check(`8 ${name} 핵심 표시`,qs.map(q=>/기준 먼저|고침·유지와 이유/.test(q.tag)),[true,false,false,true,false,...individual.map(()=>false)]);
+  // 결함 8: 인용한 반문을 제외하고 물음표와 요청 종결을 함께 세어 정확히 하나인지 검사.
+  truth(`8 ${name} 카드당 요청 하나`,qs.every(q=>requestCount(q.q)===1));
   check(`8 ${name} 고유 k`,new Set(qs.map(q=>q.k)).size,qs.length);
   truth(`8 ${name} plain/src/유한 문구`,qs.every(q=>!Object.hasOwn(q,'src')&&!/<[^>]*>|NaN|undefined/.test(q.q)));
   check(`8 ${name} 재예측`,qs[2].q.startsWith('결과를 본 뒤 다시 한 예측입니다.'),revisited);
-  if(name==='H') truth('8 H 경계 문구',qs[2].q.includes('장부상 감축률은 59.99%로 예측과 달랐습니다')&&!qs[2].q.includes('60.0%'));
+  // 명세 5절 목표 판정·8절 예측: H는 반올림 전 목표 미달이므로 도달 예측과 다르다.
+  if(name==='H') truth('8 H 경계 문구',qs[2].q.includes('장부상 감축률은 59.99%이며, 목표 도달 여부는 예측과 달랐습니다')&&!qs[2].q.includes('60.0%'));
   // I류 상승 계획은 목표 미달이라 목표 대비 차이·장부 질문이 먼저 오고 포집 의존 질문은 개수 제한으로 빠진다.
   if(name==='I') truth('8 I 목표 차이 우선',qs[5].q.includes('장부상 감축률은 1.6%, 목표 대비 차이는 −58.4%p')&&!qs.some(q=>q.k==='cc-i-capture'));
   if(name==='C') truth('8 C 포집 의존 하락 분기',qs.find(q=>q.k==='cc-i-capture').q.includes('순조 81.1%, 기술 지연 55.9%로 25.2%p 낮아집니다'));
   if(name==='D2') truth('8 D2 목표 차이 수치',qs[5].q.includes('장부상 감축률은 52.7%, 목표 대비 차이는 −7.3%p'));
   if(name==='C10'||name==='D30'||name==='D') truth(`8 ${name} 예측 수치`,qs[2].q.includes(`${name==='C10'?'60.6':name==='D30'?'64.5':'56.7'}%`));
+});
+// N2: 예시 B의 중복 원단위 문장을 뺀 실제 길이와 세 예시의 균형 계약을 유지한다.
+attempt('N2 예시 길이 계약',()=>{
+  const html=KCP.games['s-cement-carbon'].reflectExtra(realm(locked(PLANS.A)));
+  const examples=[...html.matchAll(/<details class="reveal cc-example">([\s\S]*?)<\/details>/g)];
+  const lengths=examples.map(([,body])=>[...body.matchAll(/<p>([\s\S]*?)<\/p>/g)]
+    .reduce((sum,[,p])=>sum+p.replace(/<[^>]+>/g,'').length,0));
+  check('N2 실제 예시 본문 길이',lengths,[906,928,890]);
+  truth('N2 예시 길이 비율 ≤ 1.05',Math.max(...lengths)/Math.min(...lengths)<=1.05);
+  truth('N2 원단위 수치는 예시 B에서 제외',!examples[1][1].includes('0.493'));
 });
 attempt('8 기타 분기', () => {
   for (const [name,p,key] of [
@@ -233,7 +265,8 @@ attempt('8 기타 분기', () => {
   for (const [key,title,wa,ul] of [['sure','확실한 감축','과','을'],['local','일자리·지역 경제','와','를'],['price','가격 부담','과','을'],['risk','기술 위험 분산','과','을'],['honest','장부와 실제의 일치','와','를']]) {
     const other=key==='sure'?'price':'sure';
     truth(`조사 ${key} 첫째`,invoke('questions',locked(PLANS.A,'below',false,[key,other]))[0].q.includes(`${title}’${wa}`));
-    truth(`조사 ${key} 둘째`,invoke('questions',locked(PLANS.A,'below',false,[other,key]))[0].q.includes(`${title}’${ul}`));
+    // N4·N6: 둘째 기준 뒤 목적격 조사 대신 두 기준 가운데 우선순위를 먼저 밝힌다.
+    truth(`기준 ${key} 둘째`,invoke('questions',locked(PLANS.A,'below',false,[other,key]))[0].q.includes(`${title}’ 가운데 어떤 기준을 앞세웠는지 먼저 밝히고`));
   }
 });
 

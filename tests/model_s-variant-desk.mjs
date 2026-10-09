@@ -1,4 +1,10 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 // 기대값의 원본: 사용자 제공 수정 명세 4~6절, 8절. 앱의 데이터/식을 복사하지 않는다.
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {isDeepStrictEqual} from 'node:util';
@@ -72,14 +78,17 @@ const all = Array.from({length:16},(_,i)=>i+1);
 const universal = '1.0%(범위 없음 — 전부 양성인 규칙에서는 π와 같습니다)';
 const none = '양성 판정이 없어 계산하지 않음';
 const tables = {
-  A:[[16,0,0],all,[],[8,2,4,5],16,0,16,[6,6,0,0],[6,6,0,0],[6,6,0,0],universal,universal,[13,14,15,16],[7,8,9,10,11,12],[]],
+  // 결함 0·7: P-13~16의 [2,0,2,2]를 기존 합에 더함: [10,2,6,7].
+  A:[[16,0,0],all,[],[10,2,6,7],16,0,16,[6,6,0,0],[6,6,0,0],[6,6,0,0],universal,universal,[13,14,15,16],[7,8,9,10,11,12],[]],
   B:[[0,0,16],[],[],[0,0,0,0],0,0,0,[0,0,6,6],[0,0,6,6],[0,0,6,6],none,none,[],[],[]],
   C:[[4,8,4],[1,2,3,4],[],[3,1,1,3],12,0,12,[4,0,2,6],[6,2,0,4],[4,0,2,6],'0.7~100.0%','0.8~9.5%',[],[],[]],
-  D:[[5,5,6],[2,7,13],[3,8],[2,1,1,0],7,2,9,[2,2,4,4],[5,3,1,3],[1,1,5,5],'0.1~6.9%','0.5~5.0%',[13],[7],[4]],
+  // 결함 0·7: P-02 [1,0,1,0] + P-07 [1,1,0,0] + P-13 [1,0,0,0].
+  D:[[5,5,6],[2,7,13],[3,8],[3,1,1,0],7,2,9,[2,2,4,4],[5,3,1,3],[1,1,5,5],'0.1~6.9%','0.5~5.0%',[13],[7],[4]],
   E:[[0,16,0],[],[],[0,0,0,0],16,0,16,[0,0,6,6],[6,6,0,0],[0,0,6,6],none,universal,[],[],[]],
   F:[[6,6,4],[1,2,3,4,5,6],[],[4,1,2,4],12,0,12,[6,0,0,6],[6,2,0,4],[6,0,0,6],'1.5~100.0%','0.8~9.5%',[],[],[]],
   G:[[4,8,4],[1,2,3,4],[],[3,1,1,3],12,2,14,[4,0,2,6],[6,2,0,4],[4,0,2,6],'0.7~100.0%','0.8~9.5%',[],[],[]],
-  X1:[[12,0,4],[1,2,3,4,5,6,9,10,13,14,15,16],[],[5,1,3,5],12,2,14,[6,2,0,4],[6,2,0,4],[6,2,0,4],'0.8~9.5%','0.8~9.5%',[13,14,15,16],[9,10],[]],
+  // 결함 0·7: 모두 켬 사례도 미확정 4장의 [2,0,2,2]를 더해 [7,1,5,7].
+  X1:[[12,0,4],[1,2,3,4,5,6,9,10,13,14,15,16],[],[7,1,5,7],12,2,14,[6,2,0,4],[6,2,0,4],[6,2,0,4],'0.8~9.5%','0.8~9.5%',[13,14,15,16],[9,10],[]],
   X2:[[3,2,11],[1,2],[4],[2,1,1,1],3,0,3,[3,0,3,6],[4,0,2,6],[2,0,4,6],'0.4~100.0%','0.7~100.0%',[],[],[3]],
   X3:[[0,12,4],[],[],[0,0,0,0],12,0,12,[0,0,6,6],[6,2,0,4],[0,0,6,6],none,'0.8~9.5%',[],[],[]]};
 
@@ -114,7 +123,7 @@ function oracle(s) {
   const ranges={r:range(r,s,s.t1),rc:range(rc,s,s.t2)};
   const distinct=[...new Map(rows.filter(v=>final.includes(v.id)&&v.truth!=='U').map(v=>[v.pen.join('-'),v.pen]))]
     .sort((a,b)=>a[1][0]-b[1][0]||a[1][1]-b[1][1]);
-  const actions=[0,0,0,0];rows.filter(v=>final.includes(v.id)&&v.truth!=='U').forEach(v=>v.a.forEach((n,k)=>{actions[k]+=n;}));
+  const actions=[0,0,0,0];rows.filter(v=>final.includes(v.id)).forEach(v=>v.a.forEach((n,k)=>{actions[k]+=n;}));
   return {rows,report,inclusive,final,consult,actions,demand:final.length+consult.length+family.length,family,r,rc,ranges,onset:distinct.map(([key,pen])=>({key,pen,
     range:ranges.r?ranges.r.map((v,i)=>v*pen[i]/100):null}))};
 }
@@ -153,16 +162,22 @@ for(const [p,n,d] of [[policy(true,true,false,true),4,10],[policy(true,true,true
 
 // 8절 질문 규칙(검토 반영)을 명세 조건식으로 독립 구성한다. 면접 카드는 6~7장, 카드마다 주된 물음 하나.
 // 세 습관: 공통 1(기준 먼저), 오류 질문(얻는 것·잃는 것 한 문장), 반문(고침/유지와 이유).
-const FLAG={relatives:'family',minors:'minor',noCare:'noCare',secondary:'secondary'};
 // 명세의 카드판 표시 순서. 질문 속 ID 나열도 이 순서를 따른다.
 const ORDER=ids([1,7,13,2,9,14,3,8,15,4,10,16,5,11,6,12]);
+// 명세 4.2의 표식·8.4의 갈등 순서 + 총괄 B: 정책 전 분류로만 후보를 정한다.
+// 게임의 POLICY_FLAGS/선택 함수를 복사하지 않고 카드 ID로 후보 표를 독립 구성한다.
 function policyPick(s,r) {
-  const hit=k=>ORDER.filter(id=>r.rows.some(v=>v.id===id&&v[FLAG[k]]&&v.group!=='N'));
-  const keys=['relatives','minors','noCare','secondary'].filter(k=>hit(k).length);
-  if(!keys.length) return {key:'vd-policy-reason',ids:[]};
-  const seed=s.weights.reduce((a,b)=>a+b,0)+s.t1+s.t2, k=keys[((seed%keys.length)+keys.length)%keys.length];
-  return {key:`vd-${k.toLowerCase()}-${s.policy[k]?'on':'off'}`,ids:hit(k)};
+  const active=new Set(r.rows.filter(v=>v.group!=='N').map(v=>v.id));
+  const buckets=[['relatives',['P-01'],active.has('P-01')],['minors',['P-11'],true],
+    ['noCare',['P-08'],true],['secondary',['P-03','P-04','P-12'],true],
+    ['relatives',['P-09'],true]];
+  for(const [k,candidates,eligible] of buckets) if(eligible&&candidates.some(id=>active.has(id))) {
+    const members=k==='relatives'?['P-01','P-09']:candidates;
+    return {key:`vd-${k.toLowerCase()}-${s.policy[k]?'on':'off'}`,ids:ORDER.filter(id=>members.includes(id)&&active.has(id))};
+  }
+  return {key:'vd-policy-reason',ids:[]};
 }
+const topic = key => key.replace(/-(on|off)$/, '');
 function questionKeys(s) {
   const r=oracle(s);
   const result=r.r.TP>=5&&r.r.TN<=2?'vd-error-more-report':r.r.TP<=2&&r.rc.TP>=5?'vd-error-consult':r.r.TN>=5&&r.r.TP<=2?'vd-error-more-miss':'vd-error-balance';
@@ -175,9 +190,12 @@ function questionKeys(s) {
 function questionTexts(s) {
   const r=oracle(s), group=id=>({R:'보고',C:'상담 후 결정',N:'보고하지 않음'}[r.rows.find(v=>v.id===id).group]);
   const lose='이 기준이 얻는 것과 잃는 것을 한 문장으로 말해 보세요.', pp=policyPick(s,r), ids=pp.ids.join(', ');
+  const outside=pp.ids.filter(id=>['P-04','P-08'].includes(id));
+  const guidance='실제 ACMG SF는 참여자가 거부하지 않으면 조치 가능한 유전자에 한해 2차 발견을 보고하도록 권고합니다.'+
+    (outside.length?` 예방·치료법이 없는 ${outside.join(', ')} 카드는 이 권고 밖입니다.`:'');
   const text={
-    'vd-c1':'가장 큰 무게를 둔 증거와 두 문턱의 위치를 왜 그렇게 정했는지, 판단 기준부터 먼저 말해 주세요.'+
-      (s.weights.every(w=>w===0)?' 모두 0이라면 증거에 무게를 두지 않은 이유를 말해 주세요.':''),
+    // N6: 무게 0 설명을 요청 앞에 둔다.
+    'vd-c1':s.weights.every(w=>w===0)?'무게를 모두 0으로 두어 증거에 무게를 두지 않았습니다. 두 문턱의 위치를 정한 판단 기준을 먼저 말해 주세요.':'가장 큰 무게를 둔 증거와 두 문턱의 위치를 정한 판단 기준을 먼저 말해 주세요.',
     'vd-error-more-report':`정책 적용 전 보고 분류에서 병원성 ${r.r.TP}장과 함께 비병원성 ${r.r.FP}장도 보고했습니다. 불필요한 관찰이나 수술 상담을 검토하게 될 사람을 떠올리며, ${lose}`,
     'vd-error-consult':`정책 적용 전 보고 분류에서는 병원성 ${r.r.TP}장만 바로 보고했고, 보고와 상담을 함께 세면 병원성 ${r.rc.TP}장과 비병원성 ${r.rc.FP}장이 상담 후 결정까지 올라왔습니다. 결정을 상담으로 미룬 ${lose}`,
     'vd-error-more-miss':(r.r.FP===0?`정책 적용 전 보고 분류에서 비병원성은 한 장도 보고하지 않았지만 병원성 ${r.r.FN}장도 보고하지 않았습니다.`:
@@ -187,21 +205,22 @@ function questionTexts(s) {
     'vd-prediction':`컴퓨터 예측에 가계 근거·기능 실험보다 큰 무게를 두었습니다. 예측만 높은 P-07은 ‘${group('P-07')}’, P-08은 ‘${group('P-08')}’입니다. 기능 실험과 예측이 다른 방향일 때 무엇을 추가로 확인하겠습니까?`,
     'vd-frequency':`집단 내 빈도에 가계 근거·기능 실험보다 큰 무게를 두었습니다. 드물지만 비병원성으로 설정된 P-11은 ‘${group('P-11')}’, P-12는 ‘${group('P-12')}’입니다. ‘드물다’는 근거를 어디까지 믿겠습니까?`,
     'vd-segregation-zero':'가계 내 공동분리에 무게를 두지 않았습니다. 가계 자료를 빼서 어떤 불확실성을 줄이려 했습니까?',
-    'vd-evidence-pair':`같은 증거를 가진 P-05와 P-09는 각각 ‘${group('P-05')}’와 ‘${group('P-09')}’입니다. 이 게임이 정한 분류가 서로 다른 두 카드를 구별하려면 어떤 자료가 새로 필요합니까?`,
-    'vd-relatives-on':r.family.includes('P-01')?'연락을 거부한 P-01의 참여자가 있는데도 혈족 고지를 검토 대상으로 삼았습니다. 본인의 비밀과 혈족의 위험·선택권 가운데 무엇을 앞세웠습니까?':
+    'vd-evidence-pair':`같은 증거를 가진 P-05와 P-09는 각각 ‘${group('P-05')}’${group('P-05')==='보고'?'와':'과'} ‘${group('P-09')}’입니다. 이 게임이 정한 분류가 서로 다른 두 카드를 구별하려면 어떤 자료가 새로 필요합니까?`,
+    'vd-relatives-on':pp.ids.includes('P-01')?'연락을 거부한 P-01의 참여자가 있는데도 혈족 고지를 검토 대상으로 삼았습니다. 본인의 비밀과 혈족의 위험·선택권 가운데 무엇을 앞세웠습니까?':
       `참여자가 거부해도 혈족 고지를 검토하기로 했습니다(${ids}). 앞으로 연락을 거부하는 참여자가 생기면 이 원칙을 어떻게 설명하겠습니까?`,
     'vd-relatives-off':`사업이 혈족에게 따로 연락하지 않기로 했습니다. 같은 변이를 가질 수 있는 ${ids} 카드 참여자의 혈족이 나중에 이 사실을 알게 된다면 어떻게 설명하겠습니까?`,
-    'vd-minors-on':`미성년 참여자(${ids})의 보호자에게 성인기 위험을 알리기로 했습니다. 이 참여자가 성인이 되어 듣고 싶지 않았다고 말한다면 어떻게 설명하겠습니까?`,
+    'vd-minors-on':`미성년 참여자(${ids})의 보호자에게 성인기 위험을 알리기로 했습니다. 해당 참여자가 성인이 되어 듣고 싶지 않았다고 말한다면 어떻게 설명하겠습니까?`,
     'vd-minors-off':`미성년이라는 이유로 ${ids} 카드를 보고와 상담에서 뺐습니다. 보호자가 지금 준비할 기회를 원한다면 어떻게 답하겠습니까?`,
     'vd-nocare-on':`예방·치료법이 없는 ${ids} 카드도 보고와 상담 대상에 남겼습니다. 듣지 않을 권리를 원하는 참여자에게 어떻게 설명하겠습니까?`,
     'vd-nocare-off':`예방·치료법이 없다는 이유로 ${ids} 카드를 보고와 상담에서 뺐습니다. 생활 계획을 위해 정보를 원하는 참여자에게 어떻게 설명하겠습니까?`,
-    'vd-secondary-on':`2차 발견 표식 카드(${ids})도 보고와 상담 대상에 남겼습니다. 실제 ACMG 권고는 예방·치료 조치가 가능한 유전자만 2차 발견 보고 목록에 넣습니다. 이 사업은 목적 밖의 발견을 어디까지 전하겠습니까?`,
-    'vd-secondary-off':`검사 목적과 무관하다는 이유로 2차 발견 표식 카드(${ids})를 보고와 상담에서 뺐습니다. 이런 정보도 받겠다고 동의한 참여자에게 어떻게 설명하겠습니까?`,
-    'vd-policy-reason':'네 보고 정책은 이번 카드 분류에서 결과를 바꾸지 않았습니다. 다른 카드 묶음에서도 같은 선택을 유지할 원칙을 한 문장으로 말해 주세요.',
+    // N5: 켬에도 실제 영향 카드와 듣지 않을 권리의 반문을 포함한다.
+    'vd-secondary-on':`2차 발견이라는 이유로는 ${ids} 카드를 보고와 상담에서 제외하지 않기로 했습니다. ${guidance} 목적 밖의 정보는 듣고 싶지 않다는 해당 참여자에게 어떻게 설명하겠습니까?`,
+    'vd-secondary-off':`검사 목적과 무관하다는 이유로 2차 발견 표식 카드(${ids})를 보고와 상담에서 뺐습니다. ${guidance} 이런 정보도 받겠다고 동의한 참여자에게 어떻게 설명하겠습니까?`,
+    'vd-policy-reason':'네 보고 정책을 함께 적용한 결과를 바탕으로, 다른 카드 묶음에서도 유지할 원칙을 한 문장으로 말해 주세요.',
     'vd-replanned':'결과를 본 뒤 기준을 다시 계획했습니다. 답을 보고 고친 기준은 이 12장에만 잘 맞는 과적합일 수 있습니다. 새 카드 묶음에서도 이 기준을 유지할 근거는 무엇입니까?',
     'vd-pi-unmoved':'‘검사한 변이 중 병원성 변이의 비율 π’를 바꿔 보지 않았습니다. 게임의 기본값을 실제 판독 대상 변이 집단의 비율로 볼 수 있습니까?',
     'vd-pi-moved':`검사한 변이 중 병원성 변이의 비율 π를 바꾸어 보았고, 확정값은 ${s.piPct.toFixed(1)}%입니다. 카드 분류는 그대로인데 양성예측도 범위가 달라지는 이유를 설명해 주세요.`,
-    'vd-counter-capacity':'상담 인력이 절반으로 줄어 한 차례에 4건만 맡을 수 있다면, 원래 기준을 고치겠습니까, 유지하겠습니까? 무엇을 먼저 미룰지와 함께 그 이유를 말해 주세요.',
+    'vd-counter-capacity':'상담 인력이 절반으로 줄어 한 차례에 4건만 맡을 수 있다면, 원래 기준을 고치거나 유지할 이유를 말해 주세요.',
     'vd-divergent-system':'미확정 4장처럼 지금 자료로는 판단할 수 없는 정보를 다룰 제도를 저울과 문턱 밖에서 하나 제안해 보세요. 단계별 동의, 새 증거에 따른 재분류 통보, 상담 배분 규칙 등을 생각할 수 있습니다.'};
   return questionKeys(s).map(k=>text[k]);
 }
@@ -209,6 +228,7 @@ function verifyQuestions(label,s) {
   const before=JSON.stringify(s), qs=m.questionsFromSnapshot(s), keys=qs.map(q=>q.k);
   check(`${label} 질문 키/순서`,keys,questionKeys(s));
   qs.forEach((q,i)=>check(`${label} ${q.k} 전문/보간`,q.q,questionTexts(s)[i]));
+  qs.forEach(q=>check(`결함 8 ${label}/${q.k} 요청 하나`,requestCount(q.q),1));
   check(`${label} 질문 수`,qs.length,s.policyMode==='apply'?7:6);
   check(`${label} 세 습관 질문`,['vd-c1','vd-counter-capacity'].every(k=>keys.includes(k))&&keys.some(k=>k.startsWith('vd-error-'))&&qs.find(q=>q.k.startsWith('vd-error-')).q.endsWith('얻는 것과 잃는 것을 한 문장으로 말해 보세요.'),true);
   check(`${label} 키 유일`,new Set(keys).size,qs.length);
@@ -216,13 +236,26 @@ function verifyQuestions(label,s) {
   check(`${label} 결정적 질문`,qs,plain(m.questionsFromSnapshot(s)));
   check(`${label} 질문 순수성`,JSON.stringify(s),before);
   check(`${label} state 어댑터`,m.questionKeys({game:{...s,locked:s}}),questionKeys(s));
-  check(`${label} 무게0 문구`,qs[0].q.includes('모두 0이라면 증거에 무게를 두지 않은 이유를 말해 주세요.'),s.weights.every(w=>w===0));
+  check(`${label} 무게0 문구`,qs[0].q.startsWith('무게를 모두 0으로 두어 증거에 무게를 두지 않았습니다.'),s.weights.every(w=>w===0));
   const pi=qs.find(q=>q.k.startsWith('vd-pi-'));
   if(s.piTouched&&!s.replannedAfterReveal) check(`${label} π 보간`,pi.q.includes(`확정값은 ${s.piPct.toFixed(1)}%입니다.`),true);
   if(keys.includes('vd-error-consult')) check(`${label} 상담 보간`,qs[1].q,
     `정책 적용 전 보고 분류에서는 병원성 ${oracle(s).r.TP}장만 바로 보고했고, 보고와 상담을 함께 세면 병원성 ${oracle(s).rc.TP}장과 비병원성 ${oracle(s).rc.FP}장이 상담 후 결정까지 올라왔습니다. 결정을 상담으로 미룬 이 기준이 얻는 것과 잃는 것을 한 문장으로 말해 보세요.`);
 }
 for(const [name,s] of Object.entries(cases)) test(`질문 ${name}`,()=>verifyQuestions(`8 ${name}`,s));
+// 명세 4.2 독립 점수: [0,0,0,1,2]에서 P-01=5, P-03=6, P-04=5. 상담선 6이면 P-03만 후보다.
+// 총괄 B: 미성년 스위치가 꺼져도 후보에서 빠지지 않아 2차 발견 양쪽을 물어야 한다.
+test('N3·N5 2차 발견 실제 카드와 균형',()=>{
+  for(const on of [true,false]) {
+    const s=base({weights:[0,0,0,1,2],t1:7,t2:6,policyMode:'apply',policy:policy(on,false,false,false)});
+    const q=m.questionsFromSnapshot(s)[3];
+    verifyQuestions(`N3 자연 분류 2차 발견 ${on}`,s);
+    check(`N5 ${on} 실제 영향 카드`,q.q.includes('P-03'),true);
+    check(`N5 ${on} 상담선 아래 P-04는 질문에서 제외`,q.q.includes('P-04'),false);
+    check(`N5 ${on} ACMG 조건 동일`,q.q.includes('참여자가 거부하지 않으면 조치 가능한 유전자에 한해 2차 발견'),true);
+    check(`N5 ${on} 반문`,q.q.includes(on?'듣고 싶지 않다는':'받겠다고 동의한'),true);
+  }
+});
 test('π 조작 질문',()=>verifyQuestions('8 C π 조작',base({piTouched:true,piPct:1})));
 test('가계0 질문',()=>verifyQuestions('8 가계0',base({weights:[0,2,3,1,1]})));
 test('예측 동률',()=>verifyQuestions('8 예측 동률',base({weights:[3,2,3,3,1]})));
@@ -230,19 +263,53 @@ test('수동 우선',()=>verifyQuestions('8 수동 우선',{...cases.D,overrides
 test('빈도 우선',()=>verifyQuestions('8 빈도 우선',base({weights:[1,3,2,1,1]})));
 test('다시 계획 질문',()=>{const s=base({replannedAfterReveal:true,piTouched:true});verifyQuestions('8 다시 계획',s);
   check('8 다시 계획은 π 질문 대신',m.questionKeys({game:{...s,locked:s}}).filter(k=>/^vd-(pi|replanned)/.test(k)),['vd-replanned']);});
-// 검토 M5: 정책 질문은 켬·끔 양쪽에 반문이 있고, 결과를 바꾼 스위치가 여럿이면 한 스위치에 몰리지 않는다.
-test('정책 질문 대칭',()=>{const seen={};
-  for(const w of [[2,1,3,1,1],[3,3,3,3,3],[0,0,0,3,0],[3,2,3,1,1],[2,3,3,0,1],[2,2,2,1,1],[1,2,1,1,1]]) for(const [t1,t2] of [[12,1],[1,0],[18,10],[22,0],[6,1],[-5,-10]])
-    for(let bits=0;bits<16;bits++){const s=base({weights:w,t1,t2,policyMode:'apply',policy:policy(...[0,1,2,3].map(k=>Boolean(bits&(1<<k))))});
-      const k=m.questionKeys({game:{...s,locked:s}}).find(k=>/^vd-(relatives|minors|nocare|secondary|policy)/.test(k));seen[k]=(seen[k]||0)+1;}
-  for(const k of ['relatives','minors','nocare','secondary']) check(`8 ${k} 켬·끔 질문 모두 등장·같은 횟수`,(seen[`vd-${k}-on`]||0)>0&&seen[`vd-${k}-on`]===seen[`vd-${k}-off`],true);
-  check('8 결과를 바꾸지 않은 정책의 질문 등장',(seen['vd-policy-reason']||0)>0,true);
-  check('8 한 질문이 절반을 넘지 않음',Math.max(...Object.values(seen))<=Object.values(seen).reduce((a,b)=>a+b,0)/2,true);});
+// 총괄 B: 네 스위치 각각을 뒤집어도 주제 키는 같다. 선택된 스위치만 켬/끔 접미사가 바뀐다.
+// family 같은 정책 결과가 같은 상태라는 조건은 두지 않는다. 수동 변경·중복 표식도 포함한다.
+test('정책 질문 네 스위치 대칭과 카드 갈등 우선',()=>{
+  const fixtures=[...Object.values(cases), ...['P-01','P-03','P-04','P-08','P-09','P-11','P-12'].map(id=>
+    base({t1:47,t2:46,overrides:{[id]:{to:'R',reason:'이 카드의 정책 갈등을 검토합니다.'}}}))];
+  for(const input of fixtures) for(let bits=0;bits<16;bits++) {
+    const s={...input,policyMode:'apply',policy:policy(...[0,1,2,3].map(k=>Boolean(bits&(1<<k))))};
+    const q=m.questionsFromSnapshot(s)[3];
+    check('B 카드 상태 독립 oracle',q.k,policyPick(s,oracle(s)).key);
+    for(const field of ['secondary','minors','noCare','relatives']) {
+      const other={...s,policy:{...s.policy,[field]:!s.policy[field]}};
+      const next=m.questionsFromSnapshot(other)[3];
+      check(`B ${field} 반전 주제 불변`,topic(next.k),topic(q.k));
+      check(`B ${field} 반전 문안 방향`,next.k,policyPick(other,oracle(other)).key);
+      if(topic(q.k)!==`vd-${field.toLowerCase()}`) check(`B ${field} 비선택 스위치 문안 불변`,next.q,q.q);
+    }
+    verifyQuestions('B 정책 양방향',s);
+  }
+  // 8.4 및 성찰 10절: P-04는 2차 발견이지만 조치 불가능하여 ACMG SF 권고 밖이다.
+  for(const on of [true,false]) {
+    const s=base({t1:47,t2:46,overrides:{'P-03':{to:'C',reason:'상담으로 남깁니다.'},'P-04':{to:'R',reason:'근거를 검토합니다.'}},policyMode:'apply',policy:policy(on,false,false,false)});
+    const q=m.questionsFromSnapshot(s)[3];
+    check('B 중복 표식도 2차 발견 양방향',q.k,`vd-secondary-${on?'on':'off'}`);
+    check('ACMG 조치 불가 카드 명시',q.q.includes('예방·치료법이 없는 P-04 카드는 이 권고 밖입니다.'),true);
+    check('두 카드 단수 지시어 없음',q.q.includes('이 카드의 참여자'),false);
+    check('중복 표식 한 요청',requestCount(q.q),1);
+  }
+});
+// 결함 9: 예시 가는 X1에서 미성년·혈족만 끈 혼합 정책. P-03의 [1,0,0,1]을 뺀 독립 합계.
+test('가 예시 혼합 정책',()=>{
+  const r=m.compute({...cases.X1,policy:policy(true,false,true,false)});
+  check('결함 9 가 보고/조치/상담',[r.final.length,r.actions,r.demand,r.family.length],[11,[6,1,5,6],11,0]);
+  check('결함 0·7 미확정 요청 별도 표시',r.uncertainActions,[2,0,2,2]);
+  const snapshot={...cases.X1,policy:policy(true,false,true,false)};
+  const recap=KCP.games['s-variant-desk'].recap(realm({game:{...snapshot,locked:snapshot}}));
+  check('9 recap 미확정 요청 항목명',recap.find(x=>x.t==='조치 검토 요청').d.includes(
+    '미확정 카드에서 나온 요청 정기 영상 검사 2건 / 예방적 수술 상담 0건 / 약물 2건 / 추가 가족 검사 2건'),true);
+});
 test('나 예시: 미성년 정책이 상담 칸에도 적용',()=>{const r=m.compute(cases.X2);
   check('M3 X2 P-03 상담 제외',[r.participantConsult.includes('P-03'),r.consultRemoved],[false,['P-03']]);});
 test('미확정 질문',()=>check('8 확정 전',m.questionKeys({game:{}}),[]));
 for(let bits=0;bits<16;bits++) for(const [name,input] of Object.entries(cases)) test(`정책 ${name}/${bits}`,()=>{
   const s={...input,policyMode:'apply',policy:policy(...[0,1,2,3].map(k=>Boolean(bits&(1<<k))))},r=m.compute(s),o=oracle(s);
+  // 결함 0·7: 숨은 분류와 무관한 전체 요청 합과, 미확정 요청의 부분합을 각각 독립 검산.
+  check(`결함 0·7 ${name}/${bits} 조치`,r.actions,o.actions);
+  const u=cards.filter(v=>v.truth==='U'&&o.final.includes(v.id));
+  check(`결함 0·7 ${name}/${bits} 미확정 부분합`,r.uncertainActions,[0,1,2,3].map(k=>u.reduce((sum,v)=>sum+v.a[k],0)));
   check(`5 ${name}/${bits} AND 필터`,r.final,o.final);
   check(`5 ${name}/${bits} 혈족`,r.family,o.family);
   check(`5 ${name}/${bits} 정책 PPV 불변`,r.ranges,plain(m.compute({...s,policyMode:'skip'}).ranges));
@@ -272,9 +339,49 @@ test('경계/null',()=>{
   check('5 U만 보고 PPV',m.compute(base({t1:47,t2:46,overrides:{'P-13':{to:'R',reason:'미확정 자료의 한계를 설명합니다.'}}})).ranges.r,null);
   check('5 현재 카드만 전부 양성 예외 금지',m.compute(base({weights:[3,3,3,3,3],t1:-21,t2:-22})).universal.r,false);
   check('5 가능한 최소 점수 바닥 −24에서 전부 양성',[m.compute(base({weights:[3,3,3,3,3],t1:-24,t2:-25})).universal.r,m.compute(base({weights:[3,3,3,3,3],t1:-23,t2:-24})).universal.r],[true,false]);
-  check('5 미확정 보고는 조치에서 제외',m.compute(base({t1:47,t2:46,overrides:{'P-13':{to:'R',reason:'미확정 자료의 한계를 설명합니다.'}}})).actions,[0,0,0,0]);
-  check('5 등호 T1',m.classify(12,base()),'R');check('5 등호 T2',m.classify(2,base()),'C');
+  // 결함 0·7: P-13 한 장의 요청 벡터는 [1,0,0,0].
+  check('5 미확정 보고도 조치에 포함',m.compute(base({t1:47,t2:46,overrides:{'P-13':{to:'R',reason:'미확정 자료의 한계를 설명합니다.'}}})).actions,[1,0,0,0]);
+  check('5 등호 T1',m.classify(12,base()),'R');// 결함 13: 기본 상담선 1의 등호와 바로 아래 0을 직접 검사.
+  check('5 등호 T2',m.classify(1,base()),'C');check('5 T2 바로 아래',m.classify(0,base()),'N');
   check('5 원래 분모',m.fraction(6,6),'6/6');
+});
+// N3: 4^5 무게 × 일곱 문턱 값 중 T1>T2인 21쌍 × 16정책 = 344,064상태.
+// 보고에 원래 표본의 문턱 범위가 없으므로 아래 표본을 명시해 재현 가능하게 센다.
+// --distribution은 전수 집계가 필요할 때만 실행한다.
+if(process.argv.includes('--distribution')) test('N3 정책 질문 전수 분포',()=>{
+  const thresholds=[-30,-10,0,1,6,12,47], counts={};
+  let total=0, wrong=0, conflict=0, symmetryErrors=0, flips=0;
+  for(let n=0;n<1024;n++) {
+    const weights=Array.from({length:5},(_,k)=>(n>>(2*k))&3);
+    for(let hi=1;hi<thresholds.length;hi++) for(let lo=0;lo<hi;lo++) {
+      const seed=base({weights,t1:thresholds[hi],t2:thresholds[lo],policyMode:'apply'});
+      const r=oracle(seed), refusal=r.rows.some(v=>v.id==='P-01'&&v.group!=='N'), keys=[];
+      for(let bits=0;bits<16;bits++) {
+        const s={...seed,policy:policy(...[0,1,2,3].map(k=>Boolean(bits&(1<<k))))};
+        const expected=policyPick(s,r), q=m.questionsFromSnapshot(s)[3];
+        keys.push(q.k); counts[q.k]=(counts[q.k]||0)+1; total++;
+        if(q.k!==expected.key || requestCount(q.q)!==1) wrong++;
+        if(refusal) {conflict++; if(topic(q.k)!=='vd-relatives') wrong++;}
+      }
+      for(let bits=0;bits<16;bits++) for(let bit=0;bit<4;bit++) {
+        flips++;
+        if(topic(keys[bits])!==topic(keys[bits^(1<<bit)])) symmetryErrors++;
+      }
+    }
+  }
+  check('B 전수 네 스위치 반전 수',flips,344064*4);
+  check('B 전수 네 스위치 주제 불변',symmetryErrors,0);
+  check('N3 전수 상태 수',total,344064);
+  check('N3 전수 우선순위·단일 요청 오류',wrong,0);
+  // 명세 4.2: P-01 − P-11 = [5,1,4,2,3]. 무게가 음수가 아니므로 P-11이 R/C면 P-01도 R/C다.
+  // 총괄 B의 거부 갈등 우선으로 수동 변경 없는 격자에서는 미성년 질문이 0건이다.
+  check('B P-01 점수의 P-11 지배',vectors[0].map((v,k)=>v-vectors[10][k]),[5,1,4,2,3]);
+  for(const suffix of ['on','off']) check(`B 자동 분류 미성년 ${suffix} 없음`,counts[`vd-minors-${suffix}`]||0,0);
+  for(const k of ['relatives','nocare','secondary'])
+    for(const suffix of ['on','off']) check(`N3 전수 ${k}/${suffix} 도달`,(counts[`vd-${k}-${suffix}`]||0)>0,true);
+  for(const k of ['relatives','minors','nocare','secondary'])
+    check(`B 전수 ${k} 켬/끔 수 동일`,counts[`vd-${k}-on`]||0,counts[`vd-${k}-off`]||0);
+  console.log('N3 분포 '+JSON.stringify({thresholds,total,conflict,flips,symmetryErrors,counts}));
 });
 if(failed) {console.error(`통과 ${passed}건 · 실패 ${failed}건`);process.exitCode=1;}
 else console.log(`통과 ${passed}건`);

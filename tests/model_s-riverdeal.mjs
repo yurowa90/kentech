@@ -1,7 +1,13 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 // 기대값은 사용자 제공 수정 명세 5·6·8·12절에서만 옮겼다.
 // 실행: node tests/model_s-riverdeal.mjs (전수 탐색도 기본 실행)
 // 전수 탐색은 같은 파일을 worker_threads로 나눠 실행한다. 조항 28개를 번갈아 나누므로 탐색 영역은 그대로다.
 // RD_SWEEP_WORKERS=1 이면 worker 하나로 순서대로 실행한다.
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
@@ -225,11 +231,13 @@ function expectedQuestions(state) {
   const f=(x,d=3)=>x===null?'계산 불가':x.toFixed(d);
   const decisions=L.rounds.map(r=>r.decision).filter(Boolean),rejects=decisions.filter(d=>d.action==='reject');
   const latestReject=rejects.at(-1),hard=decisions.find(d=>d.id===L.final.hardDecisionId)||decisions.at(-1),applied=decisions.filter(d=>d.action==='apply').length;
-  const hardText=hard?`${names[parties.indexOf(hard.party)]}의 역제안을 가장 다루기 어려운 요구로 골랐습니다. 이를 ${hard.action==='apply'?'반영':'거절'}한 기준은 무엇인가요?`:'이번 역할극에서는 역제안 처리 없이 동의가 모였습니다. 가장 동의하기 어려웠던 요구는 무엇이었나요?';
-  const rejectText=latestReject?` ${names[parties.indexOf(latestReject.party)]}의 요구를 거절하며 “${latestReject.reason}”라고 적었습니다. 그 이유가 상대에게도 설득력이 있는지 설명해 주세요.`:'';
-  const qs=[{k:'rd-c1',tag:'공통 1',q:'상정한 배분안과 조항을 설명해 주세요. 조정의 기준과 그 무게를 먼저 말하고, 이 안으로 얻는 것과 잃는 것을 한 문장으로 정리해 주세요.'},
-    {k:'rd-c2',tag:'공통 2',q:hardText+rejectText+' 반문을 다시 받는다면 이 안을 고치겠습니까, 유지하겠습니까? 그 이유를 말해 주세요.'},
-    {k:'rd-c3',tag:'공통 3',q:'물고기와 갯벌 생물은 협상 테이블에서 말할 수 없습니다. 이 안에서 그들의 몫은 누가, 어떻게 대변했나요? 대변자가 놓칠 수 있는 것은 무엇인가요?'}];
+  const hardText=hard?`${names[parties.indexOf(hard.party)]}의 역제안을 가장 다루기 어려운 요구로 골랐습니다. 이를 ${hard.action==='apply'?'반영':'거절'}했습니다.`:'이번 역할극에서는 역제안 처리 없이 동의가 모였습니다.';
+  // 명세 8절: 가장 어려운 결정과 최신 거절이 같으면 당사자·거절 행동을 중복 서술하지 않는다.
+  const rejectText=latestReject?` ${latestReject.id===hard?.id?"그때 거절 이유로":names[parties.indexOf(latestReject.party)]+"의 요구를 거절하며"} “${latestReject.reason}”라고 적었습니다.`:'';
+  // N4·N6: 기준 먼저, 미래 비용·과학 추론 요청 및 실제 감량 선택 문안을 검증한다.
+  const qs=[{k:'rd-c1',tag:'공통 1 · 기준 먼저 · 얻는 것과 잃는 것',q:'어떤 배분 기준을 앞세웠는지 먼저 밝히고, 이 안으로 얻는 것과 잃는 것을 한 문장으로 말해 주세요.'},
+    {k:'rd-c2',tag:'공통 2 · 고침·유지와 이유',q:hardText+rejectText+' 상대가 다시 반문한다면, 수용·거절 기준 하나에 비추어 이 안을 고치거나 유지할 이유를 말해 주세요.'},
+    {k:'rd-c3',tag:'공통 3',q:'물고기와 갯벌 생물은 협상 테이블에서 말할 수 없습니다. 이 안에서 그들의 몫을 대변한 방식의 한계는 무엇인가요?'}];
   const indiv=[],situ=[],damMissing=Number(N.end<110+(L.mask&1)-EPS)+Number(D.shortage>EPS),cityMissing=[];
   if(N.supply<.95+.01*((L.mask>>2)&1)-EPS)cityMissing.push('공급량 부족');
   if(N.C===null||N.C>.90-.01*((L.mask>>2)&1)+EPS)cityMissing.push('수질 기준 미달');
@@ -242,32 +250,34 @@ function expectedQuestions(state) {
   const isSevere=[N.end<80-EPS,N.income<.70-EPS,N.supply<.85-EPS||(N.C!==null&&N.C>1+EPS),N.Qe<(N.pulseEffective?2:3)-EPS||(N.DO!==null&&N.DO<4-EPS)];
   const others=[1,2,3].some(missing);
   const pq=[
-    {k:'rd-dam-future',tag:'개별 · 미래 비용',q:`평년 기말 저수량은 ${f(N.end,2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. 가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?`+(others?' 미래 사용자는 직접 반대할 수 없는데, 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 되지 않았는지도 말해 주세요.':'')},
-    {k:'rd-ag',tag:'개별 · 생계 부담',q:`농가 소득 지수는 ${f(N.income)}입니다. 이 배분에서 농가가 잃는 몫을 무엇으로 정당화하나요? 물을 다른 용도에 더 주었다면 그 기준을 말하고, 부담을 줄일 대안을 제안해 주세요.`},
-    {k:'rd-city',tag:'개별 · 생활 부담',q:`도시 공급률은 ${f(100*N.supply,1)}%, 취수 수질 지표는 ${f(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(issue,'을/를')} 설명해 주세요. 제한 급수가 필요하다면 가장 먼저 영향을 받는 시민은 누구인가요?`},
-    {k:'rd-eco',tag:'개별 · 생태 부담',q:`하구 모형 유량은 ${f(N.Qe)}m³/s, 수온은 ${f(N.T,2)}℃, DO는 ${N.DO===null?'계산 불가':f(N.DO)+'mg/L'}입니다. 수온과 유량·산소 소모로 이 값을 설명해 주세요. 모형이 계산하지 않는 염분 침입(강물이 줄면 바닷물이 상류로 더 올라오는 현상)이 산란장에 줄 영향도 함께 생각해, 생물과 어업인에게 돌아가는 부담을 줄일 다른 방법을 제안해 주세요.`}];
+    {k:'rd-dam-future',tag:'개별 · 미래 비용',q:`평년 기말 저수량은 ${f(N.end,2)}백만 m³이며 공사의 모형 기준 2개 가운데 ${damMissing}개를 채우지 못했습니다. ${others?"미래 사용자는 직접 반대할 수 없습니다. 가을에도 비가 오지 않을 때 그들이 질 비용을 고려해, 비축을 깎는 것이 지금 당사자들 사이에서 쉬운 타협이 되지 않았는지 설명해 주세요.":"가을에도 비가 오지 않으면 이 결정의 비용은 누가 지나요?"}`},
+    {k:'rd-ag',tag:'개별 · 생계 부담',q:`농가 소득 지수는 ${f(N.income)}입니다. 이 배분에서 농가가 지는 부담을 줄일 대안 하나를 제안해 주세요.`},
+    {k:'rd-city',tag:'개별 · 생활 부담',q:`도시 공급률은 ${f(100*N.supply,1)}%, 취수 수질 지표는 ${f(N.C)}입니다. 이 안의 미충족 항목인 ${KCP.josa(issue,'을/를')} 감수할 때 가장 먼저 영향을 받는 시민은 누구인가요?`},
+    {k:'rd-eco',tag:'개별 · 생태 부담',q:`하구 모형 유량은 ${f(N.Qe)}m³/s, 수온은 ${f(N.T,2)}℃, DO는 ${N.DO===null?'계산 불가':f(N.DO)+'mg/L'}입니다. ${N.DO === null ? "물이 흐르지 않아 DO를 계산할 수 없다는 한계를 근거로," : "수온·유량·산소 소모가 이 DO 값에 미친 영향을 근거로,"} 생물과 어업인에게 돌아가는 부담을 설명해 주세요.`}];
   const order=[0,1,2,3].filter(missing).map(i=>({i,rank:isSevere[i]?0:N.responses[i]==='reject'?1:2,gap:Math.max(...crit[i].map(unmetGap).filter(g=>g!==null))}))
     .sort((a,b)=>a.rank-b.rank||b.gap-a.gap||a.i-b.i);
   const partyQs=order.map(o=>pq[o.i]);
   const must=Math.max(order.filter(o=>o.rank===0).length,Math.min(2,order.length));
-  if(missing(0)&&!others)situ.push({k:'rd-dam-structure',tag:'개별 · 비축의 대표성',q:'미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자는 직접 반대할 수 없다는 구조를 어떻게 보나요? 이 안을 고치겠습니까, 유지하겠습니까? 이유도 말해 주세요.'});
-  if(L.mask)situ.push({k:'rd-repeat',tag:'개별 · 반복 거절',q:`${names.filter((_,i)=>(L.mask>>i)&1).join(', ')}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요? 실제 협상에서도 기준이 반드시 오를까요?`});
-  if(applied>=3)situ.push({k:'rd-applied-three',tag:'개별 · 조정의 일관성',q:`역제안을 ${applied}번 반영했습니다. 조정위원이 요구를 받아들이는 동안 잃을 수 있는 기준이나 신뢰는 무엇인가요? 유지한 기준과 바꾼 기준을 나누어 말해 주세요.`});
+  if(missing(0)&&!others)situ.push({k:'rd-dam-structure',tag:'개별 · 비축의 대표성',q:'미래를 위한 비축을 깎는 것이 지금의 당사자들 사이에서 쉬운 타협이 될 수 있습니다. 미래 사용자의 몫을 고려해 이 안을 고치거나 유지할 이유를 말해 주세요.'});
+  if(L.mask)situ.push({k:'rd-repeat',tag:'개별 · 반복 거절',q:`${names.filter((_,i)=>(L.mask>>i)&1).join(', ')}의 요구를 연속으로 거절해 모형 기준이 올랐습니다. 같은 쪽의 요구를 거듭 거절한 이유는 무엇인가요?`});
+  if(applied>=3)situ.push({k:'rd-applied-three',tag:'개별 · 조정의 일관성',q:`역제안을 ${applied}번 반영했습니다. 요구를 받아들이면서도 유지하려 한 기준은 무엇인가요?`});
   const dissentText=L.mode==='role'?`최종 역할극 반응에서 ${KCP.josa(diss.join(', '),'이/가')} 수용하지 않았습니다.`:`최종 자동 반응에서 ${diss.join(', ')}의 모형 기준을 채우지 못했습니다.`;
-  if(diss.length)situ.push({k:'rd-dissent',tag:'개별 · 상정 절차',q:dissentText+' 이 안을 상정하는 절차적 근거는 무엇이며, 그 당사자를 다시 협상에 참여시키려면 무엇을 바꾸겠습니까?'});
-  if(D.shortage>EPS)situ.push({k:'rd-dry-cut',tag:'개별 · 건조 감량',q:`건조 전망에서 계획대로 방류하면 사수위 저수량(40백만 m³)보다 ${f(D.shortage,2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order==='proportional'?'같은 비율로 줄이는 방식을':{agFirst:'농업부터 줄이는 순서를',cityFirst:'도시부터 줄이는 순서를',envFirst:'하천유지부터 줄이는 순서를'}[L.proposal.order]} 택한 이유와 먼저 부담을 지는 사람·생물을 설명해 주세요.`});
-  if(N.cost>=50)situ.push({k:'rd-tax',tag:'개별 · 테이블 밖 비용',q:`대책비 ${f(N.cost,0)}억 원을 쓰는 안입니다. 유역 밖 납세자가 이 비용을 함께 내야 하는 이유는 무엇이며, 그들에게 어떤 설명과 참여 기회를 제공하겠습니까?`});
-  if(W.responses.every(x=>x==='accept')&&!N.responses.every(x=>x==='accept')&&!D.responses.every(x=>x==='accept'))situ.push({k:'rd-wet-only',tag:'개별 · 비에 기대는 합의',q:'이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 충분히 오기를 기대는 합의인가요? 비가 적으면 비용을 누가 지도록 약속하겠습니까?'});
+  if(diss.length)situ.push({k:'rd-dissent',tag:'개별 · 상정 절차',q:dissentText+' 그 당사자가 수용하지 않은 안을 상정할 절차적 근거는 무엇인가요?'});
+  if(D.shortage>EPS)situ.push({k:'rd-dry-cut',tag:'개별 · 건조 감량',q:`건조 전망에서 계획대로 방류하면 사수위 저수량(40백만 m³)보다 ${f(D.shortage,2)}백만 m³가 부족해 그만큼 감량됩니다. ${L.proposal.order==='proportional'?'같은 비율로 줄이는 방식을':{agFirst:'농업부터 줄이는 순서를',cityFirst:'도시부터 줄이는 순서를',envFirst:'하천유지부터 줄이는 순서를'}[L.proposal.order]} 택했습니다. 감량 부담을 지는 사람·생물에게 이 방식의 근거를 설명해 주세요.`});
+  if(N.cost>=50)situ.push({k:'rd-tax',tag:'개별 · 테이블 밖 비용',q:`대책비 ${f(N.cost,0)}억 원을 쓰는 안입니다. 유역 밖 납세자에게 어떤 참여 기회를 제공하겠습니까?`});
+  if(W.responses.every(x=>x==='accept')&&!N.responses.every(x=>x==='accept')&&!D.responses.every(x=>x==='accept'))situ.push({k:'rd-wet-only',tag:'개별 · 비에 기대는 합의',q:'이 안은 습윤 전망에서만 네 당사자의 모형 기준을 모두 채웁니다. 비가 적으면 비용을 누가 지도록 약속하겠습니까?'});
   // 개별 질문은 최대 3개: 반드시 묻는 당사자 → 상황 질문 → 남은 당사자.
   indiv.push(...partyQs.slice(0,must),...situ,...partyQs.slice(must));
   indiv.length=Math.min(indiv.length,3);
-  if(indiv.length<2)indiv.push({k:'rd-order-reason',tag:'개별 · 감량의 원칙',q:'부족 시 감량 순서를 정하거나 비례 감량을 유지한 기준은 무엇인가요? 계획을 세우기 어려워지는 부담을 누가 지는지도 설명해 주세요.'});
-  const lastQ=applied>0||L.mask!==0?{k:'rd-divergent',tag:'발산 · 모형 밖 대안',q:'하류로 내려가면서 산소가 다시 녹아드는 과정인 재폭기와 유기물 분해를 모형에 넣으면 판단이 달라질까요? 하수 재이용이나 해수 담수화 시설이 생기면 협상 구도와 비용 부담은 어떻게 바뀔까요? 안을 고치거나 유지할 이유를 말해 주세요.'}:
-    {k:'rd-science',tag:'과학 · 회귀수와 희석',q:'같은 물이라도 도시가 쓸 때와 농업이 쓸 때 이 모형의 하구로 돌아오는 양이 다릅니다. 회귀수와 희석으로 자신의 배분을 설명하고, 회귀수 비율이 달라지면 판단을 고칠지 말해 주세요.'};
+  if(indiv.length<2)indiv.push({k:'rd-order-reason',tag:'개별 · 감량의 원칙',q:`부족 시 ‘${{proportional:'미지정(비례 감량)',agFirst:'농업→도시→하천',cityFirst:'도시→하천→농업',envFirst:'하천→농업→도시'}[L.proposal.order]}’ 방식으로 감량하기로 했습니다. 이 방식 때문에 계획을 세우기 어려워지는 부담은 누가 지나요?`});
+  // 명세 8절 rd-divergent/rd-science·10절 한계: 재폭기·분해 및 회귀수·희석을 보존하고 요청은 하나로 묶는다.
+  const lastQ=applied>0||L.mask!==0?{k:'rd-divergent',tag:'발산 · 모형 밖 대안',q:'대기에서 산소가 다시 녹아드는 재폭기와 산소를 소비하는 유기물 분해는 이 모형에서 빠져 있습니다. 이 과정이나 하수 재이용·해수 담수화 중 하나를 고려해, 이 안을 고치거나 유지할 이유를 말해 주세요.'}:
+    {k:'rd-science',tag:'과학 · 회귀수와 희석',q:'같은 물이라도 도시가 쓸 때와 농업이 쓸 때 이 모형의 하구로 돌아오는 양이 다릅니다. 회귀수와 희석을 근거로, 회귀수 비율이 달라질 때 자신의 배분을 고치거나 유지할 이유를 말해 주세요.'};
   return qs.concat(indiv,lastQ);
 }
 function checkQuestions(label,state,keys=null) {
   const before=JSON.stringify(state),expected=expectedQuestions(state),actual=game.questions(state);
+  for(const q of actual) test(`결함 8 ${label}/${q.k} 요청 하나`,()=>eq(requestCount(q.q),1)); // 결함 8: 모든 검산 사례에 같은 요청 수 검사
   test(`${label} 키`,()=>eq(m.questionKeys(state),keys||expected.map(q=>q.k)));
   test(`${label} 문장·수치·우선순위`,()=>eq(actual,expected));
   test(`${label} 비수정`,()=>eq(JSON.stringify(state),before));
@@ -326,6 +336,15 @@ test('12.3-9 질문 키 안정',()=>eq(game.questions(hostile).map(q=>q.k),game.
     }
   }
   test('8 전수 격자 심각 미달 보장·상한·규범 일치',()=>eq([grid,bad],[518616,[]]));
+}
+// 명세 5절 무유량 분기·8절 생태 질문: 계산 불가를 수치처럼 해석시키지 않는다.
+for(const [label,p,isNull] of [['무유량',plan(0,0,0),true],['유량 있음',plan(0,35,0),false]]) {
+  test(`8 DO ${label} 질문`,()=>{
+    const q=game.questions(lockedState(p)).find(q=>q.k==='rd-eco');
+    eq(q.q.includes('물이 흐르지 않아 DO를 계산할 수 없다는 한계'),isNull);
+    eq(q.q.includes('이 DO 값에 미친 영향'),!isNull);
+    eq(requestCount(q.q),1);
+  });
 }
 // 7.4 개정: 반올림하면 기준과 같아 보이는 미충족 값은 자릿수를 늘리거나 반올림 전 미달을 밝힌다.
 {
