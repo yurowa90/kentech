@@ -1071,6 +1071,10 @@ def feature_hiding(checks, context, base, label, pages):
               f'{label} E #build 옛 연구·일지·증설·세 기간 유지')
     build.locator('[data-tab="mission"]').click()
     for node in build.locator('[data-mis]').all()[:2]: node.click()
+    # 390 폭에서는 열린 서랍이 실행 막대를 덮는다(숨김 작업 전 9babc7d에도 있던 #build 모바일 겹침, 별도 결함).
+    # 사람이 하는 순서대로 서랍을 닫고 실행한다.
+    if build.locator('#bd-drawer-x').is_visible():
+        build.locator('#bd-drawer-x').click()
     build.locator('[data-run="7"]').click(); build.wait_for_selector('#bd-skip'); build.locator('#bd-skip').click()
     build.wait_for_selector('#bd-j-dlg[open]')
     checks.ok(shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
