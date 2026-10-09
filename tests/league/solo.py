@@ -223,6 +223,21 @@ def play(checks, page, base, label):
               '지방채 한도' in help_text and '빚' in help_text,
               f'{label} D-A6 도움말 분기 지급·지방채 설명')
     page.locator('#lg-panel').press('Escape')
+    checks.ok([n.get_attribute('data-run') for n in page.locator('[data-run]:visible').all()] == ['7', '30', '90'],
+              f'{label} E C10 혼자 하기는 시험 세 기간 유지')
+    page.locator('#bd-pm').click()
+    checks.ok(all(not shown(page, sel) for sel in
+                  ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')),
+              f'{label} E G11·G12·D03 혼자 하기에서도 리그 중복 UI 숨김')
+    page.locator('#bd-drawer-x').click()
+    for days in (30, 90):
+        page.locator(f'[data-run="{days}"]').click(); page.wait_for_selector('#bd-skip')
+        page.locator('#bd-skip').click(); page.wait_for_selector('#bd-res-title')
+        checks.ok(page.evaluate('() => KCP.buildGame.lastTrial().days') == days and
+                  all(not shown(page, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
+                  f'{label} E C10·G12 혼자 하기 {days}일 실제 시험·별도 일지 숨김')
+        overflow(checks, page, label + f' E {days}일 시험')
+        page.locator('#bd-drawer-x').click()
     page.locator('[data-run="7"]').click()
     page.wait_for_function('() => !!KCP.buildGame.lastTrial()')
     trial_uns = page.evaluate('() => KCP.buildGame.lastTrial().unsPct')

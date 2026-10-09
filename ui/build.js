@@ -1125,6 +1125,10 @@
    * 4. 화면 상태
    * ===================================================================== */
   let S = null; // 라우트가 살아 있는 동안의 화면 상태
+  // E: 리그에서 보류한 화면만 감춘다. false로 바꾸면 대본·설정에 따라 다시 표시할 수 있다.
+  const LEAGUE_UI_HIDDEN = { research: true, journal: true, longTrial: true, fab2: true };
+  const uiVisible = (feature, opts = S?.opts || {}) => !opts.league || !LEAGUE_UI_HIDDEN[feature] ||
+    (feature === "longTrial" && opts.solo === true);
   // 다른 화면(멀티플레이 팀)이 빌려 쓸 때의 갈래: opts.save · opts.budget · opts.locked · opts.onChange
   const budgetOf = () => (S && S.opts.budget ? S.opts.budget() : PK.budget);
   const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
@@ -2860,6 +2864,7 @@
   function renderDrawer() {
     const body = $("#bd-drawer-body");
     if (!body) return;
+    if (!uiVisible(S.drawerTab)) S.drawerTab = "policy";
     S.root.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.drawerTab)));
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
     S.root.querySelector('[data-count="mission"]').textContent = S.opts.league ? '' : `${S.st.missions.length}/2`;
@@ -2880,8 +2885,8 @@
         <p class="bd-sub bd-sub2">${ico("alert")}차단 순서 <b>모자랄 때</b></p>
         <div class="bd-shed" role="group" aria-label="차단 순서">${SHED_OPTS.map(o => `<button type="button" class="bd-shedbtn" data-shed="${o.id}" aria-pressed="${(S.st.shed || "home") === o.id}">${o.name}</button>`).join("")}</div>
         <p class="bd-note">${S.st.shed === "equal" ? "모두 같은 비율로 줄인다(병원 포함)." : S.st.shed === "industry" ? "필수시설 다음으로 공장·산단을 지킨다." : "병원·필수시설 다음으로 집을 지킨다."}</p>
-        ${PK.climate ? `<p class="bd-sub bd-sub2">${ico("flask")}시나리오</p>
-        <button type="button" class="bd-card" data-fab2="1" aria-pressed="${!!S.st.fab2}">
+        ${PK.climate ? `<p class="bd-sub bd-sub2"${uiVisible("fab2") ? "" : " hidden"}>${ico("flask")}시나리오</p>
+        <button type="button" class="bd-card" data-fab2="1" aria-pressed="${!!S.st.fab2}"${uiVisible("fab2") ? "" : " hidden"}>
           <span class="bd-card-ico">${ico("diesel")}</span>
           <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>공장 5 → 10 MW</span></span>
           <span class="bd-card-mark" aria-hidden="true">${S.st.fab2 ? ico("check") : ""}</span></button>` : ""}`;
@@ -2927,14 +2932,15 @@
   }
   function renderResult() {
     const R = S.result;
-    if (!R) return `<div class="bd-empty">${ico("play", "v2-ico bd-empty-ico")}<p><b>아직 운영 기록 없음</b></p><p>아래 1주·1달·3달을 누르면 결과가 여기 뜬다.</p></div>`;
+    if (!R) return `<div class="bd-empty">${ico("play", "v2-ico bd-empty-ico")}<p><b>아직 운영 기록 없음</b></p><p>아래 ${uiVisible("longTrial") ? "1주·1달·3달" : "시험 1주"}를 누르면 결과가 여기 떠요.</p></div>`;
     const len = R.days === 7 ? "1주" : R.days === 30 ? "1달" : "3달";
     const chosen = R.missions.filter(m => m.chosen), others = R.missions.filter(m => !m.chosen);
     const lostElse = others.filter(m => !m.ok);
     return `<h2 class="bd-res-title" id="bd-res-title" tabindex="-1">${S.opts.league ? "시험 " : ""}${len} 운영 성적표 <span class="bd-tag">${esc(PK.virtual || "가상 모형")}${R.season ? " · " + esc(displaySeason(R.season)) : ""}${R.fab2 ? " · 증설" : ""} · 시드 ${R.seed}</span></h2>
+      ${R.fab2 && !uiVisible("fab2") ? `<p id="bd-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <div class="bd-res-acts">
         <button type="button" class="v2-btn" id="bd-again">${ico("hammer")}<span>다시 짓기</span></button>
-        <button type="button" class="v2-btn primary" id="bd-jopen">${ico("pen")}<span>일지 쓰기</span></button>
+        <button type="button" class="v2-btn primary" id="bd-jopen"${uiVisible("journal") ? "" : " hidden"}>${ico("pen")}<span>일지 쓰기</span></button>
         <button type="button" class="v2-btn bd-reroll" id="bd-reroll">${ico("reroll")}<span>다른 날씨</span></button>
       </div>
       <ul class="bd-news">${R.news.map(t => `<li>${ico("news")}<span>${esc(t)}</span></li>`).join("")}</ul>
@@ -3035,6 +3041,7 @@
     return `<p class="bd-jstrip">${it("정전", fmt(e.m.out) + "h")}${it("CO₂", fmt(e.m.co2) + " t")}${it("비용", fmt(e.m.cost, 1) + "억")}${it("민원", fmt(e.m.cp) + "건")}${it("정책", e.pol.length ? e.pol.map(polName).join("·") : "없음")}<span><span class="bd-js-k">미션</span> ${misHtml(e)}</span></p>`;
   }
   function openJournal(id, from) {
+    if (!uiVisible("journal")) return;
     const e = findEntry(id);
     if (!e) { toast("일지 기록이 없다"); return; }
     if (!S.jdlg) {
@@ -3089,6 +3096,7 @@
   }
   // 말로 해 보기: 녹음 없이 시간만 잰다.
   function startSpeak() {
+    if (!uiVisible("journal")) return;
     const b = $("#bd-speak"), t = $("#bd-speak-t");
     if (!b) return;
     const t0 = Date.now();
@@ -3243,7 +3251,7 @@
   }
 
   // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
-  //   league 리그 모드(외부 연결점) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
+  //   league 리그 모드(외부 연결점) · solo 혼자 하기(긴 시험 유지) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
   //   leagueMods(st) 사건을 뺀 이번 달 운영 보정값(trialMods 계약) · leagueGrid(st) 계획 기준 접속 상태(gridStatus, entries 포함 시 설비별 대기 계산)
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
   const K_LENSES = "kcp-league-lenses-v1";
@@ -3282,7 +3290,9 @@
       const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
       const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
       root.querySelector('[data-tab="mission"]').hidden = true;
+      root.querySelectorAll('[data-tab="research"], [data-tab="journal"]').forEach(b => { b.hidden = !uiVisible(b.dataset.tab); });
       root.querySelectorAll("[data-run]").forEach(b => { b.textContent = `시험 ${b.textContent}`; });
+      root.querySelectorAll('[data-run="30"], [data-run="90"]').forEach(b => { b.hidden = !uiVisible("longTrial"); });
       root.querySelector("#bd-pm span").textContent = "정책·결과";
     }
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;

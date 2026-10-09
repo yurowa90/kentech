@@ -451,7 +451,7 @@ def u_plan_contract(checks, team, host, tid, label):
       return {html, speed:m.speedText({speeds:{monthsPerTurn:1.5},eduSpeed:99}),
         reason:m.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'집값이 올라서 (M)',whyGrade:'M'})};
     }""")
-    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂(국가 총량 밖)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
+    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
     checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes('(G)')"),
               f'{label} U2 이전 엔진 이주 이유 G 표시 유지')
@@ -984,6 +984,106 @@ def ui_fixes(checks, context, base, label, pages):
     checks.ok('가상 연습 지역' in build.locator('#bd-mappop').inner_text(), f'{label} #25 지도 제목은 지역 자료에서 읽음')
     build.evaluate('name => {KCP.LEAGUE_REGIONS.south.name=name}', name)
 
+def feature_hiding(checks, context, base, label, pages):
+    """E: 화면 숨김이 모드·저장값·월 결과까지 침범하면 실패한다."""
+    host, team, fixture = setup_pair(context, base, 12, pages)
+    advance(host, team, 1, 'plan')
+    team.locator('#lg-guide-close').click()
+    team.locator('#bd-pm').click()
+    checks.ok(all(absent_or_hidden(team, sel) for sel in
+                  ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')),
+              f'{label} E G11·G12·D03 리그 옛 연구·시험 일지·증설 카드 숨김')
+    checks.ok([n.get_attribute('data-run') for n in team.locator('[data-run]:visible').all()] == ['7'],
+              f'{label} E C10 멀티는 시험 1주만')
+    checks.ok(team.locator('[data-run="7"]').evaluate('''el => {
+      const r=el.getBoundingClientRect(); return r.width>=44 && r.height>=44;}'''),
+              f'{label} E 시험 단추 누르는 영역 44px')
+    overflow(checks, team, label + ' E 숨긴 건설 서랍')
+    screenshot(checks, team, f'econui-{label}-hide-policy.png')
+    team.locator('#bd-drawer-x').click()
+    # 저장된 증설 계획을 다시 여는 경로도 검사한다. 수요 규칙은 기존 엔진을 사용한다.
+    team.evaluate('() => KCP.league.plan(st => {st.fab2=true; st.rq=["bms"];})')
+    host.wait_for_function('id => KCP.league.state().S.teams[id].plan?.fab2 === true', arg=fixture['team'])
+    team.wait_for_timeout(600)
+    team.reload(); team.wait_for_selector('#lg-bar')
+    checks.ok(team.evaluate('() => KCP.buildGame.current().fab2 === true && KCP.buildGame.current().rq.includes("bms")'),
+              f'{label} E D03·G11 새로고침 뒤 fab2·옛 연구 큐 보존')
+    open_panel(team, 'city')
+    checks.ok('반도체 증설 시나리오 적용 중' in team.locator('#lg-city').inner_text(),
+              f'{label} E D03 저장된 증설 판 도시 안내')
+    open_panel(team, 'tech')
+    checks.ok(team.locator('[data-tech-card]').count() == 15,
+              f'{label} E G11 리그 연구는 15장 트리 유지')
+    team.locator('.lg-px').click()
+    team.locator('[data-run="7"]').click(); team.wait_for_selector('#bd-skip')
+    team.locator('#bd-skip').click(); team.wait_for_selector('#bd-res-title')
+    checks.ok(shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내')
+    checks.ok(all(absent_or_hidden(team, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
+              f'{label} E G12 시험 결과의 일지 쓰기·대화상자·타이머 숨김')
+    saved = team.evaluate('''() => {
+      const L=KCP.league.state(), key=`kcp-league-data-v1:${L.room}:${L.team}`;
+      const map=KCP.buildGame.saveView().map, doc=JSON.parse(localStorage.getItem(key)).docs[map];
+      doc.journal[0].a.why='가상 시험 기록을 보존해요';
+      const data=JSON.parse(localStorage.getItem(key)); data.docs[map]=doc;
+      localStorage.setItem(key, JSON.stringify(data)); return doc.journal;
+    }''')
+    team.reload(); team.wait_for_selector('#lg-bar')
+    checks.ok(team.evaluate('''() => {const L=KCP.league.state();
+      return JSON.parse(localStorage.getItem(`kcp-league-data-v1:${L.room}:${L.team}`)).docs[KCP.buildGame.saveView().map].journal;}''') == saved,
+              f'{label} E G12 기존 시험 기록·자유 서술 보존')
+    open_panel(team, 'journal')
+    checks.ok(shown(team, '#lg-crit') and shown(team, '#lg-jcopy'),
+              f'{label} E G12 월 일지·S8 활동지 경로 유지')
+    advance(host, team, 1, 'review')
+    # 각 값은 기기 스냅샷에서만 바꾼다. 실제 결과 경로가 해당 월 report를 읽는지 검사한다.
+    for value in (12.34, 0, None):
+        team.evaluate('''value => {
+          const L=KCP.league.state(), V=L.snap, rep=V.results.at(-1).econ;
+          const c=rep.cities[L.team]; if(value===null) delete c.bioCo2; else c.bioCo2=value;
+          // 최신 도시 report와 지난 운영 report가 다를 때도 결과는 운영 report를 쓴다.
+          V.econ.report=JSON.parse(JSON.stringify(rep)); V.econ.report.cities[L.team].bioCo2=99;
+        }''', value)
+        open_panel(team, 'city'); open_panel(team, 'result')
+        checks.ok(shown(team, '#lg-result-bio-co2') == (value is not None and value > 0),
+                  f'{label} E 바이오 CO₂ 값 {value}: 양수일 때만 결과 줄')
+        if value and value > 0:
+            checks.ok(team.locator('#lg-result-bio-co2').inner_text() ==
+                      '바이오 CO₂ 12.34 t(국가 총량 밖 · IPCC 정보 항목)',
+                      f'{label} E 바이오 CO₂ 해당 운영 report·문구·단위')
+            team.evaluate('''() => {const V=KCP.league.state().snap;
+              V.econ.report=V.results.at(-1).econ;}''')
+            result_text = team.locator('#lg-result-bio-co2').inner_text()
+            open_panel(team, 'city')
+            checks.ok(team.locator('#lg-bio-co2').inner_text() == result_text,
+                      f'{label} E 도시·결과 바이오 CO₂ 같은 문구·단위')
+            open_panel(team, 'result')
+            screenshot(checks, team, f'econui-{label}-hide-result.png')
+        overflow(checks, team, label + f' E 바이오 {value}')
+
+    build, events = monitored_page(context); pages.append((build, events, 'E 자유 건설'))
+    build.goto(base + '#home'); build.wait_for_function(BOOT_JS)
+    build.evaluate('''() => localStorage.setItem('kcp-build-v1',
+      JSON.stringify(KCP.buildGame.sanitizeDoc({map:'pyeongtaek'})))''')
+    build.goto(base + '#build'); build.wait_for_selector('#bd-mapcur')
+    build.locator('#bd-pm').click()
+    checks.ok(all(shown(build, sel) for sel in ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')) and
+              [n.get_attribute('data-run') for n in build.locator('[data-run]:visible').all()] == ['7', '30', '90'],
+              f'{label} E #build 옛 연구·일지·증설·세 기간 유지')
+    build.locator('[data-tab="mission"]').click()
+    for node in build.locator('[data-mis]').all()[:2]: node.click()
+    build.locator('[data-run="7"]').click(); build.wait_for_selector('#bd-skip'); build.locator('#bd-skip').click()
+    build.wait_for_selector('#bd-j-dlg[open]')
+    checks.ok(shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
+    build.locator('#bd-speak').click()
+    build.wait_for_function('document.querySelector("#bd-speak-t").textContent !== "0:00"')
+    checks.ok(build.locator('#bd-speak').get_attribute('aria-pressed') == 'true',
+              f'{label} E #build 말하기 타이머 실제 진행')
+    build.locator('#bd-j-dlg').press('Escape')
+    checks.ok(shown(build, '#bd-jopen'), f'{label} E #build 결과의 일지 쓰기 유지')
+    overflow(checks, build, label + ' E #build 결과')
+    screenshot(checks, build, f'econui-{label}-hide-build.png')
+
+
 def seasonal(checks, context, base, label, pages):
     host, team, _ = setup_pair(context, base, 0, pages)
     stages = [("lobby", 0)] + [(phase, round_number) for round_number in range(1, 5)
@@ -1009,7 +1109,7 @@ def main():
             for width, height in ((1280, 900), (390, 844)):
                 for scheme in ("light", "dark"):
                     label = f"{width}x{height}-{scheme}"
-                    for name, scenario in (("경제", economic), ("계절", seasonal), ("H-U", ui_fixes)):
+                    for name, scenario in (("경제", economic), ("계절", seasonal), ("H-U", ui_fixes), ("E", feature_hiding)):
                         context, external = context_for(browser, base, width, height, scheme)
                         pages = []
                         try:

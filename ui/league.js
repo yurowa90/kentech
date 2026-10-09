@@ -237,12 +237,13 @@
     const items = [["이동 시간", s.monthsPerTurn, "배"], ["지지율 회복", s.eduMemory, "배"], ["주민 평가 간격", s.reviewEvery, "달"], ["대기 영향", s.eduAir, "배"], ["탄소 국경 부담", s.eduCbam, "배"], ["전력망 접속", s.eduConn, "배"], ["버리는 재생 전기", s.eduCurtail, "배"], ["기상 사건 빈도", s.hazardFreq, "배"], ["SMR 공사", s.smrTurns, "달"], ["LNG 가격 급등 빈도", s.lngSpikeFrequency, "배"], ["정전 1% 환산", s.outageHoursPerPercent, "시간"], ["연습 섬 송전 손실", s.islandLineLoss, "배"], ["연구 기간 비교", Array.isArray(s.researchYears) ? s.researchYears.join("~") : null, "년"], ["민원이 지지에 미치는 영향", Array.isArray(s.complaintPoliticalEffect) ? s.complaintPoliticalEffect.join("~") : null, "배"]];
     return `<details id="lg-speeds"><summary>수업용 시간과 효과 크기(G)</summary><p>${esc(speedText(E))}</p>${items.filter(([,v]) => v != null).map(([name,v,unit]) => `<p>${esc(name)}: ${esc(v)}${unit}</p>`).join("")}</details>`;
   }
+  const bioCo2Text = value => `바이오 CO₂ ${fmt(value, 2)} t(국가 총량 밖 · IPCC 정보 항목)`;
   function recalHTML(rep, id) {
     const c = rep?.cities?.[id], f = rep?.fiscal?.[id];
     const ps = KCP.ECON_DATA.params, value = key => ps[key]?.v;
     const warn = Number.isFinite(value("budgetToRevenue")) ? value("debtWarnRatio") / value("budgetToRevenue") : null;
     const crisis = Number.isFinite(value("budgetToRevenue")) ? value("debtCapRatio") / value("budgetToRevenue") : null;
-    return `${Number.isFinite(c?.bioCo2) ? `<p id="lg-bio-co2">바이오 CO₂(국가 총량 밖) ${esc(fmt(c.bioCo2, 2))} t/달</p>` : ""}
+    return `${Number.isFinite(c?.bioCo2) ? `<p id="lg-bio-co2">${esc(bioCo2Text(c.bioCo2))}</p>` : ""}
       ${Number.isFinite(c?.co2Intensity) ? `<p id="lg-co2-intensity">CO₂(공급 1MWh당, 지연 평균) ${esc(fmt(c.co2Intensity, 3))} t/MWh</p>` : ""}
       ${Number.isFinite(f?.perResidentNet) ? `<p id="lg-resident-net">이 도시는 주민 1명당 재정이 월 ${esc(signed(f.perResidentNet * 1e8))}원</p>` : ""}
       ${["warn", "crisis"].includes(f?.debtStage) ? `<p id="lg-debt-warning" class="lg-warn">지방채 ${f.debtStage === "crisis" ? "위기" : "주의"}${Number.isFinite(f.debtRatio) ? ` · 예산 대비 채무비율 ${esc(fmt(f.debtRatio * 100, 1))}%` : ""}${Number.isFinite(warn) && Number.isFinite(crisis) ? ` · 주의 ${esc(fmt(warn * 100))}% · 위기 ${esc(fmt(crisis * 100))}%` : ""}${f.debtOver ? " · 지방채 한도를 넘었어요" : ""}</p><p class="lg-hint">출처: 지방재정법 시행령 제65조의3 · 2026.1.2 시행 · 단위 %</p>` : ""}`;
@@ -324,6 +325,7 @@
     const expenses = { capex: "건설", fuel: "연료", opex: "운영", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
     const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k)).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시</h3>${sourceHTML(L.team)}${lossHTML(V)}
+      ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <p class="lg-left">남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b></p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 예약·지원금·연계선 정산을 반영해요. 억 = 게임 단위(실제 시 예산 아님) · ${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤 · 통과 ≥ ${esc(fmt(c.approval0 - params("approvalDrop"), 1))}%</small></div></dl>
       ${recalHTML(rep, L.team)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team)}<p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · 2020 · 산업부(O*)</span></p></section>
       ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(g.whyGrade || "G")}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(g?.lowestGroupDissatisfaction?.whyGrade || "G")}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
@@ -1775,6 +1777,7 @@
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · 정전 시간은 도시 전체 부족 시간, CO₂는 생산 기준</p>
       <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
+      ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(rep?.groups?.[id]?.whyGrade || "G")}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
       <p id="lg-result-ledger">장부(억): ${ledger ? `달 초 ${esc(fmt(ledger.open, 2))} + 수입 ${esc(fmt(ledger.income, 2))} − 신규 투자 ${esc(fmt(ledger.invest, 2))} − 운영비 ${esc(fmt(ledger.opex, 2))} = 달 말 ${esc(fmt(ledger.close, 2))} · 이번 ${V.econ ? "달" : "턴"} 총지출 ${esc(fmt(ledger.invest + ledger.opex, 2))}` : "자료 없음"}</p><p class="lg-hint">억 = 게임 단위 · 장부는 이미 월 기준이에요.</p>
@@ -2447,7 +2450,7 @@
     app.querySelector("main.lg-lobby")?.remove();
     replaceTeamMap(app);
     BG.mount(app, {
-      packs: [t.pack], league: true, view,
+      packs: [t.pack], league: true, solo: L.role === "solo", view,
       load: () => L.doc,
       save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
       // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
