@@ -137,6 +137,13 @@ def game2022(page, rec):
     page.click('[data-tool="wind"]')
     for cell in ["A6", "A7", "B6"]:
         page.click(f'[data-cell="{cell}"]')
+    # PDF p13 배멧 예시 / p35 조건 3: 학생이 마을과 공유 전선을 직접 지정한다.
+    for i in range(3):
+        page.select_option(f"#to-{i}", "배멧")
+    page.click('[data-tool="wire"]')
+    for a, b in (("A6", "A7"), ("A6", "B6"), ("B6", "B9")):
+        page.click(f'[data-cell="{a}"]')
+        page.click(f'[data-cell="{b}"]')
     sup = page.locator("table.supply").first.inner_text()
     rec.expect("충족" in sup, "2022 2번: 배멧 60 충족 표시")
     page.select_option("#to-0", "참살이")
