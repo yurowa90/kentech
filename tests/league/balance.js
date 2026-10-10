@@ -619,8 +619,8 @@ block("H01 PM2.5 증분·정전 상한", () => {
   const normal = inputs(E, id => ({ energy: { co2Local: 0, co2: 0,
     genMWh: { coal: id === "dangjin" ? 10000 : 0, lng: 0, diesel: 0, biomass: 0 } } }));
   const start = X.calibrate(E, normal, D);
-  const expected = { dangjin: 77.97, pyeongtaek: 78.782, hwaseong: 78.782,
-    asan: 78.782, cheonan: 80, anseong: 80 };
+  const expected = { dangjin: 77.97, pyeongtaek: 80, hwaseong: 80,
+    asan: 78.782, cheonan: 78.782, anseong: 80 };
   for (const id of IDS) ok(Math.abs(start.cities[id].lagL.air - expected[id]) < 1e-9,
     `${id} 직접·인접만 PM 반영: ${start.cities[id].lagL.air}`);
   ok(Math.abs(start.cities.dangjin.groupParts.air - 71.88) < 1e-9, "집단 만족만 대기 영향 ×4");

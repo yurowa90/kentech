@@ -689,10 +689,16 @@
     const hrHosp = new Uint8Array(H), hrHospDem = new Float32Array(H), hrHospUns = new Float32Array(H), hospTi = TOWNS.map(W => W.kind === "hospital");
     const GX = !lgOut ? [] : N.comps.filter(C => C.disp.some(u => u.kind === "import")).map(C => {
       const own = C.disp.filter(u => u.kind !== "import"), capT = own.reduce((a, u) => a + u.D.cap, 0);
+      // 거래 CO₂의 co2i와 같은 설비 용량 가중. 실제 시간별 head 가중으로 바꾸면 회계가 달라진다.
+      const byHead = {}, byDisp = {};
+      own.forEach(u => {
+        byHead[u.kind] = (byHead[u.kind] || 0) + (capT > 0 ? u.D.cap / capT : 0);
+        byDisp[u.kind] = new Float64Array(H);
+      });
       const to = [];
       C.disp.forEach(u => { if (u.kind === "import") (SITES[u.si].to || []).forEach(x => { if (!to.includes(x)) to.push(x); }); });
       return {
-        C, own, to, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
+        C, own, to, byHead, byDisp, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
         disp: new Float32Array(H), dmc: new Float32Array(H), dco2: new Float32Array(H),
         mc: capT > 0 ? own.reduce((a, u) => a + u.mc * u.D.cap, 0) / capT : Infinity,
         co2i: capT > 0 ? own.reduce((a, u) => a + u.D.co2 * u.D.cap, 0) / capT : 0,
@@ -816,7 +822,9 @@
           G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
           // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
           let dq = 0, dm = 0, dc = 0, db = 0;
-          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); dq += q; dm += q * u.mc * (u.out > 0 ? 1 - u.mixed / u.out : 1); dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); G.byDisp[u.kind][k] += q; dq += q; dm += q * u.mc * (u.out > 0 ? 1 - u.mixed / u.out : 1); dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
+          // dmc/dco2와 같은 대체 가능 출력 구성비. SMR도 분모에 포함하고 PM 입력에서는 뺀다.
+          Object.values(G.byDisp).forEach(by => { by[k] = dq > 0 ? by[k] / dq : 0; });
           G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0; G.dbioCo2[k] = dq > 0 ? db / dq : 0;
         });
         rem.forEach((r, ti) => {
@@ -864,7 +872,7 @@
       town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
       hrHosp, hrHospDem, hrHospUns, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
-      gx: GX.map(G => ({ to: G.to, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
+      gx: GX.map(G => ({ to: G.to, byHead: G.byHead, byDisp: G.byDisp, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
     };
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);

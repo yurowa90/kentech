@@ -296,11 +296,44 @@ def money_near_label(node):
     }""")
 
 
+def plan_co2(host, team, checks, fixture):
+    state = host.evaluate(READ)
+    goal = state['view']['goals']
+    values = []
+    mobile = team.viewport_size['width'] <= 600
+    previous_panel = team.locator('#lg-bar [data-panel][aria-expanded="true"]').evaluate_all(
+        "els => els[0]?.dataset.panel || null")
+    if mobile:
+        panel(team, '일지')
+    team_selector = '#lg-plan-co2-drawer' if mobile else '#lg-plan-co2'
+    for page, selector in [(host, '#lg-host-goals'), (team, team_selector)]:
+        text = page.locator(selector).inner_text()
+        match = re.search(r'이번 달 CO₂ 목표 ≤ ([\d,]+)\s*t', text)
+        shown = float(match.group(1).replace(',', '')) if match else None
+        checks.ok(page.locator(selector).is_visible() and shown is not None and shown > 0 and
+                  abs(shown - goal['co2Plan']) <= .5 and
+                  '계획 시작 때 확정' in text and f"기준: {goal['co2Basis']}" in text,
+                  'S8 계획 CO₂ 월 목표·확정 시점·근거 표시')
+        values.append(shown)
+    if mobile:
+        team.locator('[data-pclose]').click()
+        if previous_panel:
+            team.locator(f'[data-panel="{previous_panel}"]').click()
+    checks.ok(values[0] == values[1], 'S8 진행자·팀의 계획 CO₂ 목표 일치')
+    fixture.setdefault('plan_goals', {})[state['S']['round']] = values[0]
+
+
+def evaluated_plan_co2(state, checks, fixture):
+    result = state['results'][-1]
+    shown = fixture.get('plan_goals', {}).get(result['round'])
+    target = result['econ']['region']['goal']['co2']
+    checks.ok(shown is not None and shown > 0 and abs(shown - target) <= .5,
+              'S8 계획 때 보인 값 = 결과 뒤 그 달 평가 목표')
+
+
 def left_consistency(host, team, checks, fixture):
     state = advance(host, team, "plan")
-    goals = host.locator('#lg-host-goals').inner_text()
-    checks.ok('CO₂ 운영 뒤 확정' in goals and not re.search(r'CO₂ ≤ 0\s*t', goals),
-              'D-A3 첫 계획 CO₂ 목표를 0으로 확정 표시하지 않음')
+    plan_co2(host, team, checks, fixture)
     # Remove current-month events only for this display fixture. Actual event
     # gate and hidden event-size checks have their own scenarios below.
     host.evaluate("() => { KCP.league.state().S.events = []; }")
@@ -355,6 +388,7 @@ def left_consistency(host, team, checks, fixture):
 
 def results(host, team, checks, fixture):
     state = advance(host, team, "review")
+    evaluated_plan_co2(state, checks, fixture)
     panel(team, r"결과")
     checks.ok(team.evaluate("""() => {
       const toast=document.querySelector('#bd-toast'), t=toast.getBoundingClientRect();
@@ -522,6 +556,7 @@ def trial_no_leak(page, checks):
 
 def event_gate_and_journal(host, team, checks, fixture):
     advance(host, team, "plan")
+    plan_co2(host, team, checks, fixture)
     seeded = host.evaluate("""id => {
       const L=KCP.league.state(), S=L.S, C=KCP.leagueCore, R=C.regionOf('south');
       const def=R.events.find(e => C.hits(R,e,id) && (e.opts||[]).some(o=>o.cost>0));
@@ -566,7 +601,8 @@ def event_gate_and_journal(host, team, checks, fixture):
     team.locator('#lg-predict [data-confidence="half"]').click()
     team.locator('#lg-ready-confirm').click()
     close_panel(team)
-    advance(host, team, "review")
+    state = advance(host, team, "review")
+    evaluated_plan_co2(state, checks, fixture)
     panel(team, r"결과")
     # 사건 달 반문은 결과 서랍의 질문 카드(질문 은행 키 lg-f-event, ECON-UI 결과 단계 .lg-ask)다.
     card = team.locator('#lg-panel .lg-ask[data-question="lg-f-event"]')
@@ -590,13 +626,8 @@ def event_gate_and_journal(host, team, checks, fixture):
     team.locator('[data-j="next"]').fill(next_change)
     team.locator('[data-j="next"]').press('Tab')
     close_panel(team)
-    prior_goal = host.evaluate("() => KCP.league.state().S.results.at(-1).econ.region.goal.co2")
     advance(host, team, "plan")
-    goals = host.locator('#lg-host-goals').inner_text()
-    reference = re.search(r'지난달 평가 목표 ≤ ([\d,]+)\s*t', goals)
-    checks.ok('CO₂ 운영 뒤 확정' in goals and reference is not None and
-              abs(float(reference.group(1).replace(',', '')) - prior_goal) <= .5,
-              'D-A3 다음 계획 참고값 = 지난달 평가 목표')
+    plan_co2(host, team, checks, fixture)
     team.locator('#lg-ready').click()
     checks.ok(team.locator('#lg-previous-change').inner_text().endswith(next_change) and
               team.locator('#lg-previous-change').evaluate("""el => {

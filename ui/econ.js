@@ -107,15 +107,15 @@
       own[id] = gen == null ? null : pv(data, "kPM") * sum(Object.keys(weights).map(f => weights[f] * fin(gen[f], 0)));
       neighbours[id] = new Set();
     });
-    // 실제 건설·거래 여부와 무관한 지리적 인접. 비참가 도시·자기 자신·중복 쌍 제외.
-    const regions = Object.values(KCP.LEAGUE_REGIONS || {});
-    regions.forEach(r => (r.ties || []).forEach(({ a, b }) => {
-      if (a !== b && neighbours[a] && neighbours[b]) { neighbours[a].add(b); neighbours[b].add(a); }
-    }));
+    // D-69: 현재 게임의 참가 도시 사이, 자료에 있는 발원 → 수용 방향만 합산한다.
+    // 연계선·다른 지역 목록을 순회하지 않고 발원 도시 자체 증분만 한 번 사용한다.
+    (data.airNeighbours || []).forEach(({ from, to }) => {
+      if (from !== to && neighbours[from] && neighbours[to]) neighbours[to].add(from);
+    });
     return Object.fromEntries(ids.map(id => [id, {
       own: own[id],
       delta: fin(own[id], 0) + pv(data, "airSpill") * sum([...neighbours[id]].map(n => fin(own[n], 0))),
-      complete: regions.some(r => (r.teams || []).some(t => t.id === id)) && own[id] != null && [...neighbours[id]].every(n => own[n] != null)
+      complete: own[id] != null && [...neighbours[id]].every(n => own[n] != null)
     }]));
   }
   function regionCtx(E, ins, data) {
