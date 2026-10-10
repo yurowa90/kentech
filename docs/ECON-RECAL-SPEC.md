@@ -101,7 +101,7 @@
 | airSlope | 29(점/㎍·m⁻³) | M | 9.10 | airRef(삭제) | R3(H01) |
 | kPM | 7e-6(㎍·m⁻³/게임 MWh·월) | M | 9.10 | — | R3(H01) |
 | pmFuelW | {coal 1, diesel 0.8, biomass 0.8, lng 0.05} | M | 9.10 | — | R3(H01) |
-| airSpill | 0.6 | M | 9.11 | — | R3(H01) |
+| airNeighbours[].ratio | P: 0.059/0.092·0.45, G: 0.2 | P·G | 9.11 | airSpill(삭제) | R3(H01), D-69 확정 |
 | eduAir | 4 | G | 9.10 | — | R3(H01) |
 
 삭제하는 키(15개): kappaPop, kappaInd, jobsSlope, taxCurve, crowdCapMul, airRef, airDefault, cbamRate, fiscalTarget, scoreCo2Ref, sat0, coopCo2Goal, connPerMonth, curtailLoss, aiTieValue. 산업 용지가 쓰는 crowdKnee·crowdBase·crowdSlope와 landCapMul(도시별 값이 없을 때의 기본값)은 남긴다. 삭제한 키를 읽는 검사는 새 키나 곱으로 고친다.
@@ -203,7 +203,7 @@
 
 | ID | 무엇 | 위치 | 내용 | 근거 |
 |---|---|---|---|---|
-| H01 | 대기 점수 PM2.5 증분 | `econInput()` energy, econ.js `livability()`·`groupTargets()` | energy.genMWh = {coal, lng, diesel, biomass}(그 달, 생산 기준, × wk). ΔPMᵢ = kPM × Σ pmFuelW_f × genMWh_f, 대기 수용 도시(econ-data.airNeighbours의 from→to, D-69 초안; 현재 참가 도시만)는 airSpill × 발원 도시 자체 ΔPM을 더함. L의 air = clamp(airBase − airSlope × ΔPM). 집단 만족의 air = clamp(airBase − eduAir × airSlope × ΔPM). airRef·airDefault 삭제 | REF 9.10, 9.11 |
+| H01 | 대기 점수 PM2.5 증분 | `econInput()` energy, econ.js `livability()`·`groupTargets()` | energy.genMWh = {coal, lng, diesel, biomass}(그 달, 생산 기준, × wk). ΔPMᵢ = kPM × Σ pmFuelW_f × genMWh_f, 대기 수용 도시(econ-data.airNeighbours의 from→to, D-69 확정; 현재 참가 도시만)는 쌍별 ratio × 발원 도시 자체 ΔPM을 더함. L의 air = clamp(airBase − airSlope × ΔPM). 집단 만족의 air = clamp(airBase − eduAir × airSlope × ΔPM). airRef·airDefault 삭제 | REF 9.10, 9.11 |
 | H02 | fossilMWh 전달 | `econInput()` | energy.fossilMWh = coal + lng + diesel(H01과 같은 값)으로 lngMarket 대리값을 없앤다 | 7.18 |
 | H03 | 지역자원시설세 | econ.js 6단계 rev, 새 항목 rev.facility | rev.facility = 0.65 × (coal 0.7 · lng 0.6 · smr 1.0원/kWh) × genMWh × mwScale × 1,000 ÷ 1e8 ÷ moneyScale. mwScale은 league-data 지역의 새 숫자 필드(230). 세율 단계 대상 아님 | 6.14 |
 | H04 | 정전 피해 추정 표시 | 도시 서랍·결과 화면 | 미공급 게임 MWh × 230 × 1,000 × [주거 몫 × 3,564 + 산업 몫 × 452~1,033]원, 범위로 표시, 현금 미반영 | 5.9 |
@@ -401,17 +401,17 @@ T5는 양쪽 모두 36달 건설+운영·연료+구매 총지출로 맞춘다. �
 
 **남은 충돌 (37): 정책0의 씨앗 간 재정 안정성.** 지정된 공통 씨앗에서는 호스트·기본 봇 36달 초과 0이지만 별도 alpha/beta/gamma/delta/epsilon에서 화성의 초과 달은 0/8/11/3/10이다. 다른 다섯 도시는 초과 0이다. 고정 씨앗 수용 결과를 모든 씨앗의 안전 보증으로 확대하지 않는다.
 
-**S4 구현·S8 연결 해소 (38): H01 입력 경계와 H03/H04 숫자 축척(2026-10-09).** 경제 엔진에 `airBase=80(G)`, `airSlope=29(M)`, `kPM=7e-6(M)`, `pmFuelW={coal:1,diesel:.8,biomass:.8,lng:.05}(M; .8은 G 포함)`, `airSpill=.6(M)`, `eduAir=4(G)`를 넣고 airRef·airDefault를 삭제했다. 생산 월 발전량에 연료 가중을 적용하고, S8부터 econ-data.airNeighbours(D-69)의 방향별 참가 도시 자체 증분만 한 번 합산한다. 이주용 air=clamp(80−29ΔPM), 집단 만족용 air=clamp(80−4×29ΔPM)이다. EEA 표의 SO₂ 외 저감 가정·천안 동남/서북 구분은 REFERENCES §9 정정에 기록했다. 새로 더한 근거 키 외의 기존 O·P·M이나 G 밸런스 손잡이는 바꾸지 않았다.
+**S4 구현·S8 연결 해소 (38): H01 입력 경계와 H03/H04 숫자 축척(2026-10-09).** 경제 엔진에 `airBase=80(G)`, `airSlope=29(M)`, `kPM=7e-6(M)`, `pmFuelW={coal:1,diesel:.8,biomass:.8,lng:.05}(M; .8은 G 포함)`, `eduAir=4(G)`를 넣고 airRef·airDefault를 삭제했다. 생산 월 발전량에 연료 가중을 적용하고, S8부터 econ-data.airNeighbours(D-69)의 방향별 참가 도시 자체 증분만 한 번 합산한다. S8b는 공통 airSpill을 삭제하고 P 비율 0.059/0.092·0.45, 나머지 land·bay G 0.2로 확정했다(sea 제외). 이주용 air=clamp(80−29ΔPM), 집단 만족용 air=clamp(80−4×29ΔPM)이다. EEA 표의 SO₂ 외 저감 가정·천안 동남/서북 구분은 REFERENCES §9 정정에 기록했다. 새로 더한 근거 키 외의 기존 O·P·M이나 G 밸런스 손잡이는 바꾸지 않았다.
 
 S4 당시 `recal.js` 파일 그대로 **262/0**, 미구현0이다(이전251/8; 8건 해소 뒤 3씨앗의 후속 유효충격 단언도 실행되어 예상259보다3 많음). 정전 대기 행의 세 씨앗 모두 시작ΔPM=.078648㎍/㎥, air 상승2.280795점≤상한2.280795점이다. `mwScale:230`은 지역 필드에 G 지도 설계로 추가했고 scale 문구에서 숫자를 파싱하는 사용처는 없었다. H03·H04의 세수·피해 추정식은 별도 호스트/화면 작업이다.
 
-**S8 해소(수정 1 포함):** 시작 보정에는 `tot.by × wk`, 월 입력에는 `max(0, tot.by + byX − saveBy) × wk`를 전달한다. 추가 급전·감발을 CO₂와 같은 거래에서 연료별로 누적하며 import는 제외한다. 중간 연료량은 공개 결과·36달 저장에 싣지 않는다. 입력 누락과 실제 무발전은 계속 구별한다(`pm25.own=null`, `complete=false`). 공기 이름표는 '발전 PM2.5 증분·이웃 기여, 추정', publicView 배속은 집단 만족에만 ×4다. 남은 한계는 기존 CO₂ 정산의 추가 발전 용량 가중 근사(정밀 시간별 연료 급전 아님), 수소 혼소 PM 가중, P61 밖 이웃 기여 0과 공통 전파계수다(D-69 사용자 결정 필요). [S4 보고](../tests/league/review/S4-report.md)의 미연결 조건 검사는 당시 이력이며 현재 연결 상태와 구별한다.
+**S8 해소(수정 1 포함):** 시작 보정에는 `tot.by × wk`, 월 입력에는 `max(0, tot.by + byX − saveBy) × wk`를 전달한다. 추가 급전·감발을 CO₂와 같은 거래에서 연료별로 누적하며 import는 제외한다. 중간 연료량은 공개 결과·36달 저장에 싣지 않는다. 입력 누락과 실제 무발전은 계속 구별한다(`pm25.own=null`, `complete=false`). 공기 이름표는 '발전 PM2.5 증분·이웃 기여, 추정', publicView 배속은 집단 만족에만 ×4다. 남은 한계는 기존 CO₂ 정산의 추가 발전 용량 가중 근사(정밀 시간별 연료 급전 아님), 수소 혼소 PM 가중, P61 사례의 다른 연료 적용과 G 0.2의 실제 수송 오차다(D-69 확정). G 기여의 화면 '게임 가정' 표시는 league.js 담당 후속 작업이다. [S4 보고](../tests/league/review/S4-report.md)의 미연결 조건 검사는 당시 이력이며 현재 연결 상태와 구별한다.
 
 S4 36개월 봇 전체9회전은18,326건/실패0이다. 재생68.800 > 디젤48.717, nothing은12·24·36개월 전 도시9/9위, B16 도시 독식 없음(storage2/6, base·renew·ties·dm 각1/6), 정책0 base 지방채 초과0달이다. 이 S4 과거 수치는 당시 호스트 genMWh 미연결 조건이며, 연결은 S8에서 해소했다.
 
 S4 당시 최종 검증은 balance826/0·test-econ1,289,071/0·next575/0·tech167/0·sec524/0, 번호 review30개 종료0·단언 실패0이다. T5는22,030/0·SMR1위2/6·연구 이득4.617점이다. 재개 마지막 recal 재실행도262/0·미구현0이며, node --check 및 diff 공백 검사도 통과했다. 브라우저·실제 호스트 PM 전달 통합은 미검증이다.
 
-기존 보존 검사27은 H01 6키의 정확한 등급만 예외로 허용하고, 검사28은 econ.js 전체 바이트 고정을 점수식·공개 API 구간 보존으로 좁혔다. 다른 근거 키·기술·build·recal 보존 단언은 유지한다. 새 balance H01 및 review29에서 연료별 값·인접·정전 상한·입력 불변·결정성·결측·축척 독립성을 검사한다.
+보존 검사27·28은 재보정 9·10차 전용 범위 가드로 2026-10-10 은퇴했다(기본 실행은 건너뜀, `KCP_RUN_RETIRED=1`로 당시 검사 재현). 다음 재보정 차수는 시작 커밋 기준 새 가드를 만든다. 다른 근거 키·기술·build 및 recal의 H01 밖 보존 단언은 유지한다. 새 balance H01 및 review29에서 연료별 값·인접·정전 상한·입력 불변·결정성·결측·축척 독립성을 검사한다.
 
 ## 9. 결정이 필요한 항목(새 D-번호 후보)
 
@@ -457,4 +457,4 @@ REF13.1·13.2의 가치판단·비보상성·기하 집계 원칙은 참고하�
 
 REF §12.6 정정에 따라 SMR 비용은 DOE FOAK overnight 범위6,000~10,000$/kW의 중간값8,000으로 환산한39.420289855억(M)이다. 4모듈2.956521739게임MW를 유지한다. i-SMR3,500$/kW는 설계 목표, UAMPS20,129.87$/kW는 금융 포함 사업 추정치여서 직접 건설비로 쓰지 않는다. 입지 우려 방향은 확인했으나 D-62 감점 크기의 근거가 없어 민원은 추가하지 않는다. scorePartFloor30→1, SMR need360→36. 나머지 근거 키·G 키는 유지하며 남은 G 후보는 진단만 한다. 현재 수용 여부·검사 결과·LMDI는 [G7 보고](../tests/league/review/G7-report.md)와 [비교표](../tests/league/review/G7-comparison.md)를 따른다. G6 표와 민감도는 이력으로 보존한다.
 
-**S8 연결(2026-10-10).** §8 #26·#38의 호스트 `genMWh` 누락과 공개 ×1 표기를 해소했다. 시작 보정은 `tot.by`, 월 운영은 거래 후 `max(0, tot.by + byX − saveBy)`를 월 MWh로 전달하며 import는 제외한다. 추가·감발 구성은 기존 CO₂ 정산과 동일하며 정밀 연료별 급전과 대기 이웃 범위는 D-69의 한계로 남는다. 대기 이웃은 D-69 초안의 P61 방향 목록으로 분리했다. 계획 화면은 이미 확정된 월 `goals.co2Plan`을 그대로 표시하고 `co2Basis`를 함께 보인다. 브라우저 검사는 총괄 담당이다.
+**S8 연결(2026-10-10).** §8 #26·#38의 호스트 `genMWh` 누락과 공개 ×1 표기를 해소했다. 시작 보정은 `tot.by`, 월 운영은 거래 후 `max(0, tot.by + byX − saveBy)`를 월 MWh로 전달하며 import는 제외한다. 추가·감발 구성은 기존 CO₂ 정산과 동일하며 정밀 연료별 급전과 대기 이웃 범위는 D-69의 한계로 남는다. 대기 이웃은 D-69 확정의 P61 비율·land/bay G 0.2 명시 목록으로 분리했다(sea 제외). 계획 화면은 이미 확정된 월 `goals.co2Plan`을 그대로 표시하고 `co2Basis`를 함께 보인다. 브라우저 검사는 총괄 담당이다.

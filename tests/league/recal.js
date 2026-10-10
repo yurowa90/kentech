@@ -383,7 +383,7 @@ block("13 대학 자산", "VM 호스트의 무건설 econInput을 lib 근사 에
 });
 
 block("14 정전 시 대기 [미구현 허용: H01 뒤]", "coal=lib 수요 MWh인 정상 시작에서 전면 정전·genMWh=0; air 최대 상승을 airSlope×시작 ΔPM으로 제한", () => {
-  for (const key of ["kPM", "airSlope", "airBase", "airSpill"]) test(key, () => {
+  for (const key of ["kPM", "airSlope", "airBase"]) test(key, () => {
     p(D, key); check(key, true);
   }, true);
   test("pmFuelW", () => { field(D.params.pmFuelW?.v, "params.pmFuelW"); check("pmFuelW", true); }, true);
@@ -396,8 +396,8 @@ block("14 정전 시 대기 [미구현 허용: H01 뒤]", "coal=lib 수요 MWh�
     E = X.calibrate(E, normal, d);
     const startAir = number(E.cities[STEEL].lagL.air, `${STEEL}.lagL.air`);
     const own = id => kPM * number(fuelW.coal, "pmFuelW.coal") * normal[id].energy.genMWh.coal;
-    // P61 발원 도시에는 유입 경로가 없다(D-69). 이웃 기여는 29-*-air.js가 검사.
-    const deltaPM = own(STEEL);
+    // D-69: 철강 최대 발원 도시에는 두 land/bay 이웃의 G 0.2 기여가 유입된다.
+    const deltaPM = own(STEEL) + .2 * (own("pyeongtaek") + own("asan"));
     check(`${seed}/H01 유효 충격`, deltaPM > 0 && near(startAir, Math.max(0, Math.min(100, base - slope * deltaPM)), 1e-6),
       `시작 ΔPM=${fmt(deltaPM)}, 시작 air=${fmt(startAir)}, H01 기대=${fmt(base - slope * deltaPM)}`);
     const I = inputs(E, () => ({ energy: { unsPct: 100, servedMWh: 0, co2: 0, co2Local: 0,
