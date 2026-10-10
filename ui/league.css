@@ -895,3 +895,13 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .bd-tools > .bd-tool { padding: 2px 0; gap: 0; line-height: 1.1; }
   .lg-team-map .bd-layers, .lg-team-map .bd-zoom { padding: 0; }
 }
+
+/* 월 목표는 숫자·확정 시점·근거를 같은 줄 흐름에서 읽고 작은 화면에서는 줄바꿈한다. */
+#lg-plan-co2 { flex-basis: 100%; min-width: 0; margin: 0; padding: 2px 4px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+
+/* 휴대폰 목표는 계획 단계 서랍 안에 표시해 지도 위 막대에 행을 더하지 않는다. */
+#lg-plan-co2-drawer { display: none; }
+@media (max-width: 600px) {
+  #lg-bar #lg-plan-co2 { display: none; }
+  #lg-plan-co2-drawer { display: block; }
+}
