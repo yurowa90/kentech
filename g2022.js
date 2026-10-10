@@ -186,6 +186,7 @@
     if (R.twist !== undefined) {
       const t = record(R.twist);
       G.twist = { k: own(TWIST22, t.k) ? t.k : "",
+        pick: isCell(t.pick) ? t.pick : "",
         line: typeof t.line === "string" ? t.line.slice(0, 140) : "",
         keep: typeof t.keep === "string" ? t.keep.slice(0, 140) : "" };
     }
@@ -217,7 +218,7 @@
     fossil: { title: "탄소 배출에 비용이 붙는다면", condition: "탄소 배출 비용을 더해 화석 연료 발전소 1기당 발전 비용이 15에서 30으로 오른다고 가정한다." },
     nuclear: { title: "원자력 발전소가 정기 점검에 들어간다면", condition: "정기 점검으로 원자력 발전소가 한 달 동안 모두 멈춘다고 가정한다. 그동안 원자력 생산량은 0으로 센다." },
     demand: { title: "빛가람의 관광객이 늘어난다면", condition: "관광객 증가로 빛가람의 전력 필요량이 100에서 130으로 늘어난다고 가정한다." },
-    community: { title: "주민과 더 협의해야 한다면", condition: "주민 설명회와 추가 협의를 위해, 내 계획에서 생산량이 가장 큰 발전소 한 기의 가동을 한 달 미룬다고 가정한다. 발전원 종류와 관계없이 같은 규칙을 쓴다." },
+    community: { title: "주민과 더 협의해야 한다면", condition: "내가 고른 발전소 한 기의 가동을 한 달 미룬다고 가정한다. 협의가 필요한 발전소와 대상은 내가 판단한다." },
     wire: { title: "전선을 놓는 비용이 오른다면", condition: "전선 1칸당 비용이 1에서 3으로 오른다고 가정한다. 공유 전선과 연결되지 않은 전선도 기존 규칙대로 센다." },
   };
 
@@ -241,15 +242,15 @@
     return { q2, plants, wires, keys };
   }
 
-  function twistResult(plan, key) {
+  function twistResult(plan, key, pick = "") {
+    // 고르기 전이나 계획에서 사라진 선택에는 가정을 적용하지 않는다.
+    const paused = key === "community" ? plan.plants.findIndex(p => p.cell === pick) : -1;
+    if (key === "community" && paused < 0) return `<p>${pick ? "고른 발전소가 계획에 없습니다. 다시 고르세요." : "미룰 발전소를 고르면 바뀐 수치를 보여 줍니다."}</p><p class="small">협의 결과를 예측한 것이 아닙니다.</p>`;
     // supply의 연결 판정을 재사용하며 계산 결과만 바꾼다. 저장·지도 자료는 불변이다.
     const before = supply(plan.plants, plan.wires);
     const after = { ...before, got: { ...before.got } };
     const need = Object.fromEntries(Object.entries(VILL).map(([v, data]) => [v, data.need]));
     let produced = 0, changed = 0;
-    // 주민 협의 카드: 생산량이 가장 큰 발전소 한 기(동률이면 계획에 먼저 놓인 것)만 멈춘다.
-    let paused = -1;
-    if (key === "community") plan.plants.forEach((p, i) => { if (paused < 0 || out(p.type, p.cell) > out(plan.plants[paused].type, plan.plants[paused].cell)) paused = i; });
     plan.plants.forEach((p, i) => {
       const amount = out(p.type, p.cell);
       const factor = key === "community" ? (i === paused ? 0 : 1) : p.type === key ? (key === "wind" || key === "solar" ? 0.5 : key === "nuclear" ? 0 : 1) : 1;
@@ -275,7 +276,7 @@
     html += '<p class="small"><span class="tag-mine">재구성(기당)</span> ' + (plan.q2 ? '비용은 기당 발전 비용과 전선 비용의 합입니다. ' : '') + '달라진 조건 외의 값은 그대로 두며, 기간을 곱해 누적 전력량이나 누적 비용으로 바꾸지 않습니다.</p>';
     if (key === "wind") html += '<p class="small">이 과제에서는 생산량을 풍속과 같게 셉니다. 실제 풍력 발전기의 출력은 대략 풍속의 세제곱에 비례해, 풍속이 절반이면 약 1/8로 줄어듭니다.</p>';
     if (key === "nuclear") html += '<p class="small">점검 기간과 비용은 연습실 가정입니다. 멈춰도 기당 비용은 그대로 둡니다.</p>';
-    if (key === "community") html += '<p class="small">협의 결과를 예측한 것이 아닙니다. 어떤 발전소를 얼마나 미룰지는 연습실 가정이며, 협의 비용과 주민 의견은 숫자에 넣지 않았습니다.</p>';
+    if (key === "community") html += '<p>왜 이 발전소인지, 누구와 협의할지 아래 ‘내 계획 한 줄 수정’에 적어 보세요.</p><p class="small">협의 결과를 예측한 것이 아닙니다. 한 달 연기는 연습실 가정이며, 협의 비용과 주민 의견은 숫자에 넣지 않았습니다.</p>';
     return html;
   }
 
@@ -285,7 +286,7 @@
     if (!KCP.$("#tw22", root)) next.insertAdjacentHTML("beforebegin", '<section class="panel" id="tw22" aria-labelledby="tw22-title" style="min-width:0;overflow-wrap:anywhere"></section>');
     const panel = KCP.$("#tw22", root);
     const G = normalizeGame(state.game), plan = twistPlan(G);
-    let memo = G.twist || { k: "", line: "", keep: "" };
+    let memo = G.twist || { k: "", pick: "", line: "", keep: "" };
     const persist = () => {
       // 다른 성찰 처리에서 game을 정규화해도 이전 객체에 쓰지 않는다.
       state.game = { ...record(state.game), twist: { ...memo } };
@@ -301,11 +302,26 @@
           '<p>준비실 계획이 없어 질문을 만들 수 없습니다.</p><button type="button" class="btn" id="tw22-prep" style="min-height:44px;min-width:44px">준비실로 가기</button>'}
         ${stale ? `<p id="tw22-stale"><b>이 메모를 쓸 때의 조건:</b> ${esc(TWIST22[memo.k].condition)} <span class="tag-mine">연습실 가정</span><br>지금 계획의 후보에는 없는 조건입니다. 적어 둔 글은 남겨 둡니다. 새 카드를 고르면 이 글도 새 조건에 연결됩니다.</p>` : ""}
         ${!memo.k && (memo.line || memo.keep) ? '<p>메모의 조건을 확인할 수 없어 글만 보존했습니다. 조건을 다시 골라 주세요.</p>' : ""}
+        ${memo.k === "community" ? `<div class="field"><label for="tw22-pick">한 달 동안 가동을 미룰 발전소</label>
+          <select id="tw22-pick" aria-controls="tw22-result" style="min-height:44px;min-width:44px;width:100%;max-width:100%;background:var(--sheet);color:var(--ink)">
+            <option value=""${!memo.pick ? " selected" : ""}>발전소를 고르세요</option>
+            ${memo.pick && !plan.plants.some(p => p.cell === memo.pick) ? `<option value="${esc(memo.pick)}" selected disabled>이전 선택 ${esc(memo.pick)} (계획에 없음)</option>` : ""}
+            ${plan.plants.map(p => `<option value="${esc(p.cell)}"${memo.pick === p.cell ? " selected" : ""}>${esc(PT[p.type].n)} · ${esc(p.cell)} · 생산 ${out(p.type, p.cell)}</option>`).join("")}
+          </select></div>` : ""}
         <div id="tw22-result" role="status" aria-live="polite" aria-atomic="true"></div>
         <p id="tw22-help" class="small">좌표·설비·전선 중 무엇을 어떻게 바꿀지 한 줄로 적으세요(각 140자 이내). 메모는 준비실 계획이나 장면을 바꾸지 않습니다.</p>
         <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.line)}</textarea></div>
         <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.keep)}</textarea></div>`;
-      KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && !stale ? twistResult(plan, memo.k) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
+      const showResult = () => {
+        KCP.$("#tw22-result", panel).innerHTML = memo.k === "community" || (hasPlan && memo.k && !stale) ? twistResult(plan, memo.k, memo.pick) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
+      };
+      showResult();
+      const pick = KCP.$("#tw22-pick", panel);
+      if (pick) pick.addEventListener("change", e => {
+        memo = { ...memo, pick: isCell(e.target.value) ? e.target.value : "" };
+        persist();
+        showResult();
+      });
       KCP.$$("[data-tw22]", panel).forEach(b => {
         b.onclick = () => {
           const key = b.dataset.tw22;
@@ -328,10 +344,12 @@
   // 단독 모형 검사에는 이벤트 버스가 없다. 실제 앱에서는 항상 등록한다.
   KCP.on?.("export:text", ({ year, state, parts }) => {
     if (year !== "2022") return;
-    const t = normalizeGame(state.game).twist;
-    if (!t || (!t.line && !t.keep)) return;
+    const G = normalizeGame(state.game), t = G.twist;
+    if (!t || (!t.line && !t.keep && !(t.k === "community" && t.pick))) return;
     const condition = t.k ? `${TWIST22[t.k].condition} (연습실 가정)` : "조건 확인 불가";
-    parts.push(`\n■ 조건이 바뀐다면(연습실 질문)\n조건: ${condition}\n한 줄 수정: ${t.line}\n유지 이유: ${t.keep}\n`);
+    const picked = t.k === "community" ? twistPlan(G).plants.find(p => p.cell === t.pick) : null;
+    const pickLine = t.k === "community" ? `\n고른 발전소: ${picked ? `${PT[picked.type].n} ${picked.cell}` : t.pick ? `${t.pick} (현재 계획에 없음·종류 확인 불가)` : "미선택"}` : "";
+    parts.push(`\n■ 조건이 바뀐다면(연습실 질문)\n조건: ${condition}${pickLine}\n한 줄 수정: ${t.line}\n유지 이유: ${t.keep}\n`);
   });
 
   // 학생이 고른 직선만 한 칸 선분으로 편집한다. 꺾이는 곳도 학생이 지정한다.
