@@ -1,4 +1,9 @@
 "use strict";
+// 은퇴(2026-10-10): G9(재보정 9차) 동안 범위 밖 파일이 바뀌지 않았는지 보던 차수 전용 가드다. 기준 커밋 4aad101.
+// 이후 승인된 변경(2022 전선 D-68, H01·S8 대기 연결)으로 비교 대상 파일이 바뀌어 역할이 끝났다. 기대값을 바꿔 통과시키지 않는다.
+// 기본 실행은 건너뛰고 0으로 끝난다. 당시 상태 재현은 KCP_RUN_RETIRED=1로 실행한다.
+// 다음 재보정 차수가 생기면 그 차수 시작 커밋을 기준으로 새 가드 파일을 만든다.
+if (require.main === module && !process.env.KCP_RUN_RETIRED) { console.log("은퇴, 건너뜀: G9(재보정 9차) 차수 전용 가드(기준 4aad101). KCP_RUN_RETIRED=1로 실행 가능"); process.exit(0); }
 // G9 보존 + S4 승인 H01 신규 근거 키. 기존 근거·기술·recal 보존은 유지.
 const fs=require('node:fs'),vm=require('node:vm'),cp=require('node:child_process'),assert=require('node:assert/strict');
 const base='4aad101';
