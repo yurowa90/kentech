@@ -11,6 +11,7 @@ import re
 import sys
 
 from playwright.sync_api import sync_playwright
+from league_flow import confirm_seat, select_mode, start_solo
 
 from econui import (BOOT_JS, Checks, HOST_JS, SYNC_JS, context_for,
                     diagnostics, local_address, monitored_page, open_panel,
@@ -169,10 +170,10 @@ def setup_pair(context, base, turns, pages):
     team, events = monitored_page(context)
     pages.append((team, events, "team"))
     team.goto(base + "#league")
+    select_mode(team, "join")
     team.fill("#lg-code", fixture["room"])
     team.click("#lg-join")
-    team.click(f'[data-seat="{fixture["team"]}"]:not([disabled])')
-    team.wait_for_selector("#lg-bar")
+    confirm_seat(team, fixture["team"])
     host.click("#lg-next")
     for page in (host, team):
         page.wait_for_function(SYNC_JS, arg=[1, "plan"])
@@ -183,18 +184,7 @@ def setup_solo(context, base, pages):
     page, events = monitored_page(context)
     pages.append((page, events, "solo"))
     page.goto(base + "#league")
-    page.wait_for_selector("#lg-solo")
-    card = page.locator("#lg-solo")
-    length = card.locator('[data-turns="12"]')
-    if not length.count():
-        length = card.get_by_role("button", name=re.compile(r"^12\s*달"))
-    if length.count() and length.first.is_visible():
-        length.first.click()
-    if card.evaluate("el => ['BUTTON', 'A'].includes(el.tagName)"):
-        card.click()
-    else:
-        card.get_by_role("button", name=re.compile(r"시작|혼자 하기")).first.click()
-    page.wait_for_url(re.compile(r".*#league/solo$"))
+    start_solo(page)
     page.wait_for_function(SOLO_READY_JS)
     page.wait_for_selector("#lg-bar")
     return None, page

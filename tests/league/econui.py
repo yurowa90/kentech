@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
+from league_flow import confirm_seat, select_mode
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 SCORES = {"pop": "주민", "ind": "산업", "fin": "재정", "co2": "탄소",
@@ -228,10 +229,10 @@ def setup_pair(context, base, turns, pages, seed_js=SEED_JS):
     team, events_t = monitored_page(context)
     pages.append((team, events_t, "팀"))
     team.goto(base + "#league")
+    select_mode(team, "join")
     team.fill("#lg-code", fixture["room"])
     team.click("#lg-join")
-    team.click(f'[data-seat="{fixture["team"]}"]:not([disabled])')
-    team.wait_for_selector("#lg-bar")
+    confirm_seat(team, fixture["team"])
     return host, team, fixture
 
 
@@ -515,8 +516,11 @@ def economic(checks, context, base, label, pages):
       const expected = V.teams[id].left.toLocaleString('ko-KR', {maximumFractionDigits:1}) + '억';
       return [...document.querySelectorAll('[data-money="left"]')].every(el => el.textContent === expected);
     }"""))
-    checks.ok('남은 돈에는 지방채 한도(빚)를 포함해요' in team.locator('#lg-city').inner_text() and
-              '남은 돈에는 지방채 한도(빚)를 포함해요' in host.locator('.lg-host').inner_text(),
+    # U5 장부는 설명을 한 번으로 합쳤다. 문장 일치만 완화하고 두 화면에서
+    # '남은 돈에 지방채 한도 포함'이라는 의미가 보이는 조건은 유지한다.
+    debt_note = r'남은 돈[^.\n]{0,40}지방채 한도[^.\n]{0,15}포함(?!하지|되지| 안)'
+    checks.ok(bool(re.search(debt_note, team.locator('#lg-city').inner_text())) and
+              bool(re.search(debt_note, host.locator('.lg-host').inner_text())),
               f'{label} D-A15 팀·진행자 남은 돈에 지방채 한도 포함 설명')
     checks.test(f"{label} D-60 시작 통계 일괄 표지 없음", lambda:
                 '시작값: 공식 통계' not in team.locator('#lg-city').inner_text() and
@@ -756,6 +760,7 @@ def ui_fixes(checks, context, base, label, pages):
         else:
             # add_init_script runs on navigation; reload the lobby before 이어서.
             team.reload()
+            select_mode(team, "join")
             team.locator('#lg-rejoin').click()
         team.wait_for_selector('#lg-team-wait')
         checks.ok(team.locator('#bd-root').count() == 0 and
@@ -969,9 +974,13 @@ def ui_fixes(checks, context, base, label, pages):
     advance(host, team, 12, 'end')
     checks.ok(host.locator('#lg-host-ready, #lg-host-unready, .lg-ready').count() == 0,
               f'{label} #37 끝 준비 표시 없음')
+    # U5는 시간 제목과 값을 별도 칸에 둔다. 제목의 유무 대신 제한 없음이
+    # 한 번 보이고 실제 카운트다운으로 오인할 숫자가 없는지 확인한다.
     board = host.locator('.lg-host-board').inner_text()
-    checks.ok('남은 시간 시간 제한 없음' not in board and '시간 제한 없음' in board,
-              f'{label} #39 시간 제한 없을 때 중복 라벨 없음')
+    time_text = host.locator('#lg-host-time').inner_text()
+    checks.ok(shown(host, '#lg-host-time') and board.count('시간 제한 없음') == 1 and
+              '시간 제한 없음' in time_text and not re.search(r'\d+\s*:\s*\d+', time_text),
+              f'{label} #39 시간 제한 없음 한 번 표시·카운트다운 없음')
     overflow(checks, host, label + ' H-U 끝 진행자')
     screenshot(checks, team, f'econui-{label}-hu-end.png')
     # D-58: map picker heading must track renamed regional data, then restore.

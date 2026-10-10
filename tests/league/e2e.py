@@ -1,6 +1,7 @@
 """리그 e2e: 진행자 1 + 팀 6 (같은 브라우저 컨텍스트, 탭끼리 연결). 2라운드 운영까지."""
 import json, sys, os, time
 from playwright.sync_api import sync_playwright
+from league_flow import confirm_seat, select_mode
 D = os.path.dirname(os.path.abspath(__file__)); SH = os.path.join(D, "shots")
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9400/index.html"
 SCHEME = sys.argv[2] if len(sys.argv) > 2 else "light"
@@ -23,7 +24,7 @@ with sync_playwright() as pw:
         return pg
     host = page("host")
     host.goto(BASE + "#home"); host.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-    host.goto(BASE + "#league"); host.wait_for_selector("#lg-host")
+    host.goto(BASE + "#league"); select_mode(host, "host")
     host.screenshot(path=f"{SH}/{SCHEME}-1-lobby.png", full_page=True)
     ok(host.locator(".bd-home-link").count() == 0, "lobby rendered (no home hero)")
     (host.click('[data-turns="0"]') if host.locator('[data-turns="0"]').count() else None); host.click("#lg-host"); host.wait_for_selector("#lg-roomcode")
@@ -32,19 +33,20 @@ with sync_playwright() as pw:
     tp = {}
     for i, t in enumerate(TEAMS):
         pg = page(t); tp[t] = pg
-        pg.goto(BASE + "#league"); pg.wait_for_selector("#lg-code")
+        pg.goto(BASE + "#league"); select_mode(pg, "join")
         pg.fill("#lg-code", room.lower()); pg.click("#lg-join")
         pg.wait_for_selector(f'[data-seat="{t}"]:not([disabled])', timeout=15000)
         if i == 0: pg.screenshot(path=f"{SH}/{SCHEME}-2-seats.png")
-        pg.click(f'[data-seat="{t}"]')
-        pg.wait_for_selector("#lg-bar", timeout=15000)
+        confirm_seat(pg, t)
     host.wait_for_timeout(1500)
     seated = host.evaluate("() => Object.values(KCP.league.state().S.teams).filter(T => T.token).length")
     ok(seated == 6, f"6 seats claimed ({seated})")
     # 다른 팀 자리 빼앗기 시도: 7번째 탭이 평택을 고르려 하면 막힌다
-    intr = page("intruder"); intr.goto(BASE + "#league"); intr.fill("#lg-code", room); intr.click("#lg-join")
-    intr.wait_for_timeout(2500)
+    intr = page("intruder"); intr.goto(BASE + "#league"); select_mode(intr, "join"); intr.fill("#lg-code", room); intr.click("#lg-join")
+    intr.wait_for_selector("[data-seat]")
+    intr.wait_for_function("() => [...document.querySelectorAll('[data-seat]')].every(b => b.disabled && b.textContent.includes('다른 팀이 맡음'))")
     ok(intr.locator('[data-seat]:not([disabled])').count() == 0, "all seats shown as taken to a 7th device")
+    ok(intr.locator('#lg-seat-confirm').is_disabled(), "7th device cannot confirm a taken seat")
     intr.close()
     # 천안: 화면 조작으로 지붕 태양광 1기
     ch = tp["cheonan"]

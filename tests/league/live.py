@@ -13,6 +13,7 @@ import sys
 import time
 from collections import Counter
 from urllib.parse import parse_qs, urlsplit
+from league_flow import confirm_seat, select_mode
 
 WAIT = 30000
 IDS = ("pyeongtaek", "dangjin", "asan")  # south.presets[3]: 평택 필수, 만/육상 인접.
@@ -233,10 +234,10 @@ def make_page(browser, base, project, key, markers, mobile=False):
     return context, page, wire
 
 
-def online(page, base, project, key):
+def online(page, base, project, key, mode):
     page.goto(base + "#league")
     page.wait_for_function(BOOT_JS)
-    page.wait_for_selector("#lg-host")
+    select_mode(page, mode)
     if not page.locator(".lg-net[open]").count():
         page.locator(".lg-net summary").click()
     page.check('input[name="lg-net"][value="supabase"]')
@@ -294,7 +295,7 @@ def advance(checks, host, teams, month, phase):
 
 def scenario(checks, host, teams, base, project, key, markers):
     checks.stage = "온라인 로비/12달 방 만들기"
-    online(host, base, project, key)
+    online(host, base, project, key, "host")
     host.click('[data-preset="3"]')
     host.click('[data-turns="12"]')
     selected = host.locator(".lg-pickc input:checked").evaluate_all("ns => ns.map(n => n.value)")
@@ -311,12 +312,10 @@ def scenario(checks, host, teams, base, project, key, markers):
     checks.require(len(state["rounds"]) == 12 and bool(state.get("econ")), "경제 모드 12달")
     for tid, (page, _) in teams.items():
         checks.stage = tid + " 온라인 방 코드 참가"
-        online(page, base, project, key)
+        online(page, base, project, key, "join")
         page.fill("#lg-code", room_display.lower())
         page.click("#lg-join")
-        page.wait_for_selector(f'[data-seat="{tid}"]:not([disabled])')
-        page.click(f'[data-seat="{tid}"]')
-        page.wait_for_selector("#lg-bar")
+        confirm_seat(page, tid, timeout=WAIT)
         page.wait_for_function(OPEN_JS)
     host.wait_for_function(SEATED_JS, arg=list(IDS))
     checks.require(all(host.evaluate(STATE_JS)["teams"][t]["token"] for t in IDS),
