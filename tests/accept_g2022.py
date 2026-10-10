@@ -222,7 +222,8 @@ def _copied_pick_line(c, label):
     c.page.wait_for_function("window.__g22clip!==null || document.querySelector('#copyFallback-2022')", timeout=2000)
     copied = c.page.evaluate("window.__g22clip ?? document.querySelector('#copyFallback-2022')?.value ?? ''")
     section = copied.partition("조건이 바뀐다면")[2]
-    lines = [line for line in section.splitlines() if "고른 발전소" in line]
+    # '조건:' 줄의 카드 문구에도 "내가 고른 발전소"가 들어 있으므로(u6 3번) 선택 줄은 머리말로 찾는다.
+    lines = [line for line in section.splitlines() if line.strip().startswith("고른 발전소")]
     c.eq(len(lines), 1, f"{label} 답안 복사 조건 절의 고른 발전소 한 줄")
     return lines[0] if lines else ""
 
