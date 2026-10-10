@@ -186,7 +186,7 @@
     if (R.twist !== undefined) {
       const t = record(R.twist);
       G.twist = { k: own(TWIST22, t.k) ? t.k : "",
-        pick: isCell(t.pick) ? t.pick : "", pickType: own(PT, t.pickType) ? t.pickType : "",
+        pick: isCell(t.pick) ? t.pick : "", pickType: isCell(t.pick) && own(PT, t.pickType) ? t.pickType : "",
         line: typeof t.line === "string" ? t.line.slice(0, 140) : "",
         keep: typeof t.keep === "string" ? t.keep.slice(0, 140) : "" };
     }
