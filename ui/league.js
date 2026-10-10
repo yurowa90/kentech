@@ -140,7 +140,10 @@
   const lowestGroup = groups => GROUP_KEYS.filter(k => Object.hasOwn(groups, k)).sort((a, b) => groups[a] - groups[b] || GROUP_KEYS.indexOf(a) - GROUP_KEYS.indexOf(b))[0];
   function reweightScore(score, weights) {
     const total = Object.values(weights).reduce((a, x) => a + Math.max(0, Number(x) || 0), 0);
-    const rows = (score?.rank || []).map((r, i) => ({ ...r, order: i, score: total ? SCORE_KEYS.reduce((a, k) => a + (r.parts[k] || 0) * Math.max(0, Number(weights[k]) || 0), 0) / total : r.score }));
+    // 공식 점수(econ.js score)와 같은 식: 부분 점수 하한을 둔 가중 기하평균 + 공동 보너스, 0~100.
+    const floor = Math.min(100, Math.max(1, Number(KCP.ECON_DATA.params.scorePartFloor?.v) || 1));
+    const geo = r => Math.exp(SCORE_KEYS.reduce((a, k) => a + Math.max(0, Number(weights[k]) || 0) * Math.log(Math.max(floor, r.parts[k] || 0)), 0) / total);
+    const rows = (score?.rank || []).map((r, i) => ({ ...r, order: i, score: total ? Math.round(Math.min(100, Math.max(0, geo(r) + (Number(r.coop) || 0))) * 10) / 10 : r.score }));
     return rows.sort((a, b) => b.score - a.score || a.order - b.order).map((r, i) => ({ ...r, rank: i + 1 }));
   }
   function causeBreakdown(before, after, weights, actual) {
