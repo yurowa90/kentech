@@ -5,6 +5,7 @@ global.window = { KCP: {} };
 Math.random = () => { throw new Error("Math.random used"); };
 require(path.join(ROOT, "ui/econ-data.js"));
 require(path.join(ROOT, "ui/econ.js"));
+require(path.join(ROOT, "ui/league-data.js"));
 const X = window.KCP.econ, D = window.KCP.ECON_DATA;
 const IDS = Object.keys(D.start);
 const sum = a => a.reduce((s, x) => s + x, 0);

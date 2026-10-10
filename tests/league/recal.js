@@ -389,7 +389,6 @@ block("14 정전 시 대기 [미구현 허용: H01 뒤]", "coal=lib 수요 MWh�
   test("pmFuelW", () => { field(D.params.pmFuelW?.v, "params.pmFuelW"); check("pmFuelW", true); }, true);
   for (const seed of SEEDS) test(seed, () => {
     const d = dataFor(true), kPM = p(d, "kPM"), slope = p(d, "airSlope"), base = p(d, "airBase");
-    const spill = p(d, "airSpill"), region = hostBoot().leagueCore.regionOf("south");
     const fuelW = field(d.params.pmFuelW?.v, "params.pmFuelW");
     let E = X.initCities(IDS, d, { seed, months: 36 });
     const normal = inputs(E);
@@ -397,8 +396,8 @@ block("14 정전 시 대기 [미구현 허용: H01 뒤]", "coal=lib 수요 MWh�
     E = X.calibrate(E, normal, d);
     const startAir = number(E.cities[STEEL].lagL.air, `${STEEL}.lagL.air`);
     const own = id => kPM * number(fuelW.coal, "pmFuelW.coal") * normal[id].energy.genMWh.coal;
-    const neighbours = new Set(region.ties.flatMap(t => t.a === STEEL ? [t.b] : t.b === STEEL ? [t.a] : []));
-    const deltaPM = own(STEEL) + spill * sum([...neighbours].filter(id => IDS.includes(id)).map(own));
+    // P61 발원 도시에는 유입 경로가 없다(D-69). 이웃 기여는 29-*-air.js가 검사.
+    const deltaPM = own(STEEL);
     check(`${seed}/H01 유효 충격`, deltaPM > 0 && near(startAir, Math.max(0, Math.min(100, base - slope * deltaPM)), 1e-6),
       `시작 ΔPM=${fmt(deltaPM)}, 시작 air=${fmt(startAir)}, H01 기대=${fmt(base - slope * deltaPM)}`);
     const I = inputs(E, () => ({ energy: { unsPct: 100, servedMWh: 0, co2: 0, co2Local: 0,

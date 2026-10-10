@@ -112,7 +112,7 @@
   const EXPORT_KEYS = Object.keys(KCP.ECON_DATA.intl.base.export);
   const OFFER_CHECK_KEYS = ["mw", "re", "rel", "workers"];
   const SCORE_NAMES = { pop: "주민", ind: "산업", fin: "재정", co2: "탄소", appr: "지지", rel: "전력 신뢰" };
-  const PART_NAMES = { rel: "전력 신뢰", price: "전기요금", air: "공기(CO₂ 기준 추정)", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "산출", taxI: "산업 세금", ren: "재생", co2: "탄소", outage: "정전", hospital: "병원 정전", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
+  const PART_NAMES = { rel: "전력 신뢰", price: "전기요금", air: "공기(발전 PM2.5 증분·이웃 기여, 추정)", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값·혼잡", A: "산업 여건", out: "산출", taxI: "산업 세금", ren: "재생", co2: "탄소", outage: "정전", hospital: "병원 정전", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
   // G: 질문 빈도·문턱은 ECON-UI U4와 INTERVIEW §4의 화면 가정이다. 엔진 계수가 아니다.
   const IQ = { large: 0.2, co2Up: 0.05, spare: 0.3, gapWide: 40, gapNarrow: 10, approval: 3, rank: 2, quarter: 3, target: 6, max: 8, line: 50 };
   const END_Q = ["우리 계획을 기준 먼저, 2분 동안 설명해 봐요.", "가장 어려웠던 결정에서 무엇을 포기했나요?", "예측과 결과가 가장 크게 어긋난 달은 언제였나요?", "받은 반문 하나에 대해 고치거나 유지하는 최종 이유는?", "이 리그 점수표에 항목 하나를 더한다면 무엇을 넣겠습니까?"];
@@ -234,7 +234,7 @@
   function speedsHTML(E) {
     if (!E?.speeds) return `<p class="lg-hint">${esc(E ? speedText(E) : "")}</p>`;
     const s = E.speeds;
-    const items = [["이동 시간", s.monthsPerTurn, "배"], ["지지율 회복", s.eduMemory, "배"], ["주민 평가 간격", s.reviewEvery, "달"], ["대기 영향", s.eduAir, "배"], ["탄소 국경 부담", s.eduCbam, "배"], ["전력망 접속", s.eduConn, "배"], ["버리는 재생 전기", s.eduCurtail, "배"], ["기상 사건 빈도", s.hazardFreq, "배"], ["SMR 공사", s.smrTurns, "달"], ["LNG 가격 급등 빈도", s.lngSpikeFrequency, "배"], ["정전 1% 환산", s.outageHoursPerPercent, "시간"], ["연습 섬 송전 손실", s.islandLineLoss, "배"], ["연구 기간 비교", Array.isArray(s.researchYears) ? s.researchYears.join("~") : null, "년"], ["민원이 지지에 미치는 영향", Array.isArray(s.complaintPoliticalEffect) ? s.complaintPoliticalEffect.join("~") : null, "배"]];
+    const items = [["이동 시간", s.monthsPerTurn, "배"], ["지지율 회복", s.eduMemory, "배"], ["주민 평가 간격", s.reviewEvery, "달"], ["대기 영향(집단 만족만·교육용)", s.eduAir, "배"], ["탄소 국경 부담", s.eduCbam, "배"], ["전력망 접속", s.eduConn, "배"], ["버리는 재생 전기", s.eduCurtail, "배"], ["기상 사건 빈도", s.hazardFreq, "배"], ["SMR 공사", s.smrTurns, "달"], ["LNG 가격 급등 빈도", s.lngSpikeFrequency, "배"], ["정전 1% 환산", s.outageHoursPerPercent, "시간"], ["연습 섬 송전 손실", s.islandLineLoss, "배"], ["연구 기간 비교", Array.isArray(s.researchYears) ? s.researchYears.join("~") : null, "년"], ["민원이 지지에 미치는 영향", Array.isArray(s.complaintPoliticalEffect) ? s.complaintPoliticalEffect.join("~") : null, "배"]];
     return `<details id="lg-speeds"><summary>수업용 시간과 효과 크기(G)</summary><p>${esc(speedText(E))}</p>${items.filter(([,v]) => v != null).map(([name,v,unit]) => `<p>${esc(name)}: ${esc(v)}${unit}</p>`).join("")}</details>`;
   }
   const bioCo2Text = value => `바이오 CO₂ ${fmt(value, 2)} t(국가 총량 밖 · IPCC 정보 항목)`;
@@ -329,7 +329,7 @@
       <p class="lg-left">남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b></p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 예약·지원금·연계선 정산을 반영해요. 억 = 게임 단위(실제 시 예산 아님) · ${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤 · 통과 ≥ ${esc(fmt(c.approval0 - params("approvalDrop"), 1))}%</small></div></dl>
       ${recalHTML(rep, L.team)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team)}<p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · 2020 · 산업부(O*)</span></p></section>
       ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(g.whyGrade || "G")}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(g?.lowestGroupDissatisfaction?.whyGrade || "G")}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
-      <p class="lg-hint lg-air-note">실제 대기질(미세먼지 등)이 아니라 발전 CO₂로 어림한 값(G)이에요.</p>
+      <p class="lg-hint lg-air-note">발전 PM2.5 증분과 이웃 기여를 추정한 값(M·G)이에요. 전체 대기질이나 관측 농도는 아니에요.</p>
       <section id="lg-econpol"><h4>정책 <span class="tag-mine">G</span></h4>${[["taxRes", "주민 세율", "세입↑ / 주민 매력↓"], ["taxInd", "산업 세율", "세입↑ / 기업 매력↓"], ["service", "공공서비스", "생활 만족↑ / 지출↑"], ["incentive", "기업 유치 보조", "기업 매력↑ / 지출↑"]].map(([k, name, help]) => `<label class="lg-policy"><span>${name} <output>${esc(fmt(pol[k] || 0, 1))}${k === "incentive" ? "억/달" : "단계"}</output></span><input type="range" data-pol="${k}" min="${k === "incentive" ? 0 : -2}" max="${k === "incentive" ? 20 : 2}" step="1" value="${esc(pol[k] || 0)}" ${open ? "" : "disabled"}><small>얻는 것 / 잃는 것: ${help}</small></label>`).join("")}<label class="lg-policy lg-re100"><span><input type="checkbox" data-pol="re100" ${pol.re100 ? "checked" : ""} ${open && techResearch(V, L.team).adopted?.includes("re100") ? "" : "disabled"}>RE100 산단 지정</span><small>${techResearch(V, L.team).adopted?.includes("re100") ? "재생 전기 비중을 산업 평가에 더 반영해요(G)." : "🔒 RE100 산단 도입 후 선택"}</small></label></section>
       <section id="lg-fiscal"><h4>지난달 돈</h4>${f ? `${money("세입", f.rev, revenues)}${money("세출", f.exp, expenses)}<p>운영 수지(건설 제외) ${esc(signed(f.revTotal - f.expTotal + f.exp.capex, 2))}억</p><p class="lg-hint">연료 ${esc(fmt((V.results.at(-1)?.team[L.team]?.cost.fuel || 0) * (rep.weekMul || 1), 2))}억(전기요금 차익에 이미 반영). 총 전기 매출(참고) ${esc(fmt(f.tariffGross, 2))}억</p>` : `<p class="lg-hint">첫 운영 뒤에 표시돼요.</p>`}</section>
       <section id="lg-moves"><h4>지난달 이주·이전</h4>${movesHTML(rep, L.team)}</section>
@@ -688,7 +688,7 @@
     const pop = (rep.flows?.pop || []).filter(f => f.from === L.team || f.to === L.team);
     const approval = visibleCauses(rep.cities[L.team]?.causes).map(x => ({ key: x.key, value: x.delta, label: causeLabel(x) }));
     const bars = (rows, unit, groups) => rows.slice(0, IQ.quarter).map(x => `<div data-cause="${esc(x.key)}"><span>${esc(x.label || PART_NAMES[x.key] || (groups ? "지연·집단 반응" : "처음 인구 비중과 이웃 도시의 상황"))}: ${esc(signed(x.value, 1))}${unit}</span><meter min="0" max="${esc(Math.max(1, ...rows.map(y => Math.abs(y.value))))}" value="${esc(Math.abs(x.value))}" aria-label="기여 크기"></meter></div>`).join("");
-    return `<section id="lg-causes" class="lg-sec lg-cause"><h3>무엇이 결과를 만들었나</h3><h4>주민 이동 ${esc(signed(rep.net[L.team].pop))}명</h4>${pop.length ? `<ul class="lg-pop-reasons">${pop.map(f => `<li>${esc(teamName(f.from))} → ${esc(teamName(f.to))} ${esc(fmt(f.n))}명: ${esc(migrationReason(f))}</li>`).join("")}</ul>` : `<p>보고된 주민 이동 없음</p>`}<p class="lg-hint">이유는 두 도시 사이의 가장 큰 차이 한 가지예요. 자연 증가 ${esc(fmt(rep.net[L.team].growPop))}명은 이동과 별개예요.</p><h4>이번 달 도시 지지율 변화 ${esc(signed(c.approval - prev.approval, 1))}%p</h4>${bars(approval, "%p", true)}<p class="lg-hint">생활 항목의 변화와 집단별 중요도·비중을 곱한 설명이에요. 이번 달 변화에 많이 영향을 준 원인부터 보여요. 정전·병원 정전·민원은 따로 읽어요(G).</p><p class="lg-hint lg-air-note">실제 대기질(미세먼지 등)이 아니라 발전 CO₂로 어림한 값(G)이에요.</p></section>`;
+    return `<section id="lg-causes" class="lg-sec lg-cause"><h3>무엇이 결과를 만들었나</h3><h4>주민 이동 ${esc(signed(rep.net[L.team].pop))}명</h4>${pop.length ? `<ul class="lg-pop-reasons">${pop.map(f => `<li>${esc(teamName(f.from))} → ${esc(teamName(f.to))} ${esc(fmt(f.n))}명: ${esc(migrationReason(f))}</li>`).join("")}</ul>` : `<p>보고된 주민 이동 없음</p>`}<p class="lg-hint">이유는 두 도시 사이의 가장 큰 차이 한 가지예요. 자연 증가 ${esc(fmt(rep.net[L.team].growPop))}명은 이동과 별개예요.</p><h4>이번 달 도시 지지율 변화 ${esc(signed(c.approval - prev.approval, 1))}%p</h4>${bars(approval, "%p", true)}<p class="lg-hint">생활 항목의 변화와 집단별 중요도·비중을 곱한 설명이에요. 이번 달 변화에 많이 영향을 준 원인부터 보여요. 정전·병원 정전·민원은 따로 읽어요(G).</p><p class="lg-hint lg-air-note">발전 PM2.5 증분과 이웃 기여를 추정한 값(M·G)이에요. 전체 대기질이나 관측 농도는 아니에요.</p></section>`;
   }
   function eventQuestionHTML(V) {
     return (V.events || []).filter(ev => ev.round === V.round).map(ev => {
@@ -1475,7 +1475,7 @@
             <a class="lg-back" href="#league" aria-label="로비로">←</a>
             <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
             <div class="lg-hmeta">
-              <p class="v2-kicker">${esc(reg.short)} · ${esc(reg.name)}</p>
+              <p class="v2-kicker">${esc(reg.short)}</p>
               <h1 id="lg-h1"></h1>
             </div>
             <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>
@@ -1546,7 +1546,8 @@
       });
     }
     const $ = s => L.app.querySelector(s);
-    $("#lg-h1").textContent = S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${turnLabel(rd, S.round, C.roundsOf(S).length)} · ${PHASE_NAME[S.phase]}`;
+    // 경제 모드는 지휘 막대에 달·단계가 있으므로 지역 이름만, 계절 모드는 막대가 없어 라운드·단계를 제목에 둔다.
+    $("#lg-h1").textContent = S.econ ? reg.name : S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${turnLabel(rd, S.round, C.roundsOf(S).length)} · ${PHASE_NAME[S.phase]}`;
     const nx = $("#lg-next"), lab = nextLabel(S);
     nx.hidden = !lab; nx.disabled = false; nx.textContent = lab;
     $("#lg-extend").hidden = !S.ends;
@@ -1619,21 +1620,26 @@
     if ((V.grid?.[id]?.waitingMW || 0) > 0) issues.push("접속 대기");
     return issues;
   }
+  function planCo2Text(V) {
+    return V.phase === "lobby"
+      ? `첫 달 목표(계획 시작 때 확정) · CO₂ ≤ ${fmt(V.goals.co2Plan)} t · 기준: ${V.goals.co2Basis}`
+      : `이번 달 CO₂ 목표 ≤ ${fmt(V.goals.co2Plan)} t · 계획 시작 때 확정 · 기준: ${V.goals.co2Basis}`;
+  }
   function hostOverviewHTML(V, res) {
     const showReady = !V.econ || ["lobby", "plan"].includes(V.phase);
     const teams = actT(V), unready = teams.filter(t => !V.teams[t.id].ready), rd = C.roundsOf(V)[Math.max(0, V.round - 1)];
     const region = res && resultReport(V, res)?.region;
-    const goal = { uns: V.goals.unsPct, co2: V.goals.co2 * (rd.mdays || rd.days) / rd.days };
+    const goal = { uns: V.goals.unsPct, co2: V.goals.co2Plan ?? V.goals.co2 * (rd.mdays || rd.days) / rd.days };
     const lastGoal = region?.goal || (res ? { uns: V.goals.unsPct, co2: V.goals.co2 * resultPeriod(V, res).mul } : null);
     const goalText = V.econ && ["lobby", "plan"].includes(V.phase)
-      ? `정전 ≤ ${esc(fmt(goal.uns, 2))}% · CO₂ 운영 뒤 확정${region ? ` · 지난달 평가 목표 ≤ ${esc(fmt(lastGoal.co2))} t` : " · 첫 운영 전"}`
+      ? `정전 ≤ ${esc(fmt(goal.uns, 2))}% · ${esc(planCo2Text(V))}`
       : `정전 ≤ ${esc(fmt(lastGoal?.uns ?? goal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal?.co2 ?? goal.co2))} t`;
     const bar = (label, value, target, unit, digits) => {
       if (!Number.isFinite(value) || !Number.isFinite(target)) return "";
       const scale = Math.max(target * 2, value, 1), width = Math.min(100, 100 * value / scale), marker = 100 * target / scale;
       return `<div class="lg-goalbar" data-bad="${value > target}"><span>${label}</span><div role="meter" aria-label="${label} · 지난달 운영 / 목표" aria-valuemin="0" aria-valuemax="${scale}" aria-valuenow="${value}" aria-valuetext="${fmt(value, digits)}${unit} / 목표 ${fmt(target, digits)}${unit}"><i style="width:${width}%"></i><em style="left:${marker}%"></em></div><b>${value > target ? "▲ " : ""}${esc(fmt(value, digits))}${unit}</b></div>`;
     };
-    return `<div class="lg-host-board"><div class="lg-command-month"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div><div class="lg-command-time"><small>남은 시간</small><b id="lg-host-time"></b></div>${showReady ? `<div id="lg-host-ready"><small>준비</small><b>${teams.length - unready.length}<small>/${teams.length}팀</small></b><span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span></div>` : ""}<div class="lg-command-goals"><small>지역 공동목표 · 지난달 운영 / 지금</small>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) + bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}<p id="lg-host-goals">이번 달 공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</p></div></div>`;
+    return `<div class="lg-host-board"><div class="lg-command-month"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div><div class="lg-command-time"><small>남은 시간</small><b id="lg-host-time"></b></div>${showReady ? `<div id="lg-host-ready"><small>준비</small><b>${teams.length - unready.length}<small>/${teams.length}팀</small></b><span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span></div>` : ""}<div class="lg-command-goals"><small>지역 공동목표 · 지난달 운영 / 지금</small>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) + bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}<p id="lg-host-goals">공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</p></div></div>`;
   }
   function hostRiskHTML(V, res) {
     const teams = actT(V), risks = teams.map(t => ({ t, why: hostRisk(V, res, t.id) })).filter(x => x.why.length);
@@ -1642,10 +1648,10 @@
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
-    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}">${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" ? "" : `<small>${unit}</small>`}</span></td>`;
-    return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? esc(resultHeading(V, res)) : "첫 운영 전"} · 정전·CO₂·주민 Δ = 지난달 운영 · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
+    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}"${value === "" ? ' data-empty="true" aria-label="첫 운영 뒤 표시"' : ""}>${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" || value === "" ? "" : `<small>${unit}</small>`}</span></td>`;
+    return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? `${esc(resultHeading(V, res))} · 정전·CO₂·주민 Δ = 지난달 운영` : "정전·CO₂·주민 Δ는 첫 운영 뒤 표시"} · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
       const city = V.econ.cities[t.id], r = res?.team[t.id], ready = V.teams[t.id].ready;
-      return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", fmt(r?.unsPct, 2), "%", r && r.unsPct > V.goals.unsPct)}${cell("CO₂", fmt(r ? r.co2Prod * mul : undefined), "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", city.approval < city.approval0 - params("approvalDrop"))}${cell("주민 Δ", rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
+      return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", res ? fmt(r?.unsPct, 2) : "", "%", r && r.unsPct > V.goals.unsPct)}${cell("CO₂", res ? fmt(r ? r.co2Prod * mul : undefined) : "", "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", city.approval < city.approval0 - params("approvalDrop"))}${cell("주민 Δ", res ? rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–" : "", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
     }).join("")}</tbody></table></div><p class="lg-ledger-note">▲ = 목표·평가선 주의 · 도시 이름을 누르면 상세가 열려요. 남은 돈은 지방채 한도를 포함하며 건설·연구·대응 예약과 정산 뒤 쓸 수 있는 돈이에요.</p>`;
   }
   function teamCard(t, v, r, S) {
@@ -2046,7 +2052,7 @@
       g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? token("--ui-gold") : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
       g.beginPath(); g.moveTo(...A); g.lineTo(...Bq); g.stroke(); g.setLineDash([]);
       if (F && Math.abs(net) > 0.05) {
-        g.setLineDash([0.9, 1.1]); g.lineDashOffset = -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
+        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
         g.beginPath(); if (net >= 0) { g.moveTo(...A); g.lineTo(...Bq); } else { g.moveTo(...Bq); g.lineTo(...A); } g.stroke(); g.setLineDash([]);
         g.font = "700 1.35px sans-serif"; g.textAlign = "center"; g.lineWidth = 0.35; g.strokeStyle = "#fff"; g.fillStyle = "#1d2430";
         const mx = (A[0] + Bq[0]) / 2, my = (A[1] + Bq[1]) / 2 - 0.9, tx = `${fmt(Math.abs(net), 0)} MWh`;
@@ -2060,21 +2066,22 @@
       const c0 = G.cen[t.id]; if (!c0) return;
       const act = on.has(t.id), r0 = res && res.team[t.id], v = V.teams[t.id];
       if (preview) {
-        const own = t.id === preview.player, locked = preview.mode !== "seat" && (reg.must || []).includes(t.id), taken = preview.mode === "seat" && !!v?.seated;
+        const inactive = preview.mode === "seat" && !act;
+        const own = !inactive && t.id === preview.player, locked = preview.mode !== "seat" && (reg.must || []).includes(t.id), taken = preview.mode === "seat" && !!v?.seated;
         // 이름표는 지형의 가로 투영과 무관하게 같은 픽셀 글자 크기로 그린다.
         const size = 13, subSize = 10, x = ox + c0[0] * kx, y = oy + c0[1] * k;
-        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = preview.mode === "seat" ? taken ? "다른 팀" : own ? "고른 도시" : "비어 있음" : own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
+        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = preview.mode === "home" ? "" : preview.mode === "seat" ? inactive ? "이번 방 아님" : taken ? "다른 팀" : own ? "고른 도시" : "비어 있음" : own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
         g.save(); g.setTransform(dpr, 0, 0, dpr, 0, 0);
         g.font = `600 ${size}px ${token("--body")}`;
         const w = Math.max(g.measureText(name).width, sub.length * subSize) + 32;
-        g.globalAlpha = taken ? .7 : 1;
-        g.beginPath(); g.roundRect(x - w / 2, y - size - 8, w, size + subSize + 20, 14);
+        g.globalAlpha = inactive ? .45 : taken ? .7 : 1;
+        g.beginPath(); g.roundRect(x - w / 2, y - size - 8, w, sub ? size + subSize + 20 : size + 16, 14);
         g.fillStyle = token("--ui-panel"); g.fill();
         g.strokeStyle = own ? token("--ui-gold") : token("--ui-border"); g.lineWidth = own ? 2 : 1; g.stroke();
         g.beginPath(); g.arc(x - w / 2 + 12, y - 4, 5, 0, Math.PI * 2); g.fillStyle = t.color; g.fill();
-        if (preview.mode === "seat") { g.beginPath(); g.arc(x + w / 2 - 10, y + subSize + 1, 3, 0, Math.PI * 2); g.fillStyle = tokens.getPropertyValue(taken ? "--ui-muted" : "--ui-mint").trim(); g.fill(); }
+        if (preview.mode === "seat" && act) { g.beginPath(); g.arc(x + w / 2 - 10, y + subSize + 1, 3, 0, Math.PI * 2); g.fillStyle = tokens.getPropertyValue(taken ? "--ui-muted" : "--ui-mint").trim(); g.fill(); }
         g.fillStyle = own ? token("--ui-gold") : token("--ui-text"); g.fillText(name, x + 4, y);
-        g.font = `500 ${subSize}px ${token("--body")}`; g.fillStyle = token("--ui-muted"); g.fillText(sub, x, y + subSize + 3);
+        if (sub) { if (inactive) g.globalAlpha = .8; g.font = `500 ${subSize}px ${token("--body")}`; g.fillStyle = token("--ui-muted"); g.fillText(sub, x, y + subSize + 3); }
         g.restore();
         return;
       }
@@ -2097,6 +2104,8 @@
     }
     cv.dataset.k = String(k); cv.dataset.flows = String(flows);
     if (preview) { cv.dataset.preview = "true"; cv.dataset.ox = String(ox); cv.dataset.kx = String(kx); cv.dataset.oy = String(oy); }
+    if (preview?.mode === "seat") cv.dataset.seatActive = [...on].join(" ");
+    else delete cv.dataset.seatActive;
   }
   function boardHit(cv, ev) {
     const G = boardInfo(), rect = cv.getBoundingClientRect(), scale = rect.width / cv.clientWidth;
@@ -2105,7 +2114,7 @@
     const x = (ev.clientX - rect.left - (cv.dataset.preview ? +cv.dataset.ox * scale : 0)) / kx, y = (ev.clientY - rect.top - (cv.dataset.preview ? +cv.dataset.oy * scale : 0)) / k;
     let best = null, bd = Infinity;
     G.cells.forEach(cl => { const d = (cl.x - x) ** 2 + (cl.y - y) ** 2; if (d < bd) { bd = d; best = cl; } });
-    return best && bd < 1.2 ? best.team : null;
+    return best && bd < 1.2 && (cv.dataset.seatActive === undefined || cv.dataset.seatActive.split(" ").includes(best.team)) ? best.team : null;
   }
   function renderMap(svg, V, res, flash) {
     const reg = R(), pts = SEA.map(P).map(p => p.join(",")).join(" ");
@@ -2271,6 +2280,11 @@
     };
     app.querySelectorAll("[data-seat]").forEach(b => b.addEventListener("click", () => select(b.dataset.seat)));
     cv?.addEventListener("click", e => { const id = boardHit(cv, e); if (id) select(id); });
+    cv?.addEventListener("mousemove", e => {
+      const id = boardHit(cv, e);
+      cv.style.cursor = id && V?.teams[id] && !V.teams[id].seated ? "pointer" : "default";
+    });
+    cv?.addEventListener("mouseleave", () => { cv.style.cursor = "default"; });
     app.querySelector("#lg-seat-confirm").addEventListener("click", e => {
       const id = L.seatChoice;
       if (!id || !L.snap?.teams[id] || L.snap.teams[id].seated || L.claiming) return;
@@ -2790,6 +2804,7 @@
       ${L.snap?.econ ? `<button type="button" class="lg-bbtn" data-panel="city">도시</button><button type="button" class="lg-bbtn" data-panel="rank">순위</button>` : ""}
       ${L.role === "solo" ? `<button type="button" class="lg-bbtn" id="lg-solo-restart">처음부터</button>` : ""}
       <button type="button" class="lg-bbtn lg-readybtn" id="lg-ready" aria-pressed="false">준비</button></div>
+      <p id="lg-plan-co2" hidden></p>
       <p class="lg-sr" id="lg-live" aria-live="polite"></p>`;
     root.append(bar);
     const panel = document.createElement("aside");
@@ -2848,6 +2863,11 @@
     const RS0 = C.roundsOf(V);
     set("lg-bround", V.round ? turnLabel(rd, V.round, RS0.length, true) : `준비 · ${turnLabel(RS0[0], 1, RS0.length, true)}`);
     set("lg-bphase", PHASE_NAME[V.phase]);
+    const planGoal = document.getElementById("lg-plan-co2");
+    if (planGoal) {
+      planGoal.hidden = !V.econ || V.phase !== "plan";
+      planGoal.textContent = planGoal.hidden ? "" : planCo2Text(V);
+    }
     const me = V.teams[L.team]; set("lg-left-hud", `${fmt(me.left, 1)}억`); L.syncMoney?.();
     const rb = document.getElementById("lg-ready");
     for (const id of ["lg-bar", "lg-panel"]) { const el = document.getElementById(id); if (el) el.dataset.econ = String(!!V.econ); }
@@ -2982,6 +3002,7 @@
     if (tab === "result" && V) body = V.phase === "end" ? body + techResultHTML(V) : techResultHTML(V) + body;
     p.classList.toggle("lg-tech-drawer", tab === "tech");
     p.dataset.folded = String(!!L.panelFolded);
+    if (V?.econ && V.phase === "plan") body = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>` + body;
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });
     const tree = p.querySelector(".lg-tech-scroll"); if (tree) tree.scrollLeft = techScroll;

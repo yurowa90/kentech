@@ -184,7 +184,8 @@
 .lg-city[data-off="true"] circle { fill: #b9bdb5; stroke: #fff; stroke-width: 2; opacity: 0.7; }
 .lg-city[data-off="true"] .lg-cname { font-size: 12px; fill: #5c6158; stroke: none; }
 .lg-citylink { cursor: pointer; }
-.lg-citylink:hover circle, .lg-citylink:focus circle { stroke: #ffd23f; stroke-width: 6; }
+.lg-citylink:hover circle { stroke: var(--ui-gold); stroke-width: 6; }
+.lg-citylink:focus-visible circle { stroke: var(--ui-cyan); stroke-width: 6; }
 .lg-viewbar a.lg-bbtn { display: inline-flex; align-items: center; text-decoration: none; }
 
 /* 라운드 사건 */
@@ -203,7 +204,8 @@
 /* 광역 육각 지도 */
 .lg-hx-d { filter: brightness(0.82); }
 .lg-hxteam polygon { stroke: rgba(255, 255, 255, 0.35); stroke-width: 0.6; }
-.lg-bteam-a:hover .lg-hxteam polygon, .lg-bteam-a:focus .lg-hxteam polygon { filter: brightness(1.12); stroke: #ffd23f; stroke-width: 1.4; }
+.lg-bteam-a:hover .lg-hxteam polygon { filter: brightness(1.12); stroke: var(--ui-gold); stroke-width: 1.4; }
+.lg-bteam-a:focus-visible .lg-hxteam polygon { filter: brightness(1.12); stroke: var(--ui-cyan); stroke-width: 1.4; }
 .lg-bteam-a[data-ring="bad"] .lg-hxteam polygon { stroke: var(--ui-danger); stroke-width: 1.2; }
 .lg-cres { font-size: 11px; font-weight: 800; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }
 .lg-coff { fill: #6a6f66; stroke: none; font-size: 12px; }
@@ -213,13 +215,13 @@
 .lg-mapnav a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1.5px solid var(--c); color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 700; }
 .lg-mapnav a:hover, .lg-mapnav a:focus-visible { background: var(--c); color: #fff; }
 .lg-evsize { font-size: 13px; font-weight: 700; color: var(--ink); }
-.lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: var(--ui-gold); color: #fff; }
+.lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: var(--ui-gold); color: var(--ui-panel); }
 .lg-evnote { font-size: 12px; color: var(--ink-2); }
 .lg-ev abbr { text-decoration: none; border-bottom: 1px dotted currentColor; cursor: help; }
 .lg-evopts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .lg-evopt { min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--line, #b9b9b9); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .lg-evopt[aria-pressed="true"] { border-color: var(--ui-gold); background: color-mix(in srgb, var(--ui-gold) 18%, var(--sheet)); font-weight: 700; }
-.lg-evopt:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-evopt:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
 
 /* U1–U4 경제 화면: 공통 토큰은 밝음·어두움 양쪽에서 바뀐다. */
 .lg-bar[data-econ="true"] .lg-bbtn,
@@ -326,7 +328,7 @@
     max-width: 1440px; padding: 12px 16px 32px; color: var(--ui-text); font-family: var(--body); box-sizing: border-box;
   }
   html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(button, a, select, input, summary):focus-visible {
-    outline: 3px solid var(--ui-gold); outline-offset: 3px;
+    outline: 3px solid var(--ui-cyan); outline-offset: 3px;
   }
   html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(button, select, summary) { min-height: 44px; }
   html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) .v2-btn { border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); border-color: var(--ui-border); }
@@ -378,7 +380,7 @@
   html.v2-league-lobby .lg-pickcity:has(input:checked)::after { background: var(--ui-cyan); }
   html.v2-league-lobby .lg-pickcity:has(input:checked)::before { right: 12px; }
   html.v2-league-lobby .lg-pickcity input.lg-chipcheck { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-  html.v2-league-lobby .lg-pickcity:has(input:focus-visible) { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+  html.v2-league-lobby .lg-pickcity:has(input:focus-visible) { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
   html.v2-league-lobby .lg-pickcity small { color: var(--ui-muted); font-size: 10px; }
   /* 검사 select_option과 키보드 select는 같은 원본 요소를 사용한다. */
   html.v2-league-lobby select.lg-contract { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
@@ -408,7 +410,7 @@
   .lg-seat-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 360px); gap: 14px; }
   .lg-seat-stage { min-width: 0; }
   .lg-seat-map { height: min(660px, calc(100vh - 240px)); min-height: 360px; margin: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
-  #lg-seat-map { display: block; width: 100%; cursor: pointer; }
+  #lg-seat-map { display: block; width: 100%; cursor: default; }
   html.v2-league-seat .lg-seats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 6px; gap: 4px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); backdrop-filter: blur(10px); }
   html.v2-league-seat .lg-seatbtn { min-width: 0; min-height: 76px; padding: 8px 4px; border: 1px solid transparent; border-radius: var(--ui-radius); background: transparent; color: var(--ui-text); font: 600 13px var(--body); }
   html.v2-league-seat .lg-seatbtn b { font-size: 15px; }
@@ -422,7 +424,7 @@
   html.v2-league-host .lg-hmeta h1 { font: 400 21px/1.4 var(--display); }
   html.v2-league-host .lg-room { order: 3; margin-left: auto; background: transparent; color: var(--ui-muted); padding: 6px; gap: 6px; }
   html.v2-league-host .lg-room b { font: 600 14px var(--mono); letter-spacing: .06em; color: var(--ui-gold); }
-  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 246px; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
+  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
   html.v2-league-host .lg-host-board { display: grid; grid-template-columns: auto minmax(110px, auto) auto minmax(0, 1fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
   .lg-host-board > div { min-width: 0; display: grid; align-content: center; gap: 6px; }
   .lg-host-board small { color: var(--ui-muted); font: 600 12px var(--body); }
@@ -446,8 +448,9 @@
   .lg-goalbar[data-bad="true"] b { color: var(--ui-danger); }
   .lg-goalbar[data-bad="true"] i { background: var(--ui-danger); }
   .lg-host-actions { display: grid; gap: 8px; }
-  .lg-host-tools { display: flex; flex-wrap: wrap; gap: 4px; }
-  html.v2-league-host .lg-host-tools .v2-btn { flex: 1; padding: 6px 8px; font-size: 11px; background: transparent; color: var(--ui-muted); }
+  .lg-host-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .lg-host-tools #lg-extend { grid-column: 1 / -1; }
+  html.v2-league-host .lg-host-tools .v2-btn { padding: 6px 8px; font-size: 11px; white-space: nowrap; overflow-wrap: normal; background: transparent; color: var(--ui-muted); }
   .lg-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
   #lg-host-risk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .lg-risk-chip { display: inline-flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--ui-danger); border-radius: var(--ui-radius); color: var(--ui-danger); font-size: 12px; }
@@ -455,9 +458,10 @@
   html.v2-league-host #lg-host-summary { padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host #lg-host-summary h2 { font: 400 23px var(--display); margin: 0 0 8px; }
   html.v2-league-host #lg-host-summary-table { table-layout: auto; font-size: 18px; }
-  html.v2-league-host #lg-host-summary-table :is(th, td) { height: 56px; padding: 6px; white-space: nowrap; overflow-wrap: normal; }
+  html.v2-league-host #lg-host-summary-table :is(th, td) { height: 56px; padding: 6px; text-align: right; white-space: nowrap; overflow-wrap: normal; }
   html.v2-league-host #lg-host-summary-table thead th { font: 600 12px var(--body); }
-  html.v2-league-host #lg-host-summary-table th[scope="row"] { border-left: 0; }
+  html.v2-league-host #lg-host-summary-table th[scope="row"],
+  html.v2-league-host #lg-host-summary-table thead th:first-child { text-align: left; border-left: 0; }
   html.v2-league-host #lg-host-summary-table button { padding: 4px 0; border: 0; background: transparent; font: 400 18px var(--display); text-align: left; }
   html.v2-league-host #lg-host-summary-table td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   html.v2-league-host #lg-host-summary-table td[data-ready="true"] { color: var(--ui-mint); }
@@ -491,10 +495,13 @@
     html.v2-league-host #lg-host-summary-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     html.v2-league-host #lg-host-summary-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; padding: 14px 0; border-bottom: 1px solid var(--ui-border); }
     html.v2-league-host #lg-host-summary-table :is(th, td) { display: block; width: auto; height: auto; padding: 0; text-align: left; border: 0; font-size: clamp(14px, 2.6vw, 18px); white-space: nowrap; overflow-wrap: normal; }
+    html.v2-league-host #lg-host-summary-table td { text-align: right; }
     html.v2-league-host #lg-host-summary-table th[scope="row"] { grid-column: 1 / -1; }
     html.v2-league-host #lg-host-summary-table button { width: auto; font-size: 20px; }
     html.v2-league-host #lg-host-summary-table td::before { content: attr(data-label); display: block; color: var(--ui-muted); font: 600 11px var(--body); margin-bottom: 4px; }
     html.v2-league-host #lg-host-summary-table td[data-bad="true"]::before { color: var(--ui-danger); }
+    html.v2-league-host #lg-host-summary-table td::before { text-align: left; }
+    html.v2-league-host #lg-host-summary-table td[data-empty="true"] { display: none; }
     html.v2-league-host #lg-host-summary .lg-tablewrap { overflow-x: visible; }
   }
   @media (max-width: 600px) {
@@ -528,7 +535,8 @@
   }
   @media (prefers-reduced-motion: reduce) {
     html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *,
-    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *::before { animation: none; transition: none; scroll-behavior: auto; }
+    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *::before,
+    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *::after { animation: none; transition: none; scroll-behavior: auto; }
   }
 }
 
@@ -723,7 +731,7 @@
 .lg-panel .lg-gate[data-ok="false"] { color: var(--lg-danger); }
 .lg-host .tag-mine,
 .lg-panel .tag-mine { color: var(--ink-2); border-color: currentColor; }
-.lg-evsize i { background: var(--ui-gold); color: #15222c; }
+.lg-evsize i { background: var(--ui-gold); color: var(--ui-panel); }
 .tag-model { display: inline-block; padding: 1px 5px; border: 1px dashed currentColor; border-radius: 4px; color: var(--ink-2); font-size: 12px; }
 .lg-event-source a { color: var(--ink); text-decoration: underline; overflow-wrap: anywhere; }
 .lg-event-source summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
@@ -886,4 +894,14 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .bd-tools, .lg-team-map .bd-runs { padding: 2px; }
   .lg-team-map .bd-tools > .bd-tool { padding: 2px 0; gap: 0; line-height: 1.1; }
   .lg-team-map .bd-layers, .lg-team-map .bd-zoom { padding: 0; }
+}
+
+/* 월 목표는 숫자·확정 시점·근거를 같은 줄 흐름에서 읽고 작은 화면에서는 줄바꿈한다. */
+#lg-plan-co2 { flex-basis: 100%; min-width: 0; margin: 0; padding: 2px 4px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+
+/* 휴대폰 목표는 계획 단계 서랍 안에 표시해 지도 위 막대에 행을 더하지 않는다. */
+#lg-plan-co2-drawer { display: none; }
+@media (max-width: 600px) {
+  #lg-bar #lg-plan-co2 { display: none; }
+  #lg-plan-co2-drawer { display: block; }
 }

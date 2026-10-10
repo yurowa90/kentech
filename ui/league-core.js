@@ -434,7 +434,7 @@
     const report = S.econRep || null;
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
     const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
-    Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: 1, eduAirSpecified: 4,
+    Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: P.eduAir.v, eduAirSpecified: P.eduAir.v,
       smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed),
       lngSpikeFrequency: 3, outageHoursPerPercent: 87.6, koreaOutageHours2019: 0.04,
       islandLineLoss: 3, researchYears: [10, 30], complaintPoliticalEffect: [50, 200],
@@ -443,7 +443,7 @@
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
         ["eduMemory", `지지율 회복 기억 ×${P.eduMemory.v}: 임기 4년을 게임 12달에 압축`],
         ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년`],
-        ["eduAir", "대기 영향: 현재 ×1, 추가 확대 없음"],
+        ["eduAir", `대기 영향 ×${P.eduAir.v}(교육용·집단 만족만, 이주에는 ×1)`],
         ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
         ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
@@ -1010,7 +1010,7 @@
   function settle(ties, sims, price, H, days) {
     const out = {}, flow = {};
     Object.keys(sims).forEach(id => {
-      out[id] = { imp: 0, exp: 0, pay: 0, earn: 0, fuelX: 0, co2X: 0, co2In: 0, bioCo2X: 0, saveBioCo2: 0, curtX: 0, sub: 0, saveFuel: 0, saveCo2: 0, del: new Float32Array(H), unlinked: [] };
+      out[id] = { imp: 0, exp: 0, pay: 0, earn: 0, fuelX: 0, co2X: 0, co2In: 0, bioCo2X: 0, saveBioCo2: 0, byX: {}, saveBy: {}, curtX: 0, sub: 0, saveFuel: 0, saveCo2: 0, del: new Float32Array(H), unlinked: [] };
     });
     const gate = (id, other) => (sims[id] ? sims[id].gx.find(g => g.to.includes(other)) : null);
     const usable = [];
@@ -1050,9 +1050,15 @@
           const so = out[o.s], bo = out[o.b];
           if (mode === "def") { B.def -= got; bo.del[k] += got; }
           else { B.disp -= got; bo.sub += got; bo.saveFuel += got * B.dmc; bo.saveCo2 += got * B.dco2; bo.saveBioCo2 += got * B.dbioCo2; }
+          if (mode === "disp") Object.entries(o.gbuy.byDisp || {}).forEach(([fuel, share]) => {
+            bo.saveBy[fuel] = (bo.saveBy[fuel] || 0) + got * share[k];
+          });
           so.exp += sent; so.earn += got * o.p; bo.imp += got; bo.pay += got * o.p;
           if (o.kind === 1) { so.fuelX += sent * o.gs.mc; so.co2X += sent * o.gs.co2i; so.bioCo2X += sent * (o.gs.bioCo2i || 0); bo.co2In += sent * o.gs.co2i; }
           else so.curtX += sent;
+          if (o.kind === 1) Object.entries(o.gs.byHead || {}).forEach(([fuel, share]) => {
+            so.byX[fuel] = (so.byX[fuel] || 0) + sent * share;
+          });
           const F = flow[o.U.T.id];
           if (o.dir > 0) F.ab += got; else F.ba += got;
           F.day[Math.floor(k / 24)] += o.dir * got;
@@ -1224,7 +1230,7 @@
       const intensity = dem > 1e-6 ? (normal.co2 + missing * P.normalCo2.v) / dem : P.normalCo2.v;
       // F05: 월 입력과 같은 자산 경로. 시작 보정에는 학생 건설·정책을 포함하지 않는다.
       const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
-      base[id] = econInput(initial, R, id, { dem, uns: 0, unsPct: 0, hospH: 0,
+      base[id] = econInput(initial, R, id, { by: normal.by, dem, uns: 0, unsPct: 0, hospH: 0,
         co2Prod: intensity * dem, co2Cons: intensity * dem, renPct: P.normalRen.v,
         exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: normal.fuel + missing * P.normalCost.v, policy: 0 } }, wk);
     }));
@@ -1235,7 +1241,8 @@
   function econInput(S, R, id, r, wk, extra) {
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
-      energy: { bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+      // by는 거래 후 대표 운영 기간의 생산 MWh(시작 보정은 거래 없음). 수입 전기는 제외한다.
+      energy: { genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
         tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: { ...(S.teams[id].econPol || {}), save: (plan.policies || []).includes("save"), share: (plan.policies || []).includes("share") },
@@ -1243,7 +1250,7 @@
     };
   }
   function econMonth(S, R, bg, res) {
-    const rd = roundsOf(S)[S.round - 1], wk = (rd && rd.mdays ? rd.mdays : 30) / 7, ids = Object.keys(res.team);
+    const rd = roundsOf(S)[S.round - 1], wk = (rd?.mdays || 30) / (rd?.days || res.days), ids = Object.keys(res.team);
     if (S.econ.t >= S.econ.len) return;
     // runRound의 공개 결과에는 판매용 연료와 시간별 거래가 없다.
     // 같은 씨앗·계획·운영 배수로 정산을 재현한다. 계절 모드는 이 경로에 들어오지 않는다.
@@ -1265,13 +1272,19 @@
       // 해당 시각만 재정산해 판매에 쓴 여유를 뺀다. 미접속 망의 부족은 섞지 않는다.
       const slice = {};
       ids.forEach(cid => { slice[cid] = { gx: sims[cid].gx.map(g => Object.assign({}, g,
+        { byDisp: Object.fromEntries(Object.entries(g.byDisp || {}).map(([fuel, share]) => [fuel, [share[peak]]])) },
         Object.fromEntries(["def", "ren", "head", "disp", "dmc", "dco2"].map(key => [key, [g[key] ? g[key][peak] : 0]])))) }; });
       const atPeak = settle(ties, slice, price, 1, 1).out[id];
       // 추가 화력 출력만 인정하고, 재생 판매도 전부 차감하는 보수적 하한이다.
       r.spareMW = Math.max(0, s.gx.reduce((a, g) => a + Math.max(0, g.head[peak] - g.def[peak]), 0) - atPeak.exp);
     });
     const inputs = {};
-    ids.forEach(id => { inputs[id] = econInput(S, R, id, res.team[id], wk); });
+    ids.forEach(id => {
+      const o = settled.out[id], by = Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(fuel =>
+        [fuel, Math.max(0, (sims[id].k.by[fuel] || 0) + (o.byX[fuel] || 0) - (o.saveBy[fuel] || 0))]));
+      // 월 입력에서만 사용한다. 공개 결과·36달 저장에는 연료별 중간값을 싣지 않는다.
+      inputs[id] = econInput(S, R, id, { ...res.team[id], by }, wk);
+    });
     // 화면 원인 설명용 직전 값. 학생 자유 서술은 포함하지 않는다.
     S.econPreviousScore = KCP.econ.score(S.econ);
     S.econBefore = Object.fromEntries(ids.map(id => {

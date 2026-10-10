@@ -780,7 +780,8 @@ def ui_fixes(checks, context, base, label, pages):
     open_panel(team, 'city')
     checks.ok(team.locator('[data-pol="re100"]').is_disabled() and
               '🔒 RE100' in team.locator('.lg-re100').inner_text(), f'{label} #11 RE100 도입 전 잠금')
-    checks.ok('실제 대기질(미세먼지 등)' in team.locator('#lg-city').inner_text(), f'{label} #24 도시 CO₂ 추정 주석')
+    # S8(H01 연결) 뒤 공기 값은 CO₂ 어림이 아니라 발전 PM2.5 증분 추정이다. 주석의 요지(관측 대기질이 아님)를 확인한다.
+    checks.ok('관측 농도는 아니' in team.locator('#lg-city').inner_text(), f'{label} #24 도시 공기 추정 주석')
     open_panel(team, 'deal')
     checks.ok('🔒 HVDC' in team.locator('#lg-panel').inner_text() and
               team.locator('[data-kind="hvdc"]').count() == 0, f'{label} #11 HVDC 도입 전 잠금')
