@@ -62,7 +62,8 @@ with sync_playwright() as pw:
     ok(hb >= 1, f"UI build reached host plan ({hb})")
     # 나머지 계획은 코드로(같은 길: rev → 진행자)
     for t, pg in tp.items():
-        pg.evaluate(AUTO); pg.evaluate(STRAT)
+        # 문자열 식의 값이 함수면 Playwright가 인자 없이 호출한다(__auto(undefined) → selectPack(null) → 기본 지도로 바뀜). 정의만 하도록 감싼다.
+        pg.evaluate(f"() => {{ {AUTO} }}"); pg.evaluate(f"() => {{ {STRAT} }}")
         done = pg.evaluate("""(t) => KCP.league.plan(st => { const b = KCP.league.state().snap.teams[t].budget; const P = __plan(t, 'mix', b - 45); st.builds = P.builds; st.lines = P.lines; st.missions = ['outage','co2']; })""", t)
         ok(done, f"{t} plan applied")
     host.wait_for_timeout(1500)

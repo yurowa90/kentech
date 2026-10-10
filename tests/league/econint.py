@@ -76,7 +76,8 @@ JS = r"""
 """
 with sync_playwright() as pw:
     br = pw.chromium.launch(); pg = br.new_page(); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
-    pg.goto(BASE + "#home"); pg.wait_for_timeout(500); pg.evaluate(AUTO)
+    # 문자열 식의 값이 함수면 Playwright가 인자 없이 호출한다(__auto(undefined) → selectPack(null) → 기본 지도로 바뀜). 정의만 하도록 감싼다.
+    pg.goto(BASE + "#home"); pg.wait_for_timeout(500); pg.evaluate(f"() => {{ {AUTO} }}")
     out = pg.evaluate(JS); br.close()
 bad = [m for c, m in out["checks"] if not c]
 print("checks", len(out["checks"]), "fail", len(bad)); [print("FAIL", m) for m in bad[:20]]

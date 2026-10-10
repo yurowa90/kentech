@@ -43,7 +43,8 @@ with sync_playwright() as pw:
         confirm_seat(p, t, timeout=10000)
     # 건설을 세 번에 나눠 → 진행 기록 점(15초 묶음이라 시간을 흉내 낼 수 없으니 1점 이상)
     for t, p in teams.items():
-        p.evaluate(AUTO); p.evaluate(STRAT)
+        # 문자열 식의 값이 함수면 Playwright가 인자 없이 호출한다(__auto(undefined) → selectPack(null) → 기본 지도로 바뀜). 정의만 하도록 감싼다.
+        p.evaluate(f"() => {{ {AUTO} }}"); p.evaluate(f"() => {{ {STRAT} }}")
         p.evaluate("(t) => KCP.league.plan(st => { const b = KCP.league.state().snap.teams[t].budget; const P = __plan(t, 'mix', b - 40); st.builds = P.builds; st.lines = P.lines; })", t)
     h.wait_for_timeout(5000)
     hist = h.evaluate("() => Object.fromEntries(Object.entries(KCP.league.state().S.teams).map(([k, T]) => [k, (T.hist || []).length]))")

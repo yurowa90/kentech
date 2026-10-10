@@ -25,12 +25,25 @@ for (const id of ids) {
   const by = B.simulate({ ...plan, season: 'winter', seed: 0 }, 7, { league: true }).tot.by;
   initial[id] = 7e-6 * ((by.coal || 0) + .05 * (by.lng || 0) + .8 * (by.diesel || 0) + .8 * (by.biomass || 0)) * 31 / 7;
 }
-// P61 방향성: 발전소 소재 도시에서 표에 있는 수용 도시로만. 연계선과 독립.
+// D-69의 land/bay 명시 결정과 P61 원문 수치에서 독립 계산.
+const incoming = own => ({
+  hwaseong: .2 * own.pyeongtaek,
+  pyeongtaek: .2 * (own.hwaseong + own.anseong + own.cheonan + own.asan + own.dangjin),
+  anseong: .2 * (own.pyeongtaek + own.cheonan),
+  dangjin: .2 * (own.pyeongtaek + own.asan),
+  asan: (.059 / .092) * own.dangjin + .2 * (own.pyeongtaek + own.cheonan),
+  cheonan: .45 * own.dangjin + .2 * (own.pyeongtaek + own.anseong + own.asan)
+});
 for (const id of ids) {
-  const delta = initial[id] + (['asan', 'cheonan'].includes(id) ? .6 * initial.dangjin : 0);
+  const delta = initial[id] + incoming(initial)[id];
   near(S.econ.cities[id].lagL.air, 80 - 29 * delta, `${id} 시작 보정 PM`);
   near(S.econ.cities[id].groupParts.air, 80 - 4 * 29 * delta, `${id} 집단 만족만 ×4`);
 }
+console.log(JSON.stringify({ startComparison: ids.map(id => ({ name: C.teamDef(R, id).name,
+  own: initial[id], deltaBefore: initial[id] + (['asan', 'cheonan'].includes(id) ? .6 * initial.dangjin : 0),
+  deltaAfter: initial[id] + incoming(initial)[id],
+  airBefore: 80 - 29 * (initial[id] + (['asan', 'cheonan'].includes(id) ? .6 * initial.dangjin : 0)),
+  airAfter: S.econ.cities[id].lagL.air })) }));
 near(C.publicView(S, 0).econ.speeds.eduAir, 4, '공개 배속은 실제 eduAir');
 C.host(S, 'next', 1);
 for (const id of ids) S.teams[id].plan = clone(D.normalStartPlans[id]);
@@ -54,7 +67,7 @@ for (const id of ids) {
   assert.equal(result.team[id].unsPct, 100); checks++;
   near(result.econ.cities[id].pm25.own, 0, `${id} 정전 달 무발전`);
   near(result.econ.cities[id].Lparts.air, 80, `${id} 정전 air 상한`);
-  const startDelta = initial[id] + (['asan', 'cheonan'].includes(id) ? .6 * initial.dangjin : 0);
+  const startDelta = initial[id] + incoming(initial)[id];
   near(result.econ.cities[id].Lparts.air - startAir[id], 29 * startDelta, `${id} §7.2 실제 정전 상승 상한`);
 }
 // 실제 build와 settle에서 독립 계산: 정상 시작 배치는 각 도시 석탄 또는 LNG만 발전한다.
@@ -129,6 +142,28 @@ for (const id of ['dangjin', 'pyeongtaek']) {
     }
   }
   assert.ok(mixedHours > 0, '혼합 연료 감발 비율 검사 실행'); checks++;
+}
+// 당진 밖 도시의 실제 디젤 건설 → 운영 → 이웃 G 기여. 전력 연계선은 없다.
+{
+  const id = 'pyeongtaek', state = C.newState('s8b-diesel', R.id, 0, ids, { turns: 12 });
+  C.host(state, 'next', 1); state.events = [];
+  B.selectPack(C.teamDef(R, id).pack, 'league');
+  const anchor = B.SITES.find(s => s.kind === 'city_l').tile;
+  const tile = B.TILES.find(t => B.TILES[anchor].nb.includes(t.i) && !t.out && t.site < 0 && !B.siteRule('diesel', t));
+  assert.ok(tile, '디젤 합법 위치 존재'); checks++;
+  state.teams[id].plan = { builds: [{ t: 'diesel', i: tile.i }], lines: [{ p: B.routePath(anchor, tile.i) }] };
+  const sim = C.simTeam(B, R, id, state.teams[id].plan,
+    { season: 'winter', days: 7, seed: 7013 }, Number.MAX_VALUE, C.modsFor(state, R, id));
+  assert.ok(sim.k.by.diesel > 0, '실제 디젤 생산 존재'); checks++;
+  const own = 7e-6 * .8 * sim.k.by.diesel * 31 / 7;
+  const result = C.run(state, B, 2);
+  near(result.econ.cities[id].pm25.own, own, '디젤 월 환산 자체 증분');
+  for (const target of ids.filter(t => t !== id)) {
+    near(result.econ.cities[target].pm25.delta, own * .2, 'G 직접 기여 0.2, 재전파 없음');
+  }
+  console.log(JSON.stringify({ dieselExample: { from: C.teamDef(R, id).name,
+    to: C.teamDef(R, 'hwaseong').name, monthlyMWh: sim.k.by.diesel * 31 / 7,
+    own, neighbour: result.econ.cities.hwaseong.pm25.delta, grade: 'G' } }));
 }
 // settle의 누적은 CO₂와 같은 거래량(sent/got)을 사용하고 송전 손실을 구분한다.
 {

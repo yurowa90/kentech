@@ -313,6 +313,42 @@
 
 .lg-panel[data-econ="true"] .lg-radio { min-height: 44px; align-content: center; }
 
+/* S7: 단서로 고른 뒤 단계별 정전 몫을 연다. 밝음·어두움 공통 토큰. */
+section#lg-missed.lg-outage { display: block; }
+.lg-outage { min-width: 0; margin-top: 14px; overflow-wrap: anywhere; }
+.lg-outage h4 { margin: 8px 0; }
+.lg-out-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lg-out-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid var(--ui-border); border-top: 3px solid var(--ui-cyan); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.lg-out-card[aria-pressed="true"] { outline: 2px solid var(--ui-cyan); outline-offset: -2px; }
+.lg-out-card:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
+.lg-out-card:disabled { opacity: 1; cursor: default; }
+.lg-out-clue { color: var(--ui-muted); font-size: 12px; line-height: 1.6; }
+.lg-out-size { margin-top: auto; padding: 8px 4px; white-space: nowrap; border: 1px dashed var(--ui-border); border-radius: var(--ui-radius); text-align: center; font-variant-numeric: tabular-nums; }
+.lg-out-tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
+.lg-out-tags span { padding: 2px 6px; border-radius: var(--ui-radius); border: 1px solid var(--ui-cyan); }
+.lg-out-tags [data-out-tag="largest"] { color: var(--ui-danger); border-color: var(--ui-danger); }
+.lg-outage .v2-btn, .lg-y2022 a { min-height: 44px; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; }
+#lg-outage-open { width: 100%; }
+.lg-out-wf { display: grid; width: 100%; box-sizing: border-box; gap: 4px; margin: 12px 0; font-size: 12px; }
+.lg-out-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 82px; gap: 6px; align-items: center; min-width: 0; }
+.lg-out-row b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.lg-out-track { position: relative; min-width: 0; height: 14px; background: var(--ui-hud); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); overflow: hidden; }
+.lg-out-bar { position: absolute; top: 2px; bottom: 2px; background: var(--ui-cyan); border-radius: var(--ui-radius); }
+.lg-out-bar[data-negative="true"] { background: var(--ui-mint); }
+[data-out-step="replay"] .lg-out-bar { background: var(--ui-gold); }
+[data-out-step="trial"] .lg-out-bar, [data-out-step="actual"] .lg-out-bar { background: var(--ui-muted); }
+#lg-outage-verdict { padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }
+#lg-outage-verdict p { margin: 6px 0; }
+#lg-outage-carry { max-width: 100%; margin: 8px 4px 0 0; }
+#lg-missed-carry { padding: 8px 10px; border-left: 3px solid var(--ui-gold); background: var(--ui-hud); }
+.lg-y2022 { overflow-wrap: anywhere; }
+.lg-y2022 a { display: inline-flex; align-items: center; color: var(--ui-cyan); }
+@media (max-width: 600px) {
+  .lg-out-cards { grid-template-columns: minmax(0, 1fr); }
+  .lg-out-card { min-height: 44px; }
+  .lg-out-row { grid-template-columns: 76px minmax(0, 1fr) 78px; gap: 4px; }
+}
+
 /* U5: 팀 플레이와 이어지는 로비·자리 선택·진행자 남색 판. */
 @media screen {
   html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host):root {
