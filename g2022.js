@@ -186,7 +186,7 @@
     if (R.twist !== undefined) {
       const t = record(R.twist);
       G.twist = { k: own(TWIST22, t.k) ? t.k : "",
-        pick: isCell(t.pick) ? t.pick : "",
+        pick: isCell(t.pick) ? t.pick : "", pickType: own(PT, t.pickType) ? t.pickType : "",
         line: typeof t.line === "string" ? t.line.slice(0, 140) : "",
         keep: typeof t.keep === "string" ? t.keep.slice(0, 140) : "" };
     }
@@ -205,6 +205,13 @@
       G.q2.push({ type: p.type, cell: p.cell, to: own(VILL, p.to) ? p.to : "" });
     });
     if (R.wireVersion !== 2 && G.q2.length) G.wireNotice = "migrated";
+    // 옛 저장의 주민 협의 선택은 좌표만 있다. 지금 계획의 같은 좌표에서 종류를 채워 옮기고,
+    // 그 좌표에 발전소가 없으면 종류를 비워 둬 '다시 고르세요'로 안내한다.
+    if (G.twist && G.twist.pick && record(R.twist).pickType === undefined) {
+      const plants = G.q2.length ? G.q2 : Object.entries(G.q1).map(([type, cell]) => ({ type, cell }));
+      const found = plants.find(p => p.cell === G.twist.pick);
+      if (found) G.twist.pickType = found.type;
+    }
     if (repaired || (R.q2 != null && (!Array.isArray(R.q2) || R.q2.length !== G.q2.length)) ||
         (R.wireVersion === 2 && (!Array.isArray(R.wires) || R.wires.length !== G.wires.length))) G.wireNotice = "repaired";
     return G;
@@ -242,10 +249,10 @@
     return { q2, plants, wires, keys };
   }
 
-  function twistResult(plan, key, pick = "") {
+  function twistResult(plan, key, pick = "", pickType = "") {
     // 고르기 전이나 계획에서 사라진 선택에는 가정을 적용하지 않는다.
-    const paused = key === "community" ? plan.plants.findIndex(p => p.cell === pick) : -1;
-    if (key === "community" && paused < 0) return `<p>${pick ? "고른 발전소가 계획에 없습니다. 다시 고르세요." : "미룰 발전소를 고르면 바뀐 수치를 보여 줍니다."}</p><p class="small">협의 결과를 예측한 것이 아닙니다.</p>`;
+    const paused = key === "community" ? plan.plants.findIndex(p => p.cell === pick && p.type === pickType) : -1;
+    if (key === "community" && paused < 0) return `<p>${pick ? "고른 발전소가 계획에 없거나 종류가 바뀌었습니다. 다시 고르세요." : "미룰 발전소를 고르면 바뀐 수치를 보여 줍니다."}</p><p class="small">협의 결과를 예측한 것이 아닙니다.</p>`;
     // supply의 연결 판정을 재사용하며 계산 결과만 바꾼다. 저장·지도 자료는 불변이다.
     const before = supply(plan.plants, plan.wires);
     const after = { ...before, got: { ...before.got } };
@@ -286,7 +293,9 @@
     if (!KCP.$("#tw22", root)) next.insertAdjacentHTML("beforebegin", '<section class="panel" id="tw22" aria-labelledby="tw22-title" style="min-width:0;overflow-wrap:anywhere"></section>');
     const panel = KCP.$("#tw22", root);
     const G = normalizeGame(state.game), plan = twistPlan(G);
-    let memo = G.twist || { k: "", pick: "", line: "", keep: "" };
+    let memo = G.twist || { k: "", pick: "", pickType: "", line: "", keep: "" };
+    const pickVal = (cell, type) => `${cell}:${type}`;
+    const matched = () => plan.plants.some(p => p.cell === memo.pick && p.type === memo.pickType);
     const persist = () => {
       // 다른 성찰 처리에서 game을 정규화해도 이전 객체에 쓰지 않는다.
       state.game = { ...record(state.game), twist: { ...memo } };
@@ -305,20 +314,21 @@
         ${memo.k === "community" && hasPlan ? `<div class="field"><label for="tw22-pick">한 달 동안 가동을 미룰 발전소</label>
           <select id="tw22-pick" aria-controls="tw22-result" style="min-height:44px;min-width:44px;width:100%;max-width:100%;background:var(--sheet);color:var(--ink)">
             <option value=""${!memo.pick ? " selected" : ""}>발전소를 고르세요</option>
-            ${memo.pick && !plan.plants.some(p => p.cell === memo.pick) ? `<option value="${esc(memo.pick)}" selected disabled>이전 선택 ${esc(memo.pick)} (계획에 없음)</option>` : ""}
-            ${plan.plants.map(p => `<option value="${esc(p.cell)}"${memo.pick === p.cell ? " selected" : ""}>${esc(PT[p.type].n)} · ${esc(p.cell)} · 생산 ${out(p.type, p.cell)}</option>`).join("")}
+            ${memo.pick && !matched() ? `<option value="${esc(pickVal(memo.pick, memo.pickType))}" selected disabled>이전 선택 ${memo.pickType ? esc(PT[memo.pickType].n) + " " : ""}${esc(memo.pick)} (계획에 없거나 종류가 바뀜)</option>` : ""}
+            ${plan.plants.map(p => `<option value="${esc(pickVal(p.cell, p.type))}"${memo.pick === p.cell && memo.pickType === p.type ? " selected" : ""}>${esc(PT[p.type].n)} · ${esc(p.cell)} · 생산 ${out(p.type, p.cell)}</option>`).join("")}
           </select></div>` : ""}
         <div id="tw22-result" role="status" aria-live="polite" aria-atomic="true"></div>
         <p id="tw22-help" class="small">좌표·설비·전선 중 무엇을 어떻게 바꿀지 한 줄로 적으세요(각 140자 이내). 메모는 준비실 계획이나 장면을 바꾸지 않습니다.</p>
         <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.line)}</textarea></div>
         <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.keep)}</textarea></div>`;
       const showResult = () => {
-        KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && (memo.k === "community" || !stale) ? twistResult(plan, memo.k, memo.pick) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
+        KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && (memo.k === "community" || !stale) ? twistResult(plan, memo.k, memo.pick, memo.pickType) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
       };
       showResult();
       const pick = KCP.$("#tw22-pick", panel);
       if (pick) pick.addEventListener("change", e => {
-        memo = { ...memo, pick: isCell(e.target.value) ? e.target.value : "" };
+        const [cell, type] = String(e.target.value).split(":");
+        memo = isCell(cell) && own(PT, type) ? { ...memo, pick: cell, pickType: type } : { ...memo, pick: "", pickType: "" };
         persist();
         showResult();
       });
@@ -347,8 +357,8 @@
     const G = normalizeGame(state.game), t = G.twist;
     if (!t || (!t.line && !t.keep && !(t.k === "community" && t.pick))) return;
     const condition = t.k ? `${TWIST22[t.k].condition} (연습실 가정)` : "조건 확인 불가";
-    const picked = t.k === "community" ? twistPlan(G).plants.find(p => p.cell === t.pick) : null;
-    const pickLine = t.k === "community" ? `\n고른 발전소: ${picked ? `${PT[picked.type].n} ${picked.cell}` : t.pick ? `${t.pick} (현재 계획에 없음·종류 확인 불가)` : "미선택"}` : "";
+    const picked = t.k === "community" ? twistPlan(G).plants.find(p => p.cell === t.pick && p.type === t.pickType) : null;
+    const pickLine = t.k === "community" ? `\n고른 발전소: ${picked ? `${PT[picked.type].n} ${picked.cell}` : t.pick ? `${t.pickType ? PT[t.pickType].n + " " : ""}${t.pick} (현재 계획에 없거나 종류가 바뀜)` : "미선택"}` : "";
     parts.push(`\n■ 조건이 바뀐다면(연습실 질문)\n조건: ${condition}${pickLine}\n한 줄 수정: ${t.line}\n유지 이유: ${t.keep}\n`);
   });
 

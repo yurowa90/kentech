@@ -69,6 +69,26 @@
     return [...seen];
   }
 
+  /* ---------- 좁은 화면 면접실의 장면 위치 ----------
+   * 면접 중 학생이 먼저 봐야 하는 것은 질문 카드다. 760px 이하의 면접실에서는 장면을 단계 화면(#phase) 뒤로
+   * 옮기고, 다른 단계나 넓은 화면에서는 원래 자리(문제 상황 .brief 앞)로 되돌린다. 장면 요소는 #app 안에 남는다. */
+  const narrowQuery = window.matchMedia ? window.matchMedia("(max-width: 760px)") : null;
+  function placeStage(phase) {
+    const el = document.getElementById("v2-stage"), app = document.getElementById("app"), main = document.getElementById("phase");
+    if (!el || !app || !main || !app.contains(el) || !document.documentElement.classList.contains("v2-skin-" + ID)) return;
+    if (phase === "room" && narrowQuery && narrowQuery.matches) {
+      if (main.nextElementSibling !== el) main.after(el);
+    } else if (main.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      const brief = app.querySelector(".brief");
+      if (brief) app.insertBefore(el, brief);
+    }
+  }
+  if (narrowQuery) {
+    const replace = () => { const el = document.getElementById("v2-stage"); if (el && el.dataset.phase) placeStage(el.dataset.phase); };
+    if (narrowQuery.addEventListener) narrowQuery.addEventListener("change", replace);
+    else if (narrowQuery.addListener) narrowQuery.addListener(replace);
+  }
+
   /* ---------- 면접실의 현재 질문(저장하지 않는 메모리) ---------- */
   let questionIndex = 0, offRoom = null;
   function clearQuestion() {
@@ -78,10 +98,14 @@
   }
   if (typeof KCP.on === "function") {
     KCP.on("route:change", clearQuestion);
-    KCP.on("phase:change", clearQuestion);
+    KCP.on("phase:change", ({ year, to } = {}) => {
+      clearQuestion();
+      if (year === ID) placeStage(to);
+    });
     KCP.on("room:render", ({ year, root }) => {
       clearQuestion();
       if (year !== ID || !root) return;
+      placeStage("room");
       const follow = event => {
         const card = event.target?.closest?.(".qdeck .qcard");
         const answer = card && card.querySelector("textarea[data-a]");
