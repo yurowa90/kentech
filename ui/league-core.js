@@ -379,10 +379,10 @@
     const weekMul = (rd?.mdays || 30) / (rd?.days || 7);
     const previous = (S.results || []).find(result => result.round === S.round - 1);
     const previousRound = previous && roundsOf(S)[previous.round - 1];
-    // 계획용 수요 추정은 아직 없다. 직전 달 실제 월 MWh를 쓰며 이번 달 일수로 늘리지 않는다.
+    // 계획용 수요 추정은 아직 없다. 직전 달 실제 일평균 수요에 이번 달 일수를 곱한다(31일→28일 같은 일수 차이만 보정, 계절 변화는 그대로).
     // 첫 달만 학생 계획·정책·사건을 포함하지 않은 시작 보정 운영의 월 수요를 쓴다.
     let monthlyDemand = previous
-      ? Object.values(previous.team).reduce((total, team) => total + team.dem * previousRound.mdays / previous.days, 0)
+      ? Object.values(previous.team).reduce((total, team) => total + team.dem * (rd?.mdays || previousRound.mdays) / previous.days, 0)
       : S.goalDemand0;
     if (monthlyDemand == null && demand == null && KCP.buildGame) {
       // 목표 저장 전의 옛 데이터는 첫 달 보정과 같은 지도·씨앗으로 수요만 복원한다.
@@ -393,15 +393,18 @@
         return total + normal.dem * first.mdays / first.days;
       }, 0));
     }
-    // demand는 미확정 상태에서 명시한 대표 주 수요 추정값. 확정 후에는 위에서 저장값을 반환한다.
+    // demand는 미확정 상태에서 명시한 대표 주 수요 추정값(현재 호출처 없음 — 계획 수요 추정을 붙일 때 쓰는 자리). 확정 후에는 위에서 저장값을 반환한다.
     const co2Plan = (demand == null ? monthlyDemand || 0 : demand * weekMul) * P.normalCo2.v *
       (1 - P.coopCo2Cut.v * Math.min(1, ((rd?.year || S.econ.year) - 2018) / 12)) * P.coopEase.v;
     // 공개 계약: co2Plan은 평가에 그대로 쓰는 월 t, 기존 co2는 화면 호환용 대표 주 t.
     return { unsPct: P.coopUnsGoal.v, co2: co2Plan / weekMul, co2Plan,
-      co2Basis: demand != null ? "계획 수요 추정" : previous ? "지난달 수요" : "첫 달 보정 운영 수요" };
+      co2Basis: demand != null ? "계획 수요 추정" : previous ? "지난달 수요(일수 보정)" : "첫 달 보정 운영 수요" };
   };
   function preserveGoalPlan(S) {
-    if (S.econ && !S.goalPlan?.[S.round]) S.goalPlan = { ...S.goalPlan, [S.round]: goalsOf(S) };
+    if (!S.econ || S.goalPlan?.[S.round]) return;
+    const goal = goalsOf(S);
+    // 수요를 못 구해 0이 되면 저장하지 않는다('≤ 0 t' 고정 방지). run 첫머리에서 다시 시도한다.
+    if (goal.co2Plan > 0) S.goalPlan = { ...S.goalPlan, [S.round]: goal };
   }
   // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 0.7배 폭(P, 예측 NRMSE 30.6% 감소 [P101] · REF 12.7)으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
   function fcxOf(S, id) {

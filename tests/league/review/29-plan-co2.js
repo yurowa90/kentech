@@ -36,7 +36,7 @@ function play(ids) {
     initialDemand += build.simulate({ ...plan, season: 'winter', seed: 0 }, 7, { league: true }).tot.dem * 31 / 7;
   }
   const planned = [];
-  let previousDemand = initialDemand;
+  let previousDaily = 0;
   for (let month = 1; month <= 36; month++) {
     core.host(state, 'next', month * 1000);
     const savedBeforeView = JSON.stringify(state);
@@ -44,10 +44,11 @@ function play(ids) {
     equal(JSON.stringify(state), savedBeforeView, '공개 조회는 상태를 변경하지 않음');
     assert.ok(goals.co2Plan > 0, `${month}달: 0이 아닌 계획 목표`);
     checks++;
-    // F20: 2027=.70, 2028=2/3, 2029=19/30. 직전 달 실제 월 수요를 사용한다.
+    // F20: 2027=.70, 2028=2/3, 2029=19/30. 직전 달 실제 일평균 수요 × 이번 달 일수(일수 차이만 보정).
     const factor = [0.7, 2 / 3, 19 / 30][Math.floor((month - 1) / 12)];
-    near(goals.co2Plan, previousDemand * 0.4567 * factor, `${month}달 수요·연도별 감축 경로`);
-    equal(goals.co2Basis, month === 1 ? '첫 달 보정 운영 수요' : '지난달 수요', '목표 산출 근거');
+    const expectedDemand = month === 1 ? initialDemand : previousDaily * core.roundsOf(state)[month - 1].mdays;
+    near(goals.co2Plan, expectedDemand * 0.4567 * factor, `${month}달 수요·연도별 감축 경로`);
+    equal(goals.co2Basis, month === 1 ? '첫 달 보정 운영 수요' : '지난달 수요(일수 보정)', '목표 산출 근거');
     equal(state.goalPlan[month].co2Plan, goals.co2Plan, '계획 진입 즉시 상태에 보존');
     planned.push(goals.co2Plan);
 
@@ -72,7 +73,7 @@ function play(ids) {
     equal(Object.values(state.goalPlan).map(goal => goal.co2Plan), planned, '지난달 확정 목표 보존');
     const round = core.roundsOf(state)[month - 1];
     near(goals.co2 * round.mdays / round.days, goals.co2Plan, '기존 대표 주 필드와 월 계약 단위 호환');
-    previousDemand = Object.values(result.team).reduce((total, team) => total + team.dem * round.mdays / result.days, 0);
+    previousDaily = Object.values(result.team).reduce((total, team) => total + team.dem / result.days, 0);
   }
   core.host(state, 'next', 40000);
   equal(core.publicView(state, 40001).goals.co2Plan, planned.at(-1), '종료 단계 마지막 목표 보존');
