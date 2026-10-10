@@ -980,6 +980,11 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
     background: #0b1a2c;
     box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
   }
+  /* #build 서랍은 실제 도구 막대 위에 두고 HUD 아래 공간 안에서만 스크롤한다. */
+  .bd-root:not(.bd-league) .bd-drawer {
+    bottom: calc(var(--bd-dock, 140px) + 8px);
+    max-height: min(74dvh, calc(100dvh - var(--bd-top, 120px) - var(--bd-dock, 140px) - 16px));
+  }
   .bd-drawer-body { padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); }
   html.bd-drawer-open .bd-confirm { left: 50%; }
   .bd-confirm { width: max-content; }
