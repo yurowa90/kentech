@@ -210,6 +210,9 @@ async function main() {
     const S = game(C, BG, R, ids);
     for (const city of ids) S.teams[city].plan = planFor(BG, C, R, city).plan;
     const view = C.publicView(S, 3);
+    check('plan CO2 target is positive monthly tonnes', finite(view.goals.co2Plan) && view.goals.co2Plan > 0);
+    check('plan CO2 basis is public', typeof view.goals.co2Basis === 'string' && view.goals.co2Basis.length > 0);
+    check('public snapshot retains the fixed CO2 target', C.goalsOf(view, 1e9).co2Plan === view.goals.co2Plan);
     for (const city of ids) {
       const spend = C.spendOf(BG, S, R, city, S.teams[city].plan);
       check(`${city}: paid plan has positive spend`, finite(spend) && spend > 0);
@@ -219,6 +222,8 @@ async function main() {
         !approx(view.teams[city].left, C.budget(S, city)));
     }
     const result = C.run(S, BG, 50);
+    check('evaluation uses the published plan CO2 target', result.econ.region.goal.co2 === view.goals.co2Plan);
+    check('review retains the published plan CO2 target', C.publicView(S, 51).goals.co2Plan === view.goals.co2Plan);
     for (const city of ids) {
       ledgerContract(city, result.team[city]);
       operationsContract(city, result.team[city]);

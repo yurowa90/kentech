@@ -372,12 +372,40 @@
 
   const goalsOf = (S, demand) => {
     if (!S.econ) return S.goals || regionOf(S.region).goals;
+    if (S.goalPlan?.[S.round]) return { ...S.goalPlan[S.round] };
+    // 공개 상태에는 goalPlan 대신 이번 달 goals만 있으므로 전달된 확정값을 그대로 읽는다.
+    if (S.goals?.co2Plan != null) return { ...S.goals };
     const P = KCP.ECON_DATA.params, rd = roundsOf(S)[Math.max(0, S.round - 1)];
-    // 대표 주 단위. 보고서 입력에서만 월 일수로 환산한다.
-    const last = (S.results || []).find(r => r.round === S.round) || (S.results || []).at(-1);
-    const dem = demand ?? last?.region.dem ?? 0;
-    return { unsPct: P.coopUnsGoal.v, co2: dem * P.normalCo2.v * (1 - P.coopCo2Cut.v * Math.min(1, ((rd?.year || S.econ.year) - 2018) / 12)) * P.coopEase.v };
+    const weekMul = (rd?.mdays || 30) / (rd?.days || 7);
+    const previous = (S.results || []).find(result => result.round === S.round - 1);
+    const previousRound = previous && roundsOf(S)[previous.round - 1];
+    // 계획용 수요 추정은 아직 없다. 직전 달 실제 일평균 수요에 이번 달 일수를 곱한다(31일→28일 같은 일수 차이만 보정, 계절 변화는 그대로).
+    // 첫 달만 학생 계획·정책·사건을 포함하지 않은 시작 보정 운영의 월 수요를 쓴다.
+    let monthlyDemand = previous
+      ? Object.values(previous.team).reduce((total, team) => total + team.dem * (rd?.mdays || previousRound.mdays) / previous.days, 0)
+      : S.goalDemand0;
+    if (monthlyDemand == null && demand == null && KCP.buildGame) {
+      // 목표 저장 전의 옛 데이터는 첫 달 보정과 같은 지도·씨앗으로 수요만 복원한다.
+      const first = roundsOf(S)[0], bg = KCP.buildGame;
+      monthlyDemand = preserveMap(bg, () => activeOf(S).reduce((total, id) => {
+        const normal = simTeam(bg, regionOf(S.region), id, KCP.ECON_DATA.normalStartPlans[id] || {},
+          { season: first.season, days: first.days, seed: 0 }, Number.MAX_VALUE, {}).k;
+        return total + normal.dem * first.mdays / first.days;
+      }, 0));
+    }
+    // demand는 미확정 상태에서 명시한 대표 주 수요 추정값(현재 호출처 없음 — 계획 수요 추정을 붙일 때 쓰는 자리). 확정 후에는 위에서 저장값을 반환한다.
+    const co2Plan = (demand == null ? monthlyDemand || 0 : demand * weekMul) * P.normalCo2.v *
+      (1 - P.coopCo2Cut.v * Math.min(1, ((rd?.year || S.econ.year) - 2018) / 12)) * P.coopEase.v;
+    // 공개 계약: co2Plan은 평가에 그대로 쓰는 월 t, 기존 co2는 화면 호환용 대표 주 t.
+    return { unsPct: P.coopUnsGoal.v, co2: co2Plan / weekMul, co2Plan,
+      co2Basis: demand != null ? "계획 수요 추정" : previous ? "지난달 수요(일수 보정)" : "첫 달 보정 운영 수요" };
   };
+  function preserveGoalPlan(S) {
+    if (!S.econ || S.goalPlan?.[S.round]) return;
+    const goal = goalsOf(S);
+    // 수요를 못 구해 0이 되면 저장하지 않는다('≤ 0 t' 고정 방지). run 첫머리에서 다시 시도한다.
+    if (goal.co2Plan > 0) S.goalPlan = { ...S.goalPlan, [S.round]: goal };
+  }
   // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 0.7배 폭(P, 예측 NRMSE 30.6% 감소 [P101] · REF 12.7)으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
   function fcxOf(S, id) {
     if (!techOf(S, id).includes("fcst")) return null;
@@ -680,6 +708,7 @@
         if (S.round >= roundsOf(S).length) { S.phase = "end"; S.ends = null; log(S, "리그 끝", now); S.rev++; return true; }
         if (S.econ && !S.econCal && S.econ.t === 0 && KCP.buildGame) calibrateStart(S, R, KCP.buildGame);
         S.round++; S.phase = "plan"; S.ends = now + PLAN_MS;
+        preserveGoalPlan(S);
         Object.values(S.teams).forEach(T => { T.ready = false; });
         log(S, S.econ ? `${roundsOf(S)[S.round - 1].month}월 계획 시작` : `${S.round}라운드 계획 시작`, now);
         drawEvents(S, R).forEach(E => log(S, `사건: ${E.name}`, now));
@@ -1110,7 +1139,7 @@
       if (ledger.income || ledger.expense || coolingCost(S, id)) team[id].technologyCost = { ...ledger, cooling: coolingCost(S, id) };
     });
     const region = { dem: r2(rDem), uns: r2(rUns), unsPct: r2(100 * rUns / Math.max(1e-9, rDem)), co2: Math.round(rCo2) };
-    const G = goalsOf(S, rDem);
+    const G = goalsOf(S);
     region.ok = { uns: region.unsPct <= G.unsPct, co2: region.co2 <= G.co2 };
     const result = { round: S.round, month: rd.month || null, year: rd.year || null, season: rd.season, days: rd.days, seed: rnd.seed, team, region, flow, events: (S.events || []).filter(x => x.round === S.round).map(x => x.id), tieDown: rnd.tieDown || null };
     S.results = S.results.filter(x => x.round !== S.round).concat([result]);
@@ -1145,6 +1174,8 @@
   // 운영 단계: 진행자 기기에서 바로 돌리고 결과 단계로.
   function run(S, bg, now) {
     if (S.phase !== "plan") return null;
+    // 계획 중인 옛 저장도 운영 수요가 계산되기 전에 계획 기준을 한 번 보존한다.
+    preserveGoalPlan(S);
     // 이미 계획 단계인 옛 저장도 학생이 본 기준을 소급 변경하지 않는다.
     if (S.econ && !S.econCal) S.econCal = true;
     S.phase = "run"; S.ends = null;
@@ -1198,6 +1229,8 @@
         exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: normal.fuel + missing * P.normalCost.v, policy: 0 } }, wk);
     }));
     S.econ = KCP.econ.calibrate(S.econ, base); S.econCal = true;
+    // 공동목표 첫 달의 근거: 보정 운영 수요(월 MWh). 학생 운영 수요로 갱신하지 않는다.
+    S.goalDemand0 = Object.values(base).reduce((total, input) => total + input.energy.demMWh, 0);
   }
   function econInput(S, R, id, r, wk, extra) {
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
@@ -1246,7 +1279,7 @@
       return [id, { pop: c.pop, ind: c.ind, cash: c.cash, approval: c.approval, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), lagL: Object.assign({}, c.lagL), groupParts: groupParts(c, S.econRep?.groups[id]) }];
     }));
     const goals = goalsOf(S);
-    inputs.region = { goal: { uns: goals.unsPct, co2: goals.co2 * wk } };
+    inputs.region = { goal: { uns: goals.unsPct, co2: goals.co2Plan } };
     const out = KCP.econ.monthStep(S.econ, inputs);
     S.econ = out.E;
     // 투자 기준만 확정한다. 지원금·철거 회수는 monthStep 보고서에서 이미 정산했다.
