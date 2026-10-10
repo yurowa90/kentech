@@ -367,9 +367,13 @@
     return { got, plantCost, wire: edges.length, total: plantCost + edges.length, connected, edges };
   }
 
-  function gridHTML(G, plants, hit, interactive, wireStart = null) {
+  function gridHTML(G, plants, hit, interactive, wireStart = null, focusCell = "A1") {
     const pmap = {};
     plants.forEach((p) => (pmap[p.cell] = p));
+    const connection = G.mode === "q2" ? supply(plants, G.wires).connected : [];
+    const connected = Object.fromEntries(plants.map((p, i) => [p.cell, connection[i]]));
+    const windName = { S: "남풍", SW: "남서풍", W: "서풍" };
+    const currentName = { E: "동쪽", S: "남쪽", W: "서쪽", N: "북쪽", NS: "남북 양방향" };
     const segments = {};
     if (G.mode === "q2") wireEdges(G.wires).forEach(([a, b]) => {
       [[a, b], [b, a]].forEach(([from, to]) => {
@@ -377,9 +381,11 @@
         (segments[from] ||= []).push({ to, x: 50 + (cc - c) * 50, y: 50 + (rr - r) * 50 });
       });
     });
-    let h = `<div class="mgrid" role="grid" aria-label="KENTECH 도시 지도"><span class="hd"></span>${Array.from({ length: 10 }, (_, c) => `<span class="hd">${c + 1}</span>`).join("")}`;
+    const summary = `예시 배치 지도: ${plants.map(p => `${p.cell} ${PT[p.type].n}`).join(", ")}${G.mode === "q2" ? `, 전선 ${wireEdges(G.wires).length}칸` : ""}`;
+    let h = `<div class="mgrid" ${interactive ? 'role="grid" aria-label="KENTECH 도시 지도" aria-rowcount="11" aria-colcount="11" aria-describedby="grid-help"' : `role="img" aria-label="${esc(summary)}"`}>
+      <div class="mgrid-row" ${interactive ? 'role="row"' : 'aria-hidden="true"'}><span class="hd" aria-hidden="true"></span>${Array.from({ length: 10 }, (_, c) => `<span class="hd" ${interactive ? `role="columnheader" aria-colindex="${c + 2}"` : ""}>${c + 1}</span>`).join("")}</div>`;
     ROWS.forEach((R, r) => {
-      h += `<span class="hd">${R}</span>`;
+      h += `<div class="mgrid-row" ${interactive ? 'role="row"' : 'aria-hidden="true"'}><span class="hd row-hd" ${interactive ? 'role="rowheader" aria-colindex="1"' : ""}>${R}</span>`;
       for (let c = 0; c < 10; c++) {
         const id = R + (c + 1);
         const t = terr(id);
@@ -393,11 +399,20 @@
         const p = pmap[id];
         const title = `${id} · ${t === "sea" ? "바다" : t === "lake" ? "호수" : "육지"}${v ? " · " + v + " 마을" : f ? " · " + FNAME[f][1] : ""} · 일사량 ${SOLAR[r]} · 풍속 ${WIND[r][c]}`;
         const lines = segments[id] || [];
-        h += `<button class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : hit.has("~" + id) ? "hit2" : ""}" ${interactive ? `data-cell="${id}"` : "tabindex=-1"} ${wireStart === id ? 'style="outline:3px solid var(--accent);outline-offset:-3px"' : ""} title="${title}" aria-label="${title}${p ? " · " + PT[p.type].n : ""}${lines.length ? " · 전선: " + lines.map(l => l.to).join(", ") : ""}${wireStart === id ? " · 전선 시작점" : ""}">
+        const data = G.overlay === "solar" ? `일사량 ${SOLAR[r]}` : G.overlay === "wind" ? `풍속 ${WIND[r][c]}, ${windName[WDIR[r][c]]}` : G.overlay === "current" ? `해류 방향 ${currentName[CURR[id]] || "표시 없음"}` : "";
+        const name = [id, p ? `${PT[p.type].n}, 생산 ${out(p.type, id)}` : "", v ? `${v} 마을` : f ? FNAME[f][1] : "",
+          t === "sea" ? "바다" : t === "lake" ? "호수" : "육지", data,
+          G.mode === "q2" ? lines.length ? `전선 연결: ${lines.map(l => l.to).join(", ")}` : "전선 없음" : "",
+          G.mode === "q2" && p ? p.to ? `${p.to} 마을 전선 ${connected[id] ? "연결됨" : "미연결"}` : "공급 마을 미지정" : "",
+          hit.has(id) ? "미세먼지·방사성 물질의 바람 경로 (재구성)" : "", hit.has("~" + id) ? "사고 시 해류 경로 (재구성)" : "",
+          wireStart === id ? "전선 시작점" : ""].filter(Boolean).join(" · ");
+        const tag = interactive ? "button" : "div";
+        h += `<${tag} class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : ""} ${hit.has("~" + id) ? "hit2" : ""} ${wireStart === id ? "wire-start" : ""}" ${interactive ? `type="button" role="gridcell" aria-colindex="${c + 2}" data-cell="${id}" tabindex="${id === focusCell ? 0 : -1}" aria-label="${esc(name)}"` : ""} title="${esc(title)}">
           ${lines.length ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">${lines.map(l => `<line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--ink)" stroke-width="10"/><line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--accent)" stroke-width="5"/>`).join("")}</svg>` : ""}
-          ${ov !== "" ? `<span class="ov">${ov}</span>` : label}
-          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</button>`;
+          ${ov !== "" ? `<span class="ov"><span class="map-value">${ov}</span></span>` : label}
+          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</${tag}>`;
       }
+      h += "</div>";
     });
     return h + "</div>";
   }
@@ -432,6 +447,8 @@
     renderPrep(root, state, save, next) {
       const G = g(state);
       let wireStart = null;
+      // 초점은 화면에만 기억한다. 계획·저장 형식에는 넣지 않는다.
+      let focusId = isCell(root._kcp2022Focus) ? root._kcp2022Focus : "A1";
       const savePlan = () => {
         G.wireNotice = "";
         const notice = KCP.$("#wire-notice", root);
@@ -459,9 +476,11 @@
                   <button class="btn small" data-tool="unwire" aria-pressed="${G.tool === "unwire"}">전선 지우기</button>
                   <button class="btn small ghost" id="wire-cancel">시작점 취소</button>
                 </div>
-                <p class="hint" id="wire-status" role="status"></p>
+                <p class="hint" id="wire-status"></p>
               </div>
               <div class="gridwrap" id="grid"></div>
+              <p class="hint" id="grid-live" role="status" aria-live="polite" aria-atomic="true"></p>
+              <p class="hint" id="grid-help">방향키로 이동, Home·End로 행 처음·끝, Ctrl+Home·End로 지도 처음·끝으로 이동합니다. Enter·Space로 현재 도구를 쓰고, Esc로 전선 시작점을 취소합니다. 좁은 화면에서는 지도를 옆으로 밀어 볼 수 있습니다.</p>
               <div class="legend" style="margin-top:8px">
                 <span><i style="background:var(--sea)"></i>바다</span><span><i style="background:var(--land)"></i>육지</span><span><i style="background:var(--lake)"></i>호수</span>
                 ${Object.values(FNAME).map(([s, n]) => `<span><b>${s}</b> ${n}</span>`).join("")}
@@ -496,38 +515,86 @@
         </div>`;
 
       const plantsNow = () => (G.mode === "q1" ? Object.entries(G.q1).filter(([, c]) => c).map(([type, cell]) => ({ type, cell })) : G.q2);
+      const announce = (message, error = false) => {
+        const live = KCP.$("#grid-live", root);
+        live.textContent = "";
+        // 같은 오류가 반복되어도 라이브 영역의 새 알림으로 전달한다.
+        if (window.requestAnimationFrame) window.requestAnimationFrame(() => { live.textContent = message; });
+        else live.textContent = message;
+        if (error) KCP.toast(message);
+      };
+      const rememberFocus = (id) => {
+        focusId = id;
+        root._kcp2022Focus = id;
+        KCP.$$("[data-cell]", KCP.$("#grid", root)).forEach(b => b.setAttribute("tabindex", b.dataset.cell === id ? "0" : "-1"));
+      };
+      const focusMapCell = (id) => {
+        rememberFocus(id);
+        const cell = KCP.$(`[data-cell="${id}"]`, KCP.$("#grid", root));
+        cell.focus({ preventScroll: true });
+        cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      };
       const paint = (focusCell) => {
+        const active = typeof document !== "undefined" ? document.activeElement : null;
+        const restore = focusCell || (active && KCP.$$("[data-cell]", KCP.$("#grid", root)).includes(active) ? active.dataset.cell : null);
+        if (restore) { focusId = restore; root._kcp2022Focus = restore; }
         const plants = plantsNow();
         const an = analyze(plants);
-        KCP.$("#grid", root).innerHTML = gridHTML(G, plants, an.hit, true, wireStart);
+        KCP.$("#grid", root).innerHTML = gridHTML(G, plants, an.hit, true, wireStart, focusId);
         KCP.$("#wire-tools", root).hidden = G.mode !== "q2";
         KCP.$("#wire-status", root).textContent = wireStart ? `${wireStart}에서 같은 행·열의 끝점을 누르세요. 같은 칸을 누르면 취소합니다.` : "전선 도구를 고른 뒤 시작점과 같은 행·열의 끝점을 누르세요. 꺾이는 곳은 구간을 나누어 놓습니다.";
         KCP.$$("[data-tool]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tool === G.tool)));
         KCP.$("#warn", root).innerHTML = an.warn.map((w) => `<li style="color:${w.lv === "bad" ? "var(--bad)" : "inherit"}">${esc(w.t)}</li>`).join("") || "<li>설치한 발전소가 없습니다.</li>";
-        KCP.$$("[data-cell]", root).forEach((b) => (b.onclick = () => clickCell(b.dataset.cell)));
+        KCP.$$("[data-cell]", KCP.$("#grid", root)).forEach((b) => {
+          b.onfocus = () => rememberFocus(b.dataset.cell);
+          b.onclick = () => { rememberFocus(b.dataset.cell); clickCell(b.dataset.cell); };
+          b.onkeydown = (e) => {
+            const id = b.dataset.cell, [r, c] = rc(id);
+            let to;
+            if (e.key === "ArrowUp") to = idOf(Math.max(0, r - 1), c);
+            if (e.key === "ArrowDown") to = idOf(Math.min(9, r + 1), c);
+            if (e.key === "ArrowLeft") to = idOf(r, Math.max(0, c - 1));
+            if (e.key === "ArrowRight") to = idOf(r, Math.min(9, c + 1));
+            if (e.key === "Home") to = e.ctrlKey ? "A1" : idOf(r, 0);
+            if (e.key === "End") to = e.ctrlKey ? "J10" : idOf(r, 9);
+            if (to) { e.preventDefault(); return focusMapCell(to); }
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); return clickCell(id); }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (wireStart) { wireStart = null; paint(id); announce("전선 시작점을 취소했습니다."); }
+            }
+          };
+        });
         paintWork();
-        if (focusCell) KCP.$(`[data-cell="${focusCell}"]`, root).focus();
+        if (restore) focusMapCell(restore);
       };
       const clickCell = (id) => {
         if (["wire", "unwire"].includes(G.tool)) {
           if (G.mode !== "q2") return;
-          if (!wireStart) { wireStart = id; return paint(id); }
+          if (!wireStart) { wireStart = id; paint(id); return announce(`${id}에서 시작점. 같은 행·열의 끝점을 고르세요.`); }
+          if (wireStart === id) { wireStart = null; paint(id); return announce("전선 시작점을 취소했습니다."); }
+          const start = wireStart;
           const why = editWire(G, wireStart, id, G.tool === "unwire");
-          if (why) return KCP.toast(why);
-          wireStart = null; savePlan(); return paint(id);
+          if (why) return announce(`${id}: ${why}`, true);
+          wireStart = null; savePlan(); paint(id);
+          return announce(`${start}에서 ${id}까지 전선을 ${G.tool === "unwire" ? "지웠습니다" : "놓았습니다"}. 전체 전선 ${G.wires.length}칸.`);
         }
         if (G.tool === "erase") {
+          const removed = plantsNow().find(p => p.cell === id);
           if (G.mode === "q1") Object.keys(G.q1).forEach((k) => G.q1[k] === id && delete G.q1[k]);
           else G.q2 = G.q2.filter((p) => p.cell !== id);
-          savePlan(); return paint(id);
+          savePlan(); paint(id);
+          return announce(removed ? `${id}의 ${PT[removed.type].n}를 지웠습니다.` : `${id}에는 지울 발전소가 없습니다.`);
         }
         const why = canPlace(G.tool, id);
-        if (why) return KCP.toast(why);
+        if (why) return announce(`${id}: ${why}`, true);
         const occupied = G.mode === "q1" ? Object.entries(G.q1).find(([k, c]) => c === id && k !== G.tool) : G.q2.find((p) => p.cell === id);
-        if (occupied) return KCP.toast("1개의 좌표에는 1개의 발전소만 설치할 수 있습니다");
+        if (occupied) return announce(`${id}: 1개의 좌표에는 1개의 발전소만 설치할 수 있습니다.`, true);
+        const previous = G.mode === "q1" ? G.q1[G.tool] : null;
         if (G.mode === "q1") G.q1[G.tool] = id;
         else G.q2.push({ type: G.tool, cell: id, to: "" });
         savePlan(); paint(id);
+        announce(previous && previous !== id ? `${previous}의 ${PT[G.tool].n}를 ${id}로 옮겼습니다. 생산 ${out(G.tool, id)}.` : `${id}에 ${PT[G.tool].n}를 설치했습니다. 생산 ${out(G.tool, id)}.`);
       };
       const paintWork = () => {
         const w = KCP.$("#work", root);
@@ -560,7 +627,7 @@
       KCP.$$("[data-ov]", root).forEach((b) => (b.onclick = () => { G.overlay = b.dataset.ov; KCP.$$("[data-ov]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); savePlan(); paint(); }));
       KCP.$$("[data-tool]", root).forEach((b) => (b.onclick = () => { G.tool = b.dataset.tool; wireStart = null; savePlan(); paint(); }));
       KCP.$$("[data-mode]", root).forEach((b) => (b.onclick = () => { G.mode = b.dataset.mode; wireStart = null; if (G.mode === "q1" && ["wire", "unwire"].includes(G.tool)) G.tool = "wind"; savePlan(); paint(); }));
-      KCP.$("#wire-cancel", root).onclick = () => { wireStart = null; paint(); };
+      KCP.$("#wire-cancel", root).onclick = () => { wireStart = null; paint(); announce("전선 시작점을 취소했습니다."); };
       KCP.$("#go22", root).onclick = next;
       paint();
     },
