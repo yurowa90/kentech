@@ -1,0 +1,369 @@
+{
+  "head": "14399232979a3084430ef32b9a87c05bd0d51a0b",
+  "node": "v24.21.0",
+  "commands": [
+    {
+      "file": "tests/league/balance.js",
+      "code": 0,
+      "seconds": 64.99
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0,
+      "seconds": 1.03
+    },
+    {
+      "file": "tests/league/next.js",
+      "code": 0,
+      "seconds": 18.68
+    },
+    {
+      "file": "tests/league/tech.js",
+      "code": 0,
+      "seconds": 1.61
+    },
+    {
+      "file": "tests/league/sec.js",
+      "code": 0,
+      "seconds": 55.34
+    },
+    {
+      "file": "tests/league/recal.js",
+      "code": 1,
+      "seconds": 9.29
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0,
+      "seconds": 4.49
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0,
+      "seconds": 2.71
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0,
+      "seconds": 5.73
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0,
+      "seconds": 2.5
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0,
+      "seconds": 3.75
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0,
+      "seconds": 11.9
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0,
+      "seconds": 6.45
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0,
+      "seconds": 16.15
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0,
+      "seconds": 0.05
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0,
+      "seconds": 17.82
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0,
+      "seconds": 0.18
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0,
+      "seconds": 0.14
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0,
+      "seconds": 51.45
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0,
+      "seconds": 10.67
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0,
+      "seconds": 0.37
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0,
+      "seconds": 74.85
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0,
+      "seconds": 0.05
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0,
+      "seconds": 4.36
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0,
+      "seconds": 0.22
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0,
+      "seconds": 0.16
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0,
+      "seconds": 0.11
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0,
+      "seconds": 0.08
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0,
+      "seconds": 0.2
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0,
+      "seconds": 0.78
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0,
+      "passes": 19850,
+      "failures": 0
+    }
+  ],
+  "helperModules": [
+    {
+      "file": "tests/league/review/lib.js",
+      "code": 0,
+      "kind": "helper module, no assertions"
+    },
+    {
+      "file": "tests/league/review/g6-variants.js",
+      "code": 0,
+      "kind": "helper module, no assertions"
+    },
+    {
+      "file": "tests/league/review/g7-variants.js",
+      "code": 0,
+      "kind": "helper module, no assertions"
+    }
+  ],
+  "syntax": [
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g6-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g7-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/lib.js",
+      "code": 0
+    }
+  ],
+  "pythonAST": true,
+  "preserved": {
+    "ui/build.js": true,
+    "ui/econ.js": true,
+    "ui/league-core.js": true,
+    "ui/league-ai.js": true,
+    "ui/econ-data.js": true,
+    "ui/tech-data.js": true,
+    "tests/league/recal.js": true,
+    "tests/league/bots36.py": true,
+    "tests/league/review/G7-validation.json": true,
+    "tests/league/review/G5-report.md": true,
+    "tests/league/review/G7-comparison.md": true,
+    "tests/league/review/G5-results.json": true,
+    "tests/league/review/G6-sensitivity.json": true,
+    "tests/league/review/G6-validation.json": true,
+    "tests/league/review/G7-report.md": true,
+    "tests/league/review/G7-results.json": true,
+    "tests/league/review/G6-comparison.md": true,
+    "tests/league/review/G6-report.md": true,
+    "tests/league/review/G6-results.json": true
+  },
+  "originalTrajectories": {
+    "hwaseong/research": true,
+    "hwaseong/none": true,
+    "hwaseong/smr": true,
+    "hwaseong/hydrogen": true,
+    "pyeongtaek/research": true,
+    "pyeongtaek/none": true,
+    "pyeongtaek/smr": true,
+    "pyeongtaek/hydrogen": true,
+    "anseong/research": true,
+    "anseong/none": true,
+    "anseong/smr": true,
+    "anseong/hydrogen": true,
+    "dangjin/research": true,
+    "dangjin/none": true,
+    "dangjin/smr": true,
+    "dangjin/hydrogen": true,
+    "asan/research": true,
+    "asan/none": true,
+    "asan/smr": true,
+    "asan/hydrogen": true,
+    "cheonan/research": true,
+    "cheonan/none": true,
+    "cheonan/smr": true,
+    "cheonan/hydrogen": true
+  },
+  "prefixBudgetChecks": 648,
+  "growthAnalysisWithInput": true,
+  "recal": {
+    "passes": 251,
+    "failures": 8,
+    "sha256": "d3924c57987d86bff27cc7d76fd0213c5088e9006c9dba1d9db9aa56eb25d44a",
+    "failureDetails": "- 14 정전 시 대기 [미구현 허용: H01 뒤] / kPM: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSlope: params.airSlope 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airBase: params.airBase 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSpill: params.airSpill 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / pmFuelW: params.pmFuelW 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-0: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-1: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-2: params.kPM 없음"
+  },
+  "bots": {
+    "checks": 18072,
+    "failures": [
+      "B18 storage 실제 ESS 추가 0회·충전으로 버림 감소 0MWh"
+    ],
+    "renewMinusDiesel": 1.5999999999999943,
+    "nothingAllCitiesAllHorizonsNinth": true
+  },
+  "technology": {
+    "passes": 19850,
+    "failures": [],
+    "b16": true,
+    "smrFirstCities": 5,
+    "smrGoalOnly": true
+  },
+  "limitations": [
+    "브라우저 화면·교실 세션 미실행",
+    "단일 공통 씨앗, 전략별 서로 다른 반사실 게임; AI 성향별 정책 차이 포함",
+    "동일 누적 예산 상한이며 미집행 잔액 존재; 연계선 단독을 동액 집행으로 해석하지 않음"
+  ]
+}

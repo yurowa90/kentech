@@ -140,9 +140,9 @@
     const allowed = v => s.policyMode !== "apply" || ((s.policy.secondary || !v.secondary) && (s.policy.minors || !v.minor) && (s.policy.noCare || !v.noCare));
     const final = new Set([...report].filter(id => allowed(row(id)))), consult = new Set([...ids(["C"])].filter(id => allowed(row(id))));
     const family = s.policyMode === "apply" && s.policy.relatives ? rows.filter(v => v.family && v.group !== "N").map(v => v.id) : [];
-    // 미확정(VUS)은 임상 결정에 쓰지 않는다(Richards 외 2015). 보고했어도 조치 대신 재검토·재연락 등록으로 센다.
-    const actions = [0,0,0,0], recontact = rows.filter(v => final.has(v.id) && v.truth === "U").map(v => v.id);
-    rows.filter(v => final.has(v.id) && v.truth !== "U").forEach(v => v.a.forEach((n,k) => { actions[k] += n; }));
+    // 검토 결함 0·7: 보고 시점의 요청은 숨은 추적 결과와 무관하게 센다. 미확정 카드의 몫은 사후에 따로 표시한다.
+    const actions = [0,0,0,0], uncertainActions = [0,0,0,0], recontact = rows.filter(v => final.has(v.id) && v.truth === "U").map(v => v.id);
+    rows.filter(v => final.has(v.id)).forEach(v => v.a.forEach((n,k) => { actions[k] += n; if (v.truth === "U") uncertainActions[k] += n; }));
     const participantConsult = new Set([...final,...consult]), demand = participantConsult.size+family.length;
     const r = confusion(rows,report), rc = confusion(rows,inclusive), f = confusion(rows,final), pi = s.piPct/100;
     // 증거값의 최솟값은 가계·빈도·기능 −2, 예측·같은 위치 −1이다. 이 점수까지 양성이면 어떤 카드든 양성인 규칙이다.
@@ -154,7 +154,7 @@
     const onset = [...pens].sort((a,b) => a[1][0]-b[1][0] || a[1][1]-b[1][1]).map(([key,pen]) => ({key,pen,range:!ranges.r ? null : [ranges.r[0]*pen[0]/100,ranges.r[1]*pen[1]/100]}));
     return {rows,report:[...report],inclusive:[...inclusive],final:[...final],removed:[...report].filter(id => !final.has(id)),family,
       consultRemoved:[...ids(["C"])].filter(id => !consult.has(id)),recontact,overreported:rows.filter(v => v.truth === "B" && final.has(v.id)).map(v => v.id),
-      refusalWarning:family.some(id => rows.find(v => v.id === id).refused),actions,participantConsult:[...participantConsult],demand,waiting:demand>8,
+      refusalWarning:family.some(id => rows.find(v => v.id === id).refused),actions,uncertainActions,participantConsult:[...participantConsult],demand,waiting:demand>8,
       groups:{R:report.size,C:ids(["C"]).size,N:ids(["N"]).size},r,rc,f,ranges,onset,universal:{r:universalR,rc:universalRC},
       missed:rows.filter(v => v.truth === "P" && !final.has(v.id)).map(v => ({id:v.id,group:v.group,text:MISS[v.miss]})),
       uncertain:rows.filter(v => v.truth === "U").map(v => ({id:v.id,group:v.group,reported:final.has(v.id)}))};
@@ -192,38 +192,46 @@
     relatives:["참여자가 거부해도 혈족 고지를 검토","P-01·P-09 가운데 1단계에서 ‘보고하지 않음’이 아닌 카드에 혈족 고지 검토 대상이 생깁니다. P-01은 연락 거부 사례입니다.","사업이 혈족에게 별도로 연락하지 않는 안입니다. 참여자에게 선택지를 설명할 수 있습니다."]
   };
   const UNCERTAIN = "현재 자료로는 판단할 수 없다 — 이 게임이 정한 추적 뒤에도 판단하지 못한 가상 사례";
-  const VUS_RULE = "실제 지침(Richards 외 2015, ACMG/AMP)은 의미불명 변이(VUS)를 임상 결정에 쓰지 말라고 권고합니다. 그래서 결과 공개 뒤 미확정으로 드러난 카드는 보고했더라도 조치 요청 대신 재검토·재연락 등록으로 셉니다.";
+  const VUS_RULE = "의미불명 변이(VUS)는 보고 시점의 증거로 정하는 분류이며, 실제 지침(Richards 외 2015, ACMG/AMP)은 이를 임상 결정에 쓰지 말라고 권고합니다. 이 게임의 보고·상담·미보고는 변이 등급이 아닙니다. 보고한 카드는 모두 조치 검토 요청에 넣고, 추적 뒤에도 미확정인 카드의 요청은 따로 표시합니다. 이는 VUS를 조치 근거로 오해하면 생길 수 있는 요청을 살피는 가정이며, 지침이 권하는 조치가 아닙니다. 재검토·재연락 등록도 함께 셉니다.";
   const OVER_HARM = "비병원성인데 보고하면 불필요한 정기 관찰이나 예방적 수술 상담을 검토하게 되고, 불안과 보험·고용에 대한 걱정이 생길 수 있습니다.";
   const FAMILY_WARNING = "P-01은 혈족 연락을 거부했습니다. 본인의 비밀과 혈족의 선택권을 함께 검토하세요.";
   const PHASE_NOTICE = "면접실과 성찰은 기준 확정 뒤 열립니다.";
   const SOURCE = '<span class="tag-mine vd-source">가상 자료</span>';
-  // 정책 질문: 1단계에서 '보고하지 않음'이 아닌 카드에 실제로 영향을 준 스위치 가운데 하나를 골라, 켠 쪽과 끈 쪽 모두에 반문한다.
+  // 명세 8.4 + 3차 검토 B: 후보·갈등 강도는 정책 적용 전 카드 상태만으로 정한다.
+  // 거부한 혈족 사례 > 목적 안 미성년 > 목적 안 조치 없음 > 2차 발견 > 기타 혈족.
+  // 중복 표식 P-03·P-04는 2차 발견에서 다룬다. 정책 값은 선택 뒤 문안에만 쓴다.
   const POLICY_FLAGS = {relatives:"family",minors:"minor",noCare:"noCare",secondary:"secondary"};
+  function secondaryGuidance(rows) {
+    const outside = rows.filter(v => v.noCare).map(v => v.id);
+    return "실제 ACMG SF는 참여자가 거부하지 않으면 조치 가능한 유전자에 한해 2차 발견을 보고하도록 권고합니다." +
+      (outside.length ? ` 예방·치료법이 없는 ${idText(outside)} 카드는 이 권고 밖입니다.` : "");
+  }
   const POLICY_Q = {
-    relatives:[(ids,r) => r.family.includes("P-01") ? "연락을 거부한 P-01의 참여자가 있는데도 혈족 고지를 검토 대상으로 삼았습니다. 본인의 비밀과 혈족의 위험·선택권 가운데 무엇을 앞세웠습니까?" : `참여자가 거부해도 혈족 고지를 검토하기로 했습니다(${ids}). 앞으로 연락을 거부하는 참여자가 생기면 이 원칙을 어떻게 설명하겠습니까?`,
+    relatives:[(ids,rows) => rows.some(v => v.refused) ? "연락을 거부한 P-01의 참여자가 있는데도 혈족 고지를 검토 대상으로 삼았습니다. 본인의 비밀과 혈족의 위험·선택권 가운데 무엇을 앞세웠습니까?" : `참여자가 거부해도 혈족 고지를 검토하기로 했습니다(${ids}). 앞으로 연락을 거부하는 참여자가 생기면 이 원칙을 어떻게 설명하겠습니까?`,
       ids => `사업이 혈족에게 따로 연락하지 않기로 했습니다. 같은 변이를 가질 수 있는 ${ids} 카드 참여자의 혈족이 나중에 이 사실을 알게 된다면 어떻게 설명하겠습니까?`,"혈족 고지"],
-    minors:[ids => `미성년 참여자(${ids})의 보호자에게 성인기 위험을 알리기로 했습니다. 이 참여자가 성인이 되어 듣고 싶지 않았다고 말한다면 어떻게 설명하겠습니까?`,
+    minors:[ids => `미성년 참여자(${ids})의 보호자에게 성인기 위험을 알리기로 했습니다. 해당 참여자가 성인이 되어 듣고 싶지 않았다고 말한다면 어떻게 설명하겠습니까?`,
       ids => `미성년이라는 이유로 ${ids} 카드를 보고와 상담에서 뺐습니다. 보호자가 지금 준비할 기회를 원한다면 어떻게 답하겠습니까?`,"미성년"],
     noCare:[ids => `예방·치료법이 없는 ${ids} 카드도 보고와 상담 대상에 남겼습니다. 듣지 않을 권리를 원하는 참여자에게 어떻게 설명하겠습니까?`,
       ids => `예방·치료법이 없다는 이유로 ${ids} 카드를 보고와 상담에서 뺐습니다. 생활 계획을 위해 정보를 원하는 참여자에게 어떻게 설명하겠습니까?`,"보고 원칙"],
-    secondary:[ids => `2차 발견 표식 카드(${ids})도 보고와 상담 대상에 남겼습니다. 실제 ACMG 권고는 예방·치료 조치가 가능한 유전자만 2차 발견 보고 목록에 넣습니다. 이 사업은 목적 밖의 발견을 어디까지 전하겠습니까?`,
-      ids => `검사 목적과 무관하다는 이유로 2차 발견 표식 카드(${ids})를 보고와 상담에서 뺐습니다. 이런 정보도 받겠다고 동의한 참여자에게 어떻게 설명하겠습니까?`,"2차 발견"]
+    secondary:[(ids,rows) => `2차 발견이라는 이유로는 ${ids} 카드를 보고와 상담에서 제외하지 않기로 했습니다. ${secondaryGuidance(rows)} 목적 밖의 정보는 듣고 싶지 않다는 해당 참여자에게 어떻게 설명하겠습니까?`,
+      (ids,rows) => `검사 목적과 무관하다는 이유로 2차 발견 표식 카드(${ids})를 보고와 상담에서 뺐습니다. ${secondaryGuidance(rows)} 이런 정보도 받겠다고 동의한 참여자에게 어떻게 설명하겠습니까?`,"2차 발견"]
   };
   function policyQuestion(s,r) {
-    const affected = key => r.rows.filter(v => v[POLICY_FLAGS[key]] && v.group !== "N").map(v => v.id);
-    // 영향을 준 스위치가 여럿이면 저울·문턱 값으로 돌아가며 골라 한 스위치에 질문이 몰리지 않게 한다.
-    const keys = Object.keys(POLICY_FLAGS).filter(key => affected(key).length > 0);
-    const seed = s.weights.reduce((a,b) => a+b,0)+s.t1+s.t2, key = keys.length ? keys[((seed % keys.length)+keys.length) % keys.length] : null;
-    if (!key) return ["vd-policy-reason","개별 · 보고 원칙","네 보고 정책은 이번 카드 분류에서 결과를 바꾸지 않았습니다. 다른 카드 묶음에서도 같은 선택을 유지할 원칙을 한 문장으로 말해 주세요."];
-    const on = s.policy[key] === true;
-    return [`vd-${key.toLowerCase()}-${on ? "on" : "off"}`,`개별 · ${POLICY_Q[key][2]}`,POLICY_Q[key][on ? 0 : 1](idText(affected(key)),r)];
+    const affected = key => r.rows.filter(v => v[POLICY_FLAGS[key]] && v.group !== "N" &&
+      (!["minors","noCare"].includes(key) || !v.secondary));
+    const refusal = affected("relatives").some(v => v.refused);
+    const priority = refusal ? ["relatives","minors","noCare","secondary"] : ["minors","noCare","secondary","relatives"];
+    const key = priority.find(key => affected(key).length > 0);
+    if (!key) return ["vd-policy-reason","개별 · 보고 원칙","네 보고 정책을 함께 적용한 결과를 바탕으로, 다른 카드 묶음에서도 유지할 원칙을 한 문장으로 말해 주세요."];
+    const on = s.policy[key] === true, rows = affected(key);
+    return [`vd-${key.toLowerCase()}-${on ? "on" : "off"}`,`개별 · ${POLICY_Q[key][2]}`,POLICY_Q[key][on ? 0 : 1](idText(rows.map(v => v.id)),rows)];
   }
   function questionsFromSnapshot(s) {
     if (!validSnapshot(s)) return [];
     const r = compute(s), qs = [], add = (k,tag,q) => qs.push({k,tag,q});
     const group = id => GROUP_NAMES[r.rows.find(v => v.id === id).group];
     const lose = "이 기준이 얻는 것과 잃는 것을 한 문장으로 말해 보세요.";
-    add("vd-c1","공통 1 · 기준 먼저","가장 큰 무게를 둔 증거와 두 문턱의 위치를 왜 그렇게 정했는지, 판단 기준부터 먼저 말해 주세요."+(s.weights.every(w => w === 0) ? " 모두 0이라면 증거에 무게를 두지 않은 이유를 말해 주세요." : ""));
+    add("vd-c1","공통 1 · 기준 먼저",(s.weights.every(w => w === 0) ? "무게를 모두 0으로 두어 증거에 무게를 두지 않았습니다. 두 문턱의 위치를 정한 판단 기준을 먼저 말해 주세요." : "가장 큰 무게를 둔 증거와 두 문턱의 위치를 정한 판단 기준을 먼저 말해 주세요."));
     if (r.r.TP >= 5 && r.r.TN <= 2) add("vd-error-more-report","공통 2 · 얻는 것과 잃는 것",`정책 적용 전 보고 분류에서 병원성 ${r.r.TP}장과 함께 비병원성 ${r.r.FP}장도 보고했습니다. 불필요한 관찰이나 수술 상담을 검토하게 될 사람을 떠올리며, ${lose}`);
     else if (r.r.TP <= 2 && r.rc.TP >= 5) add("vd-error-consult","공통 2 · 얻는 것과 잃는 것",`정책 적용 전 보고 분류에서는 병원성 ${r.r.TP}장만 바로 보고했고, 보고와 상담을 함께 세면 병원성 ${r.rc.TP}장과 비병원성 ${r.rc.FP}장이 상담 후 결정까지 올라왔습니다. 결정을 상담으로 미룬 ${lose}`);
     else if (r.r.TN >= 5 && r.r.TP <= 2) add("vd-error-more-miss","공통 2 · 얻는 것과 잃는 것",(r.r.FP === 0 ? `정책 적용 전 보고 분류에서 비병원성은 한 장도 보고하지 않았지만 병원성 ${r.r.FN}장도 보고하지 않았습니다.` : `정책 적용 전 보고 분류에서 비병원성 ${r.r.FP}장을 보고하고 병원성 ${r.r.FN}장은 보고하지 않았습니다.`)+` 그중 한 사람이 10년 뒤 진단받는다고 할 때, ${lose}`);
@@ -232,12 +240,12 @@
     else if (s.weights[3] > 0 && s.weights[3] > Math.max(s.weights[0],s.weights[2])) add("vd-prediction","개별 · 예측 근거",`컴퓨터 예측에 가계 근거·기능 실험보다 큰 무게를 두었습니다. 예측만 높은 P-07은 ‘${group("P-07")}’, P-08은 ‘${group("P-08")}’입니다. 기능 실험과 예측이 다른 방향일 때 무엇을 추가로 확인하겠습니까?`);
     else if (s.weights[1] > 0 && s.weights[1] > Math.max(s.weights[0],s.weights[2])) add("vd-frequency","개별 · 빈도 근거",`집단 내 빈도에 가계 근거·기능 실험보다 큰 무게를 두었습니다. 드물지만 비병원성으로 설정된 P-11은 ‘${group("P-11")}’, P-12는 ‘${group("P-12")}’입니다. ‘드물다’는 근거를 어디까지 믿겠습니까?`);
     else if (s.weights[0] === 0) add("vd-segregation-zero","개별 · 가계 근거","가계 내 공동분리에 무게를 두지 않았습니다. 가계 자료를 빼서 어떤 불확실성을 줄이려 했습니까?");
-    else add("vd-evidence-pair","개별 · 같은 증거",`같은 증거를 가진 P-05와 P-09는 각각 ‘${group("P-05")}’와 ‘${group("P-09")}’입니다. 이 게임이 정한 분류가 서로 다른 두 카드를 구별하려면 어떤 자료가 새로 필요합니까?`);
+    else add("vd-evidence-pair","개별 · 같은 증거",`같은 증거를 가진 P-05와 P-09는 각각 ‘${group("P-05")}’${KCP.josa(group("P-05"), "와/과").slice(group("P-05").length)} ‘${group("P-09")}’입니다. 이 게임이 정한 분류가 서로 다른 두 카드를 구별하려면 어떤 자료가 새로 필요합니까?`);
     if (s.policyMode === "apply") add(...policyQuestion(s,r));
     if (s.replannedAfterReveal) add("vd-replanned","개별 · 다시 계획","결과를 본 뒤 기준을 다시 계획했습니다. 답을 보고 고친 기준은 이 12장에만 잘 맞는 과적합일 수 있습니다. 새 카드 묶음에서도 이 기준을 유지할 근거는 무엇입니까?");
     else if (!s.piTouched) add("vd-pi-unmoved","개별 · 확인하지 않은 가정","‘검사한 변이 중 병원성 변이의 비율 π’를 바꿔 보지 않았습니다. 게임의 기본값을 실제 판독 대상 변이 집단의 비율로 볼 수 있습니까?");
     else add("vd-pi-moved","개별 · 바꾼 가정",`검사한 변이 중 병원성 변이의 비율 π를 바꾸어 보았고, 확정값은 ${s.piPct.toFixed(1)}%입니다. 카드 분류는 그대로인데 양성예측도 범위가 달라지는 이유를 설명해 주세요.`);
-    add("vd-counter-capacity","반문 · 조건 변경","상담 인력이 절반으로 줄어 한 차례에 4건만 맡을 수 있다면, 원래 기준을 고치겠습니까, 유지하겠습니까? 무엇을 먼저 미룰지와 함께 그 이유를 말해 주세요.");
+    add("vd-counter-capacity","반문 · 고침·유지와 이유","상담 인력이 절반으로 줄어 한 차례에 4건만 맡을 수 있다면, 원래 기준을 고치거나 유지할 이유를 말해 주세요.");
     add("vd-divergent-system","발산 · 제도 제안","미확정 4장처럼 지금 자료로는 판단할 수 없는 정보를 다룰 제도를 저울과 문턱 밖에서 하나 제안해 보세요. 단계별 동의, 새 증거에 따른 재분류 통보, 상담 배분 규칙 등을 생각할 수 있습니다.");
     return qs;
   }
@@ -263,7 +271,7 @@
     add("미확정",`P-13, P-14, P-15, P-16 — ${UNCERTAIN}. 2×2 집계에서 제외.`);
     add("가정한 병원성 비율",`검사한 변이 중 병원성 변이의 비율 π ${s.piPct.toFixed(1)}% / ${s.piTouched ? "직접 바꿔 봄" : "기본값 유지(미조작)"}`);
     add("침투율과 발병 범위",`${r.onset.map(onsetText).join("\n") || "발병 예시 없음"}\nU는 추정하지 않음\n개인의 발병 예측이 아닌 가정 계산`);
-    add("조치 검토 요청",`${ACTION_NAMES.map((name,k) => `${name} ${r.actions[k]}건`).join(" / ")} / 미확정 보고는 조치 대신 재검토·재연락 등록 ${r.recontact.length}건`);
+    add("조치 검토 요청",`${ACTION_NAMES.map((name,k) => `${name} ${r.actions[k]}건`).join(" / ")} / 미확정 카드에서 나온 요청 ${ACTION_NAMES.map((name,k) => `${name} ${r.uncertainActions[k]}건`).join(" / ")}(위 총수에 포함) / 재검토·재연락 등록 ${r.recontact.length}건`);
     add("상담과 혈족 고지",`참여자 ${r.participantConsult.length}건 + 혈족 검토 ${r.family.length}건 = ${r.demand}건 / 동시 8건 / ${r.waiting ? "대기 발생" : "대기 없음"}${r.refusalWarning ? " / P-01 연락 거부 사례 포함" : ""}`);
     add(s.policyMode === "apply" ? "최종 보고하지 않은 병원성 카드" : "1단계 보고에 들지 않은 병원성 카드",ordered(r.missed.map(v => v.id)).map(id => missedText(r.missed.find(v => v.id === id))).join("\n") || "이 카드 묶음에서는 없음");
     add(s.policyMode === "apply" ? "비병원성인데 최종 보고한 카드" : "비병원성인데 1단계 보고에 든 카드",`${idText(r.overreported)}${r.overreported.length ? ` — ${OVER_HARM}` : ""}`);
@@ -347,7 +355,7 @@
         <p id="vd-metrics-f" class="vd-metrics">${s.policyMode === "apply" ? "최종 목록 비교(미확정 제외)" : "1단계 보고 분류 비교(정책 판단 보류) · 미확정 제외"}: ${countText(r.f)}</p>
       </section>
       <section class="vd-uncertain panel" id="vd-uncertain"><h3>미확정 ${SOURCE}</h3><p>${UNCERTAIN}</p>
-        <ul>${ordered(r.uncertain.map(v => v.id)).map(id => { const v = r.uncertain.find(v => v.id === id); return `<li>${esc(id)} · ${GROUP_NAMES[v.group]} · ${s.policyMode === "apply" ? "최종 보고 목록" : "1단계 보고 분류"}: ${v.reported ? "포함(조치 대신 재검토·재연락 등록)" : "포함하지 않음"} · 미확정 — 발병 범위를 추정하지 않음</li>`; }).join("")}</ul>
+        <ul>${ordered(r.uncertain.map(v => v.id)).map(id => { const v = r.uncertain.find(v => v.id === id); return `<li>${esc(id)} · ${GROUP_NAMES[v.group]} · ${s.policyMode === "apply" ? "최종 보고 목록" : "1단계 보고 분류"}: ${v.reported ? "포함(조치 요청과 재검토·재연락 등록)" : "포함하지 않음"} · 미확정 — 발병 범위를 추정하지 않음</li>`; }).join("")}</ul>
         <p class="small muted">${VUS_RULE}</p>
       </section>
       <section class="vd-onset panel" id="vd-onset"><h3>${listTitle(s)}에 든 변이 한 건 — π를 가정한 다른 변이 집단의 예시</h3>
@@ -360,7 +368,8 @@
       </section>
       <section class="panel vd-actions"><h3>보고 목록에 따른 조치 검토 요청</h3>
         <ul>${ACTION_NAMES.map((name,k) => `<li>${name} <span class="vd-action num" id="vd-action-${["image","surgery","drug","family"][k]}">${r.actions[k]}</span>건</li>`).join("")}</ul>
-        <p>재검토·재연락 등록 <span class="vd-recontact num" id="vd-recontact">${r.recontact.length}</span>건${r.recontact.length ? ` (${esc(idText(r.recontact))})` : ""} — 미확정으로 남은 보고 카드는 조치 요청에 넣지 않습니다.</p>
+        <p id="vd-uncertain-actions">위 요청 중 미확정으로 남은 카드에서 나온 요청: ${ACTION_NAMES.map((name,k) => `${name} ${r.uncertainActions[k]}건`).join(" / ")}. VUS를 조치 근거로 오해할 때의 부담을 나타내는 가정입니다.</p>
+        <p>재검토·재연락 등록 <span class="vd-recontact num" id="vd-recontact">${r.recontact.length}</span>건${r.recontact.length ? ` (${esc(idText(r.recontact))})` : ""} — 조치 요청과 별도로 셉니다.</p>
         <p>한 카드가 여러 요청을 만들 수 있습니다. 서로 다른 요청을 합산 점수로 만들지 않습니다. 혈족에게 연락할지 검토하는 건수와 추가 가족 검사는 다른 항목입니다.</p>
         <p>참여자 상담 ${r.participantConsult.length}건 · 혈족 고지 검토 ${r.family.length}건 · 상담 수요 <span class="vd-demand num" id="vd-demand">${r.demand}</span>건 / 동시 8건 <span class="vd-wait" id="vd-wait"${r.waiting ? "" : " hidden"}>대기 발생</span></p>
         <p>혈족 고지 검토: ${esc(idText(r.family))}</p>
@@ -458,7 +467,7 @@
       const el = $("#vd-detail-result");
       if (!el) return;
       const v = rows.find(v => v.id === g.selectedId);
-      el.innerHTML = g.revealed && v ? `<p>이 게임이 정한 분류(가상의 추적 결과): ${{P:"병원성",B:"비병원성",U:"미확정"}[v.truth]}</p>${v.truth === "U" ? `<p>${UNCERTAIN}</p><p>미확정 — 발병 범위를 추정하지 않음 · 보고해도 조치 대신 재검토·재연락 등록</p>` : ""}` : "";
+      el.innerHTML = g.revealed && v ? `<p>이 게임이 정한 분류(가상의 추적 결과): ${{P:"병원성",B:"비병원성",U:"미확정"}[v.truth]}</p>${v.truth === "U" ? `<p>${UNCERTAIN}</p><p>미확정 — 발병 범위를 추정하지 않음 · 보고에 따른 조치 요청과 재검토·재연락 등록을 함께 표시</p>` : ""}` : "";
     }
     function paintDetail() {
       const v = rows.find(v => v.id === g.selectedId), el = $("#vd-detail");
@@ -643,9 +652,9 @@
       <details class="reveal vd-reveal">
         <summary>가. 놓침 줄이기 우선 <span class="tag-mine vd-source">가상의 답</span></summary>
         <p>기준과 무게: 대비할 기회를 남기는 것을 먼저, 본인의 정보 선택권을 다음, 상담 자원을 그다음에 두겠습니다. 증거 무게는 가계 3, 빈도 2, 기능 3, 예측 1, 같은 위치 1입니다.</p>
-        <p>선택: 보고선 1, 상담선 0으로 두겠습니다. 정책 네 개를 모두 켜서 2차 발견, 예방·치료법 없는 질환, 미성년 참여자의 성인기 위험을 보고하고, 참여자가 거부해도 혈족 고지를 검토하겠습니다. 수동 변경은 하지 않습니다.</p>
-        <p>얻는 것과 잃는 것: 병원성 6장을 모두 보고하고 정책으로 빠지는 카드도 없어 최종 12장을 보고합니다. 그 안에 비병원성 P-09·P-10과 미확정 4장도 들어 있습니다. 미확정 4장은 조치 대신 재검토·재연락 등록으로 세고, 조치 검토 요청은 정기 영상 검사 5건, 예방적 수술 상담 1건, 약물 3건, 추가 가족 검사 5건입니다. 대비할 기회를 넓게 얻지만 불필요한 관찰 검토와 정보 부담을 늘립니다.</p>
-        <p>약점: 참여자 상담 12건에 혈족 고지 검토 2건(P-01·P-09)이 더해져 상담 수요가 14건으로 동시 8건을 크게 넘습니다. P-01의 참여자는 혈족 연락을 거부했는데, 혈족 고지를 검토하면 본인의 비밀과 정면으로 부딪칩니다. 미성년인 P-03의 보호자에게 알리면 지금 준비할 기회는 생기지만, 이 참여자가 성인이 되어 들을지 스스로 정할 기회는 줄어듭니다. 많이 보고한다는 이유만으로 참여자의 이해와 동의가 확보되지는 않습니다.</p>
+        <p>선택: 보고선 1, 상담선 0으로 두겠습니다. 2차 발견과 예방·치료법 없는 질환은 보고하되, 미성년 참여자의 성인기 위험 보고와 참여자 거부 시 혈족 고지 검토는 끄겠습니다. 수동 변경은 하지 않습니다.</p>
+        <p>얻는 것과 잃는 것: 미성년인 P-03을 제외해 병원성 5장을 포함한 최종 11장을 보고합니다. 그 안에 비병원성 P-09·P-10과 미확정 4장도 들어 있습니다. 조치 검토 요청은 정기 영상 검사 6건, 예방적 수술 상담 1건, 약물 5건, 추가 가족 검사 6건입니다. 이 중 미확정 4장에서 나온 요청은 각각 2·0·2·2건이며, 재검토·재연락 등록 4건도 함께 셉니다. 대비할 기회를 넓게 얻지만 불필요한 관찰 검토와 정보 부담을 늘립니다.</p>
+        <p>약점: 참여자 상담 11건으로 동시 8건을 넘습니다. 혈족에게 별도로 알리지 않아 대비 기회를 놓칠 수 있고, 미성년인 P-03의 보호자가 지금 준비할 기회도 줄어듭니다. 많이 보고한다는 이유만으로 참여자의 이해와 동의가 확보되지는 않습니다.</p>
       </details>
       <details class="reveal vd-reveal">
         <summary>나. 과한 개입 피하기 우선 <span class="tag-mine vd-source">가상의 답</span></summary>
@@ -681,7 +690,7 @@
         <ul>
           <li>실제 변이 해석은 증거를 강도별로 조합하는 규칙 체계를 쓰며 단순 가중합이 아닙니다. 증거 간 의존성·중복과 질환별 기준도 이 저울에 충분히 반영하지 않았습니다.</li>
           <li>실제 지침(ACMG/AMP 2015)은 변이를 병원성, 병원성 가능성 높음, 의미불명, 양성(良性) 가능성 높음, 양성(良性)의 다섯 단계로 나눕니다. 이 게임의 가상 분류는 병원성·비병원성·미확정 세 값뿐이고, 보고/상담 후 결정/보고하지 않음은 변이 등급이 아니라 전달 방식입니다.</li>
-          <li>실제로 강한 근거로 쓰이는 여러 종류가 이 저울에 없습니다. 단백질이 만들어지지 못하게 하는 기능 상실형 변이(PVS1), 부모에게 없이 새로 생긴 변이(de novo), 환자-대조군 비교, 환자의 표현형과 질환의 일치 등이 그 예입니다. 이 게임은 생식세포 변이만 다루며, 암 조직 같은 체세포 변이는 다루지 않습니다.</li>
+          <li>실제로 강한 근거로 쓰이는 여러 종류가 이 저울에 없습니다. 기능 상실이 질환의 원인으로 알려진 유전자에서 단백질 기능을 잃게 하는 변이(PVS1), 부모에게 없이 새로 생긴 변이(de novo), 환자-대조군 비교 등이 그 예입니다. 이 게임은 생식세포 변이만 다루며, 암 조직 같은 체세포 변이는 다루지 않습니다.</li>
           <li>실제 해석에서 비교 집단의 대립유전자 빈도가 5%를 넘을 만큼 매우 흔하면(BA1) 그것만으로 양성(良性)으로 분류할 수 있습니다. 반면 ‘드물다’는 약한 지지 근거에 그치며, ClinGen은 이 근거(PM2)를 ‘지지’ 수준으로 낮춰 쓰도록 권고했습니다. 이 저울은 빈도 무게 하나로 양쪽을 같은 강도로 다룹니다. 컴퓨터 예측도 무게 하나로 다루었지만, 실제로는 보정을 거친 도구가 중간이나 강한 근거 수준에 이를 수 있습니다(Pejaver 외 2022).</li>
           <li>침투율은 분류 점수에 넣지 않고 보고 목록의 별도 조건부 계산에만 사용했습니다. 연령에 따른 변화, 예방·치료 효과, 환경과 다른 유전자의 영향은 계산하지 않았습니다.</li>
           <li>게임이 12장의 병원성 여부를 정하고 4장을 미확정으로 남긴 설정은 현실의 정답표가 아닙니다. 실제로는 새 증거에 따라 분류가 바뀔 수 있습니다. 의미불명 변이가 재분류될 때는 대부분 양성(良性) 쪽으로 내려갑니다. 유전성 암 검사 자료에서는 재분류된 의미불명 변이의 약 90%가 양성 또는 양성 가능성 높음으로 바뀌었습니다(Mersch 외 2018, JAMA).</li>

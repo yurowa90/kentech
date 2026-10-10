@@ -1,0 +1,7248 @@
+{
+  "head": "4aad10158aede4c6629a6bfa41644295b6f18c8e",
+  "node": "v24.21.0",
+  "commands": [
+    {
+      "file": "tests/league/balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/sec.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/recal.js",
+      "code": 1
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/26-g9-start-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-map.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/27-g9-preservation.js",
+      "code": 0
+    }
+  ],
+  "syntax": [
+    {
+      "file": "ui/econ.js",
+      "code": 0
+    },
+    {
+      "file": "ui/econ-data.js",
+      "code": 0
+    },
+    {
+      "file": "ui/league-core.js",
+      "code": 0
+    },
+    {
+      "file": "ui/league-ai.js",
+      "code": 0
+    },
+    {
+      "file": "ui/tech-data.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/27-g9-preservation.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/26-g9-start-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g6-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/lib.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-map.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g7-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/bots36.py",
+      "pythonAST": true
+    },
+    {
+      "file": "tests/league/ai-check.py",
+      "pythonAST": true
+    },
+    {
+      "file": "tests/league/review/g9-report.py",
+      "pythonAST": true
+    },
+    {
+      "helperModule": "lib.js",
+      "code": 0
+    },
+    {
+      "helperModule": "g6-variants.js",
+      "code": 0
+    },
+    {
+      "helperModule": "g7-variants.js",
+      "code": 0
+    }
+  ],
+  "aiCheck": {
+    "passes": 6589,
+    "failures": 0
+  },
+  "bots": {
+    "passes": 18098,
+    "failures": 0,
+    "baselineDebtOver": 0,
+    "meanScores": {
+      "nothing": 9.6,
+      "base": 72.60000000000001,
+      "diesel": 46.6,
+      "renew": 71.78333333333333,
+      "ties": 71.91666666666667,
+      "taxlow": 50.53333333333333,
+      "taxhigh": 70.25,
+      "dm": 71.2,
+      "storage": 73.86666666666666
+    },
+    "firstCounts": {
+      "nothing": 0,
+      "base": 1,
+      "diesel": 0,
+      "renew": 1,
+      "ties": 1,
+      "taxlow": 0,
+      "taxhigh": 0,
+      "dm": 1,
+      "storage": 2
+    },
+    "horizons": {
+      "12": {
+        "n": 54,
+        "overCities": 5,
+        "debtMedian": 0.0,
+        "overCityMonths": 17,
+        "cityMonths": 648,
+        "nothingCashRank": 2,
+        "nothingCashCityRanks": {
+          "hwaseong": 2,
+          "pyeongtaek": 4,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 1,
+          "cheonan": 1
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.65,
+          "base": 72.15,
+          "diesel": 47.96666666666667,
+          "renew": 71.61666666666666,
+          "ties": 72.61666666666667,
+          "taxlow": 60.21666666666667,
+          "taxhigh": 69.73333333333333,
+          "dm": 70.56666666666666,
+          "storage": 73.05
+        },
+        "meanCash": {
+          "nothing": 365.49216666666666,
+          "base": 95.7666666666667,
+          "diesel": -107.40266666666666,
+          "renew": 98.63283333333337,
+          "ties": 109.35333333333332,
+          "taxlow": -162.05916666666667,
+          "taxhigh": 384.41300000000007,
+          "dm": 139.27599999999998,
+          "storage": 120.81616666666667
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "diesel"
+          ],
+          "dangjin": [
+            "renew",
+            "storage"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "ties"
+          ]
+        }
+      },
+      "24": {
+        "n": 54,
+        "overCities": 7,
+        "debtMedian": 0.0,
+        "overCityMonths": 93,
+        "cityMonths": 1296,
+        "nothingCashRank": 2,
+        "nothingCashCityRanks": {
+          "hwaseong": 2,
+          "pyeongtaek": 5,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 2,
+          "cheonan": 1
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.6,
+          "base": 71.8,
+          "diesel": 47.516666666666666,
+          "renew": 71.38333333333333,
+          "ties": 71.41666666666667,
+          "taxlow": 50.38333333333333,
+          "taxhigh": 70.23333333333333,
+          "dm": 70.71666666666667,
+          "storage": 73.5
+        },
+        "meanCash": {
+          "nothing": 492.9021666666667,
+          "base": 172.26966666666672,
+          "diesel": -236.65133333333338,
+          "renew": 214.98550000000006,
+          "ties": 198.60000000000002,
+          "taxlow": -338.09900000000005,
+          "taxhigh": 767.1928333333334,
+          "dm": 287.11899999999997,
+          "storage": 241.84566666666672
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "diesel"
+          ],
+          "dangjin": [
+            "renew"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "dm"
+          ]
+        }
+      },
+      "36": {
+        "n": 54,
+        "overCities": 7,
+        "debtMedian": 0.0,
+        "overCityMonths": 177,
+        "cityMonths": 1944,
+        "nothingCashRank": 2,
+        "nothingCashCityRanks": {
+          "hwaseong": 2,
+          "pyeongtaek": 6,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 2,
+          "cheonan": 1
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.6,
+          "base": 72.6,
+          "diesel": 46.6,
+          "renew": 71.78333333333333,
+          "ties": 71.91666666666667,
+          "taxlow": 50.53333333333333,
+          "taxhigh": 70.25,
+          "dm": 71.2,
+          "storage": 73.86666666666666
+        },
+        "meanCash": {
+          "nothing": 631.0885,
+          "base": 305.2213333333334,
+          "diesel": -339.12916666666683,
+          "renew": 373.13566666666685,
+          "ties": 344.17166666666674,
+          "taxlow": -536.9048333333335,
+          "taxhigh": 1132.8106666666665,
+          "dm": 467.4603333333333,
+          "storage": 405.24083333333346
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "storage"
+          ],
+          "dangjin": [
+            "renew"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "dm"
+          ]
+        }
+      }
+    }
+  },
+  "host": [
+    {
+      "id": "hwaseong",
+      "cash": -504.37,
+      "debtCap": 637.7,
+      "overMonths": 0,
+      "minHeadroom": 133.33000000000004
+    },
+    {
+      "id": "pyeongtaek",
+      "cash": 1049.3660000000002,
+      "debtCap": 380.7,
+      "overMonths": 0,
+      "minHeadroom": 544.40975
+    },
+    {
+      "id": "anseong",
+      "cash": -34.54799999999996,
+      "debtCap": 134.8,
+      "overMonths": 0,
+      "minHeadroom": 99.08500000000005
+    },
+    {
+      "id": "dangjin",
+      "cash": 1039.0660000000005,
+      "debtCap": 119.9,
+      "overMonths": 0,
+      "minHeadroom": 231.5075
+    },
+    {
+      "id": "asan",
+      "cash": -27.086999999999986,
+      "debtCap": 208.8,
+      "overMonths": 0,
+      "minHeadroom": 127.33850000000004
+    },
+    {
+      "id": "cheonan",
+      "cash": -275.535,
+      "debtCap": 341.1,
+      "overMonths": 0,
+      "minHeadroom": 65.565
+    }
+  ],
+  "policyFamilies": {
+    "taxlow": 2,
+    "taxhigh": 3
+  },
+  "policyGrid": {
+    "hwaseong": {
+      "top": [
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 81.3,
+          "cash": -29.072000000000056
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 69.4,
+        "cash": -504.37
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 46.8,
+        "cash": -2213.1220000000003
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 45.8,
+          "cash": -680.2939999999998
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 46,
+          "cash": -1061.3809999999999
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 46.5,
+          "cash": -1445.3000000000009
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 46.7,
+          "cash": -1829.419
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 46.8,
+          "cash": -2213.1220000000003
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 45.4,
+          "cash": -564.615
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 45.6,
+          "cash": -945.362
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 46.1,
+          "cash": -1328.9370000000001
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 46.3,
+          "cash": -1712.7339999999995
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 46.4,
+          "cash": -2096.1139999999996
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 45.3,
+          "cash": -448.75699999999995
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 45.5,
+          "cash": -829.4490000000002
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 46,
+          "cash": -1212.9539999999995
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 46.3,
+          "cash": -1596.7049999999997
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 46.4,
+          "cash": -1980.0379999999998
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 71.6,
+          "cash": -333.0109999999998
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 45.5,
+          "cash": -713.628
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 46,
+          "cash": -1097.0860000000002
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 46.2,
+          "cash": -1480.787999999999
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 46.3,
+          "cash": -1864.0800000000004
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 77.6,
+          "cash": -217.38099999999986
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 45.4,
+          "cash": -597.9539999999998
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 45.9,
+          "cash": -981.3329999999996
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 46.1,
+          "cash": -1364.9900000000005
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 46.2,
+          "cash": -1748.2329999999997
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 72.5,
+          "cash": -327.5040000000001
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 45.8,
+          "cash": -707.837
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 46.3,
+          "cash": -1090.347
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 46.6,
+          "cash": -1473.613
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 46.7,
+          "cash": -1856.778
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 77.9,
+          "cash": -212.12200000000007
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 45.5,
+          "cash": -592.1309999999999
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 46,
+          "cash": -974.2990000000003
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 46.2,
+          "cash": -1357.2240000000002
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 46.3,
+          "cash": -1740.067
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 80.4,
+          "cash": -96.30699999999996
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 63.8,
+          "cash": -476.2699999999998
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 45.9,
+          "cash": -858.3629999999998
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 46.2,
+          "cash": -1241.2349999999997
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 46.3,
+          "cash": -1624.0319999999995
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 80.3,
+          "cash": 19.230999999999998
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 73.7,
+          "cash": -360.51899999999983
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 45.8,
+          "cash": -742.538
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 46.1,
+          "cash": -1125.3730000000003
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 46.2,
+          "cash": -1508.1150000000002
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 80.1,
+          "cash": 133.08600000000004
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 78.1,
+          "cash": -244.88600000000002
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 45.8,
+          "cash": -626.8339999999998
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 46,
+          "cash": -1009.6109999999999
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 46.1,
+          "cash": -1392.3139999999996
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 80.9,
+          "cash": 24.476000000000003
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 74.5,
+          "cash": -354.92900000000014
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 46.2,
+          "cash": -735.977
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 46.4,
+          "cash": -1118.3899999999999
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 46.6,
+          "cash": -1501.009999999999
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 80.2,
+          "cash": 137.77100000000002
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 78.4,
+          "cash": -239.51799999999994
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 45.8,
+          "cash": -620.2320000000002
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 46.1,
+          "cash": -1002.301
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 46.2,
+          "cash": -1384.6059999999995
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 80.1,
+          "cash": 250.61700000000016
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 80.5,
+          "cash": -123.69999999999995
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 69.4,
+          "cash": -504.37
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 46,
+          "cash": -886.3670000000001
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 46.1,
+          "cash": -1268.6219999999994
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 80,
+          "cash": 362.05499999999995
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 80.3,
+          "cash": -7.9979999999999976
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 75.6,
+          "cash": -388.61400000000026
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 45.9,
+          "cash": -770.5349999999996
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 46.1,
+          "cash": -1152.745
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 79.9,
+          "cash": 472.969
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 80.2,
+          "cash": 106.168
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 79.1,
+          "cash": -272.96000000000004
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 60.7,
+          "cash": -654.8279999999997
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 46,
+          "cash": -1036.9830000000004
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 80.5,
+          "cash": 366.8460000000001
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 80.8,
+          "cash": -2.6309999999998155
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 76.3,
+          "cash": -382.23100000000005
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 46.2,
+          "cash": -763.7519999999994
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 46.3,
+          "cash": -1145.8489999999997
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 79.2,
+          "cash": 476.98300000000006
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 80.2,
+          "cash": 110.9920000000001
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 79.2,
+          "cash": -266.80300000000005
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 61.7,
+          "cash": -647.978
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 46,
+          "cash": -1029.735
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 79.1,
+          "cash": 588.0140000000001
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 80,
+          "cash": 224.103
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 81,
+          "cash": -150.98
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 71.9,
+          "cash": -532.091
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 45.9,
+          "cash": -913.788
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 79,
+          "cash": 698.93
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 79.9,
+          "cash": 335.847
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 80.9,
+          "cash": -35.268999999999885
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 76.5,
+          "cash": -416.33000000000027
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 45.8,
+          "cash": -797.9690000000003
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 78.8,
+          "cash": 809.7379999999997
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 79.8,
+          "cash": 446.8199999999998
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 80.7,
+          "cash": 79.36300000000008
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 79.4,
+          "cash": -300.67499999999995
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 66.6,
+          "cash": -682.2439999999998
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 78.9,
+          "cash": 702.2229999999997
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 79.2,
+          "cash": 339.70900000000006
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 81.3,
+          "cash": -29.072000000000056
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 77.1,
+          "cash": -409.7249999999999
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 46.1,
+          "cash": -791.2450000000002
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 78.8,
+          "cash": 813.3149999999998
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 79.1,
+          "cash": 450.9290000000002
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 80.7,
+          "cash": 84.98700000000007
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 79.4,
+          "cash": -294.2709999999998
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 67,
+          "cash": -675.454
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 78.6,
+          "cash": 924.3100000000002
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 79,
+          "cash": 561.9700000000003
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 80.6,
+          "cash": 198.37999999999994
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 81,
+          "cash": -178.4340000000001
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 73.3,
+          "cash": -559.573
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 78.5,
+          "cash": 1035.185
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 78.9,
+          "cash": 672.8890000000001
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 80.4,
+          "cash": 310.43600000000004
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 80.9,
+          "cash": -62.714999999999954
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 76.9,
+          "cash": -443.7999999999997
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 78.4,
+          "cash": 1145.9470000000006
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 78.7,
+          "cash": 783.6999999999999
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 80.3,
+          "cash": 421.47400000000016
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 80.8,
+          "cash": 52.32200000000004
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 79.3,
+          "cash": -328.1400000000001
+        }
+      ]
+    },
+    "pyeongtaek": {
+      "top": [
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 85.1,
+          "cash": 241.47700000000006
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 83.7,
+        "cash": 1049.3660000000002
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 85.1,
+        "cash": 241.47700000000006
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 83.1,
+          "cash": 985.2250000000005
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 83.5,
+          "cash": 800.7049999999999
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 84.4,
+          "cash": 614.2180000000001
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 84.9,
+          "cash": 427.67300000000006
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 85.1,
+          "cash": 241.47700000000006
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 83,
+          "cash": 1033.7269999999999
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 83.4,
+          "cash": 849.239
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 84.3,
+          "cash": 662.784
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 84.8,
+          "cash": 476.2659999999998
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 85,
+          "cash": 290.10600000000005
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 82.8,
+          "cash": 1082.155
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 83.2,
+          "cash": 897.6990000000001
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 84.2,
+          "cash": 711.2760000000001
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 84.7,
+          "cash": 524.7909999999999
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 84.9,
+          "cash": 338.663
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 82.7,
+          "cash": 1130.5210000000004
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 83.1,
+          "cash": 946.0990000000003
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 84,
+          "cash": 759.7050000000002
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 84.5,
+          "cash": 573.2519999999998
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 84.7,
+          "cash": 387.1470000000001
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82.5,
+          "cash": 1178.8240000000008
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82.9,
+          "cash": 994.4239999999999
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83.9,
+          "cash": 808.0660000000001
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 84.4,
+          "cash": 621.6389999999996
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 84.5,
+          "cash": 435.57499999999993
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 82.9,
+          "cash": 1153.161
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 83.2,
+          "cash": 969.094
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 84.2,
+          "cash": 783.5060000000001
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 84.7,
+          "cash": 597.5179999999998
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 84.9,
+          "cash": 411.67399999999986
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 82.7,
+          "cash": 1201.6330000000005
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 83.1,
+          "cash": 1017.5940000000004
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 84.1,
+          "cash": 832.0390000000001
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 84.6,
+          "cash": 646.0849999999998
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 84.7,
+          "cash": 460.2710000000001
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 82.6,
+          "cash": 1250.0339999999999
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 83,
+          "cash": 1066.0239999999997
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 83.9,
+          "cash": 880.5030000000003
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 84.4,
+          "cash": 694.5790000000004
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 84.6,
+          "cash": 508.79300000000006
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 82.4,
+          "cash": 1298.3739999999998
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 82.8,
+          "cash": 1114.3960000000002
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 83.8,
+          "cash": 928.9090000000002
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 84.3,
+          "cash": 743.0109999999999
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 84.5,
+          "cash": 557.2570000000001
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82.3,
+          "cash": 1346.6430000000003
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82.6,
+          "cash": 1162.6959999999997
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83.6,
+          "cash": 977.2419999999998
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 84.1,
+          "cash": 791.3760000000002
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 84.3,
+          "cash": 605.6539999999998
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 82.6,
+          "cash": 1320.7299999999998
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 83,
+          "cash": 1137.1030000000003
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 84,
+          "cash": 952.4260000000002
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 84.5,
+          "cash": 766.995
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 84.6,
+          "cash": 581.4929999999997
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 82.5,
+          "cash": 1369.1710000000003
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 82.8,
+          "cash": 1185.5780000000002
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 83.8,
+          "cash": 1000.9319999999999
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 84.3,
+          "cash": 815.5290000000003
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 84.5,
+          "cash": 630.064
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 82.3,
+          "cash": 1417.5510000000008
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 82.7,
+          "cash": 1233.9850000000004
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 83.7,
+          "cash": 1049.3660000000002
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 84.2,
+          "cash": 863.9979999999996
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 84.4,
+          "cash": 678.5579999999999
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 82.2,
+          "cash": 1465.8590000000002
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 82.5,
+          "cash": 1282.3249999999998
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 83.5,
+          "cash": 1097.7419999999997
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 84,
+          "cash": 912.401
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 84.2,
+          "cash": 726.9959999999999
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82,
+          "cash": 1514.096
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82.4,
+          "cash": 1330.6029999999994
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83.4,
+          "cash": 1146.049
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 83.9,
+          "cash": 960.7400000000001
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 84.1,
+          "cash": 775.359
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 82.2,
+          "cash": 1487.9270000000001
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 82.6,
+          "cash": 1304.7479999999998
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 83.5,
+          "cash": 1120.9739999999993
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 84.1,
+          "cash": 936.095
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 84.2,
+          "cash": 750.933
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 82.1,
+          "cash": 1536.3439999999996
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 82.4,
+          "cash": 1353.1970000000001
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 83.4,
+          "cash": 1169.4510000000002
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 83.9,
+          "cash": 984.6090000000002
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 84.1,
+          "cash": 799.4809999999997
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 81.9,
+          "cash": 1584.6919999999998
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 82.3,
+          "cash": 1401.5770000000005
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 83.3,
+          "cash": 1217.8590000000002
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 83.8,
+          "cash": 1033.0420000000001
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 84,
+          "cash": 847.9499999999995
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 81.8,
+          "cash": 1632.9720000000002
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 82.1,
+          "cash": 1449.8840000000002
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 83.1,
+          "cash": 1266.209
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 83.6,
+          "cash": 1081.420000000001
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 83.8,
+          "cash": 896.3590000000004
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.6,
+          "cash": 1681.192000000001
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82,
+          "cash": 1498.129
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83,
+          "cash": 1314.486
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 83.5,
+          "cash": 1129.7290000000003
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 83.7,
+          "cash": 944.6960000000004
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 81.7,
+          "cash": 1654.7570000000007
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 82.1,
+          "cash": 1472.0259999999998
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 83.1,
+          "cash": 1289.1489999999992
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 83.6,
+          "cash": 1104.8239999999998
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 83.8,
+          "cash": 920.0139999999999
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 81.6,
+          "cash": 1703.1470000000006
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 82,
+          "cash": 1520.446
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 83,
+          "cash": 1337.6000000000004
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 83.5,
+          "cash": 1153.3060000000005
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 83.7,
+          "cash": 968.5219999999997
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 81.5,
+          "cash": 1751.462999999999
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 81.8,
+          "cash": 1568.7919999999995
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 82.9,
+          "cash": 1385.9800000000005
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 83.3,
+          "cash": 1201.7220000000007
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 83.6,
+          "cash": 1016.969
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 81.3,
+          "cash": 1799.7229999999993
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 81.7,
+          "cash": 1617.0789999999995
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 82.7,
+          "cash": 1434.2999999999997
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 83.2,
+          "cash": 1250.0669999999996
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 83.4,
+          "cash": 1065.3450000000003
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.1,
+          "cash": 1847.912
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.5,
+          "cash": 1665.2990000000007
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 82.5,
+          "cash": 1482.5450000000003
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 83.1,
+          "cash": 1298.3489999999997
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 83.3,
+          "cash": 1113.6549999999993
+        }
+      ]
+    },
+    "anseong": {
+      "top": [
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 82.8,
+          "cash": -34.54799999999996
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 82.8,
+          "cash": -22.672999999999956
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 82.8,
+          "cash": -27.29399999999994
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 82.8,
+        "cash": -34.54799999999996
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 47.5,
+        "cash": -316.65299999999996
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 75,
+          "cash": -58.46399999999998
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 46.4,
+          "cash": -122.06999999999996
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 47.1,
+          "cash": -186.88699999999997
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 47.4,
+          "cash": -251.77500000000006
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 47.5,
+          "cash": -316.65299999999996
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 79.8,
+          "cash": -38.476
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 46.3,
+          "cash": -101.74899999999998
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 47,
+          "cash": -166.545
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 47.3,
+          "cash": -231.42100000000002
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 47.4,
+          "cash": -296.228
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 81.9,
+          "cash": -18.589999999999954
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 70.1,
+          "cash": -81.60299999999995
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 46.9,
+          "cash": -146.238
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 47.2,
+          "cash": -211.10499999999996
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 47.3,
+          "cash": -275.85699999999997
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 81.7,
+          "cash": 1.0910000000000295
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 76.7,
+          "cash": -61.608
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 46.8,
+          "cash": -125.961
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 47.1,
+          "cash": -190.80999999999995
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 47.3,
+          "cash": -255.55499999999998
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.5,
+          "cash": 20.602000000000046
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 80.3,
+          "cash": -41.68499999999998
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 62.5,
+          "cash": -105.71100000000003
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 47,
+          "cash": -170.54900000000004
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 47.2,
+          "cash": -235.27599999999995
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 81.8,
+          "cash": -3.758000000000002
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 75.6,
+          "cash": -66.40899999999998
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 46.9,
+          "cash": -130.50999999999996
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 47.2,
+          "cash": -195.18399999999994
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 47.3,
+          "cash": -259.82199999999995
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 81.7,
+          "cash": 15.841000000000069
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 79.7,
+          "cash": -46.40199999999998
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 55.3,
+          "cash": -110.17999999999995
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 47.1,
+          "cash": -174.8409999999999
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 47.3,
+          "cash": -239.47199999999995
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 81.6,
+          "cash": 35.385999999999974
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 82,
+          "cash": -26.483999999999984
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 72.3,
+          "cash": -89.94999999999999
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 47.1,
+          "cash": -154.52499999999998
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 47.2,
+          "cash": -219.14600000000002
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 81.4,
+          "cash": 54.90300000000002
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 81.8,
+          "cash": -6.713000000000017
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 77.6,
+          "cash": -69.92799999999993
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 47,
+          "cash": -134.24499999999995
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 47.1,
+          "cash": -198.84900000000005
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.2,
+          "cash": 74.39499999999994
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.7,
+          "cash": 12.835000000000033
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 80.8,
+          "cash": -49.98499999999997
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 66.7,
+          "cash": -113.99399999999999
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 47,
+          "cash": -178.59099999999998
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 81.6,
+          "cash": 49.961999999999975
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 82,
+          "cash": -11.562000000000006
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 76.8,
+          "cash": -74.53099999999998
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 47.1,
+          "cash": -138.72099999999995
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 47.2,
+          "cash": -203.23399999999998
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 81.4,
+          "cash": 69.533
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 81.8,
+          "cash": 8.098000000000058
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 80.4,
+          "cash": -54.50299999999995
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 63.6,
+          "cash": -118.397
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 47.1,
+          "cash": -182.89399999999995
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 81.3,
+          "cash": 89.07100000000003
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 81.7,
+          "cash": 27.656000000000102
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 82.8,
+          "cash": -34.54799999999996
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 73.5,
+          "cash": -98.11799999999997
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 47,
+          "cash": -162.57899999999995
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 81.1,
+          "cash": 108.57700000000003
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 81.5,
+          "cash": 47.16799999999999
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 82.7,
+          "cash": -14.717999999999964
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 78,
+          "cash": -78.03599999999994
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 47,
+          "cash": -142.28999999999996
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81,
+          "cash": 128.05800000000005
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.4,
+          "cash": 66.66400000000004
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 82.5,
+          "cash": 4.907000000000007
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 80.9,
+          "cash": -58.08100000000001
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 69,
+          "cash": -122.04400000000001
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 81.1,
+          "cash": 103.526
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 81.5,
+          "cash": 42.25199999999993
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 82.7,
+          "cash": -19.38899999999997
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 77.2,
+          "cash": -82.57000000000004
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 47,
+          "cash": -146.78699999999998
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 80.9,
+          "cash": 123.08300000000006
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 81.4,
+          "cash": 61.81800000000008
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 82.6,
+          "cash": 0.3550000000000928
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 80.3,
+          "cash": -62.52900000000002
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 66.9,
+          "cash": -126.457
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 80.8,
+          "cash": 142.61499999999998
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 81.2,
+          "cash": 81.35900000000001
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 82.4,
+          "cash": 19.919000000000025
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 82.5,
+          "cash": -42.54700000000002
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 74.1,
+          "cash": -106.15199999999997
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 80.6,
+          "cash": 162.10800000000003
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 81.1,
+          "cash": 100.86999999999998
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 82.2,
+          "cash": 39.44000000000004
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 82.8,
+          "cash": -22.672999999999956
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 77.9,
+          "cash": -85.991
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 80.5,
+          "cash": 181.58700000000002
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 80.9,
+          "cash": 120.35400000000006
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 82.1,
+          "cash": 58.93500000000007
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 82.7,
+          "cash": -2.9609999999999648
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 80.5,
+          "cash": -66.01099999999994
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 80.6,
+          "cash": 156.95599999999996
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 81,
+          "cash": 95.85200000000002
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 82.2,
+          "cash": 34.71700000000007
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 82.8,
+          "cash": -27.29399999999994
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 77.2,
+          "cash": -90.55599999999998
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 80.5,
+          "cash": 176.5050000000001
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 80.9,
+          "cash": 115.40500000000006
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 82.1,
+          "cash": 54.28600000000006
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 82.7,
+          "cash": -7.457999999999954
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 80,
+          "cash": -70.48299999999998
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 80.3,
+          "cash": 196.02400000000006
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 80.7,
+          "cash": 134.93999999999997
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 81.9,
+          "cash": 73.83600000000003
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 82.5,
+          "cash": 12.14200000000005
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 82,
+          "cash": -50.48600000000001
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 80.2,
+          "cash": 215.5080000000001
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 80.6,
+          "cash": 154.43800000000002
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 81.8,
+          "cash": 93.34300000000005
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 82.4,
+          "cash": 31.666000000000054
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 82.6,
+          "cash": -30.566999999999975
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 80,
+          "cash": 234.97500000000008
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 80.4,
+          "cash": 173.91500000000005
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 81.6,
+          "cash": 112.82400000000015
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 82.2,
+          "cash": 51.157000000000046
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 82.4,
+          "cash": -10.791999999999993
+        }
+      ]
+    },
+    "dangjin": {
+      "top": [
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.2,
+          "cash": 805.7660000000003
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 24.2,
+          "cash": 819.3860000000002
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 23.8,
+        "cash": 1039.0660000000005
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 24.2,
+        "cash": 805.7660000000003
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 23.5,
+          "cash": 1026.0010000000004
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 23.7,
+          "cash": 971.4169999999998
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 24,
+          "cash": 916.2120000000004
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 24.1,
+          "cash": 860.9380000000001
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.2,
+          "cash": 805.7660000000003
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 23.5,
+          "cash": 1039.5900000000006
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 23.6,
+          "cash": 985.017
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 24,
+          "cash": 929.8140000000004
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 24.1,
+          "cash": 874.5540000000003
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 24.2,
+          "cash": 819.3860000000002
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 23.5,
+          "cash": 1053.1670000000001
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 23.6,
+          "cash": 998.5950000000001
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 23.9,
+          "cash": 943.4100000000003
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 24.1,
+          "cash": 888.1459999999998
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 24.1,
+          "cash": 832.9929999999997
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1066.7290000000003
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 23.6,
+          "cash": 1012.1689999999996
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 23.9,
+          "cash": 956.985
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 24,
+          "cash": 901.7380000000002
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 24.1,
+          "cash": 846.5899999999996
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1080.2719999999995
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1025.7190000000007
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 23.8,
+          "cash": 970.546
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 24,
+          "cash": 915.3010000000005
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 24.1,
+          "cash": 860.1599999999995
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 23.5,
+          "cash": 1073.454
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 23.6,
+          "cash": 1019.0229999999999
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 23.9,
+          "cash": 964.1170000000004
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 24.1,
+          "cash": 909.037
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.1,
+          "cash": 853.9750000000001
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1087.041
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1032.6139999999998
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 23.9,
+          "cash": 977.7150000000001
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 24,
+          "cash": 922.6400000000001
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 24.1,
+          "cash": 867.5910000000002
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1100.6089999999997
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1046.1840000000002
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 23.8,
+          "cash": 991.2970000000007
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 24,
+          "cash": 936.2299999999998
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 24.1,
+          "cash": 881.1899999999999
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1114.1599999999999
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1059.7510000000004
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 23.8,
+          "cash": 1004.87
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 24,
+          "cash": 949.8090000000001
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 24,
+          "cash": 894.7800000000003
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 23.3,
+          "cash": 1127.6979999999996
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 23.4,
+          "cash": 1073.295
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 23.8,
+          "cash": 1018.4239999999999
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 23.9,
+          "cash": 963.3710000000002
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 24,
+          "cash": 908.3400000000003
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 23.4,
+          "cash": 1120.783
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1066.5010000000002
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 23.8,
+          "cash": 1011.8969999999998
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 24,
+          "cash": 957.0059999999996
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.1,
+          "cash": 902.0640000000005
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 23.3,
+          "cash": 1134.3650000000002
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 23.5,
+          "cash": 1080.09
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 23.8,
+          "cash": 1025.4860000000006
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 24,
+          "cash": 970.6020000000001
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 24,
+          "cash": 915.6700000000001
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 23.3,
+          "cash": 1147.9229999999998
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 23.4,
+          "cash": 1093.6560000000002
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 23.8,
+          "cash": 1039.0660000000005
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 23.9,
+          "cash": 984.1870000000005
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 24,
+          "cash": 929.264
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 23.3,
+          "cash": 1161.4730000000002
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 23.4,
+          "cash": 1107.2139999999997
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 23.7,
+          "cash": 1052.6380000000001
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 23.9,
+          "cash": 997.7609999999997
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 23.9,
+          "cash": 942.8460000000001
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 23.2,
+          "cash": 1175.0029999999995
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 23.4,
+          "cash": 1120.7510000000002
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 23.7,
+          "cash": 1066.1799999999998
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 23.8,
+          "cash": 1011.3090000000002
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 23.9,
+          "cash": 956.4040000000001
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 23.2,
+          "cash": 1167.9940000000001
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 23.4,
+          "cash": 1113.8670000000004
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 23.7,
+          "cash": 1059.559
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 23.9,
+          "cash": 1004.8519999999997
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 23.9,
+          "cash": 950.0239999999999
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 23.2,
+          "cash": 1181.5640000000003
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 23.3,
+          "cash": 1127.4430000000004
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 23.7,
+          "cash": 1073.145
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 23.8,
+          "cash": 1018.4390000000002
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 23.9,
+          "cash": 963.6310000000002
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 23.2,
+          "cash": 1195.1210000000003
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 23.3,
+          "cash": 1141.0050000000003
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 23.6,
+          "cash": 1086.7110000000002
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 23.8,
+          "cash": 1032.0200000000002
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 23.9,
+          "cash": 977.2120000000002
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 23.1,
+          "cash": 1208.6609999999998
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 23.3,
+          "cash": 1154.55
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 23.6,
+          "cash": 1100.2740000000003
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 23.8,
+          "cash": 1045.5870000000002
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 23.8,
+          "cash": 990.7880000000002
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 23.1,
+          "cash": 1222.189
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 23.2,
+          "cash": 1168.0820000000003
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 23.6,
+          "cash": 1113.8139999999996
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 23.7,
+          "cash": 1059.131
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 23.8,
+          "cash": 1004.3450000000001
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 23.1,
+          "cash": 1215.081
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 23.2,
+          "cash": 1161.0999999999997
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 23.6,
+          "cash": 1107.1019999999999
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 23.7,
+          "cash": 1052.5739999999996
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 23.8,
+          "cash": 997.862
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 23.1,
+          "cash": 1228.6510000000003
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 23.2,
+          "cash": 1174.6709999999996
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 23.5,
+          "cash": 1120.6789999999999
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 23.7,
+          "cash": 1066.1599999999999
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 23.8,
+          "cash": 1011.464
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 23,
+          "cash": 1242.1970000000008
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 23.2,
+          "cash": 1188.2280000000005
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 23.5,
+          "cash": 1134.2389999999998
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 23.7,
+          "cash": 1079.7340000000004
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 23.7,
+          "cash": 1025.041
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 23,
+          "cash": 1255.735
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 23.1,
+          "cash": 1201.7719999999997
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 23.5,
+          "cash": 1147.79
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 23.6,
+          "cash": 1093.2889999999995
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 23.7,
+          "cash": 1038.609
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 23,
+          "cash": 1269.2500000000007
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 23.1,
+          "cash": 1215.3000000000004
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 23.4,
+          "cash": 1161.324
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 23.6,
+          "cash": 1106.827
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 23.7,
+          "cash": 1052.1509999999998
+        }
+      ]
+    },
+    "asan": {
+      "top": [
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 85.3,
+          "cash": -37.73100000000002
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 85.2,
+        "cash": -27.086999999999986
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 48.7,
+        "cash": -531.74
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 79.5,
+          "cash": -71.807
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 47.8,
+          "cash": -185.86599999999999
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 48.3,
+          "cash": -301.134
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 48.6,
+          "cash": -416.52099999999984
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 48.7,
+          "cash": -531.74
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 84.1,
+          "cash": -38.76799999999997
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 47.7,
+          "cash": -152.81799999999996
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 48.3,
+          "cash": -268.0539999999999
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 48.5,
+          "cash": -383.422
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 48.6,
+          "cash": -498.6169999999998
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 84.4,
+          "cash": -5.798999999999962
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 72,
+          "cash": -119.79499999999999
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 48.2,
+          "cash": -235.02599999999998
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 48.5,
+          "cash": -350.37299999999993
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 48.6,
+          "cash": -465.5429999999999
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 84.2,
+          "cash": 26.735000000000035
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 79.4,
+          "cash": -86.83499999999994
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 48.1,
+          "cash": -202.03599999999994
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 48.4,
+          "cash": -317.36399999999975
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 48.5,
+          "cash": -432.51399999999984
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82.5,
+          "cash": 58.214000000000006
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.8,
+          "cash": -54.429000000000016
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 47.2,
+          "cash": -169.37300000000005
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 47.4,
+          "cash": -284.44899999999996
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 47.5,
+          "cash": -399.35299999999995
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 84.4,
+          "cash": 30.91700000000005
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 80.3,
+          "cash": -82.34800000000003
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 48.2,
+          "cash": -196.998
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 48.5,
+          "cash": -312.0210000000001
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 48.6,
+          "cash": -427.00199999999995
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 84.2,
+          "cash": 63.20500000000004
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 84,
+          "cash": -49.306
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 59,
+          "cash": -163.93799999999993
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 48.4,
+          "cash": -278.939
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 48.5,
+          "cash": -393.9020000000001
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 84.1,
+          "cash": 95.19200000000004
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 84.5,
+          "cash": -16.31399999999998
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 75.3,
+          "cash": -130.93399999999994
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 48.3,
+          "cash": -245.90600000000006
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 48.4,
+          "cash": -360.8480000000002
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 83.9,
+          "cash": 127.01199999999996
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 84.3,
+          "cash": 16.351999999999983
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 80.7,
+          "cash": -97.95799999999997
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 48.2,
+          "cash": -212.91299999999993
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 48.3,
+          "cash": -327.8400000000001
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82.2,
+          "cash": 157.72100000000003
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82.6,
+          "cash": 47.97299999999999
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 82.4,
+          "cash": -65.52699999999996
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 64.7,
+          "cash": -180.2319999999999
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 47.4,
+          "cash": -294.9000000000001
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 84.1,
+          "cash": 130.91400000000002
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 84.5,
+          "cash": 20.59599999999999
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 81.5,
+          "cash": -93.11999999999993
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 48.3,
+          "cash": -207.77299999999994
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 48.5,
+          "cash": -322.5219999999999
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 84,
+          "cash": 162.67800000000008
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 84.3,
+          "cash": 52.98900000000002
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 84.6,
+          "cash": -60.079999999999984
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 68.6,
+          "cash": -174.706
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 48.4,
+          "cash": -289.4399999999999
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 83.8,
+          "cash": 194.35299999999995
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 84.2,
+          "cash": 85.05499999999999
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 85.2,
+          "cash": -27.086999999999986
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 77.1,
+          "cash": -141.69200000000004
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 48.3,
+          "cash": -256.399
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 83.7,
+          "cash": 225.96800000000002
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 84,
+          "cash": 116.89299999999996
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 85,
+          "cash": 5.729000000000017
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 81.4,
+          "cash": -108.7200000000001
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 48.2,
+          "cash": -223.40800000000002
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 82,
+          "cash": 256.361
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 82.3,
+          "cash": 147.66600000000008
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83.4,
+          "cash": 37.44700000000003
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 82.6,
+          "cash": -76.26500000000004
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 69.4,
+          "cash": -190.70999999999998
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 83.7,
+          "cash": 229.6589999999999
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 84,
+          "cash": 120.84800000000007
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 85.1,
+          "cash": 10.31100000000001
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 81.9,
+          "cash": -103.76599999999998
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 48.2,
+          "cash": -218.28700000000003
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 83.5,
+          "cash": 261.325
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 83.9,
+          "cash": 152.64200000000002
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 84.9,
+          "cash": 42.82400000000007
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 84.6,
+          "cash": -70.72500000000004
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 72.2,
+          "cash": -185.225
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 83.4,
+          "cash": 292.925
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 83.8,
+          "cash": 184.32599999999996
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 84.8,
+          "cash": 74.95200000000003
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 85.3,
+          "cash": -37.73100000000002
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 78,
+          "cash": -152.206
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 83.3,
+          "cash": 324.47999999999996
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 83.6,
+          "cash": 215.95200000000008
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 84.6,
+          "cash": 106.83700000000006
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 85.1,
+          "cash": -4.800999999999995
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 81.5,
+          "cash": -119.23200000000003
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.5,
+          "cash": 354.62500000000017
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.9,
+          "cash": 246.38200000000003
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 83,
+          "cash": 137.66799999999995
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 83.5,
+          "cash": 27.01199999999998
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 82.4,
+          "cash": -86.755
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 83.3,
+          "cash": 327.9800000000001
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 83.6,
+          "cash": 219.68900000000002
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 84.7,
+          "cash": 111.12900000000002
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 85.2,
+          "cash": -0.08799999999996899
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 81.9,
+          "cash": -114.30299999999997
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 83.1,
+          "cash": 359.60600000000005
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 83.5,
+          "cash": 251.35899999999998
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 84.5,
+          "cash": 142.95799999999997
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 85,
+          "cash": 32.47800000000003
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 84.3,
+          "cash": -81.25100000000003
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 83,
+          "cash": 391.1940000000001
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 83.4,
+          "cash": 282.974
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 84.4,
+          "cash": 174.66299999999998
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 84.9,
+          "cash": 64.715
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 85.1,
+          "cash": -48.25200000000001
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 82.8,
+          "cash": 422.7280000000001
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 83.2,
+          "cash": 314.5320000000001
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 84.2,
+          "cash": 206.28799999999995
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 84.7,
+          "cash": 96.66900000000001
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 84.9,
+          "cash": -15.30700000000002
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 81.1,
+          "cash": 452.652
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 81.5,
+          "cash": 344.6880000000003
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 82.5,
+          "cash": 236.74500000000003
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 83.1,
+          "cash": 127.56199999999997
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 83.2,
+          "cash": 16.660999999999984
+        }
+      ]
+    },
+    "cheonan": {
+      "top": [
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 77.7,
+          "cash": -87.21100000000007
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 77.7,
+          "cash": -105.339
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 65.8,
+        "cash": -275.535
+      },
+      "low": {
+        "key": "-2,-2,2",
+        "taxRes": -2,
+        "taxInd": -2,
+        "service": 2,
+        "score": 44.7,
+        "cash": -1180.2909999999997
+      },
+      "rows": [
+        {
+          "key": "-2,-2,-2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 43.6,
+          "cash": -348.681
+        },
+        {
+          "key": "-2,-2,-1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 43.8,
+          "cash": -555.0810000000002
+        },
+        {
+          "key": "-2,-2,0",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 44.3,
+          "cash": -763.4339999999997
+        },
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 44.6,
+          "cash": -972.0070000000004
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 44.7,
+          "cash": -1180.2909999999997
+        },
+        {
+          "key": "-2,-1,-2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 43.5,
+          "cash": -293.709
+        },
+        {
+          "key": "-2,-1,-1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 43.7,
+          "cash": -500.0780000000001
+        },
+        {
+          "key": "-2,-1,0",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 44.2,
+          "cash": -708.3859999999999
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 44.5,
+          "cash": -916.937
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 44.6,
+          "cash": -1125.1869999999994
+        },
+        {
+          "key": "-2,0,-2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 43.4,
+          "cash": -238.81199999999998
+        },
+        {
+          "key": "-2,0,-1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 43.6,
+          "cash": -445.15000000000015
+        },
+        {
+          "key": "-2,0,0",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 44.2,
+          "cash": -653.421
+        },
+        {
+          "key": "-2,0,1",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 44.4,
+          "cash": -861.926
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 44.5,
+          "cash": -1070.1449999999998
+        },
+        {
+          "key": "-2,1,-2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 67.6,
+          "cash": -183.985
+        },
+        {
+          "key": "-2,1,-1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 43.5,
+          "cash": -390.28700000000003
+        },
+        {
+          "key": "-2,1,0",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 44.1,
+          "cash": -598.5220000000002
+        },
+        {
+          "key": "-2,1,1",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 44.3,
+          "cash": -806.9910000000003
+        },
+        {
+          "key": "-2,1,2",
+          "taxRes": -2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 44.5,
+          "cash": -1015.1819999999999
+        },
+        {
+          "key": "-2,2,-2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 73.3,
+          "cash": -129.23000000000005
+        },
+        {
+          "key": "-2,2,-1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 43.4,
+          "cash": -335.5060000000001
+        },
+        {
+          "key": "-2,2,0",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 44,
+          "cash": -543.7079999999999
+        },
+        {
+          "key": "-2,2,1",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 44.3,
+          "cash": -752.1360000000002
+        },
+        {
+          "key": "-2,2,2",
+          "taxRes": -2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 44.4,
+          "cash": -960.2930000000001
+        },
+        {
+          "key": "-1,-2,-2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 70.8,
+          "cash": -160.94099999999997
+        },
+        {
+          "key": "-1,-2,-1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 43.6,
+          "cash": -366.85300000000007
+        },
+        {
+          "key": "-1,-2,0",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 44.2,
+          "cash": -574.2119999999996
+        },
+        {
+          "key": "-1,-2,1",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 44.5,
+          "cash": -782.1740000000001
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 44.6,
+          "cash": -990.0889999999996
+        },
+        {
+          "key": "-1,-1,-2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 75.1,
+          "cash": -106.006
+        },
+        {
+          "key": "-1,-1,-1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 43.5,
+          "cash": -311.88700000000006
+        },
+        {
+          "key": "-1,-1,0",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 44.1,
+          "cash": -519.2019999999998
+        },
+        {
+          "key": "-1,-1,1",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 44.4,
+          "cash": -727.13
+        },
+        {
+          "key": "-1,-1,2",
+          "taxRes": -1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 44.5,
+          "cash": -935.0039999999997
+        },
+        {
+          "key": "-1,0,-2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 76.9,
+          "cash": -51.15399999999998
+        },
+        {
+          "key": "-1,0,-1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 60.6,
+          "cash": -256.9870000000001
+        },
+        {
+          "key": "-1,0,0",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 44,
+          "cash": -464.27600000000007
+        },
+        {
+          "key": "-1,0,1",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 44.3,
+          "cash": -672.1529999999999
+        },
+        {
+          "key": "-1,0,2",
+          "taxRes": -1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 44.4,
+          "cash": -880.0029999999999
+        },
+        {
+          "key": "-1,1,-2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 76.8,
+          "cash": 3.5209999999999795
+        },
+        {
+          "key": "-1,1,-1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 69.7,
+          "cash": -202.15799999999987
+        },
+        {
+          "key": "-1,1,0",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 43.9,
+          "cash": -409.40500000000003
+        },
+        {
+          "key": "-1,1,1",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 44.2,
+          "cash": -617.2529999999998
+        },
+        {
+          "key": "-1,1,2",
+          "taxRes": -1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 44.3,
+          "cash": -825.0670000000001
+        },
+        {
+          "key": "-1,2,-2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 76.6,
+          "cash": 57.268999999999984
+        },
+        {
+          "key": "-1,2,-1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 73.8,
+          "cash": -147.399
+        },
+        {
+          "key": "-1,2,0",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 43.9,
+          "cash": -354.63000000000005
+        },
+        {
+          "key": "-1,2,1",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 44.1,
+          "cash": -562.4350000000001
+        },
+        {
+          "key": "-1,2,2",
+          "taxRes": -1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 44.2,
+          "cash": -770.2049999999999
+        },
+        {
+          "key": "0,-2,-2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -2,
+          "score": 77,
+          "cash": 25.916999999999998
+        },
+        {
+          "key": "0,-2,-1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": -1,
+          "score": 71.9,
+          "cash": -179.03800000000012
+        },
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 44,
+          "cash": -385.4139999999998
+        },
+        {
+          "key": "0,-2,1",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 1,
+          "score": 44.3,
+          "cash": -592.7610000000001
+        },
+        {
+          "key": "0,-2,2",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 2,
+          "score": 44.4,
+          "cash": -800.2919999999998
+        },
+        {
+          "key": "0,-1,-2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -2,
+          "score": 76.8,
+          "cash": 79.54400000000004
+        },
+        {
+          "key": "0,-1,-1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": -1,
+          "score": 75.3,
+          "cash": -124.09300000000006
+        },
+        {
+          "key": "0,-1,0",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 0,
+          "score": 44,
+          "cash": -330.4349999999999
+        },
+        {
+          "key": "0,-1,1",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 1,
+          "score": 44.2,
+          "cash": -537.7460000000001
+        },
+        {
+          "key": "0,-1,2",
+          "taxRes": 0,
+          "taxInd": -1,
+          "service": 2,
+          "score": 44.3,
+          "cash": -745.2439999999998
+        },
+        {
+          "key": "0,0,-2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -2,
+          "score": 76.7,
+          "cash": 132.55999999999992
+        },
+        {
+          "key": "0,0,-1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": -1,
+          "score": 77,
+          "cash": -69.24300000000001
+        },
+        {
+          "key": "0,0,0",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 0,
+          "score": 65.8,
+          "cash": -275.535
+        },
+        {
+          "key": "0,0,1",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 1,
+          "score": 44.2,
+          "cash": -482.80899999999986
+        },
+        {
+          "key": "0,0,2",
+          "taxRes": 0,
+          "taxInd": 0,
+          "service": 2,
+          "score": 44.3,
+          "cash": -690.2610000000001
+        },
+        {
+          "key": "0,1,-2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -2,
+          "score": 76.5,
+          "cash": 185.154
+        },
+        {
+          "key": "0,1,-1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": -1,
+          "score": 76.9,
+          "cash": -14.475000000000037
+        },
+        {
+          "key": "0,1,0",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 0,
+          "score": 71.6,
+          "cash": -220.70000000000024
+        },
+        {
+          "key": "0,1,1",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 1,
+          "score": 44.1,
+          "cash": -427.9460000000002
+        },
+        {
+          "key": "0,1,2",
+          "taxRes": 0,
+          "taxInd": 1,
+          "service": 2,
+          "score": 44.2,
+          "cash": -635.3530000000001
+        },
+        {
+          "key": "0,2,-2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -2,
+          "score": 76.4,
+          "cash": 237.61
+        },
+        {
+          "key": "0,2,-1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": -1,
+          "score": 76.7,
+          "cash": 39.587
+        },
+        {
+          "key": "0,2,0",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 0,
+          "score": 74.8,
+          "cash": -165.94399999999996
+        },
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 44,
+          "cash": -373.1529999999999
+        },
+        {
+          "key": "0,2,2",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 2,
+          "score": 44.1,
+          "cash": -580.5320000000002
+        },
+        {
+          "key": "1,-2,-2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -2,
+          "score": 76.5,
+          "cash": 206.60399999999993
+        },
+        {
+          "key": "1,-2,-1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": -1,
+          "score": 76.9,
+          "cash": 8.179000000000006
+        },
+        {
+          "key": "1,-2,0",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 0,
+          "score": 73.3,
+          "cash": -197.0170000000001
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 44.1,
+          "cash": -403.75900000000007
+        },
+        {
+          "key": "1,-2,2",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 44.2,
+          "cash": -610.8989999999999
+        },
+        {
+          "key": "1,-1,-2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -2,
+          "score": 76.4,
+          "cash": 259.23900000000003
+        },
+        {
+          "key": "1,-1,-1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": -1,
+          "score": 76.8,
+          "cash": 62.028999999999996
+        },
+        {
+          "key": "1,-1,0",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 0,
+          "score": 76,
+          "cash": -142.0739999999999
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 59.2,
+          "cash": -348.7800000000002
+        },
+        {
+          "key": "1,-1,2",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 2,
+          "score": 44.1,
+          "cash": -555.8849999999999
+        },
+        {
+          "key": "1,0,-2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -2,
+          "score": 76.3,
+          "cash": 311.8120000000002
+        },
+        {
+          "key": "1,0,-1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": -1,
+          "score": 76.6,
+          "cash": 115.20899999999996
+        },
+        {
+          "key": "1,0,0",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 0,
+          "score": 77.7,
+          "cash": -87.21100000000007
+        },
+        {
+          "key": "1,0,1",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 1,
+          "score": 68.3,
+          "cash": -293.87500000000006
+        },
+        {
+          "key": "1,0,2",
+          "taxRes": 1,
+          "taxInd": 0,
+          "service": 2,
+          "score": 44.1,
+          "cash": -500.94699999999983
+        },
+        {
+          "key": "1,1,-2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -2,
+          "score": 76.1,
+          "cash": 364.313
+        },
+        {
+          "key": "1,1,-1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": -1,
+          "score": 76.5,
+          "cash": 167.87899999999996
+        },
+        {
+          "key": "1,1,0",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 0,
+          "score": 77.5,
+          "cash": -32.4220000000001
+        },
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 72.4,
+          "cash": -239.04000000000008
+        },
+        {
+          "key": "1,1,2",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 2,
+          "score": 44,
+          "cash": -446.07699999999994
+        },
+        {
+          "key": "1,2,-2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -2,
+          "score": 75.9,
+          "cash": 416.74399999999986
+        },
+        {
+          "key": "1,2,-1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": -1,
+          "score": 76.3,
+          "cash": 220.34499999999997
+        },
+        {
+          "key": "1,2,0",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 0,
+          "score": 77.3,
+          "cash": 21.947999999999944
+        },
+        {
+          "key": "1,2,1",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 1,
+          "score": 75.1,
+          "cash": -184.27800000000008
+        },
+        {
+          "key": "1,2,2",
+          "taxRes": 1,
+          "taxInd": 2,
+          "service": 2,
+          "score": 58.9,
+          "cash": -391.2779999999999
+        },
+        {
+          "key": "2,-2,-2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -2,
+          "score": 76.1,
+          "cash": 385.46500000000015
+        },
+        {
+          "key": "2,-2,-1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": -1,
+          "score": 76.5,
+          "cash": 189.40899999999996
+        },
+        {
+          "key": "2,-2,0",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 0,
+          "score": 77.5,
+          "cash": -9.087000000000074
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 73.9,
+          "cash": -215.16800000000012
+        },
+        {
+          "key": "2,-2,2",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 44,
+          "cash": -421.932
+        },
+        {
+          "key": "2,-1,-2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -2,
+          "score": 75.4,
+          "cash": 438.07800000000003
+        },
+        {
+          "key": "2,-1,-1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": -1,
+          "score": 76.3,
+          "cash": 242.058
+        },
+        {
+          "key": "2,-1,0",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 0,
+          "score": 77.4,
+          "cash": 45.04699999999995
+        },
+        {
+          "key": "2,-1,1",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 76.2,
+          "cash": -160.21400000000017
+        },
+        {
+          "key": "2,-1,2",
+          "taxRes": 2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 63.9,
+          "cash": -366.945
+        },
+        {
+          "key": "2,0,-2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -2,
+          "score": 75.3,
+          "cash": 490.62199999999996
+        },
+        {
+          "key": "2,0,-1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": -1,
+          "score": 76.2,
+          "cash": 294.62699999999995
+        },
+        {
+          "key": "2,0,0",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 0,
+          "score": 77.2,
+          "cash": 98.39699999999998
+        },
+        {
+          "key": "2,0,1",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 1,
+          "score": 77.7,
+          "cash": -105.339
+        },
+        {
+          "key": "2,0,2",
+          "taxRes": 2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 69.6,
+          "cash": -312.04499999999996
+        },
+        {
+          "key": "2,1,-2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -2,
+          "score": 75.1,
+          "cash": 543.0919999999999
+        },
+        {
+          "key": "2,1,-1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": -1,
+          "score": 76,
+          "cash": 347.12800000000016
+        },
+        {
+          "key": "2,1,0",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 0,
+          "score": 77.1,
+          "cash": 151.18799999999993
+        },
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 77.6,
+          "cash": -50.557000000000016
+        },
+        {
+          "key": "2,1,2",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 2,
+          "score": 72.9,
+          "cash": -257.20000000000005
+        },
+        {
+          "key": "2,2,-2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -2,
+          "score": 74.9,
+          "cash": 595.494
+        },
+        {
+          "key": "2,2,-1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": -1,
+          "score": 75.9,
+          "cash": 399.56599999999986
+        },
+        {
+          "key": "2,2,0",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 0,
+          "score": 76.9,
+          "cash": 203.67699999999996
+        },
+        {
+          "key": "2,2,1",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 1,
+          "score": 77.4,
+          "cash": 4.046999999999926
+        },
+        {
+          "key": "2,2,2",
+          "taxRes": 2,
+          "taxInd": 2,
+          "service": 2,
+          "score": 75.1,
+          "cash": -202.433
+        }
+      ]
+    }
+  },
+  "carbon": [
+    {
+      "id": "hwaseong",
+      "sources": [],
+      "fallback": true,
+      "supplied": 4.547473508864641e-12,
+      "intensity": 0.4567,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "pyeongtaek",
+      "sources": [
+        "lng"
+      ],
+      "fallback": false,
+      "supplied": 1521.6375272120376,
+      "intensity": 0.3880819113878954,
+      "cost": 0.0083909602462248,
+      "before": 79.1,
+      "after": 97.4,
+      "onePercentCut": 79.8
+    },
+    {
+      "id": "anseong",
+      "sources": [],
+      "fallback": true,
+      "supplied": 2.5579538487363607e-13,
+      "intensity": 0.4567,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "dangjin",
+      "sources": [
+        "coal"
+      ],
+      "fallback": false,
+      "supplied": 1015.1329999999986,
+      "intensity": 1.0625807652790353,
+      "cost": 0.0058312359070191,
+      "before": 0,
+      "after": 5.7,
+      "onePercentCut": 0
+    },
+    {
+      "id": "asan",
+      "sources": [],
+      "fallback": true,
+      "supplied": 0,
+      "intensity": 0.4567,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "cheonan",
+      "sources": [],
+      "fallback": true,
+      "supplied": 0,
+      "intensity": 0.4567,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    }
+  ],
+  "carbonBefore": [
+    {
+      "id": "hwaseong",
+      "intensity": 0.8944650944866458,
+      "carbonPart": 0
+    },
+    {
+      "id": "pyeongtaek",
+      "intensity": 0.46164176966857173,
+      "carbonPart": 65.6
+    },
+    {
+      "id": "anseong",
+      "intensity": 0.8046962312820332,
+      "carbonPart": 2.8
+    },
+    {
+      "id": "dangjin",
+      "intensity": 1.0625807652790353,
+      "carbonPart": 0
+    },
+    {
+      "id": "asan",
+      "intensity": 0.9341476841761966,
+      "carbonPart": 0
+    },
+    {
+      "id": "cheonan",
+      "intensity": 0.7925034269496932,
+      "carbonPart": 5
+    }
+  ],
+  "recal": {
+    "passes": 251,
+    "failures": 8,
+    "unchanged": true,
+    "failureDetails": "- 14 정전 시 대기 [미구현 허용: H01 뒤] / kPM: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSlope: params.airSlope 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airBase: params.airBase 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSpill: params.airSpill 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / pmFuelW: params.pmFuelW 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-0: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-1: params.kPM 없음\n- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-2: params.kPM 없음"
+  },
+  "technology": {
+    "passes": 21054,
+    "failures": [],
+    "b16": true,
+    "researchGain": 9.416666666666671,
+    "smrFirstCities": 4,
+    "fitHistory": [
+      {
+        "id": "hwaseong",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 722,
+            "operation": 3333.1928571428584,
+            "purchase": 0,
+            "spent": 4055.1928571428584,
+            "target": 4380.292857142858,
+            "excess": -325.0999999999999
+          }
+        ]
+      },
+      {
+        "id": "hwaseong",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 307,
+            "operation": 3263.810000000001,
+            "purchase": 598.2428571428572,
+            "spent": 4169.052857142859,
+            "target": 4380.292857142858,
+            "excess": -211.23999999999978
+          }
+        ]
+      },
+      {
+        "id": "hwaseong",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 737,
+            "operation": 2618.1800000000003,
+            "purchase": 499.3299999999999,
+            "spent": 3854.51,
+            "target": 4380.292857142858,
+            "excess": -525.7828571428581
+          }
+        ]
+      },
+      {
+        "id": "pyeongtaek",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 642,
+            "operation": 2166.805714285714,
+            "purchase": 0,
+            "spent": 2808.805714285714,
+            "target": 3105.1142857142863,
+            "excess": -296.3085714285721
+          }
+        ]
+      },
+      {
+        "id": "pyeongtaek",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 241,
+            "operation": 2049.9471428571433,
+            "purchase": 525.5114285714287,
+            "spent": 2816.458571428572,
+            "target": 3105.1142857142863,
+            "excess": -288.6557142857141
+          }
+        ]
+      },
+      {
+        "id": "pyeongtaek",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 631,
+            "operation": 1796.9499999999994,
+            "purchase": 432.4714285714286,
+            "spent": 2860.421428571428,
+            "target": 3105.1142857142863,
+            "excess": -244.69285714285843
+          }
+        ]
+      },
+      {
+        "id": "anseong",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 498,
+            "operation": 456.6257142857142,
+            "purchase": 0,
+            "spent": 954.6257142857141,
+            "target": 970.2014285714288,
+            "excess": -15.57571428571464
+          }
+        ]
+      },
+      {
+        "id": "anseong",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 173,
+            "operation": 394.63857142857154,
+            "purchase": 36.73142857142858,
+            "spent": 604.3700000000001,
+            "target": 970.2014285714288,
+            "excess": -365.83142857142866
+          }
+        ]
+      },
+      {
+        "id": "anseong",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 503,
+            "operation": 420.06857142857143,
+            "purchase": 27.030000000000005,
+            "spent": 950.0985714285714,
+            "target": 970.2014285714288,
+            "excess": -20.102857142857374
+          }
+        ]
+      },
+      {
+        "id": "dangjin",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 534,
+            "operation": 1028.862857142857,
+            "purchase": 0,
+            "spent": 1562.862857142857,
+            "target": 1683.712857142857,
+            "excess": -120.85000000000014
+          }
+        ]
+      },
+      {
+        "id": "dangjin",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 167,
+            "operation": 1349.3357142857144,
+            "purchase": 0,
+            "spent": 1516.3357142857144,
+            "target": 1683.712857142857,
+            "excess": -167.37714285714264
+          }
+        ]
+      },
+      {
+        "id": "dangjin",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 516,
+            "operation": 1112.3557142857144,
+            "purchase": 0,
+            "spent": 1628.3557142857144,
+            "target": 1683.712857142857,
+            "excess": -55.35714285714266
+          }
+        ]
+      },
+      {
+        "id": "asan",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 560,
+            "operation": 1494.5914285714284,
+            "purchase": 0,
+            "spent": 2054.5914285714284,
+            "target": 2066.2885714285712,
+            "excess": -11.697142857142808
+          }
+        ]
+      },
+      {
+        "id": "asan",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 226,
+            "operation": 908.3285714285713,
+            "purchase": 553.8242857142856,
+            "spent": 1688.1528571428566,
+            "target": 2066.2885714285712,
+            "excess": -378.1357142857146
+          }
+        ]
+      },
+      {
+        "id": "asan",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 648,
+            "operation": 872.2785714285715,
+            "purchase": 439.72857142857146,
+            "spent": 1960.007142857143,
+            "target": 2066.2885714285712,
+            "excess": -106.28142857142825
+          }
+        ]
+      },
+      {
+        "id": "cheonan",
+        "strategy": "renew",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 456,
+            "operation": 1429.6385714285716,
+            "purchase": 0,
+            "spent": 1885.6385714285716,
+            "target": 1819.6342857142859,
+            "excess": 66.00428571428574
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 389.99571428571426,
+            "construction": 366,
+            "operation": 1425.932857142857,
+            "purchase": 0,
+            "spent": 1791.932857142857,
+            "target": 1819.6342857142859,
+            "excess": -27.701428571428778
+          }
+        ]
+      },
+      {
+        "id": "cheonan",
+        "strategy": "ties",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 162,
+            "operation": 1590.8357142857146,
+            "purchase": 18.181428571428572,
+            "spent": 1771.0171428571432,
+            "target": 1819.6342857142859,
+            "excess": -48.61714285714265
+          }
+        ]
+      },
+      {
+        "id": "cheonan",
+        "strategy": "hybrid",
+        "attempts": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 448,
+            "operation": 1429.2757142857142,
+            "purchase": 12.265714285714287,
+            "spent": 1889.5414285714285,
+            "target": 1819.6342857142859,
+            "excess": 69.90714285714262
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 378.0928571428574,
+            "construction": 372,
+            "operation": 1425.874285714286,
+            "purchase": 12.442857142857143,
+            "spent": 1810.3171428571432,
+            "target": 1819.6342857142859,
+            "excess": -9.317142857142699
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "브라우저·교실 세션 미실행",
+    "공통 씨앗·정해진 전략 집합의 결과",
+    "무발전소 네 도시 시작 비율은 대체값",
+    "당진 작은 감축은 절대 점수 0 구간",
+    "같은 총지출 상한이며 동액 집행은 아님"
+  ]
+}

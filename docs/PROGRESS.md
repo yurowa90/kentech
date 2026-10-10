@@ -2,7 +2,68 @@
 
 압축이나 새 세션 뒤에는 이 문서를 먼저 읽는다. 작업 단위를 끝낼 때마다 '현재 상태'와 '다음 단계'를 고친다(스킬 `kcp-handoff`).
 
-마지막 갱신: 2026-10-03 저녁(클라우드 세션 → 맥 로컬 세션 인계. 경제 층 작업 중, PR #11)
+마지막 갱신: 2026-10-09(PR #12 = 9ef96d1, 재보정 10차까지 push. 영상 재확인·기능 분류·HANDOFF 갱신 진행). 이전: 2026-10-03 저녁(클라우드 세션 → 맥 로컬 세션 인계. 경제 층 작업 중, PR #11)
+
+## 로컬 세션 인수(2026-10-03, 맥)
+- 총괄이 클라우드 세션에서 맥 로컬 세션으로 넘어왔다. 분업: 로컬 총괄 → Codex Sol·Astra 작업 → Opus 독립 검토(스킬 `/codex-orchestrate`, 에이전트 opus-reviewer·test-runner).
+- 작업 브랜치: `claude/kentech-league-econ-balance`(PR #11 브랜치 `claude/kentech-league-econ` 위에 쌓음). 클라우드 세션이 #11 브랜치에 독립 검토 결과와 회귀 결과를 덧붙일 수 있어 충돌을 피하려고 분리했다. 로컬 worktree: `~/Projects/kentech-wt/econ`.
+- 사용자 결정 D-58: 지금은 실제 도시명으로 작업하고 나중에 가상 이름으로 한 번에 바꾼다. 도시 이름은 자료 파일에서만 읽는다.
+- 작업 설정 재구성: CLAUDE.md를 사실 위주로 줄이고, 경로별 규칙 `.claude/rules/`(화면·게임, 검사, 리그·경제), 서브에이전트 `.claude/agents/`(test-runner, opus-reviewer), 홈 스킬 `~/.claude/skills/codex-orchestrate`로 나눴다. 구조는 `.claude/README.md`.
+- 로컬에서 진행 중이던 것: PR #1(기출 원문 대조)·#2(창작 게임 검토 반영)의 전체 검사(worktree `~/Projects/kentech-wt/pr1`, `pr2`)와 Opus 독립 검토. 결과는 아직 PR에 반영하지 않았다.
+
+### 다음 단계(로컬)
+1. 클라우드 세션의 마지막 push(9d72b0a: 독립 검토 결과 §7, 회귀 결과 §8, D-57)는 이 브랜치에 병합해 두었다. `docs/HANDOFF-econ.md` §7·§8부터 읽는다.
+2. HANDOFF-econ.md §4 '남은 일' 순서: ① 밸런스(정전 반응, 현금 점수, 순수입, 사건 빈도) → 전략 봇 36달 결과표 ② 팀 '도시' 서랍 ③ 진행자 순위표·이주 화살표·국제 지수 띠 ④ D-57, README, PROGRESS, 회귀 14종.
+3. PR #1·#2: 로컬 검사 결과와 Opus 독립 검토 결과를 확인해 PR에 코멘트하고, 확인된 결함은 Sol·Astra에게 고치게 한 뒤 다시 검토한다.
+   - 로컬 결과(2026-10-03): 두 PR 모두 기본 검사 8종(regression·base·screens·routine·probe·peer·drill·integration) 문제 0, PR #2 모형 검산 5종 통과(시멘트 773·섬 92,805·은여울 1,482·셔틀 1,253·변이 3,837건). 단, 그때 tests/run.sh 기본 목록에 창작 게임 검사 6종(originals와 게임 5종)이 빠져 있어 돌지 않았다. 지금은 목록에 넣었다. PR #2는 `tests/run.sh originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal`을 다시 돌릴 것. Opus 독립 검토는 끝나기 전에 세션이 넘어갔으면 opus-reviewer로 다시 돌린다.
+
+
+
+
+
+## 이어받을 곳(2026-10-05)
+- 사용자 동의(2026-10-05 "동의할테니 다 진행해, 지금 하는 싱글·멀티 구현에 집중"): Supabase 프로젝트(yurowa90's Project, ap-southeast-1) 재개함 — ACTIVE_HEALTHY.
+- 실네트워크 멀티 검사 tests/league/live.py 추가(진행자 1·팀 3, 상태 일치·새로고침 복구·자유 서술 미전송·지연). 주소·공개 키는 환경 변수 KCP_SB_URL·KCP_SB_KEY로만. **아직 실행 못 함**: 프로젝트 주소 조회가 권한 판단에서 거부됨 — 사용자가 주소를 주거나 권한을 허용하면 `KCP_SB_URL=… KCP_SB_KEY=… tests/.venv/bin/python tests/league/live.py http://127.0.0.1:9430/index.html`.
+- 출력제어 표시: 계통 접속 출력제어 + 출력제어 사건을 '버린 재생 전기'로 묶고 그 달 수요 대비 %로. 검사 econui 804/0·solo 372/0·rules·e2e3·econint 0.
+- 다른 해 기출 재정비·PR 병합은 리그 구현 뒤.
+
+## 이어받을 곳(2026-10-04 저녁)
+- 브랜치 claude/kentech-league-econ-balance(push, 344b0b7 이후): 밸런스 v1.4.1(B18 계통 접속 여유·출력제어·ESS 상한, 소수력 포함, 배수 0.4), 혼자 하기 저장 고침, 지방채 v1.3, 컴퓨터 AI 접속 여유 고려, 도시 서랍 접속·출력제어 표시.
+- 최종 검사(v1.4.1): balance 553/0, 1-invariants 2,688,699/0, 9-grid 168/0, econui 804/0, solo 372/0(직접 3회 반복도 0), ai-check 4,909/0, rules·e2e·e2e2·e2e3·econint 0, 회귀 14종 0, 콘솔·가로 스크롤 0.
+- bots36.py 13,822/0(2026-10-05 검사 장치 고침): 평균 점수 연계선 67.0 · 재생+저장 66.6 · 정책 0 65.2 · 저세율 62.9 · 디젤 61.8 · 고세율 58.3 · 무행동 35.4, 6도시 1위 재생 3·연계선 2·정책 0 1·저세율 1, 정전 모두 0%.
+- 출력제어량은 여전히 작음(봄 월 0.04 MWh 수준) — 근거를 넘겨 키우지 않음. 필요하면 사용자와 '교육용 배속' 표시 방식 결정.
+- PR #1·#2: 검토 반영 push·코멘트 완료, 병합은 사용자 확인 뒤. 다음 큰 일: 다른 해 기출 재정비.
+
+## 이어받을 곳(2026-10-04 오후, 사용량 한도로 중단)
+- 브랜치 claude/kentech-league-econ-balance(push됨): 밸런스 v1.2, 2차 보정(ECON-EVIDENCE·GAMES 반영), 화면 U1–U4, 혼자 하기(#league/solo), 컴퓨터 도시 AI(ui/league-ai.js), D-57 확정·D-59, README·HANDOFF-econ §9.
+- 마지막 통합 검사(e1d4a79 기준): econui 804/0, ai-check 3,772/0, rules·e2e·e2e2·e2e3·econint 0, balance 534/0, test-econ 791,651/0, 회귀 screens·base·regression 0. 그 이전 전체(2e7b979): 회귀 14종 0, bots36 12,322/0(연계선 4/6 도시 1위, 지배 전략 없음).
+- 남은 결함과 진행 중이던 Codex 작업(결과는 ~/.claude/codex-runs/*-<이름>/last.md, 작업 폴더에 미커밋):
+  1. debtcap: v1.3 구현 합침(test-econ 792,132/0). balance.js 529/24 — 남은 24개는 B7 블록의 옛 단언(1월 지원금 ×12)이라 검사 작성자(Sol)가 v1.3로 고칠 것(구현 결함 아님, B11·B17은 통과).
+  2. solosave(econ-ui 폴더): 혼자 하기 저장 누락이 간헐(solo.py 4화면 중 1회 실패) → 고친 뒤 solo.py 여러 번 반복 실행으로 확인.
+  3. 그 뒤 통합 검사 전체(bots36·회귀 14종), 캡처(1280·390, 밝음·어두움) 보고, HANDOFF §9 검사 결과 기입.
+- PR #1: 검토 반영 push(55dd88a), 검사 9종 0, PR 코멘트 완료 — 병합은 사용자 확인 뒤.
+- PR #2: 3차 수정 push(42cecaa), 검사 19종 0. 최종 Opus 확인은 중단됨 → 다시 돌린 뒤 PR 코멘트.
+- 사용자 결정: 팀 기준 칩 전송 허용(D-59). 다음 큰 일: 다른 해 기출 재정비.
+
+## 이어받을 곳(2026-10-03 밤, 사용량 한도로 중단)
+- 사용자 목표(/goal): 싱글플레이(혼자 하기 vs 컴퓨터 도시, docs/ECON-UI.md U3)와 멀티플레이 모두 완성. 실제 자료·연구로 인과 모형(단순하게), 기후·에너지 레퍼런스, 켄텍 면접 문항 연결. 끝나면 다른 해 기출 재정비.
+- 밸런스 B1–B10(docs/ECON-BALANCE.md) 구현 끝(Codex gpt-6-astra) — 미커밋. node 검사: balance.js 234/0(Sol 독립 작성), test-econ 738,496/0, review 1번 2,484,102/0. startMix 0.2→0.9 수용(명세 v1.1로 고침). **브라우저 검사(rules·e2e·e2e2·e2e3·econint)·bots36·회귀 14종은 test-runner가 돌리던 중 — 결과 미확인, 다시 돌릴 것.** econint.py '예산=현금' 단언은 B7(지방채 포함)로 갱신 필요.
+- 조사 문서(미커밋): docs/ECON-EVIDENCE.md(실제 자료 — 제안: β 실제 0.02·eduSpeed 5, outRel 0.006, cbamRate 0.02~0.05, fxExport 0.1, logiPort 0.05, re100 하향, gpYear 0.01 등) → 다음 단계로 Astra에게 2차 보정 맡길 것. docs/ECON-INTERVIEW.md(면접 연결·질문 은행 22개, 사용자 확인 필요: 팀 기준 칩을 진행자에 보내도 되나). docs/ECON-GAMES.md(참고 게임·기후 에너지 레퍼런스·교실 롤플레이, 11절 제안 E1–E3·B1–B2·S1–S4·A1 반영할 것).
+- 다음: ① 2차 보정(EVIDENCE) ② 화면 U1·U2·U3 + 면접 장치(Sol, 독립 검사 econui.py는 다른 Sol) ③ D-57·README·회귀.
+- PR #1: 결함 수정(Codex gpt-6.1-sol) 미커밋 in ~/Projects/kentech-wt/pr1(브랜치 체크아웃). 1차 수정 뒤 검사 9종 문제 0, Opus 재검토 minor 4 → 2차 수정 실행 끝(결과 ~/.claude/codex-runs/*-pr1-fix2/last.md, 미확인, 브라우저 재검사 필요). 그 뒤 커밋·push·PR 코멘트.
+- PR #2: 창작 게임 검사 11종 문제 0(수정 전). 결함 14건 수정 Codex gpt-6-astra 실행 끝(~/Projects/kentech-wt/pr2 미커밋, 결과는 ~/.claude/codex-runs/*-pr2-fix/last.md) → 결과 확인·검사·재검토.
+- 검토 결과 원본: ~/.claude/codex-runs/kentech-plan/review-pr1-pr2.md. 지시서: 세션 스크래치패드 briefs/(사라짐 — codex-runs/*/prompt.md에 사본).
+
+## 이어받을 곳(2026-10-07)
+- push: `claude/kentech-league-econ-balance` = cc8fd25(PR #12). 작업 브랜치(wip/*)는 모두 여기 합쳐졌다. 확정 규칙 1쪽은 `docs/LEAGUE-CANON.md`, 결정 D-64(서명·씨앗·크기)·D-65(발전안 사용자 결정 4건)·D-66(재보정 원칙).
+- 들어간 것: 팀·진행자 서명(방 코드 8자리, 종류별 순번, 36달 공개 상태 약 16만 바이트), 최종 검증 남은 엔진·화면 결함, 실제 게임 대비 '지금' 묶음과 하루 전 약속, 화면 독립 검토 37건, 근거 재보정 1~9차(근거 대장 ECON-REFERENCES, 명세 ECON-RECAL-SPEC v1.0.2, 밸런스 v1.8).
+- 검사(cc8fd25): node 전부 0(balance 807, test-econ 1,286,685, sec 524, recal 251/8 — 8은 H01 미구현 허용), 브라우저 rules·e2e·e2e2·e2e3·econint·econui 1,708·solo 436·peek 1,200·tech 246·next·ai-check 6,588·mocktest 0, 실제 Supabase live.py 425/0, 회귀 14종 중 13종 0(s-riverdeal은 이번에 바뀌지 않은 창작 게임에서 매번 다른 항목 1~2건 간헐 예외).
+- 재보정 10차(9ef96d1, push): 컴퓨터 도시 입지 가중을 같은 설비 종류 안으로 제한(설명과 작동 일치), 세율 축별 독식 검사, T5 월별 예산 누계 복원. 결과: SMR 1위 2/6, 연구 이득 +4.5, 재생 68.6 > 디젤 48.2, 감세·증세 계열 1위 각 3/6, 축별 독식 없음. 검사: balance 807/0, sec 524/0, recal 251/8, ai-check 6,763/0, econint·rules 0.
+- 알려진 문제: 저탄소 전략끼리 탄소 점수 100에 붙음(바이오매스 영토 배출 0 회계 — bioCo2 일부 반영은 사용자 결정 후보), 당진 작은 감축 구간, 추가 씨앗 4개에서 화성 부채 초과, s-riverdeal 간헐 예외.
+- 영상(2026-10-09): 혼자 하기 12달·진행자·평택 팀(390) 녹화와 장면 목록·S1~S8 재확인 완료(`~/Projects/kentech-wt/_briefs/video/` — review.md, scenes-*.md, mp4). 재확인 결함(첫 달 비교 기준, 진행자 공동목표 표시, 기록 잘림, 지원금 문구, 모바일 칩, S8 다시 보이기) 수정·push(c43d123). 검사: next 137/0(1회 간헐 뒤 2회 통과), solo 452/0, econui 1,712/0, peek 1,200/0, tech 246/0, rules·econint·e2e·e2e2·e2e3·mocktest 0, live.py 425/0. 기능 분류표 `docs/LEAGUE-FEATURES.md`(보류 후보 6개, 사용자 결정 대기).
+- 남은 제안: S7 정전 원인 분해(새 기능 — 시안 비교 대상), 계획 단계 CO₂ 목표를 엔진에서 고정(goalsOf 재사용).
+- 다음: 장면별 독립 재확인 → 화면 기능 핵심·보조·보류 분류표 → 큰 기능은 시안 2~3개 비교 뒤 구현(첫 대상 송전 회랑). 다른 해 기출 재정비는 그 뒤.
+- 사용자 결정(10-07): 밸런스 3건 기본안대로 수정(완료), origin 커밋의 모델 이름 줄은 다시 쓰지 않음, 학습 목표 초안 유지.
 
 ## 사용자가 정한 방향(원문 요지)
 1. 창작 게임을 '웹 문서와 카드 목록'에서 '실제로 조작하는 시뮬레이션 게임' 느낌으로. 게임 공간이 주인공, 상태창과 메뉴는 주변 보조.
@@ -28,6 +89,7 @@
 | #6 | claude/kentech-ui-v2-grid-tycoon | 건설·운영 시뮬레이션 시안 #build(D-50) | 초안, 열림(기준: #5 브랜치) |
 | #9 | claude/kentech-ui-v2-league | 멀티플레이 리그 1차 #league(D-54) | 초안, 열림(기준: #6 브랜치) |
 | #10 | claude/gpt-bridge | GPT 교차 검토 통로(GitHub Actions → GitHub Models/OpenAI) | 초안, 열림(기준: main, 합칠 목적 아님) |
+| #12 | claude/kentech-league-econ-balance | 경제 층 마무리(밸런스 B1–B18, 근거 자료, 경제 화면, 혼자 하기·컴퓨터 도시) | 초안, 열림(기준: #11 브랜치) |
 | #11 | claude/kentech-league-econ | 리그 2차(D-55)·3차(D-56)·경제 층(D-57, 작업 중) | 초안, 열림(기준: #9 브랜치) — **맥 세션이 이어받을 브랜치** |
 
 ## 현재 상태(브랜치 claude/kentech-ui-v2-prototype, 푸시 완료, PR #3)

@@ -8,6 +8,7 @@ ID: 12.1-1~6, 12.2-1~6, 12.3-1~8, 12.4-1~6, 12.5-1~3.
 """
 import re
 
+from accept_originals import assert_single_request
 from harness import Ctx, main
 
 
@@ -158,7 +159,7 @@ def _lock(c):
 
 
 def _questions(c):
-    return c.page.evaluate("KCP.games['s-island-grid'].questions(KCP.load('s-island-grid'))")
+    return assert_single_request(c, c.page.evaluate("KCP.games['s-island-grid'].questions(KCP.load('s-island-grid'))"))
 
 
 def _keys(c):

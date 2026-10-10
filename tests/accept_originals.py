@@ -1,7 +1,21 @@
 """창작 쟁점 게임 공통 검사: 다섯 게임이 공통 셸 위에서 같은 규칙으로 동작하는지 본다."""
+import re
 from harness import main
 
 IDS = ["s-island-grid", "s-cement-carbon", "s-variant-desk", "s-shuttle-permit", "s-riverdeal"]
+
+
+def assert_single_request(c, questions):
+    """결함 8: 다섯 게임 공통. 인용한 발언/입력은 빼고 물음과 명령형 종결을 함께 센다.
+
+    연결어로 묶인 복수 과제까지 판별하는 검사는 아니므로 문안 검토도 필요하다.
+    """
+    for q in questions:
+        text = re.sub(r"“[^”]*”|‘[^’]*’", "", q["q"])
+        # N7: 말하세요·적으세요·설명하세요 등 직접 명령형 종결도 센다.
+        count = len(re.findall(r"[?？]|(?:주세요|[가-힣]+세요)[.!]", text))
+        c.eq(count, 1, f"결함 8 {q['k']} 요청 하나")
+    return questions
 
 
 def t_O1_home_cards(c):

@@ -130,6 +130,13 @@ def _prepare2022(c, aid):
     c.page.locator('[data-tool="wind"]').click()
     for cell in ("A6", "A7", "B6"):
         c.page.locator(f'[data-cell="{cell}"]').click()
+    # PDF p13 배멧 예시 / p35 조건 3: 학생이 마을과 공유 전선을 직접 지정한다.
+    for i in range(3):
+        c.page.select_option(f"#to-{i}", "배멧")
+    c.page.click('[data-tool="wire"]')
+    for a, b in (("A6", "A7"), ("A6", "B6"), ("B6", "B9")):
+        c.page.click(f'[data-cell="{a}"]')
+        c.page.click(f'[data-cell="{b}"]')
     c.expect("충족" in _text(c, "table.supply"), f"{aid} 배멧 공급 충족을 표시한다")
     c.page.locator("#to-0").select_option("참살이")
     c.page.locator('[data-del="2"]').click()

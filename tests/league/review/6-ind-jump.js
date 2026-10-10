@@ -1,7 +1,8 @@
 "use strict";
 // Investigate industry jump when one city has cheap power + high RE.
 const { X, D, IDS, run } = require("./lib");
-const r = run({ seed: "d", months: 14, f: (id, C, E) => id === "hwaseong" && E.t < 12 ? { e: { ren: 60, costMul: 0.6 }, p: { taxRes: -2, service: 2 } } : {} });
+const r = run({ seed: "d", months: 14, opts: { months: 24 }, // ECON-BALANCE B10: 14달 관찰은 24턴 게임에서
+ f: (id, C, E) => id === "hwaseong" && E.t < 12 ? { e: { ren: 60, costMul: 0.6 }, p: { taxRes: -2, service: 2 } } : {} });
 r.reps.forEach(x => console.log("t" + x.t, "ind", x.cities.hwaseong.ind, "dInd", x.cities.hwaseong.dInd, "net", x.net.hwaseong.ind, "Aeff", x.cities.hwaseong.Aeff, "others Aeff", IDS.filter(i => i !== "hwaseong").map(i => x.cities[i].Aeff).join("/"), "price", x.cities.hwaseong.Aparts.price.toFixed(0), "re", x.cities.hwaseong.Aparts.re));
 // sensitivity: only price advantage (costMul .6) for one city, vs only ren 60
 for (const [lbl, e] of [["cheap power x0.6", { costMul: 0.6 }], ["ren 60%", { ren: 60 }], ["costPerMWh=0 (net exporter)", { costPer: 0 }]]) {
