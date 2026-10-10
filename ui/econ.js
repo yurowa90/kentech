@@ -66,6 +66,9 @@
     const I = raw || {}, e = I.energy || {}, po = I.policy || {}, as = I.assets || {};
     const BIG = 1e7;
     const energy = {
+      // H01: 생산 기준 월 MWh. 누락은 무배출과 구분하며 CO₂로 역산하지 않는다.
+      genMWh: e.genMWh && typeof e.genMWh === "object" && !Array.isArray(e.genMWh)
+        ? Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(f => [f, num(e.genMWh[f], 0, BIG, 0)])) : null,
       residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, 0.1, 2, 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, 1e4, 0),
       costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, 10) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
@@ -97,12 +100,31 @@
   }
 
   /* ---------- 지역 맥락 ---------- */
+  function pmContext(ids, ins, data) {
+    const weights = pv(data, "pmFuelW"), own = {}, neighbours = {};
+    ids.forEach(id => {
+      const gen = ins[id].energy.genMWh;
+      own[id] = gen == null ? null : pv(data, "kPM") * sum(Object.keys(weights).map(f => weights[f] * fin(gen[f], 0)));
+      neighbours[id] = new Set();
+    });
+    // 실제 건설·거래 여부와 무관한 지리적 인접. 비참가 도시·자기 자신·중복 쌍 제외.
+    const regions = Object.values(KCP.LEAGUE_REGIONS || {});
+    regions.forEach(r => (r.ties || []).forEach(({ a, b }) => {
+      if (a !== b && neighbours[a] && neighbours[b]) { neighbours[a].add(b); neighbours[b].add(a); }
+    }));
+    return Object.fromEntries(ids.map(id => [id, {
+      own: own[id],
+      delta: fin(own[id], 0) + pv(data, "airSpill") * sum([...neighbours[id]].map(n => fin(own[n], 0))),
+      complete: regions.some(r => (r.teams || []).some(t => t.id === id)) && own[id] != null && [...neighbours[id]].every(n => own[n] != null)
+    }]));
+  }
   function regionCtx(E, ins, data) {
     const ids = E.order, C = E.cities;
     const supplied = sum(ids.map(id => servedOf(ins[id].energy)));
     const costs = sum(ids.map(id => servedOf(ins[id].energy) * fin(ins[id].energy.costPerMWh, pv(data, "normalCost"))));
     const popT = sum(ids.map(id => C[id].pop)), indT = sum(ids.map(id => C[id].ind));
     return {
+      pm25: pmContext(ids, ins, data),
       avgCost: supplied > 0 ? costs / supplied : null,
       otherCost: Object.fromEntries(ids.map(id => { const e = ins[id].energy, rest = supplied - servedOf(e); return [id, rest > 0 ? (costs - servedOf(e) * fin(e.costPerMWh, pv(data, "normalCost"))) / rest : pv(data, "normalCost")]; })),
       taxResAvg: sum(ids.map(id => ins[id].policy.taxRes)) / Math.max(1, ids.length),
@@ -149,7 +171,7 @@
     const parts = {
       rel: c100(100 * (1 - e.unsPct / P("unsZeroL")) - P("hospPen") * Math.min(1, e.hospH / P("hospPenHours"))),
       price: priceScore(e, reg, data, city.lagL && city.lagL.price),
-      air: e.co2Local == null ? P("airDefault") : c100(100 * Math.exp(-(e.co2Local / (pop / 1e4)) / P("airRef"))),
+      air: c100(P("airBase") - P("airSlope") * (reg.pm25?.[city.id]?.delta || 0)),
       jobs: c100(P("neutralScore") + P("jobsJ") * 100 * Math.log(Math.max(1e-6, jobs) / Math.max(1e-6, jobs0))),
       svc: c100(P("neutralScore") + P("serviceCurve")[pol.service + 2] + Math.min(P("eduMax"), P("eduUni") * as.uni + P("eduLab") * as.lab)),
       tax: c100(P("taxBase") - P("taxPoints") * (pol.taxRes - fin(reg.taxResAvg, 0))),
@@ -479,6 +501,7 @@
   function groupTargets(C, inp, out, data, reg = {}) {
     const P = k => pv(data, k), W = P("groupW"), e = inp.energy;
     const parts = Object.assign({}, C.lagL, {
+      air: c100(P("airBase") - P("eduAir") * P("airSlope") * (reg.pm25?.[C.id]?.delta || 0)),
       tax: taxSatisfaction(C.policy.taxRes, reg.taxResAvg, data),
       A: C.A, out: c100((100 * (out - P("outMin"))) / (P("outMax") - P("outMin"))), taxI: taxSatisfaction(C.policy.taxInd, reg.taxIndAvg, data),
       ren: c100((100 * C.renS) / P("reTarget")), co2: carbonScore(C, data)
@@ -525,7 +548,7 @@
   }
 
   /* ---------- 한 달 ---------- */
-  // inputs[id] = {energy:{unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), royalty?(기술 사용료 수입), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
+  // inputs[id] = {energy:{genMWh?:{coal,lng,diesel,biomass}(생산·월), unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), royalty?(기술 사용료 수입), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
   //               policy:{taxRes, taxInd, service, incentive}, assets:{uni, lab, port, site, houseCap?, indCap?}}
   function monthStep(E0, inputs, data) {
     data = data || DATA();
@@ -691,6 +714,7 @@
       c.hist.push({ t: E.t, pop: c.pop, ind: c.ind, cash: r1(c.cash), appr: r1(c.approval) });
       if (c.hist.length > P("historyMonths")) c.hist.shift();
       cities[id] = {
+        pm25: reg.pm25[id], // ㎍/㎥ 증분. complete=false이면 알려진 발전량만의 부분 추정.
         causes: causes[id], L: r1(c.L), A: r1(c.A), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff), Aeff: r1(Ar[id].eff),
         pop: c.pop, ind: c.ind, dPop: c.pop - before[id].pop, dInd: c.ind - before[id].ind,
         co2Intensity: c.co2Intensity, bioCo2: ins[id].energy.bioCo2, out: c.out, demandMul: demandMul(c), cash: r1(c.cash)

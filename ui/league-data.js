@@ -11,6 +11,7 @@
     south: {
       id: "south", name: "경기 남부·충청권", short: "멀티 1",
       scale: "게임 1 MW ≈ 실제 약 230 MW · 도시 사이 수요 비율은 실제 연간 전력사용량 비율",
+      mwScale: 230, // G(지도 설계): 실제 MW/게임 MW. H03·H04 환산용 숫자.
       // 팀 순서 = 지도 위 서→동, 북→남 대략. color는 지역 지도와 카드 띠.
       teams: [
         { id: "hwaseong", pack: "hwaseong", prov: "경기", name: "화성·오산", color: "#d86fa8", real: { twh: 22.97, note: "화성 21.37(2024, 보도) + 오산 약 1.6(추정)", est: true } },
