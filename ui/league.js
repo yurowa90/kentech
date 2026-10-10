@@ -1475,7 +1475,7 @@
             <a class="lg-back" href="#league" aria-label="로비로">←</a>
             <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
             <div class="lg-hmeta">
-              <p class="v2-kicker">${esc(reg.short)} · ${esc(reg.name)}</p>
+              <p class="v2-kicker">${esc(reg.short)}</p>
               <h1 id="lg-h1"></h1>
             </div>
             <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>
@@ -1546,7 +1546,8 @@
       });
     }
     const $ = s => L.app.querySelector(s);
-    $("#lg-h1").textContent = S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${turnLabel(rd, S.round, C.roundsOf(S).length)} · ${PHASE_NAME[S.phase]}`;
+    // 경제 모드는 지휘 막대에 달·단계가 있으므로 지역 이름만, 계절 모드는 막대가 없어 라운드·단계를 제목에 둔다.
+    $("#lg-h1").textContent = S.econ ? reg.name : S.phase === "lobby" ? "팀 입장 기다리는 중" : S.phase === "end" ? "리그 끝 — 최종 결과" : `${turnLabel(rd, S.round, C.roundsOf(S).length)} · ${PHASE_NAME[S.phase]}`;
     const nx = $("#lg-next"), lab = nextLabel(S);
     nx.hidden = !lab; nx.disabled = false; nx.textContent = lab;
     $("#lg-extend").hidden = !S.ends;
@@ -1642,10 +1643,10 @@
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
-    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}">${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" ? "" : `<small>${unit}</small>`}</span></td>`;
-    return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? esc(resultHeading(V, res)) : "첫 운영 전"} · 정전·CO₂·주민 Δ = 지난달 운영 · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
+    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}"${value === "" ? ' data-empty="true" aria-label="첫 운영 뒤 표시"' : ""}>${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" || value === "" ? "" : `<small>${unit}</small>`}</span></td>`;
+    return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? `${esc(resultHeading(V, res))} · 정전·CO₂·주민 Δ = 지난달 운영` : "정전·CO₂·주민 Δ는 첫 운영 뒤 표시"} · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
       const city = V.econ.cities[t.id], r = res?.team[t.id], ready = V.teams[t.id].ready;
-      return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", fmt(r?.unsPct, 2), "%", r && r.unsPct > V.goals.unsPct)}${cell("CO₂", fmt(r ? r.co2Prod * mul : undefined), "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", city.approval < city.approval0 - params("approvalDrop"))}${cell("주민 Δ", rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
+      return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", res ? fmt(r?.unsPct, 2) : "", "%", r && r.unsPct > V.goals.unsPct)}${cell("CO₂", res ? fmt(r ? r.co2Prod * mul : undefined) : "", "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", city.approval < city.approval0 - params("approvalDrop"))}${cell("주민 Δ", res ? rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–" : "", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
     }).join("")}</tbody></table></div><p class="lg-ledger-note">▲ = 목표·평가선 주의 · 도시 이름을 누르면 상세가 열려요. 남은 돈은 지방채 한도를 포함하며 건설·연구·대응 예약과 정산 뒤 쓸 수 있는 돈이에요.</p>`;
   }
   function teamCard(t, v, r, S) {
@@ -2046,7 +2047,7 @@
       g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? token("--ui-gold") : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
       g.beginPath(); g.moveTo(...A); g.lineTo(...Bq); g.stroke(); g.setLineDash([]);
       if (F && Math.abs(net) > 0.05) {
-        g.setLineDash([0.9, 1.1]); g.lineDashOffset = -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
+        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
         g.beginPath(); if (net >= 0) { g.moveTo(...A); g.lineTo(...Bq); } else { g.moveTo(...Bq); g.lineTo(...A); } g.stroke(); g.setLineDash([]);
         g.font = "700 1.35px sans-serif"; g.textAlign = "center"; g.lineWidth = 0.35; g.strokeStyle = "#fff"; g.fillStyle = "#1d2430";
         const mx = (A[0] + Bq[0]) / 2, my = (A[1] + Bq[1]) / 2 - 0.9, tx = `${fmt(Math.abs(net), 0)} MWh`;
@@ -2060,21 +2061,22 @@
       const c0 = G.cen[t.id]; if (!c0) return;
       const act = on.has(t.id), r0 = res && res.team[t.id], v = V.teams[t.id];
       if (preview) {
-        const own = t.id === preview.player, locked = preview.mode !== "seat" && (reg.must || []).includes(t.id), taken = preview.mode === "seat" && !!v?.seated;
+        const inactive = preview.mode === "seat" && !act;
+        const own = !inactive && t.id === preview.player, locked = preview.mode !== "seat" && (reg.must || []).includes(t.id), taken = preview.mode === "seat" && !!v?.seated;
         // 이름표는 지형의 가로 투영과 무관하게 같은 픽셀 글자 크기로 그린다.
         const size = 13, subSize = 10, x = ox + c0[0] * kx, y = oy + c0[1] * k;
-        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = preview.mode === "seat" ? taken ? "다른 팀" : own ? "고른 도시" : "비어 있음" : own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
+        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = preview.mode === "home" ? "" : preview.mode === "seat" ? inactive ? "이번 방 아님" : taken ? "다른 팀" : own ? "고른 도시" : "비어 있음" : own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
         g.save(); g.setTransform(dpr, 0, 0, dpr, 0, 0);
         g.font = `600 ${size}px ${token("--body")}`;
         const w = Math.max(g.measureText(name).width, sub.length * subSize) + 32;
-        g.globalAlpha = taken ? .7 : 1;
-        g.beginPath(); g.roundRect(x - w / 2, y - size - 8, w, size + subSize + 20, 14);
+        g.globalAlpha = inactive ? .45 : taken ? .7 : 1;
+        g.beginPath(); g.roundRect(x - w / 2, y - size - 8, w, sub ? size + subSize + 20 : size + 16, 14);
         g.fillStyle = token("--ui-panel"); g.fill();
         g.strokeStyle = own ? token("--ui-gold") : token("--ui-border"); g.lineWidth = own ? 2 : 1; g.stroke();
         g.beginPath(); g.arc(x - w / 2 + 12, y - 4, 5, 0, Math.PI * 2); g.fillStyle = t.color; g.fill();
-        if (preview.mode === "seat") { g.beginPath(); g.arc(x + w / 2 - 10, y + subSize + 1, 3, 0, Math.PI * 2); g.fillStyle = tokens.getPropertyValue(taken ? "--ui-muted" : "--ui-mint").trim(); g.fill(); }
+        if (preview.mode === "seat" && act) { g.beginPath(); g.arc(x + w / 2 - 10, y + subSize + 1, 3, 0, Math.PI * 2); g.fillStyle = tokens.getPropertyValue(taken ? "--ui-muted" : "--ui-mint").trim(); g.fill(); }
         g.fillStyle = own ? token("--ui-gold") : token("--ui-text"); g.fillText(name, x + 4, y);
-        g.font = `500 ${subSize}px ${token("--body")}`; g.fillStyle = token("--ui-muted"); g.fillText(sub, x, y + subSize + 3);
+        if (sub) { if (inactive) g.globalAlpha = .8; g.font = `500 ${subSize}px ${token("--body")}`; g.fillStyle = token("--ui-muted"); g.fillText(sub, x, y + subSize + 3); }
         g.restore();
         return;
       }
@@ -2097,6 +2099,8 @@
     }
     cv.dataset.k = String(k); cv.dataset.flows = String(flows);
     if (preview) { cv.dataset.preview = "true"; cv.dataset.ox = String(ox); cv.dataset.kx = String(kx); cv.dataset.oy = String(oy); }
+    if (preview?.mode === "seat") cv.dataset.seatActive = [...on].join(" ");
+    else delete cv.dataset.seatActive;
   }
   function boardHit(cv, ev) {
     const G = boardInfo(), rect = cv.getBoundingClientRect(), scale = rect.width / cv.clientWidth;
@@ -2105,7 +2109,7 @@
     const x = (ev.clientX - rect.left - (cv.dataset.preview ? +cv.dataset.ox * scale : 0)) / kx, y = (ev.clientY - rect.top - (cv.dataset.preview ? +cv.dataset.oy * scale : 0)) / k;
     let best = null, bd = Infinity;
     G.cells.forEach(cl => { const d = (cl.x - x) ** 2 + (cl.y - y) ** 2; if (d < bd) { bd = d; best = cl; } });
-    return best && bd < 1.2 ? best.team : null;
+    return best && bd < 1.2 && (cv.dataset.seatActive === undefined || cv.dataset.seatActive.split(" ").includes(best.team)) ? best.team : null;
   }
   function renderMap(svg, V, res, flash) {
     const reg = R(), pts = SEA.map(P).map(p => p.join(",")).join(" ");
@@ -2271,6 +2275,11 @@
     };
     app.querySelectorAll("[data-seat]").forEach(b => b.addEventListener("click", () => select(b.dataset.seat)));
     cv?.addEventListener("click", e => { const id = boardHit(cv, e); if (id) select(id); });
+    cv?.addEventListener("mousemove", e => {
+      const id = boardHit(cv, e);
+      cv.style.cursor = id && V?.teams[id] && !V.teams[id].seated ? "pointer" : "default";
+    });
+    cv?.addEventListener("mouseleave", () => { cv.style.cursor = "default"; });
     app.querySelector("#lg-seat-confirm").addEventListener("click", e => {
       const id = L.seatChoice;
       if (!id || !L.snap?.teams[id] || L.snap.teams[id].seated || L.claiming) return;
