@@ -551,7 +551,7 @@
         </span>
       </a>`;
       if (y !== "2022" || !KCP.routes?.league) return card;
-      return `<section class="home-power-pair" aria-label="2022 기출과 전력 리그 확장판">${card}<article class="home-league-card"><figure class="home-league-map"><canvas id="home-league-map" role="img" aria-label="전력 리그 광역 지도"></canvas></figure><div class="home-league-copy"><span class="label">2022 확장판 · 창작 게임</span><h2>2022 확장판 · 전력 리그</h2><p>2022 문항의 발전소 배치를 여러 도시로 넓혔어요. 한 달에 한 번 짓고 운영하며, 주민·기업·탄소를 두고 이웃 도시와 겨룹니다.</p><div class="home-league-actions"><a class="v2-btn primary" href="#league">혼자 하기<small>컴퓨터 도시와 · 한 탭</small></a><a class="v2-btn" href="#league/multi">멀티<small>진행자 + 팀 2~6</small></a></div><div class="meta"><span class="chip">12·24·36달</span><span class="chip">1턴 = 1달</span></div></div></article></section>`;
+      return `<section class="home-power-pair" aria-label="2022 기출과 전력 리그 확장판">${card}<article class="home-league-card"><figure class="home-league-map"><canvas id="home-league-map" role="img" aria-label="전력 리그 광역 지도"></canvas></figure><div class="home-league-copy"><span class="label">창작 게임</span><h2>2022 확장판 · 전력 리그</h2><p>2022 문항의 발전소 배치를 여러 도시로 넓혔어요. 한 달에 한 번 짓고 운영하며, 주민·기업·탄소를 두고 이웃 도시와 겨룹니다.</p><div class="home-league-actions"><a class="v2-btn primary" href="#league">혼자 하기<small>컴퓨터 도시와 · 한 탭</small></a><a class="v2-btn" href="#league/multi">멀티<small>진행자 + 팀 2~6</small></a></div><div class="meta"><span class="chip">12·24·36달</span><span class="chip">1턴 = 1달</span></div></div></article></section>`;
     }).join("");
     const originals = (KCP.ORIGINAL_ORDER || []).map((id) => {
       const m = KCP.YEARS[id], st = KCP.load(id);
