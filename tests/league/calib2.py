@@ -25,7 +25,8 @@ window.__plan = (id, strat, budget) => {
 with sync_playwright() as pw:
     br = pw.chromium.launch(); pg = br.new_page()
     pg.goto("http://127.0.0.1:9400/index.html#home"); pg.wait_for_timeout(800)
-    pg.evaluate(AUTO); pg.evaluate(STRAT)
+    # 문자열 식의 값이 함수면 Playwright가 인자 없이 호출한다(__auto(undefined) → selectPack(null) → 기본 지도로 바뀜). 정의만 하도록 감싼다.
+    pg.evaluate(f"() => {{ {AUTO} }}"); pg.evaluate(f"() => {{ {STRAT} }}")
     for strat in ["diesel", "green", "mix"]:
       for ties in [False, True]:
         out = pg.evaluate("""([strat, ties]) => {
