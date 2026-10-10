@@ -119,11 +119,18 @@
   const params = k => KCP.ECON_DATA.params[k].v;
   // D-69: 측정 근거(P)가 있는 이웃 쌍만 이름으로 밝히고, 나머지 맞닿은 쌍의 기여는 게임 가정(G)임을 표시한다. 도시 이름은 자료에서 읽는다.
   function airNoteHTML() {
-    const list = KCP.ECON_DATA.airNeighbours || [];
+    // 이번 판 참가 도시 사이의 쌍만 쓴다. G 비율이 여럿이면 범위로 적는다.
+    const act = new Set(actT(L.snap || {}).map(t => t.id));
+    const list = (KCP.ECON_DATA.airNeighbours || []).filter(x => !act.size || (act.has(x.from) && act.has(x.to)));
     const measured = list.filter(x => x.grade !== "G").map(x => `${teamName(x.from)}→${teamName(x.to)}`);
-    const assumed = list.find(x => x.grade === "G");
-    return `발전 PM2.5 증분과 이웃 기여를 추정한 값(M·G)이에요.${measured.length ? ` 이웃 기여 중 ${esc(measured.join("·"))}만 측정 비율(P)이고,` : ""}${assumed ? ` 나머지 맞닿은 도시 사이 기여(${esc(fmt(assumed.ratio, 1))}배)는 근거 없는 게임 가정이에요.` : ""} 전체 대기질이나 관측 농도는 아니에요.`;
+    const g = list.filter(x => x.grade === "G").map(x => x.ratio).filter(Number.isFinite);
+    const lo = Math.min(...g), hi = Math.max(...g), ratio = lo === hi ? fmt(lo, 1) : `${fmt(lo, 1)}~${fmt(hi, 1)}`;
+    return ["발전 PM2.5 증분과 이웃 기여를 추정한 값(M·G)이에요.",
+      measured.length ? `측정 비율(P)이 있는 이웃 기여: ${esc(measured.join("·"))}.` : "",
+      g.length ? `나머지 맞닿은 도시 사이 기여(${esc(ratio)}배)는 근거 없는 게임 가정이에요.` : "",
+      "전체 대기질이나 관측 농도는 아니에요."].filter(Boolean).join(" ");
   }
+
   const signed = (x, d = 0) => { const rounded = Number(Number(x).toFixed(d)) + 0; return `${rounded > 0 ? "+" : ""}${fmt(rounded, d).replace("-", "−")}`; };
   const causeLabel = c => ["taxI", "air"].includes(c.key) ? PART_NAMES[c.key] : c.label || PART_NAMES[c.key] || c.key;
   const visibleCauses = rows => (rows || []).filter(c => Number(c.delta.toFixed(1)) !== 0);
