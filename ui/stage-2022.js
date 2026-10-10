@@ -3,70 +3,19 @@
  * 산·농경지·숲·습지·유전·문화재)로 깔고, 학생이 지도에 세운 발전소(화석·원자력·풍력·태양광)를 픽셀 건물로,
  * 2번 문제의 연결을 가로·세로 전봇대 전선으로, 마을의 불빛을 공급량으로 그린다. 옆에는 메뉴 창(발전소·마을)과
  * 조언 창을 둔다.
- * 게임 상태(state.game)는 읽기만 한다. 지도 자료는 게임 화면에 이미 공개된 값(g2022.js의 지형·지형지물·마을·
- * 일사량·풍속·풍향·해류)을 그대로 옮겨 적었다. 성찰 단계의 예시 답변 배치는 읽지도 그리지도 않는다.
- * 그리기: 작은 픽셀 버퍼에 정수 좌표로 칠한 뒤 최근접 보간으로 키운다. 지형은 크기·밤낮이 바뀔 때만 다시 그린다. */
+ * 게임 상태(state.game)는 읽기만 한다. 지도 자료는 g2022.js의 model.data에서 읽는다.
+ * 면접실은 현재 질문에 맞는 학생 계획과 관련 발전소·경로·마을을 강조한다. 현재 질문은 메모리에만 둔다.
+ * 성찰 단계의 예시 답변 배치는 읽지도 그리지도 않는다.
+ * 그리기: 작은 픽셀 버퍼에 정수 좌표로 칠한 뒤 최근접 보간으로 키운다. 지형은 크기·밤낮·자료가 바뀔 때 다시 그린다. */
 (function () {
   "use strict";
   const KCP = window.KCP;
   if (!KCP || !KCP.v2 || typeof KCP.v2.skin !== "function") return;
 
   const ID = "2022";
-  /* ---------- 지도 자료(게임 화면에 공개된 값, 읽기 전용 사본) ---------- */
-  const ROWS = "ABCDEFGHIJ";
-  const TERR = [
-    "~~~~~~~~~~",
-    "~...~~...~",
-    "~...~~...~",
-    "~...~~...~",
-    "~...~~~~~~",
-    "~........~",
-    "~....oo..~",
-    "~........~",
-    "~........~",
-    "~~~~~~~~~~"
-  ];
-  const FEAT = {
-    A3: "whale", A8: "fish", A9: "fish", A10: "oil", B4: "oil", B8: "farm", B10: "fish",
-    C1: "fish", C2: "farm", C3: "mtn", C6: "whale", C9: "heritage", C10: "fish", D1: "fish", D3: "mtn",
-    E1: "fish", E2: "mtn", E3: "mtn", F3: "farm", F4: "farm", F5: "oil", F7: "deer", G3: "farm", G8: "deer",
-    H3: "mtn", H4: "mtn", H5: "mtn", H6: "mtn", I2: "bird", I3: "bird", I4: "bird", I5: "bird", I6: "bird",
-    J3: "whale", J4: "whale", J6: "whale"
-  };
-  const VILL = [
-    { n: "배멧", cell: "B9", need: 60 },
-    { n: "참살이", cell: "D2", need: 80 },
-    { n: "빛가람", cell: "G4", need: 100 }
-  ];
-  const SOLAR = [5, 5, 10, 10, 10, 15, 15, 15, 20, 20];
-  const WIND = [
-    "20 20 20 20 20 20 20 20 20 20",
-    "20 10 10 10 20 20 10 10 10 20",
-    "20 10 15 10 15 15 10 5 10 20",
-    "20 10 15 10 15 15 10 10 10 20",
-    "20 15 15 10 15 15 15 15 20 20",
-    "20 10 5 10 10 10 10 10 10 20",
-    "20 10 5 5 5 5 5 5 10 20",
-    "20 10 15 15 15 15 5 5 10 20",
-    "20 10 10 10 10 10 10 10 10 20",
-    "20 20 20 20 20 20 20 20 20 20"
-  ].map(r => r.split(" ").map(Number));
-  const WDIR = [
-    "S SW SW SW S S SW SW SW SW", "S SW SW SW S S SW SW SW SW", "S SW S SW S S SW SW SW SW", "S SW S SW S S SW SW SW SW",
-    "S SW W SW S S SW SW SW SW", "S SW SW SW SW SW SW SW SW SW", "S SW W W W W SW SW SW SW", "S SW W W W W SW SW SW SW",
-    "S SW SW SW SW SW SW SW SW SW", "S W W W W W W W W W"
-  ].map(r => r.split(" "));
-  const CURR = {};
-  "A1 A2 A3 A4".split(" ").forEach(c => { CURR[c] = "E"; });
-  "A5 A6".split(" ").forEach(c => { CURR[c] = "S"; });
-  "A7 A8 A9 A10".split(" ").forEach(c => { CURR[c] = "W"; });
-  "B1 C1 D1 E1 F1 G1 H1 I1 J1".split(" ").forEach(c => { CURR[c] = "N"; });
-  "B10 C10 D10".split(" ").forEach(c => { CURR[c] = "N"; });
-  CURR.E10 = "NS";
-  "F10 G10 H10 I10".split(" ").forEach(c => { CURR[c] = "S"; });
-  "J2 J3 J4 J5 J6 J7 J8 J9 J10".split(" ").forEach(c => { CURR[c] = "W"; });
-  "B5 C5 D5 B6 C6 D6".split(" ").forEach(c => { CURR[c] = "S"; });
-  "E5 E6 E7 E8 E9".split(" ").forEach(c => { CURR[c] = "E"; });
+  // ctx.model의 동결된 지도 자료를 참조한다. 지도 값의 사본은 두지 않는다.
+  let data = null;
+  const villages = () => Object.entries(data.VILL).map(([n, v]) => ({ n, ...v }));
   const DV = { S: [1, 0], SW: [1, -1], W: [0, -1], N: [-1, 0], E: [0, 1] };
   const PT = {
     fossil: { n: "화석 연료 발전소", s: "화석 연료", cost: 15, out: 60 },
@@ -78,10 +27,10 @@
   const OVN = { map: "지도", solar: "평균 일사량", wind: "평균 풍속·풍향", current: "평균 해류 방향" };
 
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
-  const rc = id => [ROWS.indexOf(id[0]), Number(id.slice(1)) - 1];
-  const idOf = (r, c) => (r >= 0 && r < 10 && c >= 0 && c < 10 ? ROWS[r] + (c + 1) : null);
-  const terr = (r, c) => (r < 0 || r > 9 || c < 0 || c > 9 ? "sea" : { "~": "sea", ".": "land", o: "lake" }[TERR[r][c]]);
-  const outOf = (type, id) => { const [r, c] = rc(id); return type === "wind" ? WIND[r][c] : type === "solar" ? SOLAR[r] : PT[type].out; };
+  const rc = id => [data.ROWS.indexOf(id[0]), Number(id.slice(1)) - 1];
+  const idOf = (r, c) => (r >= 0 && r < 10 && c >= 0 && c < 10 ? data.ROWS[r] + (c + 1) : null);
+  const terr = (r, c) => (r < 0 || r > 9 || c < 0 || c > 9 ? "sea" : { "~": "sea", ".": "land", o: "lake" }[data.TERR[r][c]]);
+  const outOf = (type, id) => { const [r, c] = rc(id); return type === "wind" ? data.WIND[r][c] : type === "solar" ? data.SOLAR[r] : PT[type].out; };
   function hash(x, y, s) {
     let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
     n = Math.imul(n ^ (n >>> 13), 1274126177);
@@ -94,7 +43,7 @@
     let cur = id;
     for (let i = 0; i < 4; i++) {
       const [r, c] = rc(cur);
-      const d = DV[WDIR[r][c]];
+      const d = DV[data.WDIR[r][c]];
       cur = idOf(r + d[0], c + d[1]);
       if (!cur) break;
       path.push(cur);
@@ -102,18 +51,113 @@
     return path;
   }
 
+  const orth = id => {
+    const [r, c] = rc(id);
+    return [idOf(r - 1, c), idOf(r + 1, c), idOf(r, c - 1), idOf(r, c + 1)].filter(Boolean);
+  };
+  // 게임과 같은 해류 읽기: 인접한 바다에서 분기를 따라 최대 60개 해역.
+  function currentPath(id) {
+    const sea = cell => { const [r, c] = rc(cell); return terr(r, c) === "sea"; };
+    const queue = orth(id).filter(sea), seen = new Set();
+    while (queue.length && seen.size < 60) {
+      const cell = queue.shift();
+      if (seen.has(cell) || !sea(cell)) continue;
+      seen.add(cell);
+      const direction = data.CURR[cell];
+      if (!direction) continue;
+      (direction === "NS" ? ["N", "S"] : [direction]).forEach(dir => {
+        const [r, c] = rc(cell), d = DV[dir], next = idOf(r + d[0], c + d[1]);
+        if (next && !seen.has(next)) queue.push(next);
+      });
+    }
+    return [...seen];
+  }
+
+  /* ---------- 면접실의 현재 질문(저장하지 않는 메모리) ---------- */
+  let questionIndex = 0, offRoom = null;
+  function clearQuestion() {
+    if (offRoom) offRoom();
+    offRoom = null;
+    questionIndex = 0;
+  }
+  if (typeof KCP.on === "function") {
+    KCP.on("route:change", clearQuestion);
+    KCP.on("phase:change", clearQuestion);
+    KCP.on("room:render", ({ year, root }) => {
+      clearQuestion();
+      if (year !== ID || !root) return;
+      const follow = event => {
+        const card = event.target?.closest?.(".qdeck .qcard");
+        const answer = card && card.querySelector("textarea[data-a]");
+        const index = answer ? Number(answer.dataset.a) : NaN;
+        if (Number.isInteger(index) && index >= 0) questionIndex = index;
+        // 클릭의 기본 처리(peer.cur 갱신)가 끝난 다음 프레임에 읽는다.
+        KCP.v2.kickStage?.(600);
+      };
+      root.addEventListener("focusin", follow, true);
+      root.addEventListener("click", follow, true);
+      offRoom = () => {
+        root.removeEventListener("focusin", follow, true);
+        root.removeEventListener("click", follow, true);
+      };
+    });
+  }
+  function currentQuestion(ctx, G) {
+    if (ctx.thumb || ctx.phase !== "room") return null;
+    const game = KCP.games?.[ID];
+    if (!game || typeof game.questions !== "function") return null;
+    // questions()는 game을 정규화해서 대입하므로 상태 사본으로 조회한다.
+    const qs = game.questions({ ...ctx.state, game: G });
+    const main = ctx.root?.querySelector("#room-main"), alt = ctx.root?.querySelector("#room-alt");
+    let index = questionIndex;
+    if (alt && !alt.hidden && main?.hidden) {
+      const peer = ctx.state?.ext?.peer && (typeof KCP.ext === "function" ? KCP.ext(ctx.state, "peer", {}) : ctx.state.ext.peer);
+      index = peer?.cur;
+    }
+    index = Number.isInteger(index) && index >= 0 && index < qs.length ? index : 0;
+    const q = qs[index];
+    return q ? { index, key: typeof KCP.qkey === "function" ? KCP.qkey(q) : q.k, tag: q.tag || "", official: q.src === "report" } : null;
+  }
+
+  function focusOf(question, plants) {
+    const focus = { plants: [], air: [], sea: [], villages: [], cost: false };
+    if (!question) return focus;
+    const key = question.key;
+    if (key === "22-q1-nuc" || key === "22-q1-fos") {
+      focus.plants = plants.filter(p => p.type === (key === "22-q1-nuc" ? "nuclear" : "fossil"));
+      focus.air = focus.plants.flatMap(p => smogPath(p.cell));
+      if (key === "22-q1-nuc") focus.sea = focus.plants.flatMap(p => currentPath(p.cell));
+    } else if (key === "22-q2-cost") focus.cost = true;
+    else if (key === "22-q2-one") focus.plants = plants;
+    else if (key === "22-div-typhoon") focus.plants = plants.filter(p => p.type === "wind" &&
+      [p.cell, ...orth(p.cell)].some(cell => { const [r, c] = rc(cell); return terr(r, c) === "sea"; }));
+    else if (key === "22-hum-vote") focus.villages = ["빛가람"];
+    else if (key === "22-hum-future") focus.villages = ["배멧", "참살이"];
+    return focus;
+  }
+
   /* ---------- 상태 읽기(읽기 전용) ---------- */
   function read(ctx) {
     const M = ctx.model || KCP.games?.[ID]?.model;
-    if (!M) return null;
+    const D = M?.data || KCP.games?.[ID]?.model?.data;
+    if (!M || !D) return null;
+    data = D;
     const G = M.normalizeGame(ctx.game);
-    const { mode, overlay, tool, q1, q2 } = G;
+    const { overlay, tool, q1, q2 } = G;
+    const question = currentQuestion(ctx, G);
+    let mode = G.mode;
+    if (question) {
+      if (question.key.startsWith("22-q1")) mode = "q1";
+      else if (question.key.startsWith("22-q2")) mode = "q2";
+      else mode = q2.length ? "q2" : "q1";
+    }
     const plants = mode === "q1" ? TYPES.filter(k => q1[k]).map(k => ({ type: k, cell: q1[k], to: null })) : q2;
-    const s = M.supply(q2, G.wires);
+    const empty = !!question && !plants.length;
+    const s = M.supply(q2, empty ? [] : G.wires);
     const count = { fossil: 0, nuclear: 0, wind: 0, solar: 0 };
     q2.forEach(p => { count[p.type] += 1; });
-    const met = VILL.filter(v => s.got[v.n] >= v.need).length;
-    return { mode, overlay, tool, q1, q2, plants, got: s.got, wire: s.wire,
+    const met = villages().filter(v => s.got[v.n] >= v.need).length;
+    return { mode, overlay: question ? "map" : overlay, tool, q1, q2, plants, question, empty, focus: focusOf(question, plants), got: s.got, wire: s.wire,
       edges: s.edges, cost: s.plantCost, total: s.total, count, met };
   }
 
@@ -294,9 +338,9 @@
         if (terr(r, c + 1) !== "land") { rect(A, x + T - sb, y, sb, T, P.sand2); rect(A, x + T, y, 1, T, P.foam); }
       }
     }
-    Object.keys(FEAT).forEach(id => {
+    Object.keys(data.FEAT).forEach(id => {
       const [r, c] = rc(id);
-      feature(A, FEAT[id], mx + c * T, my + r * T, T, P, terr(r, c));
+      feature(A, data.FEAT[id], mx + c * T, my + r * T, T, P, terr(r, c));
     });
     // 지도 테두리
     A.c.strokeStyle = P.frame;
@@ -382,7 +426,7 @@
       rect(A, hubx - 1, huby, 2, Math.round(T * 0.58), P.towerW);
       rect(A, hubx, huby, 1, Math.round(T * 0.58), P.metalDk);
       // 날개 회전 속도는 그 칸의 평균 풍속(게임에 공개된 값)을 따른다
-      const spd = 0.6 + WIND[r][c] / 10;
+      const spd = 0.6 + data.WIND[r][c] / 10;
       const a0 = still ? 0.4 : t * spd;
       const len = T * 0.34;
       for (let i = 0; i < 3; i++) {
@@ -414,9 +458,53 @@
       const a = point(from), b = point(to);
       a[1] -= lift; b[1] -= lift;
       const mxp = (a[0] + b[0]) / 2, myp = (a[1] + b[1]) / 2 + (a[1] === b[1] ? 1 : 0);
+      if (st.focus.cost) {
+        A.c.beginPath(); A.c.moveTo(...a); A.c.lineTo(mxp, myp); A.c.lineTo(...b);
+        A.c.strokeStyle = P.frame; A.c.lineWidth = 3; A.c.stroke();
+        A.c.strokeStyle = P.spark; A.c.lineWidth = 1; A.c.stroke();
+        return;
+      }
       line(A, a[0], a[1], mxp, myp, P.wire);
       line(A, mxp, myp, b[0], b[1], P.wire);
     });
+  }
+
+  // 현재 질문의 대상은 고정 윤곽으로 강조한다. 풍향은 점선, 해류는 실선이다.
+  function drawFocus(A, st, T, P, L) {
+    if (!st.question) return;
+    const point = id => { const [r, c] = rc(id); return [L.mx + (c + 0.5) * T, L.my + (r + 0.5) * T]; };
+    const route = (cells, dotted, color) => {
+      if (cells.length < 2) return;
+      A.c.save();
+      A.c.setLineDash(dotted ? [Math.max(2, T / 5), Math.max(2, T / 8)] : []);
+      A.c.beginPath(); A.c.moveTo(...point(cells[0]));
+      cells.slice(1).forEach(cell => A.c.lineTo(...point(cell)));
+      A.c.strokeStyle = P.dark ? "#000000" : "#ffffff"; A.c.lineWidth = 4; A.c.stroke();
+      A.c.strokeStyle = color; A.c.lineWidth = 2; A.c.stroke();
+      A.c.restore();
+    };
+    const ring = (cell, color, inset) => {
+      const [r, c] = rc(cell), x = L.mx + c * T + inset, y = L.my + r * T + inset, size = T - inset * 2;
+      A.c.strokeStyle = P.dark ? "#000000" : "#ffffff"; A.c.lineWidth = 4; A.c.strokeRect(x, y, size, size);
+      A.c.strokeStyle = color; A.c.lineWidth = 2; A.c.strokeRect(x, y, size, size);
+    };
+    st.focus.plants.forEach(p => {
+      if (p.type === "fossil" || p.type === "nuclear") {
+        if (st.focus.air.length) route([p.cell, ...smogPath(p.cell)], true, P.badC);
+      }
+    });
+    const sea = new Set(st.focus.sea);
+    sea.forEach(cell => {
+      ring(cell, P.dark ? "#8ee8ff" : "#003f75", Math.max(3, T / 4));
+      const direction = data.CURR[cell];
+      if (!direction) return;
+      (direction === "NS" ? ["N", "S"] : [direction]).forEach(dir => {
+        const [r, c] = rc(cell), d = DV[dir], next = idOf(r + d[0], c + d[1]);
+        if (sea.has(next)) route([cell, next], false, P.dark ? "#8ee8ff" : "#003f75");
+      });
+    });
+    st.focus.plants.forEach(p => ring(p.cell, P.hi, 2));
+    villages().filter(v => st.focus.villages.includes(v.n)).forEach(v => ring(v.cell, P.hi, 2));
   }
 
   function drawSmoke(A, st, T, P, L, t, still) {
@@ -455,22 +543,22 @@
     const { mx, my } = L;
     if (st.overlay === "solar") {
       for (let r = 0; r < 10; r++) {
-        A.c.fillStyle = "rgba(255,214,64," + (0.06 + SOLAR[r] / 20 * (P.dark ? 0.2 : 0.3)).toFixed(3) + ")";
+        A.c.fillStyle = "rgba(255,214,64," + (0.06 + data.SOLAR[r] / 20 * (P.dark ? 0.2 : 0.3)).toFixed(3) + ")";
         A.c.fillRect(mx, my + r * T, T * 10, T);
       }
     } else if (st.overlay === "wind") {
       const col = P.dark ? "rgb(220,232,255)" : "rgb(255,255,255)";
       for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) {
-        const d = DV[WDIR[r][c]], v = WIND[r][c];
+        const d = DV[data.WDIR[r][c]], v = data.WIND[r][c];
         const ph = still ? 0.5 : (t * v / 16 + hash(r, c, 11)) % 1;
         const len = Math.max(2, Math.round(T * v / 40));
         const cx = mx + c * T + T / 2 + d[1] * (ph - 0.5) * T * 0.7, cy = my + r * T + T / 2 + d[0] * (ph - 0.5) * T * 0.7;
         line(A, cx - d[1] * len, cy - d[0] * len, cx, cy, col);
       }
     } else if (st.overlay === "current") {
-      Object.keys(CURR).forEach(id => {
+      Object.keys(data.CURR).forEach(id => {
         const [r, c] = rc(id);
-        (CURR[id] === "NS" ? ["N", "S"] : [CURR[id]]).forEach(dd => {
+        (data.CURR[id] === "NS" ? ["N", "S"] : [data.CURR[id]]).forEach(dd => {
           const d = DV[dd];
           const ph = still ? 0.5 : (t * 0.4 + hash(r, c, 13)) % 1;
           const cx = mx + c * T + T / 2 + d[1] * (ph - 0.5) * T * 0.6, cy = my + r * T + T / 2 + d[0] * (ph - 0.5) * T * 0.6;
@@ -522,8 +610,23 @@
   }
 
   // 조언: 학생이 고른 상태만 요약한다. 어디에 지으라는 말(정답·예시 배치)은 하지 않는다.
+  function questionLabel(st) {
+    const q = st.question;
+    return q ? "질문 " + (q.index + 1) + (q.tag ? " · " + q.tag : "") + " · " + (q.official ? "보고서 문항" : "연습용 질문") : "";
+  }
+  function questionDetail(st) {
+    const key = st.question?.key, sites = st.focus.plants.map(p => PT[p.type].n + " " + p.cell).join(", ");
+    if (key === "22-q1-nuc") return sites + " 강조. 사고 시 풍향을 따라 최대 4칸 이동하는 경로(점선)와 해류 경로(실선)는 연습실 재구성입니다.";
+    if (key === "22-q1-fos") return sites + " 강조. 미세먼지가 풍향을 따라 최대 4칸 이동하는 경로(점선)는 연습실 재구성입니다.";
+    if (key === "22-q2-cost") return "전선·비용 강조. 발전 " + st.cost + "(재구성: 기당), 전선 " + st.wire + "칸, 총비용 " + st.total + "(연습실 가정: 전선 1칸당 비용 1).";
+    if (key === "22-q2-one") return sites + " 한 종류 발전소 강조. 이 발전 방식이 멈출 때의 대응을 설명해 보세요.";
+    if (key === "22-div-typhoon") return "바닷가 풍력 강조: " + (sites || "이 계획에 해상·해안 풍력 없음") + ". 태풍 때 얻는 것과 잃는 것을 설명해 보세요.";
+    if (key === "22-hum-vote") return "빛가람 마을 강조. 보전과 개발을 바라는 주민에게 계획을 설명해 보세요.";
+    if (key === "22-hum-future") return "배멧·참살이 마을 강조. 계획이 두 마을의 미래에 주는 영향을 설명해 보세요.";
+    return (st.mode === "q1" ? "1번" : "2번") + " 계획" + (st.mode === "q2" ? "과 직접 놓은 전선" : "") + "입니다. 위치를 고른 이유를 설명해 보세요.";
+  }
   function advice(st, phase) {
-    if (phase === "room") return "면접실입니다. 지도는 준비실에서 세운 " + (st.mode === "q2" ? "2번" : "1번") + " 문제 계획입니다. 위치를 고른 이유를 말로 설명해 보세요.";
+    if (phase === "room") return questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 세우지 않았다. 준비실로 돌아가 계획을 세워 보세요." : questionDetail(st));
     if (phase === "reflect") return "성찰 단계입니다. 내가 세운 배치를 다시 보며 무엇을 무겁게 보았는지 돌아보세요.";
     if (st.mode === "q1") {
       const left = TYPES.filter(k => !st.q1[k]).map(k => PT[k].s);
@@ -532,7 +635,7 @@
       return "아직 세우지 않은 발전소: " + left.join(", ") + ". 종류마다 1기씩 세웁니다.";
     }
     if (!st.q2.length) return "세 마을에 60·80·100의 전기를 보내야 합니다. 발전소를 세우고 공급 마을을 고른 뒤 전선을 직접 놓으세요.";
-    const short = VILL.filter(v => st.got[v.n] < v.need).map(v => v.n + " " + (v.need - st.got[v.n]));
+    const short = villages().filter(v => st.got[v.n] < v.need).map(v => v.n + " " + (v.need - st.got[v.n]));
     if (short.length) return "전력 부족: " + short.join(", ") + ". 지도와 데이터를 보며 계획을 이어 가세요.";
     return "세 마을 모두 불이 켜졌습니다. 총비용 " + st.total + ". 계획 설명에 고른 이유와 포기한 것을 적어 보세요.";
   }
@@ -587,7 +690,7 @@
     if (bx.B) {
       const gd = gridOf(bx.B, 3, 1, L.narrow);
       const T = Math.max(5, Math.floor(gd.ic / cs));
-      VILL.forEach((v, i) => {
+      villages().forEach((v, i) => {
         const c = gd.cell(i);
         village(A, Math.round((c.x + 6) / cs), Math.round((c.cy - T * cs / 2) / cs), T, P, st.mode === "q2" ? st.got[v.n] / v.need : 0);
       });
@@ -649,7 +752,7 @@
       const box = bx.B, gd = gridOf(box, 3, 1, narrow);
       head(box, "마을 전력", st.mode === "q2" ? "공급 / 필요" : "1번 · 연결 없음", gd.th);
       const fs = Math.max(11, Math.min(13, gd.rowH - 4));
-      VILL.forEach((v, i) => {
+      villages().forEach((v, i) => {
         const c = gd.cell(i);
         const nx = c.x + 6 + gd.ic + 8;
         g.font = "400 " + fs + "px " + F.body; g.fillStyle = P.ink; g.textAlign = "left";
@@ -707,12 +810,12 @@
     g.fillStyle = P.dark ? "#e8eeff" : "#ffffff";
     for (let i = 0; i < 10; i++) {
       g.fillText(String(i + 1), x0 + T * (i + 0.5), y0 - 7);
-      g.fillText(ROWS[i], x0 - 7, y0 + T * (i + 0.5));
+      g.fillText(data.ROWS[i], x0 - 7, y0 + T * (i + 0.5));
     }
     // 마을 이름표(작은 창). 공급을 채운 마을은 노란 테두리
     if (T >= 26) {
       g.font = "700 11px " + F.body;
-      VILL.forEach(v => {
+      villages().forEach(v => {
         const [r, c] = rc(v.cell);
         const full = st.mode === "q2" && st.got[v.n] >= v.need;
         const tw = Math.round(g.measureText(v.n).width + 8);
@@ -720,7 +823,7 @@
         const bx = Math.round(clamp(cx - tw / 2, x0 - 2, x0 + T * 10 - tw + 2)), by = Math.round(y0 + T * r - 15);
         g.fillStyle = P.dark ? "#0b1d52" : "#fcf7e6";
         g.fillRect(bx, by, tw, 14);
-        g.strokeStyle = full ? "#ffd75e" : P.dark ? "#e8ecf8" : "#1b2550";
+        g.strokeStyle = st.focus.villages.includes(v.n) ? P.hi : full ? "#ffd75e" : P.dark ? "#e8ecf8" : "#1b2550";
         g.lineWidth = 1.5;
         g.strokeRect(bx + 0.75, by + 0.75, tw - 1.5, 12.5);
         g.fillStyle = P.dark ? "#ffffff" : "#1b2550";
@@ -732,13 +835,14 @@
   /* ---------- 설명과 칩 ---------- */
   function captionOf(st, phase) {
     const parts = ["KENTECH 도시 지도(10×10, 위에서 본 픽셀 타일)."];
+    if (st.question) parts.push(questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 세우지 않았다." : questionDetail(st)));
     if (st.overlay !== "map") parts.push("데이터 겹쳐 보기: " + OVN[st.overlay] + ".");
     if (st.mode === "q1") {
       const placed = TYPES.filter(k => st.q1[k]).map(k => PT[k].n + " " + st.q1[k]);
       parts.push("1번 문제 배치 " + placed.length + "/4" + (placed.length ? ": " + placed.join(", ") + "." : ", 아직 세운 발전소 없음."));
     } else {
       parts.push("2번 문제 발전소 " + st.q2.length + "기" + (st.q2.length ? ": " + st.q2.map(p => PT[p.type].s + " " + p.cell + (p.to ? "→" + p.to : "")).join(", ") + "." : "."));
-      parts.push("마을 공급: " + VILL.map(v => v.n + " " + st.got[v.n] + "/" + v.need + (st.got[v.n] >= v.need ? " 불 켜짐" : st.got[v.n] ? " 일부 켜짐" : " 꺼짐")).join(", ") + ".");
+      parts.push("마을 공급: " + villages().map(v => v.n + " " + st.got[v.n] + "/" + v.need + (st.got[v.n] >= v.need ? " 불 켜짐" : st.got[v.n] ? " 일부 켜짐" : " 꺼짐")).join(", ") + ".");
       parts.push("발전 비용 " + st.cost + "(재구성: 기당), 전선 " + st.wire + "칸, 총비용 " + st.total + "(연습실 가정: 전선 1칸당 비용 1). ");
     }
     if (st.plants.some(p => p.type === "fossil")) parts.push("화석 연료 발전소 굴뚝 연기가 바람을 따라 흐름.");
@@ -746,6 +850,19 @@
     return parts.join(" ");
   }
   function chipsOf(st, narrow) {
+    if (st.question) {
+      const out = [{ label: "질문", value: (st.question.index + 1) + " · " + st.question.tag, tone: "plain" },
+        { label: "문항", value: st.question.official ? "보고서 문항" : "연습용 질문", tone: "plain" },
+        { label: "장면", value: (st.mode === "q1" ? "1번" : "2번") + " 계획 · 재구성", tone: "info" }];
+      if (st.empty) out.push({ label: "계획", value: "준비실에서 이 문제의 계획을 세우지 않았다", tone: "warn" });
+      else if (st.focus.cost) {
+        out.push({ label: "발전 비용", value: st.cost + " · 재구성(기당)", tone: "info" },
+          { label: "전선", value: st.wire + "칸 · 1칸당 비용 1(연습실 가정)", tone: "info" },
+          { label: "총비용", value: String(st.total), tone: "info" });
+      } else if (st.focus.villages.length) out.push({ label: "강조", value: st.focus.villages.join("·"), tone: "info" });
+      else if (st.focus.plants.length) out.push({ label: "강조", value: [...new Set(st.focus.plants.map(p => PT[p.type].s))].join("·"), tone: "info" });
+      return out;
+    }
     if (st.mode === "q1") {
       const n = TYPES.filter(k => st.q1[k]).length;
       const out = [{ label: "문제", value: "1번", tone: "plain" }, { label: "배치", value: n + "/4", tone: n === 4 ? "ok" : "plain" }];
@@ -775,16 +892,17 @@
     const phase = ctx.phase === "room" || ctx.phase === "reflect" ? ctx.phase : "prep";
     const C = thumb ? { gkey: "" } : cache;
     const gkey = [L.W, L.H, L.T, L.mx, L.my, dark].join("|");
-    if (C.gkey !== gkey) {
+    if (C.gkey !== gkey || C.data !== data) {
       C.ground = makeBuf(C.ground && C.ground.cv, L.W, L.H);
       paintGround(C.ground, L, P);
       C.gkey = gkey;
+      C.data = data;
     }
     C.frame = makeBuf(C.frame && C.frame.cv, L.W, L.H);
     const A = C.frame, T = L.T;
     A.c.drawImage(C.ground.cv, 0, 0);
     drawOverlay(A, st, T, P, L, t, still);
-    VILL.forEach(v => {
+    villages().forEach(v => {
       const [r, c] = rc(v.cell);
       const lit = st.mode === "q2" ? clamp(st.got[v.n] / v.need, 0, 1) : 0;
       if (dark && lit > 0) {
@@ -797,6 +915,7 @@
     if (st.mode === "q2") drawLines(A, st, T, P, L);
     st.plants.forEach(p => plant(A, p, T, P, L, t, still));
     drawSmoke(A, st, T, P, L, t, still);
+    drawFocus(A, st, T, P, L);
     const bx = thumb ? null : boxesOf(L, st);
     if (bx) panelFrames(A, L, P, st, bx);
     g.save();
