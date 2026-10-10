@@ -38,8 +38,6 @@
     { n: "참살이", cell: "D2", need: 80 },
     { n: "빛가람", cell: "G4", need: 100 }
   ];
-  const VBY = {};
-  VILL.forEach(v => { VBY[v.n] = v; });
   const SOLAR = [5, 5, 10, 10, 10, 15, 15, 15, 20, 20];
   const WIND = [
     "20 20 20 20 20 20 20 20 20 20",
@@ -79,14 +77,11 @@
   const TYPES = ["fossil", "nuclear", "wind", "solar"];
   const OVN = { map: "지도", solar: "평균 일사량", wind: "평균 풍속·풍향", current: "평균 해류 방향" };
 
-  const own = (o, k) => !!o && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
-  const CELL_RE = /^[A-J](10|[1-9])$/;
   const rc = id => [ROWS.indexOf(id[0]), Number(id.slice(1)) - 1];
   const idOf = (r, c) => (r >= 0 && r < 10 && c >= 0 && c < 10 ? ROWS[r] + (c + 1) : null);
   const terr = (r, c) => (r < 0 || r > 9 || c < 0 || c > 9 ? "sea" : { "~": "sea", ".": "land", o: "lake" }[TERR[r][c]]);
   const outOf = (type, id) => { const [r, c] = rc(id); return type === "wind" ? WIND[r][c] : type === "solar" ? SOLAR[r] : PT[type].out; };
-  const dist = (a, b) => { const [r1, c1] = rc(a); const [r2, c2] = rc(b); return Math.abs(r1 - r2) + Math.abs(c1 - c2); };
   function hash(x, y, s) {
     let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
     n = Math.imul(n ^ (n >>> 13), 1274126177);
@@ -109,28 +104,17 @@
 
   /* ---------- 상태 읽기(읽기 전용) ---------- */
   function read(ctx) {
-    const G = ctx.game && typeof ctx.game === "object" ? ctx.game : {};
-    const mode = G.mode === "q2" ? "q2" : "q1";
-    const overlay = own(OVN, G.overlay) ? G.overlay : "map";
-    const tool = own(PT, G.tool) || G.tool === "erase" ? G.tool : "wind";
-    const q1 = {};
-    const q1raw = G.q1 && typeof G.q1 === "object" ? G.q1 : {};
-    TYPES.forEach(k => { const c = q1raw[k]; if (typeof c === "string" && CELL_RE.test(c)) q1[k] = c; });
-    const q2 = (Array.isArray(G.q2) ? G.q2 : []).filter(p => p && own(PT, p.type) && typeof p.cell === "string" && CELL_RE.test(p.cell))
-      .map(p => ({ type: p.type, cell: p.cell, to: own(VBY, p.to) ? p.to : null }));
+    const M = ctx.model || KCP.games?.[ID]?.model;
+    if (!M) return null;
+    const G = M.normalizeGame(ctx.game);
+    const { mode, overlay, tool, q1, q2 } = G;
     const plants = mode === "q1" ? TYPES.filter(k => q1[k]).map(k => ({ type: k, cell: q1[k], to: null })) : q2;
-    const got = { 배멧: 0, 참살이: 0, 빛가람: 0 };
+    const s = M.supply(q2, G.wires);
     const count = { fossil: 0, nuclear: 0, wind: 0, solar: 0 };
-    let wire = 0, cost = 0;
-    q2.forEach(p => {
-      count[p.type] += 1;
-      cost += PT[p.type].cost;
-      if (!p.to) return;
-      got[p.to] += outOf(p.type, p.cell);
-      wire += dist(p.cell, VBY[p.to].cell);
-    });
-    const met = VILL.filter(v => got[v.n] >= v.need).length;
-    return { mode, overlay, tool, q1, q2, plants, got, wire, cost, total: cost + wire, count, met };
+    q2.forEach(p => { count[p.type] += 1; });
+    const met = VILL.filter(v => s.got[v.n] >= v.need).length;
+    return { mode, overlay, tool, q1, q2, plants, got: s.got, wire: s.wire,
+      edges: s.edges, cost: s.plantCost, total: s.total, count, met };
   }
 
   /* ---------- 색 ---------- */
@@ -413,46 +397,25 @@
     plantAt(A, p.type, L.mx + c * T, L.my + r * T, T, P, r, c, t, still);
   }
 
-  function routeOf(p, T, L, idx) {
-    // 가로 먼저, 그다음 세로(전선은 가로·세로로만). 여러 전선이 겹치지 않게 1픽셀씩 비켜 둔다.
-    const v = p.to && VBY[p.to];
-    if (!v) return null;
-    const [r1, c1] = rc(p.cell), [r2, c2] = rc(v.cell);
-    const off = (idx % 3) - 1;
-    const cx = c => L.mx + c * T + Math.floor(T / 2) + off;
-    const cy = r => L.my + r * T + Math.floor(T / 2) + off;
-    const pts = [];
-    const dc = Math.sign(c2 - c1), dr = Math.sign(r2 - r1);
-    for (let c = c1; c !== c2; c += dc) pts.push([cx(c), cy(r1)]);
-    for (let r = r1; r !== r2; r += dr) pts.push([cx(c2), cy(r)]);
-    pts.push([cx(c2), cy(r2)]);
-    return pts;
-  }
-
-  function drawLines(A, st, T, P, L, t, still) {
+  function drawLines(A, st, T, P, L) {
+    // 학생이 놓은 한 칸 선분만 한 번씩 그린다. 자동 경로와 최적 경로는 만들지 않는다.
     const lift = Math.max(2, Math.round(T * 0.3));
-    st.plants.forEach((p, i) => {
-      const pts = routeOf(p, T, L, i);
-      if (!pts || pts.length < 2) return;
-      for (let k = 1; k < pts.length - 1; k++) {
-        const [x, y] = pts[k];
-        rect(A, x, y - lift, 1, lift + 1, P.pole);
-        rect(A, x - 1, y - lift, 3, 1, P.pole);
-      }
-      for (let k = 0; k < pts.length - 1; k++) {
-        const a = [pts[k][0], pts[k][1] - lift], b = [pts[k + 1][0], pts[k + 1][1] - lift];
-        const mxp = (a[0] + b[0]) / 2, myp = (a[1] + b[1]) / 2 + (a[1] === b[1] ? 1 : 0);
-        line(A, a[0], a[1], mxp, myp, P.wire);
-        line(A, mxp, myp, b[0], b[1], P.wire);
-      }
-      if (!still) {
-        // 전기가 마을로 흐르는 점
-        const seg = pts.length - 1;
-        const u = ((t * 0.9 + i * 0.29) % 1) * seg;
-        const k = Math.min(seg - 1, Math.floor(u)), f = u - k;
-        const x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * f, y = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * f - lift;
-        rect(A, Math.round(x) - 1, Math.round(y) - 1, 2, 2, P.spark);
-      }
+    const point = id => {
+      const [r, c] = rc(id);
+      return [L.mx + c * T + Math.floor(T / 2), L.my + r * T + Math.floor(T / 2)];
+    };
+    const poles = new Set(st.edges.flat());
+    poles.forEach(id => {
+      const [x, y] = point(id);
+      rect(A, x, y - lift, 1, lift + 1, P.pole);
+      rect(A, x - 1, y - lift, 3, 1, P.pole);
+    });
+    st.edges.forEach(([from, to]) => {
+      const a = point(from), b = point(to);
+      a[1] -= lift; b[1] -= lift;
+      const mxp = (a[0] + b[0]) / 2, myp = (a[1] + b[1]) / 2 + (a[1] === b[1] ? 1 : 0);
+      line(A, a[0], a[1], mxp, myp, P.wire);
+      line(A, mxp, myp, b[0], b[1], P.wire);
     });
   }
 
@@ -568,7 +531,7 @@
       if (left.length === 4) return "시장님, 설치 도구를 고르고 지도 칸을 눌러 발전소를 세워 보세요. 종류마다 1기씩입니다.";
       return "아직 세우지 않은 발전소: " + left.join(", ") + ". 종류마다 1기씩 세웁니다.";
     }
-    if (!st.q2.length) return "세 마을에 60·80·100의 전기를 보내야 합니다. 발전소를 세우고 연결할 마을을 고르세요.";
+    if (!st.q2.length) return "세 마을에 60·80·100의 전기를 보내야 합니다. 발전소를 세우고 공급 마을을 고른 뒤 전선을 직접 놓으세요.";
     const short = VILL.filter(v => st.got[v.n] < v.need).map(v => v.n + " " + (v.need - st.got[v.n]));
     if (short.length) return "전력 부족: " + short.join(", ") + ". 지도와 데이터를 보며 계획을 이어 가세요.";
     return "세 마을 모두 불이 켜졌습니다. 총비용 " + st.total + ". 계획 설명에 고른 이유와 포기한 것을 적어 보세요.";
@@ -776,10 +739,10 @@
     } else {
       parts.push("2번 문제 발전소 " + st.q2.length + "기" + (st.q2.length ? ": " + st.q2.map(p => PT[p.type].s + " " + p.cell + (p.to ? "→" + p.to : "")).join(", ") + "." : "."));
       parts.push("마을 공급: " + VILL.map(v => v.n + " " + st.got[v.n] + "/" + v.need + (st.got[v.n] >= v.need ? " 불 켜짐" : st.got[v.n] ? " 일부 켜짐" : " 꺼짐")).join(", ") + ".");
-      if (st.q2.length) parts.push("발전 비용 " + st.cost + ", 전선 " + st.wire + "칸, 총비용 " + st.total + ".");
+      parts.push("발전 비용 " + st.cost + "(재구성: 기당), 전선 " + st.wire + "칸, 총비용 " + st.total + "(연습실 가정: 전선 1칸당 비용 1). ");
     }
     if (st.plants.some(p => p.type === "fossil")) parts.push("화석 연료 발전소 굴뚝 연기가 바람을 따라 흐름.");
-    if (phase === "prep") parts.push("선택한 도구: " + (st.tool === "erase" ? "지우개" : PT[st.tool].n) + ".");
+    if (phase === "prep") parts.push("선택한 도구: " + ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || PT[st.tool].n) + ".");
     return parts.join(" ");
   }
   function chipsOf(st, narrow) {
@@ -787,7 +750,7 @@
       const n = TYPES.filter(k => st.q1[k]).length;
       const out = [{ label: "문제", value: "1번", tone: "plain" }, { label: "배치", value: n + "/4", tone: n === 4 ? "ok" : "plain" }];
       if (!narrow) {
-        out.push({ label: "도구", value: st.tool === "erase" ? "지우개" : PT[st.tool].s, tone: "info" });
+        out.push({ label: "도구", value: ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || PT[st.tool].s), tone: "info" });
         out.push({ label: "데이터", value: OVN[st.overlay], tone: "plain" });
       }
       return out;
@@ -803,6 +766,7 @@
   function render(ctx) {
     const g = ctx.g, w = Math.max(1, ctx.w), h = Math.max(1, ctx.h);
     const st = read(ctx);
+    if (!st) return;
     const dark = ctx.scheme === "dark", thumb = !!ctx.thumb, still = !!ctx.reduced || thumb;
     const tr = typeof g.getTransform === "function" ? g.getTransform() : null, dpr = tr && tr.a > 0 ? tr.a : 1;
     const L = layout(w, h, dpr, thumb);
@@ -830,7 +794,7 @@
       }
       village(A, L.mx + c * T, L.my + r * T, T, P, lit);
     });
-    if (st.mode === "q2") drawLines(A, st, T, P, L, t, still);
+    if (st.mode === "q2") drawLines(A, st, T, P, L);
     st.plants.forEach(p => plant(A, p, T, P, L, t, still));
     drawSmoke(A, st, T, P, L, t, still);
     const bx = thumb ? null : boxesOf(L, st);
