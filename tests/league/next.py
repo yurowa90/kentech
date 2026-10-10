@@ -13,6 +13,7 @@ import sys
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
+from league_flow import confirm_seat, select_mode, start_solo
 
 
 WAIT = 12000
@@ -206,6 +207,7 @@ def setup_pair(context, base, pages):
     fixture["room"] = host.inner_text("#lg-roomcode").replace("-", "").strip()
     team = monitor(context, pages, "team")
     team.goto(base + "#league")
+    select_mode(team, "join")
     # No join ids specified. Interpret "방 코드" as label or placeholder.
     code = visible(team.get_by_label(re.compile(r"방\s*코드|참가\s*코드")))
     if not code:
@@ -214,38 +216,40 @@ def setup_pair(context, base, pages):
         raise AssertionError("one room-code input required")
     code[0].fill(fixture["room"])
     button(team, r"^(?:방\s*)?(?:참가|참여|입장|들어가기)(?:하기)?$").click()
-    seat = team.locator(f'[data-seat="{fixture["team"]}"]')
-    expect(seat).to_be_visible()
-    expect(seat).to_be_enabled()
-    seat.click()
-    team.wait_for_function("() => !!KCP.league.state().team")
+    confirm_seat(team, fixture["team"])
     return host, team, fixture
 
 
 def host_first_screen(host, checks, fixture):
     checks.ok(host.locator('#lg-download').is_visible(), 'U6 host public CSV download control')
 
-    # Interpretation: "한 줄 판" may be a dashboard paragraph or summary
-    # band. It must contain all six concepts in the same compact visible block.
-    concepts = [r"턴|월", r"남은\s*시간|\d+\s*분|시간\s*제한", r"준비",
-                r"미준비|준비\s*전", r"공동\s*목표", r"위험"]
+    # U5는 지휘 막대와 바로 다음 위험 줄로 정보를 나눈다. 한 DOM 블록이라는
+    # 구조 조건만 완화하고, 여섯 정보의 표시·간결함·장부 앞 순서는 유지한다.
+    concepts = [r"턴|월", r"남은\s*시간|\d+\s*분|시간\s*제한", r"준비", r"공동\s*목표"]
     data = host.evaluate("""patterns => {
       const tests = patterns.map(p => new RegExp(p));
       const visible = n => n.checkVisibility({contentVisibilityAuto:true,visibilityProperty:true});
       const nodes = [...document.querySelectorAll('body *')].filter(visible);
-      const blocks = nodes.filter(n => tests.every(re => re.test(n.innerText || '')))
-        .sort((a,b) => a.innerText.length - b.innerText.length);
+      const command = document.querySelector('.lg-host-command');
+      const alerts = document.querySelector('#lg-host-alerts');
+      const summary = document.querySelector('#lg-host-summary');
+      const before = (a,b) => !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
       // Ignore SVG button icons: a detailed map occupies substantial area.
       const maps=nodes.filter(n=>['CANVAS','svg'].includes(n.tagName) &&
         n.getBoundingClientRect().width>=200 && n.getBoundingClientRect().height>=140);
       const tables = nodes.filter(n => n.tagName === 'TABLE' || n.getAttribute('role') === 'table');
-      return {band:blocks[0] ? blocks[0].innerText : null,
+      return {band:command && visible(command) && tests.every(re => re.test(command.innerText)) ? command.innerText : null,
+        alerts:alerts && visible(alerts) ? alerts.innerText : '',
+        order:before(command,alerts) && before(alerts,summary),
         visibleMaps:maps.length,
         tables:tables.map(n => ({text:n.innerText,
           rows:[...n.querySelectorAll('tr,[role="row"]')].map(r => r.innerText),
           beforeMap:maps.every(m => !!(n.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING))}))};
     }""", concepts)
-    checks.ok(bool(data["band"]) and len(data["band"]) <= 900, "host first screen: compact dashboard with six concepts")
+    checks.ok(bool(data["band"]) and bool(re.search(r"미준비|준비\s*전", data["alerts"])) and
+              "위험" in data["alerts"] and len((data["band"] or "") + data["alerts"]) <= 900,
+              "host first screen: compact command and risk row with six concepts")
+    checks.ok(data["order"], "host first screen: command then risks then city ledger")
     tables = [table for table in data["tables"] if all(name in table["text"] for name in fixture["names"])]
     checks.ok(len(tables) == 1, "host first screen: one six-city summary table")
     if tables:
@@ -626,11 +630,7 @@ def solo(context, base, checks, pages):
     page = monitor(context, pages, "solo")
     page.goto(base + "#league")
     page.wait_for_function(BOOT)
-    start = page.locator("#lg-solo-start")
-    expect(start).to_be_visible()
-    expect(start).to_be_enabled()
-    start.click()
-    page.wait_for_url(re.compile(r".*#league/solo$"))
+    start_solo(page)
     page.wait_for_function("() => !!(KCP.league.state().S || KCP.league.state().snap)")
     page.locator('#lg-guide-close').click()
     record_trial(page, checks, 30)

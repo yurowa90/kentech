@@ -224,7 +224,6 @@
         cta.className = "v2-hero-cta";
         cta.innerHTML = '<a class="v2-cta" href="#ys-island-grid">섬 전력망 24시 시작하기 <span aria-hidden="true">▶</span></a>' +
           (KCP.routes && KCP.routes.build ? '<a class="bd-home-link" href="#build">섬 전력망 건설 <small>GRID TYCOON 시안</small></a>' : "") +
-          (KCP.routes && KCP.routes.league ? '<a class="bd-home-link" href="#league">전력 리그 <small>2~6팀 멀티플레이 시안</small></a>' : "") +
           '<span class="v2-hero-note">새 화면 시안 · 창작 게임</span>';
         mast.append(cta);
       }
@@ -242,16 +241,19 @@
       thumbs.push([c, id]);
     });
     const hero = KCP.$(".v2-hero-canvas", app);
+    const leagueMap = KCP.$("#home-league-map", app);
     const paintAll = () => {
       if (hero && hero.isConnected && KCP.igScene) {
         const box = hero.getBoundingClientRect();
         if (box.width && box.height) KCP.igScene.paintStatic(hero, { w: box.width, h: box.height, b: 5, hero: true });
       }
       thumbs.forEach(([c, id]) => { if (c.isConnected) paintThumb(c, id); });
+      if (leagueMap?.isConnected && leagueMap.clientWidth && KCP.paintLeaguePreview) KCP.paintLeaguePreview(leagueMap);
     };
     if (homeRO) homeRO.disconnect();
     homeRO = window.ResizeObserver ? new ResizeObserver(() => requestAnimationFrame(paintAll)) : null;
     if (homeRO && hero) homeRO.observe(hero);
+    if (homeRO && leagueMap) homeRO.observe(leagueMap.parentElement);
     requestAnimationFrame(paintAll);
   });
 })();

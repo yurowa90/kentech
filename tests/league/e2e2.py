@@ -1,6 +1,7 @@
 """리그 v2 확인: 인원 고르기(평택 필수·이웃), 진행자 팀 카드(축소 지도·건설 속도), 도시 크게 보기, 혼자 하기 도시 고르기."""
 import json, sys, os
 from playwright.sync_api import sync_playwright
+from league_flow import confirm_seat, select_mode
 D = os.path.dirname(os.path.abspath(__file__)); SH = os.path.join(D, "shots")
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9410/index.html"
 STRAT = open(os.path.join(D, "calib2.py")).read().split('STRAT = """')[1].split('"""')[0]
@@ -15,7 +16,7 @@ with sync_playwright() as pw:
     def page():
         p = ctx.new_page(); p.on("pageerror", lambda e: errs.append(str(e))); p.on("console", lambda m: m.type == "error" and "ERR_CERT" not in m.text and errs.append(m.text)); return p
     h = page(); h.goto(BASE + "#home"); h.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-    h.goto(BASE + "#league"); h.wait_for_selector("[data-preset]")
+    h.goto(BASE + "#league"); select_mode(h, "host")
     # 평택 체크 해제 불가, 끊긴 조합 거절
     ok(h.is_disabled('.lg-pickc input[value=pyeongtaek]'), "평택 checkbox locked")
     for v in ["hwaseong", "anseong", "dangjin", "asan", "cheonan"]: h.uncheck(f'.lg-pickc input[value={v}]')
@@ -36,10 +37,10 @@ with sync_playwright() as pw:
     teams = {}
     for t in ["pyeongtaek", "dangjin", "asan"]:
         p = page(); teams[t] = p
-        p.goto(BASE + "#league"); p.fill("#lg-code", room); p.click("#lg-join")
+        p.goto(BASE + "#league"); select_mode(p, "join"); p.fill("#lg-code", room); p.click("#lg-join")
         p.wait_for_selector(f'[data-seat="{t}"]:not([disabled])', timeout=10000)
         ok(p.locator("[data-seat]").count() == 3, f"{t}: only 3 seats offered")
-        p.click(f'[data-seat="{t}"]'); p.wait_for_selector("#lg-bar", timeout=10000)
+        confirm_seat(p, t, timeout=10000)
     # 건설을 세 번에 나눠 → 진행 기록 점(15초 묶음이라 시간을 흉내 낼 수 없으니 1점 이상)
     for t, p in teams.items():
         p.evaluate(AUTO); p.evaluate(STRAT)

@@ -19,7 +19,7 @@
 .lg-radio { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
 .lg-radio label { display: flex; gap: 8px; align-items: center; min-height: 44px; }
 .lg-sb { display: grid; gap: 8px; margin-top: 8px; }
-.lg-err { min-height: 1.4em; color: #c0392b; font-weight: 700; }
+.lg-err { min-height: 1.4em; color: var(--ui-danger); font-weight: 700; }
 .lg-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
 .lg-seatbtn { min-height: 96px; border: 2px solid var(--c); border-radius: 14px; background: var(--sheet); color: var(--ink); font: inherit; display: grid; gap: 4px; place-content: center; cursor: pointer; }
 .lg-seatbtn b { font-size: 22px; }
@@ -33,10 +33,10 @@
 .lg-hmeta { flex: 1 1 220px; }
 .lg-hmeta h1 { margin: 2px 0 0; font-size: 22px; }
 .lg-conn { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
-.lg-conn[data-s="open"] { border-color: #2e8b57; color: #2e8b57; }
-.lg-conn[data-s="error"], .lg-conn[data-s="reconnecting"] { border-color: #c0392b; color: #c0392b; }
+.lg-conn[data-s="open"] { border-color: var(--ui-mint); color: var(--ui-mint); }
+.lg-conn[data-s="error"], .lg-conn[data-s="reconnecting"] { border-color: var(--ui-danger); color: var(--ui-danger); }
 .lg-timer { font-size: 26px; min-width: 3.2em; text-align: right; }
-.lg-timer[data-low="true"] { color: #c0392b; }
+.lg-timer[data-low="true"] { color: var(--ui-danger); }
 .lg-hgrid { display: grid; grid-template-columns: minmax(300px, 1.1fr) 1fr; gap: 14px; margin-top: 14px; align-items: start; }
 @media (max-width: 900px) { .lg-hgrid { grid-template-columns: 1fr; } }
 .lg-mapbox { margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--sheet); }
@@ -51,7 +51,7 @@
 .lg-seaname.s { font-size: 12px; text-anchor: middle; }
 .lg-tie path:first-child { stroke: #6b7078; stroke-linecap: round; fill: none; }
 .lg-tie[data-st="none"] path:first-child { stroke-dasharray: 2 6; opacity: 0.55; }
-.lg-tie[data-st="prop"] path:first-child { stroke: #d08a1c; stroke-dasharray: 8 6; }
+.lg-tie[data-st="prop"] path:first-child { stroke: var(--ui-gold); stroke-dasharray: 8 6; }
 .lg-tie[data-st="built"] path:first-child { stroke: #2b3440; }
 .lg-tie[data-kind="sea"][data-st="none"] path:first-child { stroke: #2f6487; }
 .lg-flow { stroke: #ffd23f; stroke-width: 3; fill: none; stroke-dasharray: 6 10; animation: lg-flow 1.2s linear infinite; }
@@ -59,8 +59,8 @@
 @keyframes lg-flow { to { stroke-dashoffset: -32; } }
 .lg-flowlab { font-size: 12px; font-weight: 800; text-anchor: middle; fill: #1d2430; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .lg-city circle { fill: var(--c); stroke: #fff; stroke-width: 3; }
-.lg-city[data-ring="bad"] circle { stroke: #c0392b; stroke-width: 5; }
-.lg-city[data-ring="ok"] circle { stroke: #2e8b57; stroke-width: 5; }
+.lg-city[data-ring="bad"] circle { stroke: var(--ui-danger); stroke-width: 5; }
+.lg-city[data-ring="ok"] circle { stroke: var(--ui-mint); stroke-width: 5; }
 .lg-cname { font-size: 15px; font-weight: 800; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, 0.35); stroke-width: 2px; }
 .lg-cempty { font-size: 10.5px; text-anchor: middle; fill: #fff; }
 .lg-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; align-content: start; }
@@ -68,21 +68,21 @@
 .lg-tcard header { display: flex; align-items: center; gap: 8px; }
 .lg-tcard h3 { margin: 0; font-size: 18px; }
 .lg-seat { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
-.lg-seat[data-s="on"] { border-color: #2e8b57; color: #2e8b57; }
-.lg-seat[data-s="off"] { border-color: #c0392b; color: #c0392b; }
-.lg-ready { font-size: 12px; font-weight: 800; color: #2e8b57; }
+.lg-seat[data-s="on"] { border-color: var(--ui-mint); color: var(--ui-mint); }
+.lg-seat[data-s="off"] { border-color: var(--ui-danger); color: var(--ui-danger); }
+.lg-ready { font-size: 12px; font-weight: 800; color: var(--ui-mint); }
 .lg-tline { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 6px 0 0; font-size: 13px; }
 .lg-tline span { color: var(--ink-2); white-space: nowrap; }
 .lg-tline b { color: var(--ink); }
-.lg-tline b[data-bad="true"], .lg-table td[data-bad="true"], .lg-kpi dd[data-bad="true"] { color: #c0392b; }
+.lg-tline b[data-bad="true"], .lg-table td[data-bad="true"], .lg-kpi dd[data-bad="true"] { color: var(--ui-danger); }
 .lg-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .lg-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
 .lg-kick { margin-top: 6px; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer; }
 .lg-results { margin-top: 16px; }
 .lg-results h2, .lg-logbox h2 { font-size: 18px; margin: 0 0 8px; }
 .lg-goals { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
-.lg-goals span { padding: 4px 10px; border-radius: 999px; border: 1.5px solid #c0392b; font-weight: 700; font-size: 13.5px; }
-.lg-goals span[data-ok="true"] { border-color: #2e8b57; }
+.lg-goals span { padding: 4px 10px; border-radius: 999px; border: 1.5px solid var(--ui-danger); font-weight: 700; font-size: 13.5px; }
+.lg-goals span[data-ok="true"] { border-color: var(--ui-mint); }
 .lg-tablewrap { overflow-x: auto; }
 .lg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .lg-table th, .lg-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
@@ -145,7 +145,7 @@
 .lg-kpi dd { margin: 2px 0 0; font-size: 18px; font-weight: 800; }
 .lg-kpi small { font-size: 12px; color: var(--ink-2); }
 .lg-left { margin: 0 0 10px; font-size: 14px; }
-.lg-left b[data-bad="true"] { color: #c0392b; }
+.lg-left b[data-bad="true"] { color: var(--ui-danger); }
 .lg-left small { color: var(--ink-2); }
 .lg-warn { margin: 8px 0 0; color: #b9551f; font-weight: 700; font-size: 14px; }
 .lg-mini { font-size: 13px; }
@@ -169,7 +169,7 @@
 .lg-pickcity { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 1.5px solid var(--c); border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; }
 .lg-pickcity input { width: 20px; height: 20px; accent-color: var(--c); }
 .lg-pickcity small { font-weight: 600; color: var(--ink-2); }
-#lg-pickmsg[data-bad="true"] { color: #c0392b; font-weight: 700; }
+#lg-pickmsg[data-bad="true"] { color: var(--ui-danger); font-weight: 700; }
 /* 진행자: 팀 카드의 축소 지도와 건설 속도 */
 .lg-thumb { position: relative; display: block; margin: -2px -4px 6px; border-radius: 8px; overflow: hidden; background: #1b2430; }
 .lg-thumb canvas { display: block; width: 100%; height: auto; }
@@ -192,7 +192,7 @@
 .lg-evbox { margin-top: 12px; }
 .lg-evbox h2 { font-size: 16px; margin: 0 0 6px; }
 .lg-evs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
-.lg-ev { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid #d08a1c; background: color-mix(in srgb, #d08a1c 10%, var(--sheet)); }
+.lg-ev { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--ui-gold); background: color-mix(in srgb, var(--ui-gold) 10%, var(--sheet)); }
 .lg-ev b { font-size: 15px; }
 .lg-ev span { font-size: 14px; line-height: 1.45; }
 .lg-ev small { font-size: 12px; color: var(--ink-2); }
@@ -204,7 +204,7 @@
 .lg-hx-d { filter: brightness(0.82); }
 .lg-hxteam polygon { stroke: rgba(255, 255, 255, 0.35); stroke-width: 0.6; }
 .lg-bteam-a:hover .lg-hxteam polygon, .lg-bteam-a:focus .lg-hxteam polygon { filter: brightness(1.12); stroke: #ffd23f; stroke-width: 1.4; }
-.lg-bteam-a[data-ring="bad"] .lg-hxteam polygon { stroke: #c0392b; stroke-width: 1.2; }
+.lg-bteam-a[data-ring="bad"] .lg-hxteam polygon { stroke: var(--ui-danger); stroke-width: 1.2; }
 .lg-cres { font-size: 11px; font-weight: 800; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }
 .lg-coff { fill: #6a6f66; stroke: none; font-size: 12px; }
 
@@ -213,13 +213,13 @@
 .lg-mapnav a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1.5px solid var(--c); color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 700; }
 .lg-mapnav a:hover, .lg-mapnav a:focus-visible { background: var(--c); color: #fff; }
 .lg-evsize { font-size: 13px; font-weight: 700; color: var(--ink); }
-.lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: #d08a1c; color: #fff; }
+.lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: var(--ui-gold); color: #fff; }
 .lg-evnote { font-size: 12px; color: var(--ink-2); }
 .lg-ev abbr { text-decoration: none; border-bottom: 1px dotted currentColor; cursor: help; }
 .lg-evopts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .lg-evopt { min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--line, #b9b9b9); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
-.lg-evopt[aria-pressed="true"] { border-color: #d08a1c; background: color-mix(in srgb, #d08a1c 18%, var(--sheet)); font-weight: 700; }
-.lg-evopt:focus-visible { outline: 3px solid #d08a1c; outline-offset: 2px; }
+.lg-evopt[aria-pressed="true"] { border-color: var(--ui-gold); background: color-mix(in srgb, var(--ui-gold) 18%, var(--sheet)); font-weight: 700; }
+.lg-evopt:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
 
 /* U1–U4 경제 화면: 공통 토큰은 밝음·어두움 양쪽에서 바뀐다. */
 .lg-bar[data-econ="true"] .lg-bbtn,
@@ -311,120 +311,226 @@
 
 .lg-panel[data-econ="true"] .lg-radio { min-height: 44px; align-content: center; }
 
-/* 로비 v2: 광역 지도와 그 위의 새 게임 패널. 두 테마 모두 같은 남색 토큰을 쓴다. */
+/* U5: 팀 플레이와 이어지는 로비·자리 선택·진행자 남색 판. */
 @media screen {
-  html.v2-league-lobby { color-scheme: dark; background: var(--ui-panel); }
-  html.v2-league-lobby body { background: var(--ui-panel); }
-  html.v2-league-lobby #app { padding: 0; max-width: none; }
-  html.v2-league-lobby .lg-lobby {
-    --ink: var(--ui-text); --ink-2: var(--ui-muted); --line: var(--ui-border);
-    --paper: var(--ui-panel); --sheet: var(--ui-hud);
-    max-width: none; padding: 12px 24px 40px; color: var(--ui-text); font-family: var(--body);
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host):root {
+    --paper: var(--ui-panel); --sheet: var(--ui-hud); --sheet-2: var(--ui-hud);
+    --ink: var(--ui-text); --ink-2: var(--ui-muted); --ink-3: var(--ui-muted);
+    --line: var(--ui-border); --accent: var(--ui-cyan); --ok: var(--ui-mint);
+    --warn: var(--ui-gold); --bad: var(--ui-danger); --radius: var(--ui-radius);
+    color-scheme: dark; background: var(--ui-panel);
   }
-  html.v2-league-lobby .lg-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  html.v2-league-lobby .lg-back { color: var(--ui-muted); font-size: 13px; }
-  html.v2-league-lobby .lg-topline .v2-kicker { font: 600 11px var(--body); letter-spacing: 0; }
-  html.v2-league-lobby .lg-topline .v2-kicker span { font-family: var(--mono); letter-spacing: .08em; }
-  html.v2-league-lobby .lg-world { position: relative; height: 460px; margin: 8px -24px 0; overflow: hidden; background: var(--ui-hud); }
-  html.v2-league-lobby .lg-worldmap { position: absolute; inset: 130px 0 84px; margin: 0; }
-  html.v2-league-lobby #lg-lobby-map { display: block; width: 100%; cursor: pointer; animation: lg-world-enter .72s ease-out both; }
-  html.v2-league-lobby .lg-world::after { content: ""; position: absolute; inset: 0 0 auto; height: 130px; pointer-events: none; background: linear-gradient(to bottom, var(--ui-panel), transparent); }
-  html.v2-league-lobby .lg-lhead { position: absolute; z-index: 1; top: 28px; left: 48px; right: 24px; pointer-events: none; }
-  html.v2-league-lobby .lg-lhead h1 { margin: 0 0 14px; font-family: var(--display); font-size: clamp(26px, 2.9vw, 38px); font-weight: 400; letter-spacing: -.025em; line-height: 1.25; color: var(--ui-text); }
-  html.v2-league-lobby .lg-sub { max-width: 490px; color: var(--ui-muted); font-size: 14px; line-height: 1.8; }
-  html.v2-league-lobby .lg-maphelp { position: absolute; z-index: 1; bottom: 52px; left: 48px; max-width: 340px; margin: 0; color: var(--ui-muted); font-size: 12px; line-height: 1.8; pointer-events: none; }
-  html.v2-league-lobby .lg-cities { padding: 170px 32px 0; }
-  html.v2-league-lobby .lg-setup { position: relative; z-index: 2; margin: -32px 0 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); box-shadow: var(--ui-shadow); backdrop-filter: blur(10px); }
-  html.v2-league-lobby .lg-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 6px; border-bottom: 1px solid var(--ui-border); gap: 6px; }
-  html.v2-league-lobby .lg-modes button { min-height: 48px; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ui-muted); font: 600 15px var(--body); cursor: pointer; }
-  html.v2-league-lobby .lg-modes button[aria-pressed="true"] { border-color: var(--ui-cyan); color: var(--ui-cyan); background: var(--ui-hud); }
-  html.v2-league-lobby .lg-cards { grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
-  html.v2-league-lobby .lg-card { min-width: 0; padding: 18px 24px; border: 0; border-top: 1px solid var(--ui-border); border-radius: 0; background: transparent; gap: 12px; }
-  html.v2-league-lobby .lg-card[data-active="true"] { grid-column: 1 / -1; padding: 24px; }
-  html.v2-league-lobby .lg-card:first-child { border-top: 0; }
-  html.v2-league-lobby .lg-modebody { display: grid; gap: 12px; min-width: 0; }
-  html.v2-league-lobby .lg-open { min-width: 44px; min-height: 44px; margin-left: auto; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-cyan); font: 600 13px var(--body); cursor: pointer; }
-  html.v2-league-lobby .lg-card[data-active="true"] .lg-open { display: none; }
-  /* 한 줄 요약 옆의 조작 띠는 모든 원본 계약 요소를 실제 크기로 유지한다.
-     띠 안 스크롤은 페이지 폭을 늘리지 않으며 Playwright의 scrollIntoView도 허용한다. */
-  html.v2-league-lobby .lg-card[data-active="false"] { grid-template-columns: minmax(340px, .9fr) minmax(0, 1fr); align-items: center; background: var(--ui-hud); padding: 12px 24px; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modehead { flex-wrap: nowrap; align-items: center; gap: 12px; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modehead .lg-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  html.v2-league-lobby .lg-card[data-active="false"] h2 { flex: none; font-size: 15px; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modebody { display: flex; align-items: center; gap: 6px; height: 60px; overflow-x: auto; padding: 4px; box-sizing: border-box; scrollbar-width: thin; }
-  html.v2-league-lobby .lg-card[data-active="false"] :is(.lg-options, .lg-citysettings, .lg-gamesettings, .lg-pick, .lg-presets, .lg-pickc, .lg-solo-cities, .lg-launch) { display: contents; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modebody :is(legend, .lg-hint, .lg-field > span, [data-select]) { display: none; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modebody :is(button, a, select, .lg-pickcity, .lg-field) { flex: none; white-space: nowrap; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-modebody :is(button, a) { min-height: 44px; font: 600 13px var(--body); }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-pickcity { width: 100px; }
-  html.v2-league-lobby .lg-card[data-active="false"] .lg-field { width: 150px; }
-  html.v2-league-lobby .lg-card[data-active="false"] #lg-code { min-height: 44px; height: 44px; font-size: 18px; }
-  html.v2-league-lobby #lg-solo[data-active="false"] select.lg-contract { position: static; width: 120px; height: 44px; min-height: 44px; padding: 8px; clip-path: none; border: 1px solid var(--ui-border); border-radius: 10px; color: var(--ui-text); background: var(--ui-panel); font: 600 13px var(--body); }
-  html.v2-league-lobby .lg-modehead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
-  html.v2-league-lobby .lg-modehead h2 { font: 700 17px var(--body); color: var(--ui-text); }
-  html.v2-league-lobby .lg-options { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px 32px; }
-  html.v2-league-lobby .lg-citysettings,
-  html.v2-league-lobby .lg-gamesettings { display: grid; align-content: start; gap: 12px; min-width: 0; }
-  html.v2-league-lobby .lg-pick { position: relative; min-width: 0; padding: 8px 0 0; border: 0; border-radius: 0; gap: 8px; }
-  html.v2-league-lobby .lg-pick legend { padding: 0; color: var(--ui-muted); font: 600 13px var(--body); letter-spacing: 0; }
-  html.v2-league-lobby .lg-presets { gap: 6px; }
-  html.v2-league-lobby .lg-preset { min-height: 44px; min-width: 44px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: 10px; color: var(--ui-text); background: var(--ui-panel); font: 600 13px var(--body); letter-spacing: 0; }
-  html.v2-league-lobby .lg-preset[aria-pressed="true"] { color: var(--ui-cyan); border-color: var(--ui-cyan); background: var(--ui-hud); }
-  html.v2-league-lobby [data-select="lg-solo-city"][aria-pressed="true"] { color: var(--ui-gold); border-color: var(--ui-gold); }
-  html.v2-league-lobby .lg-pickc,
-  html.v2-league-lobby .lg-solo-cities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  html.v2-league-lobby .lg-pickcity { position: relative; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--ui-border); color: var(--ui-muted); background: var(--ui-panel); font: 600 13px var(--body); letter-spacing: 0; }
-  html.v2-league-lobby .lg-pickcity:has(input:checked) { color: var(--ui-text); border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--ui-panel)); }
-  /* checkbox는 투명한 칩 전체를 덮는다. 원래 check/uncheck와 Space 조작을 보존한다. */
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) body { background: var(--ui-panel); }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) #app { max-width: none; padding: 0; }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(.lg-lobby, .lg-host) {
+    max-width: 1440px; padding: 12px 16px 32px; color: var(--ui-text); font-family: var(--body); box-sizing: border-box;
+  }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(button, a, select, input, summary):focus-visible {
+    outline: 3px solid var(--ui-gold); outline-offset: 3px;
+  }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(button, select, summary) { min-height: 44px; }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) .v2-btn { border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); border-color: var(--ui-border); }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) .v2-btn.primary {
+    background: linear-gradient(135deg, var(--ui-cyan), color-mix(in srgb, var(--ui-cyan) 65%, var(--ui-blue)));
+    border: 1px solid var(--ui-cyan); color: var(--ui-panel); font-weight: 800; min-height: 56px;
+  }
+  html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) button:disabled { cursor: not-allowed; }
+  html:is(.v2-league-lobby, .v2-league-seat) .lg-topline {
+    display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); backdrop-filter: blur(10px);
+  }
+  html:is(.v2-league-lobby, .v2-league-seat) .lg-title { flex: 1; min-width: 0; }
+  html:is(.v2-league-lobby, .v2-league-seat) .lg-title h1 { margin: 2px 0 0; font: 400 22px/1.25 var(--display); }
+  html:is(.v2-league-lobby, .v2-league-seat) .v2-kicker { font-size: 11px; letter-spacing: .02em; }
+  html:is(.v2-league-lobby, .v2-league-seat) .lg-back { font-size: 13px; color: var(--ui-muted); flex: none; }
+  .lg-hud-pill { display: grid; gap: 2px; padding: 6px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); font-size: 11px; color: var(--ui-muted); white-space: nowrap; }
+  .lg-hud-pill b { font: 600 18px/1.2 var(--mono); color: var(--ui-text); }
+  html.v2-league-lobby .lg-modes { display: flex; flex: none; gap: 4px; padding: 4px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  html.v2-league-lobby .lg-modes button { padding: 8px 16px; border: 1px solid transparent; border-radius: var(--ui-radius); background: transparent; color: var(--ui-muted); font: 600 14px var(--body); cursor: pointer; }
+  html.v2-league-lobby .lg-modes button[aria-pressed="true"] { color: var(--ui-gold); border-color: var(--ui-gold); background: var(--ui-hud); }
+  html.v2-league-lobby .lg-control-room { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 390px); gap: 14px; align-items: start; margin-top: 14px; }
+  html.v2-league-lobby .lg-world { position: sticky; top: 12px; min-width: 0; height: min(780px, calc(100vh - 110px)); min-height: 540px; margin: 0; background: var(--ui-hud); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); overflow: hidden; }
+  html.v2-league-lobby .lg-lhead { position: relative; padding: 14px 16px 0; }
+  html.v2-league-lobby .lg-sub { color: var(--ui-muted); font-size: 13px; margin: 0; }
+  html.v2-league-lobby .lg-worldmap { position: absolute; inset: 42px 8px 52px; margin: 0; }
+  html.v2-league-lobby #lg-lobby-map { display: block; width: 100%; cursor: pointer; }
+  html.v2-league-lobby .lg-maphelp { position: absolute; inset: auto 16px 14px; margin: 0; font-size: 12px; line-height: 1.6; color: var(--ui-muted); }
+  html.v2-league-lobby .lg-cities { padding: 20px; }
+  html.v2-league-lobby .lg-cities li { border-color: var(--ui-border); }
+  html.v2-league-lobby .lg-setup { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); backdrop-filter: blur(10px); overflow: hidden; }
+  html.v2-league-lobby .lg-cards { display: block; margin: 0; }
+  html.v2-league-lobby .lg-card { display: grid; min-width: 0; padding: 18px; border: 0; border-radius: 0; background: transparent; gap: 16px; }
+  html.v2-league-lobby .lg-card[hidden] { display: none; }
+  html.v2-league-lobby .lg-modehead { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--ui-border); }
+  html.v2-league-lobby .lg-modehead h2 { font: 400 22px var(--display); }
+  html.v2-league-lobby :is(.lg-modebody, .lg-options, .lg-citysettings, .lg-gamesettings) { display: grid; min-width: 0; gap: 14px; }
+  html.v2-league-lobby .lg-pick { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; }
+  html.v2-league-lobby .lg-pick legend { font: 600 13px var(--body); color: var(--ui-muted); padding: 0; margin-bottom: 8px; }
+  html.v2-league-lobby .lg-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  html.v2-league-lobby .lg-preset { flex: 1; min-width: 44px; min-height: 44px; padding: 8px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-text); font: 600 13px var(--body); cursor: pointer; }
+  html.v2-league-lobby :is([data-select="lg-solo-turns"], [data-select="lg-solo-style"]) { min-height: 60px; }
+  html.v2-league-lobby .lg-preset[aria-pressed="true"] { color: var(--ui-gold); border-color: var(--ui-gold); background: var(--ui-hud); }
+  html.v2-league-lobby :is(.lg-solo-cities, .lg-pickc) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  html.v2-league-lobby .lg-pickcity { position: relative; display: flex; align-items: center; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px 42px 8px 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-muted); font: 600 13px var(--body); letter-spacing: 0; }
+  html.v2-league-lobby .lg-pickcity::after { content: ""; position: absolute; right: 9px; width: 26px; height: 16px; border-radius: var(--ui-radius); background: var(--ui-muted); pointer-events: none; }
+  html.v2-league-lobby .lg-pickcity::before { content: ""; position: absolute; z-index: 1; right: 22px; width: 10px; height: 10px; border-radius: var(--ui-radius); background: var(--ui-panel); pointer-events: none; }
+  html.v2-league-lobby .lg-pickcity:has(input:checked) { color: var(--ui-text); border-color: var(--ui-border); background: var(--ui-hud); }
+  html.v2-league-lobby .lg-pickcity:has(input:checked)::after { background: var(--ui-cyan); }
+  html.v2-league-lobby .lg-pickcity:has(input:checked)::before { right: 12px; }
   html.v2-league-lobby .lg-pickcity input.lg-chipcheck { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-  html.v2-league-lobby .lg-pickcity input:disabled { cursor: default; }
-  html.v2-league-lobby .lg-pickcity small { color: var(--ui-muted); font-size: 11px; }
-  /* select_option 계약과 접근성은 유지하며 평소에는 대응 칩으로 표시한다. 키보드 포커스 때 원래 select도 드러난다. */
-  html.v2-league-lobby #lg-solo select.lg-contract { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
-  html.v2-league-lobby #lg-solo select.lg-contract:focus-visible { z-index: 3; width: min(220px, 100%); height: 44px; clip-path: none; padding: 8px; border: 1px solid var(--ui-cyan); background: var(--ui-panel); color: var(--ui-text); }
-  html.v2-league-lobby .lg-launch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; }
-  html.v2-league-lobby .lg-big { min-height: 48px; font-size: 15px; }
-  html.v2-league-lobby .v2-btn.primary { background: var(--ui-cyan); border-color: var(--ui-cyan); color: var(--ui-panel); }
-  html.v2-league-lobby .lg-hint { color: var(--ui-muted); font-size: 12px; overflow-wrap: anywhere; }
-  html.v2-league-lobby .lg-field { min-width: 0; color: var(--ui-muted); font: 600 13px var(--body); letter-spacing: 0; }
-  html.v2-league-lobby .lg-field input { box-sizing: border-box; width: 100%; min-width: 0; background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border); font: 500 15px var(--mono); }
-  html.v2-league-lobby #lg-code { height: 64px; font: 600 30px var(--mono); letter-spacing: .18em; }
-  html.v2-league-lobby .lg-field input::placeholder { color: var(--ui-muted); opacity: 1; }
-  html.v2-league-lobby .lg-net { margin-top: 12px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-muted); font-size: 12px; }
-  html.v2-league-lobby .lg-net summary::after { content: "▸"; margin-left: auto; color: var(--ui-cyan); }
-  html.v2-league-lobby .lg-net[open] { padding-bottom: 12px; }
-  html.v2-league-lobby .lg-net[open] summary::after { content: "▾"; }
-  html.v2-league-lobby .lg-radio input { accent-color: var(--ui-cyan); }
-  html.v2-league-lobby .lg-err,
-  html.v2-league-lobby #lg-pickmsg[data-bad="true"] { color: var(--ui-danger); }
-  html.v2-league-lobby .lg-pickcity:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--ui-cyan); }
-  html.v2-league-lobby .lg-lobby :is(button, a):hover { filter: brightness(1.08); }
-  @media (max-width: 760px) {
-    html.v2-league-lobby .lg-lobby { padding: 8px 12px 28px; }
-    html.v2-league-lobby .lg-topline .v2-kicker { font-size: 9px; letter-spacing: 0; }
-    html.v2-league-lobby .lg-world { height: 340px; margin: 4px -12px 0; }
-    html.v2-league-lobby .lg-world::after { height: 100px; }
-    html.v2-league-lobby .lg-lhead { top: 12px; left: 16px; right: 16px; }
-    html.v2-league-lobby .lg-lhead h1 { font-size: 24px; margin-bottom: 8px; }
-    html.v2-league-lobby .lg-sub { font-size: 12px; line-height: 1.6; }
-    html.v2-league-lobby .lg-worldmap { top: 110px; bottom: 32px; }
-    html.v2-league-lobby .lg-maphelp { bottom: 0; left: 12px; right: 12px; max-width: none; font-size: 10px; text-align: center; background: var(--ui-panel); }
-    html.v2-league-lobby .lg-setup { margin-top: 8px; }
-    html.v2-league-lobby .lg-modes { gap: 4px; padding: 4px; }
-    html.v2-league-lobby .lg-modes button { font-size: 13px; padding: 6px 2px; }
-    html.v2-league-lobby .lg-cards { grid-template-columns: minmax(0, 1fr); }
-    html.v2-league-lobby .lg-card,
-    html.v2-league-lobby .lg-card[data-active="true"] { padding: 16px 12px; }
-    html.v2-league-lobby .lg-card[data-active="false"] { grid-template-columns: minmax(0, 1fr); padding: 8px 12px; gap: 2px; }
-    html.v2-league-lobby .lg-card[data-active="false"] .lg-modehead { gap: 8px; }
-    html.v2-league-lobby .lg-card[data-active="false"] .lg-modehead .lg-hint { font-size: 11px; }
-    html.v2-league-lobby .lg-options { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-    html.v2-league-lobby .lg-launch > .lg-big { flex: 1; }
-    html.v2-league-lobby .lg-pickcity { padding: 8px; }
+  html.v2-league-lobby .lg-pickcity:has(input:focus-visible) { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+  html.v2-league-lobby .lg-pickcity small { color: var(--ui-muted); font-size: 10px; }
+  /* 검사 select_option과 키보드 select는 같은 원본 요소를 사용한다. */
+  html.v2-league-lobby select.lg-contract { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
+  html.v2-league-lobby select.lg-contract:focus-visible { z-index: 3; width: 100%; height: 44px; clip-path: none; padding: 8px; background: var(--ui-panel); color: var(--ui-text); }
+  html.v2-league-lobby :is(.lg-field input, .lg-field select) { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-text); font: 500 14px var(--body); }
+  html.v2-league-lobby .lg-field select { appearance: none; padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--ui-muted) 50%), linear-gradient(135deg, var(--ui-muted) 50%, transparent 50%); background-position: calc(100% - 18px) 19px, calc(100% - 13px) 19px; background-size: 5px 5px; background-repeat: no-repeat; }
+  html.v2-league-lobby .lg-field { min-width: 0; color: var(--ui-muted); font: 600 13px var(--body); }
+  html.v2-league-lobby #lg-code { font: 600 24px var(--mono); letter-spacing: .1em; }
+  html.v2-league-lobby .lg-launch { display: grid; gap: 8px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--ui-border); }
+  html.v2-league-lobby .lg-net { background: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); font-size: 13px; }
+  html.v2-league-lobby .lg-hint { font-size: 12px; }
+  .lg-lobby-city-info { padding: 12px; border: 1px solid var(--ui-gold); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  html:is(.v2-league-lobby, .v2-league-seat) #lg-start-src { margin-top: 10px; font-size: 12px; color: var(--ui-muted); }
+  .lg-lobby-city-info h2 { font: 400 20px var(--display); margin: 0 0 8px; }
+  .lg-chosen-city { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; }
+  .lg-chosen-city .lg-city-facts { gap: 4px 8px; margin: 0; font-size: 11px; }
+  .lg-chosen-city .lg-city-facts dd { font-size: 12px; }
+  .lg-extra-settings { padding: 0 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  .lg-extra-settings summary { display: flex; align-items: center; color: var(--ui-muted); cursor: pointer; font-size: 12px; }
+  .lg-extra-settings summary::after { content: "▾"; margin-left: auto; }
+  .lg-extra-settings[open] summary::after { content: "▴"; }
+  .lg-extra-settings > div { display: grid; gap: 12px; padding: 4px 0 12px; }
+  .lg-city-facts { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 12px 0; font-size: 13px; }
+  .lg-city-facts dt { color: var(--ui-muted); }
+  .lg-city-facts dd { margin: 0; font: 600 14px var(--mono); white-space: nowrap; }
+  html.v2-league-seat #lg-wait { margin: 12px 4px; font-size: 13px; }
+  .lg-seat-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 360px); gap: 14px; }
+  .lg-seat-stage { min-width: 0; }
+  .lg-seat-map { height: min(660px, calc(100vh - 240px)); min-height: 360px; margin: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
+  #lg-seat-map { display: block; width: 100%; cursor: pointer; }
+  html.v2-league-seat .lg-seats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 6px; gap: 4px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); backdrop-filter: blur(10px); }
+  html.v2-league-seat .lg-seatbtn { min-width: 0; min-height: 76px; padding: 8px 4px; border: 1px solid transparent; border-radius: var(--ui-radius); background: transparent; color: var(--ui-text); font: 600 13px var(--body); }
+  html.v2-league-seat .lg-seatbtn b { font-size: 15px; }
+  html.v2-league-seat .lg-seatbtn span { font-size: 11px; color: var(--ui-mint); }
+  html.v2-league-seat .lg-seatbtn[aria-pressed="true"] { color: var(--ui-gold); border-color: var(--ui-gold); background: var(--ui-panel); }
+  html.v2-league-seat .lg-seatbtn:disabled { opacity: 1; color: var(--ui-muted); background: var(--ui-panel); border-color: var(--ui-border); }
+  html.v2-league-seat .lg-seatbtn:disabled span { color: var(--ui-muted); }
+  .lg-seat-info { display: grid; align-content: start; gap: 16px; padding: 18px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); backdrop-filter: blur(10px); min-width: 0; }
+  .lg-seat-info h2 { margin: 0; font: 400 24px var(--display); }
+  html.v2-league-host .lg-hbar { border-bottom: 0; }
+  html.v2-league-host .lg-hmeta h1 { font: 400 21px/1.4 var(--display); }
+  html.v2-league-host .lg-room { order: 3; margin-left: auto; background: transparent; color: var(--ui-muted); padding: 6px; gap: 6px; }
+  html.v2-league-host .lg-room b { font: 600 14px var(--mono); letter-spacing: .06em; color: var(--ui-gold); }
+  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 246px; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
+  html.v2-league-host .lg-host-board { display: grid; grid-template-columns: auto minmax(110px, auto) auto minmax(0, 1fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
+  .lg-host-board > div { min-width: 0; display: grid; align-content: center; gap: 6px; }
+  .lg-host-board small { color: var(--ui-muted); font: 600 12px var(--body); }
+  .lg-command-month > b { font: 400 40px/1.1 var(--display); white-space: nowrap; }
+  .lg-phase-chip { width: max-content; padding: 4px 10px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-gold); font-size: 12px; }
+  #lg-host-time { font: 600 34px/1.2 var(--mono); white-space: nowrap; }
+  #lg-host-time[data-unlimited="true"] { font: 600 14px var(--body); white-space: normal; }
+  #lg-host-time[data-low="true"] { color: var(--ui-danger); }
+  #lg-host-ready > b { font: 600 30px/1.2 var(--mono); white-space: nowrap; }
+  #lg-host-ready b small { margin-left: 2px; }
+  .lg-ready-pips { display: flex; gap: 4px; }
+  .lg-ready-pips i { width: 10px; height: 16px; background: var(--ui-border); clip-path: polygon(0 0,100% 0,100% 100%,50% 75%,0 100%); }
+  .lg-ready-pips i[data-ready="true"] { background: var(--ui-mint); }
+  .lg-command-goals { border-left: 1px solid var(--ui-border); padding-left: 14px; }
+  #lg-host-goals { font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
+  .lg-goalbar { display: grid; grid-template-columns: 34px minmax(20px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
+  .lg-goalbar > div { position: relative; height: 8px; border-radius: var(--ui-radius); background: var(--ui-border); }
+  .lg-goalbar i { display: block; height: 100%; border-radius: var(--ui-radius); background: var(--ui-mint); }
+  .lg-goalbar em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ui-text); }
+  .lg-goalbar b { font: 600 12px var(--mono); white-space: nowrap; }
+  .lg-goalbar[data-bad="true"] b { color: var(--ui-danger); }
+  .lg-goalbar[data-bad="true"] i { background: var(--ui-danger); }
+  .lg-host-actions { display: grid; gap: 8px; }
+  .lg-host-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+  html.v2-league-host .lg-host-tools .v2-btn { flex: 1; padding: 6px 8px; font-size: 11px; background: transparent; color: var(--ui-muted); }
+  .lg-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
+  #lg-host-risk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .lg-risk-chip { display: inline-flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--ui-danger); border-radius: var(--ui-radius); color: var(--ui-danger); font-size: 12px; }
+  #lg-host-unready { color: var(--ui-muted); font-size: 12px; }
+  html.v2-league-host #lg-host-summary { padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  html.v2-league-host #lg-host-summary h2 { font: 400 23px var(--display); margin: 0 0 8px; }
+  html.v2-league-host #lg-host-summary-table { table-layout: auto; font-size: 18px; }
+  html.v2-league-host #lg-host-summary-table :is(th, td) { height: 56px; padding: 6px; white-space: nowrap; overflow-wrap: normal; }
+  html.v2-league-host #lg-host-summary-table thead th { font: 600 12px var(--body); }
+  html.v2-league-host #lg-host-summary-table th[scope="row"] { border-left: 0; }
+  html.v2-league-host #lg-host-summary-table button { padding: 4px 0; border: 0; background: transparent; font: 400 18px var(--display); text-align: left; }
+  html.v2-league-host #lg-host-summary-table td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  html.v2-league-host #lg-host-summary-table td[data-ready="true"] { color: var(--ui-mint); }
+  .lg-ledger-value { white-space: nowrap; }
+  .lg-ledger-value small { font: 500 11px var(--body); color: var(--ui-muted); margin-left: 2px; }
+  .lg-warning-symbol { font: 700 11px var(--body); color: var(--ui-danger); }
+  .lg-ledger-note { border-top: 1px solid var(--ui-border); padding-top: 10px; margin: 10px 0 0; font: 400 12px/1.6 var(--body); color: var(--ui-muted); }
+  html.v2-league-host .lg-host-details { border-radius: var(--ui-radius); background: var(--ui-panel); }
+  html.v2-league-host .lg-tcard { border-left: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+  html.v2-league-host .lg-mapnav a { border-color: var(--ui-border); }
+  html.v2-league-host .lg-table th[scope="row"] { border-left: 0; }
+  html.v2-league-host .lg-scoreparts meter { accent-color: var(--ui-mint); }
+  html.v2-league-host .lg-scoreparts meter::-webkit-meter-optimum-value { background: var(--ui-mint); }
+  html.v2-league-host .lg-scoreparts meter::-moz-meter-bar { background: var(--ui-mint); }
+  html.v2-league-host .lg-table td[data-bad="true"] { text-decoration: none; }
+  html.v2-league-host #lg-host-summary-table td[data-bad="true"] { border-bottom-color: var(--ui-border); }
+  html.v2-league-host .lg-evsize i { color: var(--ui-panel); }
+  @media (max-width: 1100px) {
+    html.v2-league-host .lg-host-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .lg-command-goals { grid-column: 1 / -1; border-left: 0; padding-left: 0; }
   }
-  @media (prefers-reduced-motion: reduce) { html.v2-league-lobby #lg-lobby-map { animation: none; } }
+  @media (max-width: 900px) {
+    html.v2-league-lobby .lg-topline { flex-wrap: wrap; }
+    html.v2-league-lobby .lg-modes { order: 4; flex-basis: 100%; }
+    html.v2-league-lobby .lg-modes button { flex: 1; }
+    html.v2-league-lobby .lg-control-room, .lg-seat-layout { grid-template-columns: minmax(0, 1fr); }
+    html.v2-league-lobby .lg-world { position: relative; height: 460px; min-height: 0; }
+    .lg-seat-map { height: 420px; min-height: 0; }
+    html.v2-league-host #lg-host-summary-table,
+    html.v2-league-host #lg-host-summary-table :is(thead, tbody) { display: block; }
+    html.v2-league-host #lg-host-summary-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    html.v2-league-host #lg-host-summary-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; padding: 14px 0; border-bottom: 1px solid var(--ui-border); }
+    html.v2-league-host #lg-host-summary-table :is(th, td) { display: block; width: auto; height: auto; padding: 0; text-align: left; border: 0; font-size: clamp(14px, 2.6vw, 18px); white-space: nowrap; overflow-wrap: normal; }
+    html.v2-league-host #lg-host-summary-table th[scope="row"] { grid-column: 1 / -1; }
+    html.v2-league-host #lg-host-summary-table button { width: auto; font-size: 20px; }
+    html.v2-league-host #lg-host-summary-table td::before { content: attr(data-label); display: block; color: var(--ui-muted); font: 600 11px var(--body); margin-bottom: 4px; }
+    html.v2-league-host #lg-host-summary-table td[data-bad="true"]::before { color: var(--ui-danger); }
+    html.v2-league-host #lg-host-summary .lg-tablewrap { overflow-x: visible; }
+  }
+  @media (max-width: 600px) {
+    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) :is(.lg-lobby, .lg-host) { padding: 8px 10px 28px; }
+    html:is(.v2-league-lobby, .v2-league-seat) .lg-topline { gap: 8px; padding: 8px; flex-wrap: wrap; }
+    html:is(.v2-league-lobby, .v2-league-seat) .lg-title h1 { font-size: 20px; }
+    html.v2-league-lobby .lg-modes { gap: 2px; padding: 4px; }
+    html.v2-league-lobby .lg-modes button { font-size: 12px; padding: 8px 4px; }
+    html.v2-league-lobby .lg-world { height: 330px; }
+    html.v2-league-lobby .lg-worldmap { inset: 58px 0 54px; }
+    html.v2-league-lobby .lg-maphelp { inset: auto 12px 12px; font-size: 11px; }
+    html.v2-league-lobby .lg-card { padding: 14px; }
+    html.v2-league-lobby .lg-hud-pill { display: none; }
+    .lg-seat-map { height: 310px; }
+    html.v2-league-seat .lg-seats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    html.v2-league-seat .lg-seatbtn { min-height: 64px; }
+    html.v2-league-seat .lg-hud-pill { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
+    .lg-host-command { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+    html.v2-league-host .lg-host-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+    .lg-command-month { grid-column: 1 / -1; }
+    .lg-command-month > b { font-size: 36px; }
+    #lg-host-time { font-size: 32px; }
+    .lg-host-tools .v2-btn { font-size: 12px; }
+    html.v2-league-host .lg-hmeta { flex-basis: 180px; }
+    html.v2-league-host .lg-hmeta h1 { font-size: 18px; }
+    html.v2-league-host #lg-host-summary { padding: 12px; }
+    html.v2-league-host #lg-host-summary-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    html.v2-league-host #lg-host-summary-table td { font-size: 18px; }
+    html.v2-league-host .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
+    html.v2-league-host .lg-evs { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *,
+    html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *::before { animation: none; transition: none; scroll-behavior: auto; }
+  }
 }
-@keyframes lg-world-enter { from { transform: scale(.985); } to { transform: scale(1); } }
 
 /* U5 팀 지역 지도·읽기 전용 관전 */
 .lg-region { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; overflow: auto; background: var(--paper); color: var(--ink); }
@@ -471,8 +577,8 @@
 .lg-team-map .bd-banner[data-kind]:not([data-kind="city"]):not([data-kind="city_l"]):not([data-kind="city_m"]):not([data-kind="port"]):not([data-kind="factory_big"]):not([data-kind="plant"]):not([data-kind="gridpt"]) { visibility: hidden; }
 .lg-team-map[data-line-tool="true"] .bd-banner[data-kind] { visibility: visible; }
 .lg-team-map[data-line-tool="false"] .bd-banner[data-state="off"] [data-bv] { display: none; }
-.lg-team-map[data-line-tool="true"] .bd-banner[data-state="off"] { outline: 2px solid var(--ui-danger, #c0392b); }
-.lg-team-map[data-line-tool="true"] .bd-banner[data-state="ok"] { outline: 2px solid var(--ui-cyan, #2e8b57); }
+.lg-team-map[data-line-tool="true"] .bd-banner[data-state="off"] { outline: 2px solid var(--ui-danger); }
+.lg-team-map[data-line-tool="true"] .bd-banner[data-state="ok"] { outline: 2px solid var(--ui-cyan); }
 .lg-bmoney { white-space: nowrap; font-variant-numeric: tabular-nums; }
 #lg-evidence button { text-align: left; }
 #lg-previous-note { padding: 8px; border-left: 3px solid var(--accent); background: var(--paper); }
@@ -599,8 +705,8 @@
 #lg-panel .lg-radio > span { display: flex; align-items: center; min-height: 44px; gap: 8px; }
 .lg-bar:not(.lg-awaybar) { z-index: 32; }
 .lg-bteam { background: #0d2a33; color: #f3f6f8; border: 2px solid var(--c); }
-.lg-host { --lg-danger: var(--bad); --lg-ok: #2a7046; }
-:root[data-theme="dark"] .lg-host { --lg-ok: var(--ok); }
+.lg-host { --lg-danger: var(--ui-danger); --lg-ok: var(--ui-mint); }
+:root[data-theme="dark"] .lg-host { --lg-ok: var(--ui-mint); }
 .lg-panel { --lg-danger: #ff8a7a; --lg-ok: #8fe0a9; }
 .lg-host .v2-kicker { color: var(--accent); }
 .lg-tline b[data-bad="true"],
@@ -617,7 +723,7 @@
 .lg-panel .lg-gate[data-ok="false"] { color: var(--lg-danger); }
 .lg-host .tag-mine,
 .lg-panel .tag-mine { color: var(--ink-2); border-color: currentColor; }
-.lg-evsize i { background: #d08a1c; color: #15222c; }
+.lg-evsize i { background: var(--ui-gold); color: #15222c; }
 .tag-model { display: inline-block; padding: 1px 5px; border: 1px dashed currentColor; border-radius: 4px; color: var(--ink-2); font-size: 12px; }
 .lg-event-source a { color: var(--ink); text-decoration: underline; overflow-wrap: anywhere; }
 .lg-event-source summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }

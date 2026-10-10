@@ -1,6 +1,7 @@
 """리그 v3: 사건 예보·대응 버튼, 실제 크기 공개, 연구(대학·연구소) 진척, 철거 회수, 현금 흐름 표시."""
 import sys, os, re
 from playwright.sync_api import sync_playwright
+from league_flow import confirm_seat, select_mode
 D = os.path.dirname(os.path.abspath(__file__)); SH = os.path.join(D, "shots")
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9420/index.html"
 problems = []
@@ -28,13 +29,13 @@ with sync_playwright() as pw:
         def check(condition, message):
             ok(condition, f"{mode}: {message}")
         h = page(); h.goto(BASE + "#home"); h.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-        h.goto(BASE + "#league"); h.wait_for_selector("[data-preset]"); h.click('[data-preset="2"]')
+        h.goto(BASE + "#league"); select_mode(h, "host"); h.click('[data-preset="2"]')
         h.click(f'#lg-mode-host [data-turns="{turns}"]'); h.click("#lg-host"); h.wait_for_selector("#lg-roomcode"); room = h.inner_text("#lg-roomcode")
         tp = {}
         for t in ["pyeongtaek", "dangjin"]:
             p = page(); tp[t] = p
-            p.goto(BASE + "#league"); p.fill("#lg-code", room); p.click("#lg-join")
-            p.wait_for_selector(f'[data-seat="{t}"]:not([disabled])', timeout=10000); p.click(f'[data-seat="{t}"]'); p.wait_for_selector("#lg-bar", timeout=10000)
+            p.goto(BASE + "#league"); select_mode(p, "join"); p.fill("#lg-code", room); p.click("#lg-join")
+            confirm_seat(p, t, timeout=10000)
         P = tp["pyeongtaek"]
         # 내 도시: 태양광·배터리 + 대학·연구소, 연구 순서
         P.evaluate("""() => KCP.league.plan(st => { const BG = KCP.buildGame; const T = BG.TILES; const free = t => T.filter(x => !x.out && x.site < 0 && !BG.siteRule(t, x)).map(x => x.i);

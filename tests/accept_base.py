@@ -8,6 +8,7 @@ T0a-16(b)의 의도적 pageerror 허용은 공개 harness API에 없으므로 �
 import re
 
 from harness import Ctx, main
+from league.league_flow import select_mode, start_solo
 
 MAP_NOTICE_24 = "정착지 지도가 보고서 배치도로 바뀌어, 예전에 고른 정착지·확정·시뮬레이션 기록을 비웠습니다. 특별 아이템과 써 둔 글은 그대로 있습니다. 새 지도에서 정착지를 다시 골라 주세요."
 
@@ -18,6 +19,39 @@ def _wait(c, selector, state="visible"):
 
 def _home(c):
     c.goto("#home", wait=".home-grid")
+
+
+def t_U6_home_league_entries(c: Ctx):
+    """2022 기출과 확장판의 각 진입점이 해당 화면으로 이어진다."""
+    _home(c)
+    for year in range(2022, 2027):
+        c.eq(c.page.locator(f'.pkg[href="#y{year}"]').count(), 1,
+             f"U6 {year} 기출 진입점 보존")
+    c.expect(c.page.get_by_role("heading", name="2022 확장판 · 전력 리그", exact=True).is_visible(),
+             "U6 홈에 2022 확장판이 보인다")
+    c.check("U6 짝 카드 홈")
+    c.page.locator('.pkg[href="#y2022"]').click()
+    c.page.wait_for_selector("#prep-body > *")
+    c.expect(c.page.url.endswith("#y2022"), "U6 2022 기출은 준비실로 간다")
+    _home(c)
+    c.page.get_by_role("link", name=re.compile(r"^혼자 하기")).click()
+    c.page.wait_for_selector("#lg-solo")
+    c.expect(c.page.locator('.lg-modes [data-mode="solo"]').get_attribute("aria-pressed") == "true",
+             "U6 홈 혼자 하기는 혼자 설정을 연다")
+    c.check("U6 홈에서 혼자 설정")
+    start_solo(c.page)
+    c.expect(c.page.locator("#lg-ready").is_visible(), "U6 홈 혼자 하기에서 플레이 화면 도달")
+    c.check("U6 홈에서 혼자 시작")
+    _home(c)
+    c.page.get_by_role("link", name=re.compile(r"^멀티")).click()
+    c.page.wait_for_selector("#lg-host")
+    c.expect(c.page.locator('.lg-modes [data-mode="host"]').get_attribute("aria-pressed") == "true",
+             "U6 홈 멀티는 진행자 설정을 연다")
+    c.check("U6 홈에서 멀티 설정")
+    select_mode(c.page, "join")
+    c.expect(c.page.locator("#lg-code").is_visible() and c.page.locator("#lg-join").is_visible(),
+             "U6 멀티에서 팀 참가 설정으로 전환")
+    c.check("U6 팀 참가 설정")
 
 
 def _phase(c, phase, selector):

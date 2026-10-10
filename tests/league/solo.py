@@ -10,6 +10,7 @@ import re
 import sys
 
 from playwright.sync_api import sync_playwright
+from league_flow import select_mode, start_solo
 
 from econui import (Checks, WAIT, context_for, diagnostics, local_address,
                     monitored_page, open_panel, overflow, rank_checks,
@@ -85,19 +86,7 @@ def fingerprint(state):
 
 
 def start(page):
-    card = page.locator("#lg-solo")
-    # U3 기본 길이 12달. 길이 버튼이 있으면 명시적으로 누른다(선택 상자 조작 없음).
-    length = card.locator('[data-turns="12"]')
-    if not length.count():
-        length = card.get_by_role("button", name=re.compile(r"^12\s*달"))
-    if length.count() and length.first.is_visible():
-        length.first.click()
-    # #lg-solo 자체가 버튼/링크인 구현과 카드 안 시작 버튼을 모두 허용한다.
-    if card.evaluate("el => el.tagName === 'BUTTON' || el.tagName === 'A'"):
-        card.click()
-    else:
-        card.get_by_role("button", name=re.compile(r"시작|혼자 하기")).first.click()
-    page.wait_for_url(re.compile(r".*#league/solo$"), timeout=WAIT)
+    start_solo(page)
     page.wait_for_function(STATE_READY_JS)
     page.wait_for_timeout(400)
     return read(page)
@@ -204,14 +193,19 @@ def resume(checks, page, label):
 
 def play(checks, page, base, label):
     page.goto(base + "#league")
+    select_mode(page, "solo")
     checks.test(f"{label} U3 로비 #lg-solo 카드", lambda: shown(page, "#lg-solo"))
-    checks.ok('분기 초(1·4·7·10월)에 1/4씩' in page.locator('#lg-turnmsg').inner_text() and
-              '해마다 1월에 국가 재정지원금' not in page.locator('#lg-turnmsg').inner_text(),
-              f'{label} D-A6 로비 분기 지급 설명')
     overflow(checks, page, label + " 로비")
     screenshot(checks, page, f"econui-solo-{label}-lobby.png")
-    checks.ok(page.locator('#lg-class-time option').count() == 3 and page.locator('#lg-class-time').input_value() == '100',
+    select_mode(page, "host")
+    # 분기 지급·수업 시간 설명은 진행자 설정에 있다. 숨겨진 문구를 읽지 않는다.
+    checks.ok(shown(page, '#lg-turnmsg') and
+              '분기 초(1·4·7·10월)에 1/4씩' in page.locator('#lg-turnmsg').inner_text() and
+              '해마다 1월에 국가 재정지원금' not in page.locator('#lg-turnmsg').inner_text(),
+              f'{label} D-A6 로비 분기 지급 설명')
+    checks.ok(shown(page, '#lg-class-time') and page.locator('#lg-class-time option').count() == 3 and page.locator('#lg-class-time').input_value() == '100',
               f'{label} U6 로비 수업 시간 50·100·제한 없음')
+    overflow(checks, page, label + " 진행자 설정")
     observation = start(page)
     checks.ok(not shown(page, '#lg-panel'), f'{label} U1 혼자 하기 첫 화면 기준 서랍 닫힘')
     checks.ok(shown(page, '#lg-first-guide'), f'{label} U1 첫 달 네 단계 안내')
