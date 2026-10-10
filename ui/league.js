@@ -1037,9 +1037,17 @@
     return false;
   }
 
+  function lobbyCityInfo(t, compact = false) {
+    const stat = KCP.ECON_DATA?.start?.[t.id], ties = R().ties.filter(x => x.a === t.id || x.b === t.id);
+    const facts = stat ? `<dl class="lg-city-facts"><dt>시작 주민</dt><dd>${esc(fmt(stat.pop0))}명</dd>${compact ? "" : `<dt>시작 종사자</dt><dd>${esc(fmt(stat.ind0))}명</dd>`}<dt>시작 재정자립도</dt><dd>${esc(fmt(stat.fsr0 * 100, 1))}%</dd></dl>` : "";
+    return `<div class="${compact ? "lg-chosen-city" : "lg-city-profile"}"><h2>${esc(t.name)}</h2>${facts}</div>${compact ? "" : `<p class="lg-hint">이웃 연계선 후보 ${ties.length}곳 · ${esc(ties.map(x => teamName(x.a === t.id ? x.b : x.a)).join(" · "))}</p>`}${stat ? sourceHTML(t.id) : ""}<p class="lg-hint">${ASSUMPTIONS}</p>`;
+  }
+  KCP.paintLeaguePreview = cv => renderBoard(cv, { active: R().teams.map(t => t.id), teams: {}, ties: [] }, null, false, { mode: "home" });
+
   /* ================= 로비 ================= */
-  function lobby(app, joinArg) {
+  function lobby(app, joinArg, initialMode = "solo") {
     lobbyStop?.();
+    document.documentElement.classList.remove("v2-league-seat", "v2-league-host");
     document.documentElement.classList.add("v2-league-lobby");
     let pre = null;
     if (joinArg) { try { pre = JSON.parse(b64d(joinArg)); } catch (e) { pre = null; } }
@@ -1056,11 +1064,13 @@
       <main class="lg-lobby" data-mode="solo">
         <header class="lg-topline">
           <a class="lg-back" href="#home">← 연습실 홈</a>
-          <p class="v2-kicker"><span>GRID TYCOON</span> · 전력 리그</p>
+          <div class="lg-title"><p class="v2-kicker"><span>GRID TYCOON</span> · 전력 리그</p><h1>${esc(reg.name)}</h1></div>
+          <nav class="lg-modes" aria-label="플레이 모드">${[["solo", "혼자 하기"], ["join", "팀으로 참가"], ["host", "진행자(교사)"]].map(([mode, name]) => `<button type="button" data-mode="${mode}" aria-pressed="${mode === "solo"}" aria-controls="${mode === "solo" ? "lg-solo" : `lg-mode-${mode}`}">${name}</button>`).join("")}</nav>
+          <span class="lg-hud-pill">도시 <b>${reg.teams.length}곳</b></span>
         </header>
+        <div class="lg-control-room">
         <section class="lg-world" aria-label="리그 지역과 도시 선택">
           <header class="lg-lhead">
-          <h1>${esc(reg.name)} 전력 리그</h1>
           <p class="lg-sub">도시 하나씩 맡아 전력망을 짓고 주민·기업을 겨룹니다.</p>
           </header>
           <figure class="lg-worldmap">
@@ -1069,20 +1079,19 @@
           <p class="lg-maphelp" id="lg-maphelp">지도에서 내 도시를 눌러요 · 🔒 필수 도시</p>
         </section>
         <section class="lg-setup" aria-label="새 게임 설정">
-          <nav class="lg-modes" aria-label="플레이 모드">${[["solo", "혼자 하기"], ["join", "팀으로 참가"], ["host", "진행자(교사)"]].map(([mode, name]) => `<button type="button" data-mode="${mode}" aria-pressed="${mode === "solo"}" aria-controls="${mode === "solo" ? "lg-solo" : `lg-mode-${mode}`}">${name}</button>`).join("")}</nav>
           <div class="lg-cards">
           <article class="lg-card" id="lg-solo" data-panel="solo" data-active="true"><header class="lg-modehead"><h2>혼자 하기</h2><p class="lg-hint">컴퓨터 도시와 겨룹니다. 한 탭에서 끝까지.</p>${soloNotice ? `<p class="lg-hint">${esc(soloNotice)}</p>` : ""}</header>
             <div class="lg-modebody">
             <div class="lg-options">
             <div class="lg-citysettings">
-            ${choices("lg-solo-city", "내 도시", reg.teams.map(t => [t.id, t.name]))}
+            ${choices("lg-solo-city", "내 도시", reg.teams.map(t => [t.id, t.name]))}<div id="lg-lobby-city-info" class="lg-lobby-city-info"></div>
             <fieldset class="lg-pick"><legend>함께할 도시 · 나와 컴퓨터 포함</legend><div class="lg-solo-cities">${cityChecks(true)}</div><p class="lg-hint">🔒 필수 도시 · 내 도시 외에는 컴퓨터가 맡아요.</p></fieldset>
             </div>
             <div class="lg-gamesettings">
             ${choices("lg-solo-turns", "게임 길이", [12, 24, 36].map(n => [String(n), `${n}달`]))}
-            ${seedChoice("lg-solo-seed")}
             <p class="lg-hint" id="lg-solo-turnmsg"></p>
-            <label class="lg-field">연습 방식<select id="lg-solo-practice"><option value="free">자유 실험(약속 건너뛰기 가능)</option><option value="promise">약속 연습</option></select></label>${choices("lg-solo-style", "컴퓨터 성향", [["careful", "신중"], ["balanced", "균형", true], ["bold", "공격"]])}
+            ${choices("lg-solo-style", "컴퓨터 성향", [["careful", "신중"], ["balanced", "균형", true], ["bold", "공격"]])}
+            <details class="lg-extra-settings"><summary>날씨·사건 · 연습 방식</summary><div>${seedChoice("lg-solo-seed")}<label class="lg-field">연습 방식<select id="lg-solo-practice"><option value="free">자유 실험(약속 건너뛰기 가능)</option><option value="promise">약속 연습</option></select></label></div></details>
             </div>
             </div>
             <div class="lg-launch"><button class="v2-btn primary lg-big" type="button" id="lg-solo-start">혼자 시작</button>${soloSave?.state ? `<a class="v2-btn lg-big" id="lg-solo-resume" href="#league/solo">이어서 하기</a><button class="v2-btn" type="button" id="lg-solo-reset">처음부터</button>` : ""}</div>
@@ -1121,6 +1130,7 @@
           </article>
           </div>
         </section>
+        </div>
         <details class="lg-net" ${net.kind === "supabase" ? "open" : ""}>
           <summary>연결 방식: <b id="lg-net-now">${net.kind === "supabase" ? "온라인(태블릿마다)" : "이 기기(탭끼리)"}</b></summary>
           <fieldset class="lg-radio">
@@ -1223,17 +1233,8 @@
     const rh = $("#lg-rehost");
     if (rh) rh.addEventListener("click", () => { location.hash = "#league/host"; });
 
-    // 같은 계약 요소를 접힌 행의 44px 조작 띠에 둔다. 복제하거나 hidden 처리하지 않는다.
-    app.querySelectorAll(".lg-modehead").forEach(head => {
-      const panel = head.closest("[data-panel]"), button = document.createElement("button");
-      button.type = "button"; button.className = "lg-open"; button.textContent = "열기";
-      button.dataset.mode = panel.dataset.panel;
-      button.setAttribute("aria-label", `${head.querySelector("h2").textContent} 열기`);
-      button.setAttribute("aria-controls", panel.id);
-      head.append(button);
-    });
     const root = $(".lg-lobby"), cv = $("#lg-lobby-map");
-    let mode = pre ? "join" : "solo", raf = 0, intro = null;
+    let mode = pre ? "join" : initialMode, raf = 0, intro = null;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const soloBoxes = [...app.querySelectorAll("[data-solo-city]")];
     const mapIds = () => mode === "host" ? picked() : mode === "solo" ? soloBoxes.filter(b => b.checked).map(b => b.dataset.soloCity) : reg.teams.map(t => t.id);
@@ -1259,6 +1260,7 @@
     };
     syncLobby = () => {
       const player = $("#lg-solo-city").value;
+      $("#lg-lobby-city-info").innerHTML = lobbyCityInfo(C.teamDef(reg, player), true);
       soloBoxes.forEach(b => {
         const own = b.dataset.soloCity === player;
         b.disabled = own || mustCity(b.dataset.soloCity);
@@ -1273,16 +1275,10 @@
       if (next !== mode) stopIntro();
       mode = next; root.dataset.mode = mode;
       app.querySelectorAll(".lg-modes [data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
-      app.querySelectorAll("[data-panel]").forEach(p => { p.dataset.active = String(p.dataset.panel === mode); });
-      app.querySelectorAll(".lg-open").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.mode === mode)));
+      app.querySelectorAll("[data-panel]").forEach(p => { p.dataset.active = String(p.dataset.panel === mode); p.hidden = p.dataset.panel !== mode; });
       syncLobby();
     };
-    app.querySelectorAll(".lg-modes [data-mode], .lg-open").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
-    // click 이후 펼쳐서 기존 체크박스·버튼의 포인터 조작을 방해하지 않는다.
-    $(".lg-cards").addEventListener("click", e => {
-      const panel = e.target.closest("[data-panel]");
-      if (panel && panel.dataset.panel !== mode) setMode(panel.dataset.panel);
-    });
+    app.querySelectorAll(".lg-modes [data-mode]").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
     app.querySelectorAll("[data-select]").forEach(b => b.addEventListener("click", () => {
       const select = $("#" + b.dataset.select);
       select.value = b.dataset.value; select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1420,7 +1416,11 @@
     const S = L.S || L.snap, now = L.S ? Date.now() : Date.now() + (L.skew || 0);
     el.textContent = S && S.ends ? mmss(S.ends - now) : "";
     const hostTime = document.getElementById("lg-host-time");
-    if (hostTime) hostTime.textContent = el.textContent || "시간 제한 없음";
+    if (hostTime) {
+      hostTime.textContent = el.textContent || "시간 제한 없음";
+      hostTime.dataset.unlimited = String(!S?.ends);
+      hostTime.dataset.low = String(!!(S?.ends && S.ends - now < 60000));
+    }
     el.dataset.low = String(!!(S && S.ends && S.ends - now < 60000));
   }
   function nextLabel(S) {
@@ -1458,6 +1458,8 @@
   }
   function renderHost(full) {
     if (!L || L.role !== "host" || !L.app || !L.app.isConnected || L.viewing) return;
+    document.documentElement.classList.remove("v2-league-lobby", "v2-league-seat");
+    document.documentElement.classList.add("v2-league-host");
     const S = L.S, reg = R(), now = Date.now(), V = C.publicView(S, now);
     const res = S.results[S.results.length - 1] || null;
     const RS0 = C.roundsOf(S), rd = S.round ? RS0[S.round - 1] : RS0[0];
@@ -1471,19 +1473,24 @@
         <main class="lg-host" data-econ="${!!V.econ}">
           <header class="lg-hbar">
             <a class="lg-back" href="#league" aria-label="로비로">←</a>
-            <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div><p class="lg-hint">팀은 참가 링크나 QR로 들어와요. 코드는 직접 입력할 때 사용해요.</p>
+            <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
             <div class="lg-hmeta">
               <p class="v2-kicker">${esc(reg.short)} · ${esc(reg.name)}</p>
               <h1 id="lg-h1"></h1>
             </div>
             <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>
             <b class="lg-timer num" id="lg-timer" aria-live="off" ${V.econ ? "hidden" : ""}></b>
-            <button type="button" class="v2-btn" id="lg-extend">+1분</button>
-            <button type="button" class="v2-btn primary" id="lg-next"></button>
-            <button type="button" class="v2-btn" id="lg-link">참가 링크 복사</button><button type="button" class="v2-btn" id="lg-download">기록 내려받기</button>
           </header>
           <p id="lg-host-warning" role="alert"></p>
-          ${V.econ ? '<section id="lg-host-overview" aria-label="진행 현황"></section><section id="lg-host-summary" aria-label="도시 요약"></section>' : ""}
+          <section class="lg-host-command" aria-label="리그 지휘 막대">
+            ${V.econ ? '<section id="lg-host-overview" aria-label="진행 현황"></section>' : ""}
+            <div class="lg-host-actions">
+              <button type="button" class="v2-btn primary" id="lg-next"></button>
+              <div class="lg-host-tools"><button type="button" class="v2-btn" id="lg-extend">+1분</button>
+              <button type="button" class="v2-btn" id="lg-link">참가 링크 복사</button><button type="button" class="v2-btn" id="lg-download">기록 내려받기</button></div>
+            </div>
+          </section>
+          ${V.econ ? '<section id="lg-host-alerts" aria-label="위험 도시"></section><section id="lg-host-summary" aria-label="도시 요약"></section>' : ""}
           ${V.econ ? `<div id="lg-host-ticker">${tickerHTML(V)}</div>` : ""}
           <section class="lg-evbox" id="lg-evbox" aria-live="polite"></section>
           ${V.econ ? `<details id="lg-host-details" class="lg-host-details" ${L.hostDetailsOpen ? "open" : ""}><summary>상세 지도·도시 카드</summary>` : ""}
@@ -1545,6 +1552,7 @@
     $("#lg-extend").hidden = !S.ends;
     if (V.econ) {
       $("#lg-host-overview").innerHTML = hostOverviewHTML(V, res);
+      $("#lg-host-alerts").innerHTML = hostRiskHTML(V, res);
       const summary = hostSummaryHTML(V, res);
       if (L.hostSummaryHTML !== summary) { $("#lg-host-summary").innerHTML = summary; L.hostSummaryHTML = summary; }
     }
@@ -1577,7 +1585,10 @@
     if (V.econ) {
       const ticker = $("#lg-host-ticker"), rank = $("#lg-host-rank"), debrief = $("#lg-host-debrief");
       if (ticker) ticker.innerHTML = tickerHTML(V);
-      if (rank) rank.innerHTML = rankHTML(V.econ, false);
+      if (rank) {
+        rank.innerHTML = rankHTML(V.econ, false);
+        rank.querySelectorAll(".lg-scoreparts [data-leader=true] > span").forEach(el => { el.textContent = el.textContent.replace("· 1위(동점 포함)", "◆"); el.title = "부분 점수 공동 선두(동점 포함)"; });
+      }
       if (debrief && S.phase === "end" && !debrief.querySelector("#lg-debrief")) {
         debrief.innerHTML = debriefHTML(V.econ);
         debrief.addEventListener("input", () => updateWeights(debrief, C.publicView(L.S, Date.now()).econ));
@@ -1617,15 +1628,25 @@
     const goalText = V.econ && ["lobby", "plan"].includes(V.phase)
       ? `정전 ≤ ${esc(fmt(goal.uns, 2))}% · CO₂ 운영 뒤 확정${region ? ` · 지난달 평가 목표 ≤ ${esc(fmt(lastGoal.co2))} t` : " · 첫 운영 전"}`
       : `정전 ≤ ${esc(fmt(lastGoal?.uns ?? goal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal?.co2 ?? goal.co2))} t`;
-    const risks = teams.map(t => ({ t, why: hostRisk(V, res, t.id) })).filter(x => x.why.length);
-    return `<p class="lg-host-board"><span>현재 달 <b>${esc(turnLabel(rd, V.round || 1, C.roundsOf(V).length, true))} · ${esc(PHASE_NAME[V.phase])}</b></span><span>${V.ends ? "남은 시간 " : ""}<b id="lg-host-time"></b></span>${showReady ? `<span id="lg-host-ready">준비 <b>${teams.length - unready.length}/${teams.length}</b></span><span id="lg-host-unready">미준비: ${esc(unready.map(t => t.name).join(" · ") || "없음")}</span>` : ""}<span id="lg-host-goals">이번 달 공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</span><span id="lg-host-risk">위험 도시: ${esc(risks.map(x => `${x.t.name}(${x.why.join(", ")})`).join(" · ") || "없음")}</span></p>`;
+    const bar = (label, value, target, unit, digits) => {
+      if (!Number.isFinite(value) || !Number.isFinite(target)) return "";
+      const scale = Math.max(target * 2, value, 1), width = Math.min(100, 100 * value / scale), marker = 100 * target / scale;
+      return `<div class="lg-goalbar" data-bad="${value > target}"><span>${label}</span><div role="meter" aria-label="${label} · 지난달 운영 / 목표" aria-valuemin="0" aria-valuemax="${scale}" aria-valuenow="${value}" aria-valuetext="${fmt(value, digits)}${unit} / 목표 ${fmt(target, digits)}${unit}"><i style="width:${width}%"></i><em style="left:${marker}%"></em></div><b>${value > target ? "▲ " : ""}${esc(fmt(value, digits))}${unit}</b></div>`;
+    };
+    return `<div class="lg-host-board"><div class="lg-command-month"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div><div class="lg-command-time"><small>남은 시간</small><b id="lg-host-time"></b></div>${showReady ? `<div id="lg-host-ready"><small>준비</small><b>${teams.length - unready.length}<small>/${teams.length}팀</small></b><span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span></div>` : ""}<div class="lg-command-goals"><small>지역 공동목표 · 지난달 운영 / 지금</small>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) + bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}<p id="lg-host-goals">이번 달 공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</p></div></div>`;
+  }
+  function hostRiskHTML(V, res) {
+    const teams = actT(V), risks = teams.map(t => ({ t, why: hostRisk(V, res, t.id) })).filter(x => x.why.length);
+    const short = { "정전 목표 초과": "정전", "남은 돈 음수": "남은 돈", "지지율 평가선 미달": "지지율", "접속 대기": "접속 대기" };
+    return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" title="${esc(x.why.join(" · "))}"><b>▲ ${esc(x.t.name)}</b> ${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
-    return `<h2>도시 요약</h2><p class="lg-hint">${res ? esc(resultHeading(V, res)) : "첫 운영 전"} · 정전·CO₂는 최근 월 운영, 돈·지지율은 현재 상태 · 준비는 계획 단계만 표시 · 남은 돈에는 지방채 한도(빚)를 포함해요 · 건설·연구·대응 예약과 지원금·연계선 정산 뒤 쓸 수 있는 돈이에요</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
+    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}">${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" ? "" : `<small>${unit}</small>`}</span></td>`;
+    return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? esc(resultHeading(V, res)) : "첫 운영 전"} · 정전·CO₂·주민 Δ = 지난달 운영 · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
       const city = V.econ.cities[t.id], r = res?.team[t.id], ready = V.teams[t.id].ready;
-      return `<tr style="--c:${esc(t.color)}"><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th><td data-bad="${r && r.unsPct > V.goals.unsPct}">${esc(fmt(r?.unsPct, 2))}%</td><td>${esc(fmt(r ? r.co2Prod * mul : undefined))}</td><td data-bad="${V.teams[t.id].left < 0}">${esc(fmt(V.teams[t.id].left, 1))}</td><td>${esc(fmt(city.cash, 1))}</td><td>${esc(fmt(city.debtCap, 1))}</td><td>${esc(fmt(city.approval, 1))}%</td><td>${rep?.cities?.[t.id] ? esc(signed(rep.cities[t.id].dPop)) + "명" : "–"}</td><td>${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
-    }).join("")}</tbody></table></div>`;
+      return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", fmt(r?.unsPct, 2), "%", r && r.unsPct > V.goals.unsPct)}${cell("CO₂", fmt(r ? r.co2Prod * mul : undefined), "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", city.approval < city.approval0 - params("approvalDrop"))}${cell("주민 Δ", rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
+    }).join("")}</tbody></table></div><p class="lg-ledger-note">▲ = 목표·평가선 주의 · 도시 이름을 누르면 상세가 열려요. 남은 돈은 지방채 한도를 포함하며 건설·연구·대응 예약과 정산 뒤 쓸 수 있는 돈이에요.</p>`;
   }
   function teamCard(t, v, r, S) {
     const plan = v.plan || { builds: [], lines: [] };
@@ -1961,8 +1982,8 @@
   function renderBoard(cv, V, res, flash, preview = null) {
     const G = boardInfo(), reg = R(), on = new Set(actT(V).map(t => t.id)), goals = V.goals || reg.goals;
     // 로비에서는 결과·건설 계획 없이 같은 지형과 경계를 그린다. 진행 화면은 원래 경로를 쓴다.
-    const lit = new Set(preview?.lit || on), tokens = preview ? getComputedStyle(cv) : null;
-    const palette = tokens ? Object.fromEntries(["--ui-panel", "--ui-border", "--ui-text", "--ui-muted", "--ui-gold", "--body"].map(name => [name, tokens.getPropertyValue(name).trim()])) : null;
+    const lit = new Set(preview?.lit || on), tokens = getComputedStyle(cv);
+    const palette = Object.fromEntries(["--ui-panel", "--ui-border", "--ui-text", "--ui-muted", "--ui-gold", "--body"].map(name => [name, tokens.getPropertyValue(name).trim()]));
     const token = name => palette[name];
     const cssW = cv.clientWidth || 600, cssH = preview ? cv.parentElement.clientHeight : Math.round(G.H * cssW / G.W);
     // contain: 같은 배율로 맞추고 남는 공간의 가운데에 지도를 둔다.
@@ -1986,8 +2007,8 @@
       if (preview) {
         if (!cl.team) return;
         hex(cl.x, cl.y, 1.03);
-        g.fillStyle = lit.has(cl.team) ? teamCol(cl.team) : token("--ui-panel");
-        g.globalAlpha = lit.has(cl.team) ? 0.2 : 0.82;
+        g.fillStyle = token("--ui-panel");
+        g.globalAlpha = lit.has(cl.team) ? 0.04 : 0.82;
         g.fill(); g.globalAlpha = 1;
       } else if (cl.team && !on.has(cl.team)) { hex(cl.x, cl.y, 1.03); g.fillStyle = "rgba(200,204,196,0.72)"; g.fill(); }
     });
@@ -2001,7 +2022,7 @@
         if (ot === cl.team) return;
         const nx = SQ3 * (cl.c + dc + 0.5 * ((cl.r + dr) & 1)) + SQ3 / 2, ny = 1.5 * (cl.r + dr) + 1, mx = (cl.x + nx) / 2, my = (cl.y + ny) / 2, dx = (ny - cl.y) / 2 / SQ3, dy = -(nx - cl.x) / 2 / SQ3;
         let border = on.has(cl.team) ? teamCol(cl.team) : "#9aa096";
-        if (preview) border = !lit.has(cl.team) ? token("--ui-border") : cl.team === preview.player ? token("--ui-gold") : teamCol(cl.team);
+        if (preview) border = !lit.has(cl.team) ? token("--ui-border") : cl.team === preview.player ? token("--ui-gold") : token("--ui-border");
         g.strokeStyle = border;
         g.lineWidth = preview && cl.team === preview.player ? 0.7 : ot ? 0.32 : 0.42;
         g.beginPath(); g.moveTo(mx + dx, my + dy); g.lineTo(mx - dx, my - dy); g.stroke();
@@ -2022,7 +2043,7 @@
       if (!A || !Bq) return;
       const T = V.ties.find(x => x.a === D.a && x.b === D.b), F = res && T && res.flow[C.tieId(T)], net = F ? F.ab - F.ba : 0;
       g.setLineDash(!T ? [0.5, 0.9] : T.st === "prop" ? [1.2, 0.8] : []);
-      g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? "#d08a1c" : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
+      g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? token("--ui-gold") : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
       g.beginPath(); g.moveTo(...A); g.lineTo(...Bq); g.stroke(); g.setLineDash([]);
       if (F && Math.abs(net) > 0.05) {
         g.setLineDash([0.9, 1.1]); g.lineDashOffset = -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
@@ -2039,15 +2060,20 @@
       const c0 = G.cen[t.id]; if (!c0) return;
       const act = on.has(t.id), r0 = res && res.team[t.id], v = V.teams[t.id];
       if (preview) {
-        const own = t.id === preview.player, locked = (reg.must || []).includes(t.id);
+        const own = t.id === preview.player, locked = preview.mode !== "seat" && (reg.must || []).includes(t.id), taken = preview.mode === "seat" && !!v?.seated;
         // 이름표는 지형의 가로 투영과 무관하게 같은 픽셀 글자 크기로 그린다.
-        const size = 12, subSize = 10, x = ox + c0[0] * kx, y = oy + c0[1] * k;
-        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
+        const size = 13, subSize = 10, x = ox + c0[0] * kx, y = oy + c0[1] * k;
+        const name = `${locked ? "🔒 " : ""}${t.name}`, sub = preview.mode === "seat" ? taken ? "다른 팀" : own ? "고른 도시" : "비어 있음" : own ? "내 도시" : !act ? "제외" : preview.mode === "solo" ? "컴퓨터" : "참가 도시";
         g.save(); g.setTransform(dpr, 0, 0, dpr, 0, 0);
         g.font = `600 ${size}px ${token("--body")}`;
-        const w = Math.max(g.measureText(name).width, sub.length * subSize) + 12;
-        g.fillStyle = token("--ui-panel"); g.fillRect(x - w / 2, y - size - 4, w, size + subSize + 12);
-        g.fillStyle = own ? token("--ui-gold") : token("--ui-text"); g.fillText(name, x, y);
+        const w = Math.max(g.measureText(name).width, sub.length * subSize) + 32;
+        g.globalAlpha = taken ? .7 : 1;
+        g.beginPath(); g.roundRect(x - w / 2, y - size - 8, w, size + subSize + 20, 14);
+        g.fillStyle = token("--ui-panel"); g.fill();
+        g.strokeStyle = own ? token("--ui-gold") : token("--ui-border"); g.lineWidth = own ? 2 : 1; g.stroke();
+        g.beginPath(); g.arc(x - w / 2 + 12, y - 4, 5, 0, Math.PI * 2); g.fillStyle = t.color; g.fill();
+        if (preview.mode === "seat") { g.beginPath(); g.arc(x + w / 2 - 10, y + subSize + 1, 3, 0, Math.PI * 2); g.fillStyle = tokens.getPropertyValue(taken ? "--ui-muted" : "--ui-mint").trim(); g.fill(); }
+        g.fillStyle = own ? token("--ui-gold") : token("--ui-text"); g.fillText(name, x + 4, y);
         g.font = `500 ${subSize}px ${token("--body")}`; g.fillStyle = token("--ui-muted"); g.fillText(sub, x, y + subSize + 3);
         g.restore();
         return;
@@ -2214,19 +2240,53 @@
   }
   function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat, migrationFrom: L.migrationFrom }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
   function seatPicker(app) {
-    const reg = R(), V = L.snap;
-    app.innerHTML = `<main class="lg-lobby">
-      <header class="lg-lhead"><a class="lg-back" href="#league">← 로비</a><p class="v2-kicker">방 ${esc(displayRoom(L.room))}</p><h1>우리 팀 도시 고르기</h1>
-        <p class="lg-sub" id="lg-wait">${V ? "빈 도시를 골라요." : "진행자 화면을 찾는 중… 방 코드와 연결 방식이 맞는지 확인해요."}</p></header>
-      <div class="lg-seats">${(V ? actT(V) : reg.teams).map(t => { const v = V && V.teams[t.id]; const taken = v && v.seated; return `<button type="button" class="lg-seatbtn" style="--c:${t.color}" data-seat="${t.id}" ${!V || taken ? "disabled" : ""}><b>${esc(t.name)}</b><span>${!V ? "…" : taken ? "다른 팀이 맡음" : "비어 있음"}</span></button>`; }).join("")}</div>
+    lobbyStop?.();
+    document.documentElement.classList.remove("v2-league-lobby", "v2-league-host");
+    document.documentElement.classList.add("v2-league-seat");
+    const reg = R(), V = L.snap, teams = V ? actT(V) : reg.teams;
+    if (!V || !teams.some(t => t.id === L.seatChoice && !V.teams[t.id].seated)) L.seatChoice = null;
+    const focusSeat = document.activeElement?.dataset.seat, confirmFocus = document.activeElement?.id === "lg-seat-confirm";
+    app.innerHTML = `<main class="lg-lobby lg-seat-picker">
+      <header class="lg-topline"><a class="lg-back" href="#league">← 로비</a><div class="lg-title"><p class="v2-kicker">팀으로 참가 · 방 ${esc(displayRoom(L.room))}</p><h1>우리 팀 도시 고르기</h1></div><span class="lg-hud-pill">빈 자리 <b>${V ? teams.filter(t => !V.teams[t.id].seated).length : "–"}/${teams.length}</b></span></header>
+      <p class="lg-sub" id="lg-wait">${V ? "빈 도시를 고르고, 참가 버튼으로 확정해요." : "진행자 화면을 찾는 중… 방 코드와 연결 방식이 맞는지 확인해요."}</p>
+      <div class="lg-seat-layout"><section class="lg-seat-stage" aria-label="도시 지도와 자리 선택"><figure class="lg-seat-map">${reg.board ? '<canvas id="lg-seat-map" role="img" aria-label="도시 지도. 아래 도시 버튼으로 선택할 수 있어요."></canvas>' : ""}</figure>
+      <div class="lg-seats" role="group" aria-label="우리 팀 도시 선택">${teams.map(t => { const taken = V?.teams[t.id]?.seated; return `<button type="button" class="lg-seatbtn" data-seat="${esc(t.id)}" aria-pressed="${t.id === L.seatChoice}" ${!V || taken ? "disabled" : ""}><b>${esc(t.name)}</b><span>${!V ? "…" : taken ? "다른 팀이 맡음" : "비어 있음"}</span></button>`; }).join("")}</div></section>
+      <aside class="lg-seat-info" aria-label="고른 도시 정보"><div id="lg-seat-info" aria-live="polite"></div><p class="lg-hint">선택한 도시를 확인한 뒤 참가해요. 점유된 도시는 고를 수 없어요.</p><button type="button" class="v2-btn primary" id="lg-seat-confirm" disabled>도시를 먼저 골라요</button></aside></div>
       <p class="lg-err" id="lg-err" role="alert"></p></main>`;
-    app.querySelectorAll("[data-seat]").forEach(b => b.addEventListener("click", () => {
-      L.team = b.dataset.seat;
-      L.claiming = true; L.claimAccepted = false;
-      teamSave();
-      send("claim");
+    const root = app.querySelector(".lg-seat-picker"), cv = app.querySelector("#lg-seat-map");
+    const draw = () => {
+      if (!cv?.isConnected) return;
+      renderBoard(cv, { active: teams.map(t => t.id), teams: Object.fromEntries(teams.map(t => [t.id, { seated: !!V?.teams[t.id]?.seated }])), ties: [] }, null, false, { player: L.seatChoice, mode: "seat" });
+    };
+    const select = id => {
+      if (!V || !teams.some(t => t.id === id) || V.teams[id].seated) return;
+      L.seatChoice = id; update();
+    };
+    const update = () => {
+      const t = teams.find(t => t.id === L.seatChoice), info = app.querySelector("#lg-seat-info"), button = app.querySelector("#lg-seat-confirm");
+      app.querySelectorAll("[data-seat]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.seat === L.seatChoice)));
+      info.innerHTML = t ? lobbyCityInfo(t) : '<h2>어느 도시를 맡을까요?</h2><p class="lg-hint">지도나 아래 도구 막대에서 빈 도시를 골라요.</p>';
+      button.disabled = !t; button.textContent = t ? `${t.name}으로 참가` : "도시를 먼저 골라요";
+      draw();
+    };
+    app.querySelectorAll("[data-seat]").forEach(b => b.addEventListener("click", () => select(b.dataset.seat)));
+    cv?.addEventListener("click", e => { const id = boardHit(cv, e); if (id) select(id); });
+    app.querySelector("#lg-seat-confirm").addEventListener("click", e => {
+      const id = L.seatChoice;
+      if (!id || !L.snap?.teams[id] || L.snap.teams[id].seated || L.claiming) return;
+      L.team = id; L.claiming = true; L.claimAccepted = false;
+      teamSave(); send("claim");
+      e.currentTarget.disabled = true; app.querySelectorAll("[data-seat]").forEach(b => { b.disabled = true; });
       app.querySelector("#lg-wait").textContent = `${teamName(L.team)} 자리를 요청했어요…`;
-    }));
+    });
+    const ro = cv ? new ResizeObserver(draw) : null;
+    if (cv) ro.observe(cv);
+    const mo = new MutationObserver(() => { if (!root.isConnected) stop(); });
+    const stop = () => { ro?.disconnect(); mo.disconnect(); document.documentElement.classList.remove("v2-league-seat"); };
+    mo.observe(app, { childList: true }); lobbyStop = stop;
+    update();
+    if (focusSeat) [...app.querySelectorAll("[data-seat]")].find(b => b.dataset.seat === focusSeat)?.focus({ preventScroll: true });
+    else if (confirmFocus) app.querySelector("#lg-seat-confirm").focus({ preventScroll: true });
   }
   function connectionWarning() {
     if (Date.now() - L.lastHostAt <= 10000) return;
@@ -2989,7 +3049,7 @@
     else if (arg === "host") hostView(app);
     else if (/^view\//.test(arg || "")) viewCity(app, arg.slice(5));
     else if (arg === "team") teamView(app);
-    else lobby(app, /^j=/.test(arg || "") ? arg.slice(2) : null);
+    else lobby(app, /^j=/.test(arg || "") ? arg.slice(2) : null, arg === "multi" ? "host" : "solo");
   });
   // 검사용
   KCP.league = {

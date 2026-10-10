@@ -333,6 +333,36 @@ html.v2-home .masthead .disclaimer { color: var(--ink-3); font-size: 13px; }
 .v2-cta:hover { filter: brightness(1.06); }
 .v2-hero-note { font-size: 13px; color: var(--ui-muted); }
 html.v2-home .home-grid { gap: 14px; }
+/* 2022 기출 카드는 그대로, 같은 행의 확장판과 한 쌍으로 묶는다. */
+html.v2-home .home-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+html.v2-home .home-power-pair { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 0; min-width: 0; }
+html.v2-home .home-power-pair > .pkg { border-top-right-radius: 0; border-bottom-right-radius: 0; border-color: var(--ui-cyan); }
+html.v2-home .home-power-pair > .pkg:hover { transform: none; }
+html.v2-home .home-league-card { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); min-width: 0; border: 1px solid var(--ui-cyan); border-left: 0; border-radius: 0 var(--ui-radius) var(--ui-radius) 0; overflow: hidden; background: var(--ui-hud); }
+html.v2-home .home-league-map { min-width: 0; height: 100%; min-height: 320px; margin: 0; background: var(--ui-hud); }
+html.v2-home #home-league-map { display: block; width: 100%; }
+html.v2-home .home-league-copy { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 22px; }
+html.v2-home .home-league-copy h2 { font: 400 clamp(23px, 2.5vw, 32px)/1.3 var(--display); margin: 0; color: var(--ui-text); }
+html.v2-home .home-league-copy > .label { color: var(--ui-cyan); }
+html.v2-home .home-league-copy p { font: 400 14px/1.8 var(--body); color: var(--ui-muted); margin: 0; }
+html.v2-home .home-league-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html.v2-home .home-league-actions a { display: grid; gap: 4px; align-content: center; min-height: 64px; padding: 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-text); text-align: center; text-decoration: none; font-weight: 700; }
+html.v2-home .home-league-actions a.primary { background: linear-gradient(135deg, var(--ui-cyan), color-mix(in srgb, var(--ui-cyan) 65%, var(--ui-blue))); color: var(--ui-panel); border-color: var(--ui-cyan); }
+html.v2-home .home-league-actions small { font: 500 11px var(--body); }
+html.v2-home .home-league-actions a:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 3px; }
+html.v2-home .home-league-copy .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 1000px) {
+  html.v2-home .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.v2-home .home-power-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  html.v2-home .home-league-card { grid-template-columns: minmax(0, 1fr); }
+  html.v2-home .home-league-map { height: 230px; min-height: 0; }
+}
+@media (max-width: 600px) {
+  html.v2-home .home-grid, html.v2-home .home-power-pair { grid-template-columns: minmax(0, 1fr); }
+  html.v2-home .home-power-pair > .pkg { border-radius: var(--ui-radius) var(--ui-radius) 0 0; }
+  html.v2-home .home-league-card { border: 1px solid var(--ui-cyan); border-top: 0; border-radius: 0 0 var(--ui-radius) var(--ui-radius); }
+  html.v2-home .home-league-copy { padding: 18px; }
+}
 html.v2-home .pkg,
 html.v2-home .opkg {
   position: relative;
