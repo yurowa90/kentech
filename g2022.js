@@ -302,8 +302,11 @@
       save();
     };
     const hasPlan = plan.plants.length > 0;
-    // 버튼·라이브 영역·입력 칸은 카드 선택 때 교체하지 않는다.
-    if (!KCP.$("#tw22-line", panel)) {
+    // 버튼·라이브 영역·입력 칸은 카드 선택 때 교체하지 않는다. 같은 패널에 다시 불렸는데 계획이 바뀌었으면
+    // (카드 후보·계획 유무·기준 계획이 다르면) 뼈대를 새로 만든다. 입력 글은 저장값(memo)에서 다시 채운다.
+    const planSig = JSON.stringify([plan.keys, hasPlan, plan.q2]);
+    if (!KCP.$("#tw22-line", panel) || panel.dataset.planSig !== planSig) {
+      panel.dataset.planSig = planSig;
       panel.innerHTML = `<h3 class="h-wrap" id="tw22-title">조건이 바뀐다면 <span class="tag-mine">연습실 질문</span></h3>
         <p>조건 하나를 골라 내 계획에서 얻는 것과 잃는 것을 살펴보세요.</p>
         ${hasPlan ? `<p class="small">${plan.q2 ? "2번 계획의 발전소·공급 마을·전선" : "2번 계획이 없어 1번 배치"}를 기준으로 비교합니다.</p>
