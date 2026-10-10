@@ -15,14 +15,31 @@
   KCP.ECON_DATA = {
     version: 1,
     startYear: 2027,
-    // D-69 초안: 전력 연계선과 독립인 대기 기여 방향(from → to).
-    // P61 Table 6, p.158: 당진화력 자체 .092㎍/㎥ 대비 수용 도시의 연평균 기여(P).
+    // D-69 확정: 전력 연계선과 독립인 대기 기여 방향(from → to), 쌍별 ratio를 한 번 적용.
+    // P61 Table 6, p.158: 당진화력 자체 .092㎍/㎥ 대비 수용 도시의 연평균 모형 기여(P).
     // https://www.jekosae.or.kr/xml/39664/39664.pdf
-    // 원문 값은 근거 기록. 계산은 기존 airSpill=.6(M)을 쓰며 역방향·재전파하지 않는다.
+    // 지역 밖 수용 도시의 원문 값은 사용하지 않는다. 공통 airSpill 배수는 폐기.
+    // G 목록은 league-data 후보의 land·bay를 참고해 여기서 확정. 실행 시 연계선에 의존하지 않는다.
+    // bay는 대기 수송에서 육지 인접처럼 취급(G). sea 및 비인접 역방향은 제외. 재전파 없음.
     airNeighbours: [
-      { from: "dangjin", to: "asan", sourcePM25: .092, receptorPM25: [.059], grade: "P", refs: ["P61"] },
-      // 천안 동남구 .047·서북구 .037을 평균하지 않고 함께 기록한다.
-      { from: "dangjin", to: "cheonan", sourcePM25: .092, receptorPM25: [.047, .037], grade: "P", refs: ["P61"] }
+      { from: "dangjin", to: "asan", ratio: .059 / .092, sourcePM25: .092, receptorPM25: [.059], grade: "P", refs: ["P61"], note: "P61 Table 6: 수용 .059 / 발원 .092 ≈ .641304, 원문 기여비 그대로" },
+      // 두 구 원문 수치는 보존. .45는 .40~.51 범위의 대표 중간값이며 두 구의 정확한 산술평균은 아니다.
+      { from: "dangjin", to: "cheonan", ratio: .45, sourcePM25: .092, receptorPM25: [.047, .037], grade: "P", refs: ["P61"], note: "P61 Table 6: 동남 .047/.092≈.511·서북 .037/.092≈.402, 대표 비율 .45(D-69)" },
+      { from: "hwaseong", to: "pyeongtaek", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "pyeongtaek", to: "hwaseong", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "pyeongtaek", to: "anseong", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "anseong", to: "pyeongtaek", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "pyeongtaek", to: "cheonan", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "cheonan", to: "pyeongtaek", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "pyeongtaek", to: "asan", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 만 횡단을 육지 인접과 같게 취급, 자체 증분의 0.2배" },
+      { from: "asan", to: "pyeongtaek", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 만 횡단을 육지 인접과 같게 취급, 자체 증분의 0.2배" },
+      { from: "pyeongtaek", to: "dangjin", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 만 횡단을 육지 인접과 같게 취급, 자체 증분의 0.2배" },
+      { from: "dangjin", to: "pyeongtaek", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 만 횡단을 육지 인접과 같게 취급, 자체 증분의 0.2배" },
+      { from: "anseong", to: "cheonan", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "cheonan", to: "anseong", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "cheonan", to: "asan", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "asan", to: "cheonan", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" },
+      { from: "asan", to: "dangjin", ratio: .2, grade: "G", refs: ["D-69"], note: "게임 가정: 측정 근거 없음. 육지 인접, 자체 증분의 0.2배" }
     ],
     // G9 기준 배치(G): 기존 지도 발전소(석탄·LNG)만 연결, 가상 추가 발전소 없음.
     // 탄소 실측치가 아니다. calibrateStart가 현재 지도·발전 계수로 매번 운전한다.
@@ -238,7 +255,6 @@
       airSlope: p(29, M, "PM2.5 증분 1㎍/㎥당 대기 점수 감소 · Chen·Oliva·Zhang(2022) §7 5.31㎍/㎥ 증가→5년 인구 −2.8% [P17] · 계산: 약 −0.5%/㎍을 β .12·κ .009·60달 도달률 .42·wL.air .04로 환산 · 배속: 집단 만족에만 eduAir · REF 9.10"),
       kPM: p(7e-6, M, "게임 월 발전 MWh→PM2.5 증분 ㎍/㎥ · 김수향 외(2024) Table 6 당진화력→당진 .092 [P61] · 계산: .092/(6040MW×8760h×이용률 .7(G))×230(G)×12 ≈ 6.856e-6을 반올림, 연평균 기여 근사 · 배속: 없음 · REF 9.10"),
       pmFuelW: p({ coal: 1, diesel: 0.8, biomass: 0.8, lng: 0.05 }, M, "연료별 PM·전구물질 영향의 석탄 대비 가중 · EEA(2023) 1.A.1 Tables 3-11·3-19·3-21·3-8 [I24], Heo 외(2016) PM·SO₂·NOx 피해비용 [P60] · LNG .05는 근사(M), 디젤·바이오매스 .8은 G 포함; 원문 배출계수 자체나 한국 실측 비율 아님 · 배속: 없음 · REF 9.10"),
-      airSpill: p(0.6, M, "인접 도시 발전 PM2.5 기여 배수 · 김수향 외(2024) Table 6 당진 .092·아산 .059·천안 동남 .047·예산 .076 [P61] · 계산: 이웃/당진 약 .4~.83에서 .6 근사, airNeighbours 방향 목록(D-69)에 1회 적용 · 배속: 없음 · REF 9.11"),
       eduAir: p(4, G, "설계 선택: 집단 만족의 발전 PM2.5 증분 영향 ×4 · 이주용 L에는 적용하지 않음 · 배속: 이 키 · REF 9.10"),
       crowdK: p(3.5, "G", "설계 선택: 지역 성장 초과 인구 1%당 집값 −3.5점 · Saiz 2007 유입 1%→임대료 약 1%, 방향 근거 [P21][P16] · 배속: 없음 · REF 3.11"),
       landCapMul: p(1.2, G, "산업 용지 수용 = 시작 종사자 × 이 값"),

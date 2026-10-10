@@ -613,14 +613,14 @@ block("B17", () => {
 });
 
 block("H01 PM2.5 증분·정전 상한", () => {
-  // 독립 손계산: 석탄 10,000 MWh → .07㎍/㎥, 이웃 → .042㎍/㎥.
+  // 독립 손계산: 석탄 10,000 MWh → .07㎍/㎥, P 이웃 → .07×(.059/.092), .07×.45; G 이웃 → .07×.2.
   // CO₂ 대리값 재도입, 소비량 사용, 이웃의 재전파, eduAir의 이주 적용을 잡는다.
   const E = X.initCities(IDS, D, { seed: "s4-air", months: 36 });
   const normal = inputs(E, id => ({ energy: { co2Local: 0, co2: 0,
     genMWh: { coal: id === "dangjin" ? 10000 : 0, lng: 0, diesel: 0, biomass: 0 } } }));
   const start = X.calibrate(E, normal, D);
-  const expected = { dangjin: 77.97, pyeongtaek: 80, hwaseong: 80,
-    asan: 78.782, cheonan: 78.782, anseong: 80 };
+  const expected = { dangjin: 77.97, pyeongtaek: 80 - 29 * .07 * .2, hwaseong: 80,
+    asan: 80 - 29 * .07 * (.059 / .092), cheonan: 80 - 29 * .07 * .45, anseong: 80 };
   for (const id of IDS) ok(Math.abs(start.cities[id].lagL.air - expected[id]) < 1e-9,
     `${id} 직접·인접만 PM 반영: ${start.cities[id].lagL.air}`);
   ok(Math.abs(start.cities.dangjin.groupParts.air - 71.88) < 1e-9, "집단 만족만 대기 영향 ×4");
