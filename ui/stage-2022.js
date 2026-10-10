@@ -626,7 +626,7 @@
     return (st.mode === "q1" ? "1번" : "2번") + " 계획" + (st.mode === "q2" ? "과 직접 놓은 전선" : "") + "입니다. 위치를 고른 이유를 설명해 보세요.";
   }
   function advice(st, phase) {
-    if (phase === "room") return questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 세우지 않았다. 준비실로 돌아가 계획을 세워 보세요." : questionDetail(st));
+    if (phase === "room") return questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 아직 세우지 않았습니다. 준비실로 돌아가 계획을 세워 보세요." : questionDetail(st));
     if (phase === "reflect") return "성찰 단계입니다. 내가 세운 배치를 다시 보며 무엇을 무겁게 보았는지 돌아보세요.";
     if (st.mode === "q1") {
       const left = TYPES.filter(k => !st.q1[k]).map(k => PT[k].s);
@@ -835,7 +835,7 @@
   /* ---------- 설명과 칩 ---------- */
   function captionOf(st, phase) {
     const parts = ["KENTECH 도시 지도(10×10, 위에서 본 픽셀 타일)."];
-    if (st.question) parts.push(questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 세우지 않았다." : questionDetail(st)));
+    if (st.question) parts.push(questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 아직 세우지 않았습니다." : questionDetail(st)));
     if (st.overlay !== "map") parts.push("데이터 겹쳐 보기: " + OVN[st.overlay] + ".");
     if (st.mode === "q1") {
       const placed = TYPES.filter(k => st.q1[k]).map(k => PT[k].n + " " + st.q1[k]);
@@ -854,7 +854,7 @@
       const out = [{ label: "질문", value: (st.question.index + 1) + " · " + st.question.tag, tone: "plain" },
         { label: "문항", value: st.question.official ? "보고서 문항" : "연습용 질문", tone: "plain" },
         { label: "장면", value: (st.mode === "q1" ? "1번" : "2번") + " 계획 · 재구성", tone: "info" }];
-      if (st.empty) out.push({ label: "계획", value: "준비실에서 이 문제의 계획을 세우지 않았다", tone: "warn" });
+      if (st.empty) out.push({ label: "계획", value: "계획 없음", tone: "warn" });
       else if (st.focus.cost) {
         out.push({ label: "발전 비용", value: st.cost + " · 재구성(기당)", tone: "info" },
           { label: "전선", value: st.wire + "칸 · 1칸당 비용 1(연습실 가정)", tone: "info" },
@@ -888,7 +888,8 @@
     const tr = typeof g.getTransform === "function" ? g.getTransform() : null, dpr = tr && tr.a > 0 ? tr.a : 1;
     const L = layout(w, h, dpr, thumb);
     const P = palette(dark);
-    const t = still ? 0 : ctx.t;
+    // 첫 프레임의 rAF 시각이 장면 생성 시각보다 앞서면 ctx.t가 음수가 되어 연기 위치 계산이 배열 밖을 읽는다.
+    const t = still ? 0 : Math.max(0, ctx.t || 0);
     const phase = ctx.phase === "room" || ctx.phase === "reflect" ? ctx.phase : "prep";
     const C = thumb ? { gkey: "" } : cache;
     const gkey = [L.W, L.H, L.T, L.mx, L.my, dark].join("|");

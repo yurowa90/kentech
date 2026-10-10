@@ -212,10 +212,10 @@
 
   // 성찰 전용 가정. 원문 예시·좌표를 읽지 않고 학생 계획만 비교한다.
   const TWIST22 = {
-    wind: { title: "겨울에 바람이 약해진다면", condition: "겨울 2주 동안 풍속이 평소의 절반이라고 가정한다. 과제 규칙(생산량 = 풍속)에 따라 풍력 생산량도 절반으로 센다." },
+    wind: { title: "바람이 약한 날이 이어진다면", condition: "2주 동안 풍속이 평소의 절반이라고 가정한다. 과제 규칙(생산량 = 풍속)에 따라 풍력 생산량도 절반으로 센다." },
     solar: { title: "장마로 햇빛이 줄어든다면", condition: "장마로 한 달 동안 일사량이 평소의 절반이라고 가정한다. 과제 규칙에 따라 태양광 생산량도 절반으로 센다." },
     fossil: { title: "탄소 배출에 비용이 붙는다면", condition: "탄소 배출 비용을 더해 화석 연료 발전소 1기당 발전 비용이 15에서 30으로 오른다고 가정한다." },
-    nuclear: { title: "주민과 협의할 시간이 더 필요하다면", condition: "주민과의 추가 협의를 위해 원자력 발전소 가동을 모두 2주 미룬다고 가정한다. 그동안 원자력 생산량은 0으로 센다." },
+    nuclear: { title: "원자력 발전소가 정기 점검에 들어간다면", condition: "정기 점검으로 원자력 발전소가 한 달 동안 모두 멈춘다고 가정한다. 그동안 원자력 생산량은 0으로 센다." },
     demand: { title: "빛가람의 관광객이 늘어난다면", condition: "관광객 증가로 빛가람의 전력 필요량이 100에서 130으로 늘어난다고 가정한다." },
     wire: { title: "전선을 놓는 비용이 오른다면", condition: "전선 1칸당 비용이 1에서 3으로 오른다고 가정한다. 공유 전선과 연결되지 않은 전선도 기존 규칙대로 센다." },
   };
@@ -230,6 +230,8 @@
     keys.sort((a, b) => production(b) - production(a));
     if (plants.length) {
       const common = wires.length ? ["wire", "demand"] : ["demand", "wire"];
+      // 2번 계획에는 수학적 사고 카드(공통) 하나를 늘 남긴다. 카드는 최대 4장이므로 생산량이 가장 작은 발전원 카드를 뺀다.
+      if (q2 && keys.length >= 4) keys.length = 3;
       common.forEach(k => { if (keys.length < 4) keys.push(k); });
     }
     return { q2, plants, wires, keys };
@@ -263,9 +265,9 @@
       if (key === "demand") html += "<p>빛가람 필요량: 100 → 130 (증가 30). 공급 계획은 2번에서 정합니다.</p>";
       if (key === "wire") html += "<p>전선 1칸당 비용: 1 → 3 (증가 2). 1번 배치에는 전선이 없어 총비용은 계산하지 않습니다.</p>";
     }
-    html += '<p class="small"><span class="tag-mine">재구성(기당)</span> 비용은 기당 발전 비용과 전선 비용의 합입니다. 달라진 조건 외의 값은 그대로 두며, 기간을 곱해 누적 전력량이나 누적 비용으로 바꾸지 않습니다.</p>';
-    if (key === "wind") html += '<p class="small">풍력의 변화는 이 과제의 단순화한 규칙이며 실제 풍력 발전량 예측은 아닙니다.</p>';
-    if (key === "nuclear") html += '<p class="small">협의 결과를 예측한 것이 아닙니다. 가동을 미뤄도 기당 비용은 그대로 두고, 협의 비용·주민 의견은 숫자에 포함하지 않았습니다.</p>';
+    html += '<p class="small"><span class="tag-mine">재구성(기당)</span> ' + (plan.q2 ? '비용은 기당 발전 비용과 전선 비용의 합입니다. ' : '') + '달라진 조건 외의 값은 그대로 두며, 기간을 곱해 누적 전력량이나 누적 비용으로 바꾸지 않습니다.</p>';
+    if (key === "wind") html += '<p class="small">이 과제에서는 생산량을 풍속과 같게 셉니다. 실제 풍력 발전기의 출력은 대략 풍속의 세제곱에 비례해, 풍속이 절반이면 약 1/8로 줄어듭니다.</p>';
+    if (key === "nuclear") html += '<p class="small">점검 기간과 비용은 연습실 가정입니다. 멈춰도 기당 비용은 그대로 둡니다.</p>';
     return html;
   }
 
@@ -293,8 +295,8 @@
         ${!memo.k && (memo.line || memo.keep) ? '<p>메모의 조건을 확인할 수 없어 글만 보존했습니다. 조건을 다시 골라 주세요.</p>' : ""}
         <div id="tw22-result" role="status" aria-live="polite" aria-atomic="true"></div>
         <p id="tw22-help" class="small">좌표·설비·전선 중 무엇을 어떻게 바꿀지 한 줄로 적으세요(각 140자 이내). 메모는 준비실 계획이나 장면을 바꾸지 않습니다.</p>
-        <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " disabled" : ""}>${esc(memo.line)}</textarea></div>
-        <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " disabled" : ""}>${esc(memo.keep)}</textarea></div>`;
+        <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.line)}</textarea></div>
+        <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.keep)}</textarea></div>`;
       KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && !stale ? twistResult(plan, memo.k) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
       KCP.$$("[data-tw22]", panel).forEach(b => {
         b.onclick = () => {
@@ -372,8 +374,12 @@
     plants.forEach((p) => (pmap[p.cell] = p));
     const connection = G.mode === "q2" ? supply(plants, G.wires).connected : [];
     const connected = Object.fromEntries(plants.map((p, i) => [p.cell, connection[i]]));
-    const windName = { S: "남풍", SW: "남서풍", W: "서풍" };
-    const currentName = { E: "동쪽", S: "남쪽", W: "서쪽", N: "북쪽", NS: "남북 양방향" };
+    // 데이터 화살표는 바람이 불어 가는 쪽이다(PDF p33). 이름은 불어오는 쪽으로 부르는 관례를 함께 쓴다.
+    const windName = { S: "남쪽으로 부는 바람(북풍)", SW: "남서쪽으로 부는 바람(북동풍)", W: "서쪽으로 부는 바람(동풍)" };
+    const currentName = { E: "동쪽으로 흐름", S: "남쪽으로 흐름", W: "서쪽으로 흐름", N: "북쪽으로 흐름", NS: "남북 양쪽으로 갈라져 흐름" };
+    // 칸 이름에서 바람 경로의 출처(화석 미세먼지/원자력 사고)를 나눈다. analyze와 같은 smog 규칙.
+    const fossilAir = new Set(plants.filter(p => p.type === "fossil").flatMap(p => smog(p.cell)));
+    const nuclearAir = new Set(plants.filter(p => p.type === "nuclear").flatMap(p => smog(p.cell)));
     const segments = {};
     if (G.mode === "q2") wireEdges(G.wires).forEach(([a, b]) => {
       [[a, b], [b, a]].forEach(([from, to]) => {
@@ -399,12 +405,12 @@
         const p = pmap[id];
         const title = `${id} · ${t === "sea" ? "바다" : t === "lake" ? "호수" : "육지"}${v ? " · " + v + " 마을" : f ? " · " + FNAME[f][1] : ""} · 일사량 ${SOLAR[r]} · 풍속 ${WIND[r][c]}`;
         const lines = segments[id] || [];
-        const data = G.overlay === "solar" ? `일사량 ${SOLAR[r]}` : G.overlay === "wind" ? `풍속 ${WIND[r][c]}, ${windName[WDIR[r][c]]}` : G.overlay === "current" ? `해류 방향 ${currentName[CURR[id]] || "표시 없음"}` : "";
+        const data = G.overlay === "solar" ? `일사량 ${SOLAR[r]}` : G.overlay === "wind" ? `풍속 ${WIND[r][c]}, ${windName[WDIR[r][c]]}` : G.overlay === "current" ? `해류 ${currentName[CURR[id]] || "표시 없음"}` : "";
         const name = [id, p ? `${PT[p.type].n}, 생산 ${out(p.type, id)}` : "", v ? `${v} 마을` : f ? FNAME[f][1] : "",
           t === "sea" ? "바다" : t === "lake" ? "호수" : "육지", data,
           G.mode === "q2" ? lines.length ? `전선 연결: ${lines.map(l => l.to).join(", ")}` : "전선 없음" : "",
           G.mode === "q2" && p ? p.to ? `${p.to} 마을 전선 ${connected[id] ? "연결됨" : "미연결"}` : "공급 마을 미지정" : "",
-          hit.has(id) ? "미세먼지·방사성 물질의 바람 경로 (재구성)" : "", hit.has("~" + id) ? "사고 시 해류 경로 (재구성)" : "",
+          hit.has(id) ? `${[fossilAir.has(id) ? "미세먼지" : "", nuclearAir.has(id) ? "사고 시 방사성 물질" : ""].filter(Boolean).join("·") || "영향"}의 바람 경로 (재구성)` : "", hit.has("~" + id) ? "사고 시 해류 경로 (재구성)" : "",
           wireStart === id ? "전선 시작점" : ""].filter(Boolean).join(" · ");
         const tag = interactive ? "button" : "div";
         h += `<${tag} class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : ""} ${hit.has("~" + id) ? "hit2" : ""} ${wireStart === id ? "wire-start" : ""}" ${interactive ? `type="button" role="gridcell" aria-colindex="${c + 2}" data-cell="${id}" tabindex="${id === focusCell ? 0 : -1}" aria-label="${esc(name)}"` : ""} title="${esc(title)}">
