@@ -3,7 +3,7 @@
  * 산·농경지·숲·습지·유전·문화재)로 깔고, 학생이 지도에 세운 발전소(화석·원자력·풍력·태양광)를 픽셀 건물로,
  * 2번 문제의 연결을 가로·세로 전봇대 전선으로, 마을의 불빛을 공급량으로 그린다. 옆에는 메뉴 창(발전소·마을)과
  * 조언 창을 둔다.
- * 게임 상태(state.game)는 읽기만 한다. 지도 자료는 g2022.js의 model.data에서 읽는다.
+ * 게임 상태(state.game)는 읽기만 한다. 지도·발전 설비 자료는 g2022.js의 model.data에서 읽는다.
  * 면접실은 현재 질문에 맞는 학생 계획과 관련 발전소·경로·마을을 강조한다. 현재 질문은 메모리에만 둔다.
  * 성찰 단계의 예시 답변 배치는 읽지도 그리지도 않는다.
  * 그리기: 작은 픽셀 버퍼에 정수 좌표로 칠한 뒤 최근접 보간으로 키운다. 지형은 크기·밤낮·자료가 바뀔 때 다시 그린다. */
@@ -13,16 +13,12 @@
   if (!KCP || !KCP.v2 || typeof KCP.v2.skin !== "function") return;
 
   const ID = "2022";
-  // ctx.model의 동결된 지도 자료를 참조한다. 지도 값의 사본은 두지 않는다.
+  // ctx.model의 동결된 지도·발전 설비 자료를 참조한다. 자료 값의 사본은 두지 않는다.
   let data = null;
   const villages = () => Object.entries(data.VILL).map(([n, v]) => ({ n, ...v }));
   const DV = { S: [1, 0], SW: [1, -1], W: [0, -1], N: [-1, 0], E: [0, 1] };
-  const PT = {
-    fossil: { n: "화석 연료 발전소", s: "화석 연료", cost: 15, out: 60 },
-    nuclear: { n: "원자력 발전소", s: "원자력", cost: 15, out: 90 },
-    wind: { n: "풍력 발전소", s: "풍력", cost: 2 },
-    solar: { n: "태양광 발전소", s: "태양광", cost: 2 }
-  };
+  // 장면 메뉴에만 쓰는 짧은 이름. 정식 이름·생산·비용은 data.PT를 읽는다.
+  const SHORT = { fossil: "화석 연료", nuclear: "원자력", wind: "풍력", solar: "태양광" };
   const TYPES = ["fossil", "nuclear", "wind", "solar"];
   const OVN = { map: "지도", solar: "평균 일사량", wind: "평균 풍속·풍향", current: "평균 해류 방향" };
 
@@ -30,7 +26,7 @@
   const rc = id => [data.ROWS.indexOf(id[0]), Number(id.slice(1)) - 1];
   const idOf = (r, c) => (r >= 0 && r < 10 && c >= 0 && c < 10 ? data.ROWS[r] + (c + 1) : null);
   const terr = (r, c) => (r < 0 || r > 9 || c < 0 || c > 9 ? "sea" : { "~": "sea", ".": "land", o: "lake" }[data.TERR[r][c]]);
-  const outOf = (type, id) => { const [r, c] = rc(id); return type === "wind" ? data.WIND[r][c] : type === "solar" ? data.SOLAR[r] : PT[type].out; };
+  const outOf = (type, id) => { const [r, c] = rc(id); return type === "wind" ? data.WIND[r][c] : type === "solar" ? data.SOLAR[r] : data.PT[type].out; };
   function hash(x, y, s) {
     let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
     n = Math.imul(n ^ (n >>> 13), 1274126177);
@@ -615,7 +611,7 @@
     return q ? "질문 " + (q.index + 1) + (q.tag ? " · " + q.tag : "") + " · " + (q.official ? "보고서 문항" : "연습용 질문") : "";
   }
   function questionDetail(st) {
-    const key = st.question?.key, sites = st.focus.plants.map(p => PT[p.type].n + " " + p.cell).join(", ");
+    const key = st.question?.key, sites = st.focus.plants.map(p => data.PT[p.type].n + " " + p.cell).join(", ");
     if (key === "22-q1-nuc") return sites + " 강조. 사고 시 풍향을 따라 최대 4칸 이동하는 경로(점선)와 해류 경로(실선)는 연습실 재구성입니다.";
     if (key === "22-q1-fos") return sites + " 강조. 미세먼지가 풍향을 따라 최대 4칸 이동하는 경로(점선)는 연습실 재구성입니다.";
     if (key === "22-q2-cost") return "전선·비용 강조. 발전 " + st.cost + "(재구성: 기당), 전선 " + st.wire + "칸, 총비용 " + st.total + "(연습실 가정: 전선 1칸당 비용 1).";
@@ -629,7 +625,7 @@
     if (phase === "room") return questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 아직 세우지 않았습니다. 준비실로 돌아가 계획을 세워 보세요." : questionDetail(st));
     if (phase === "reflect") return "성찰 단계입니다. 내가 세운 배치를 다시 보며 무엇을 무겁게 보았는지 돌아보세요.";
     if (st.mode === "q1") {
-      const left = TYPES.filter(k => !st.q1[k]).map(k => PT[k].s);
+      const left = TYPES.filter(k => !st.q1[k]).map(k => SHORT[k]);
       if (!left.length) return "네 발전소를 모두 세웠습니다. 위치마다 경제·사회·환경 측면의 이유를 적어 보세요.";
       if (left.length === 4) return "시장님, 설치 도구를 고르고 지도 칸을 눌러 발전소를 세워 보세요. 종류마다 1기씩입니다.";
       return "아직 세우지 않은 발전소: " + left.join(", ") + ". 종류마다 1기씩 세웁니다.";
@@ -740,7 +736,7 @@
         if (!narrow) {
           g.font = (sel ? "700 " : "400 ") + fs + "px " + F.body;
           g.fillStyle = P.ink; g.textAlign = "left";
-          g.fillText(PT[k].s, c.x + 14 + gd.ic + 8, c.cy);
+          g.fillText(SHORT[k], c.x + 14 + gd.ic + 8, c.cy);
         }
       });
       if (phase === "prep" && st.tool === "erase" && !narrow) {
@@ -838,15 +834,15 @@
     if (st.question) parts.push(questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 아직 세우지 않았습니다." : questionDetail(st)));
     if (st.overlay !== "map") parts.push("데이터 겹쳐 보기: " + OVN[st.overlay] + ".");
     if (st.mode === "q1") {
-      const placed = TYPES.filter(k => st.q1[k]).map(k => PT[k].n + " " + st.q1[k]);
+      const placed = TYPES.filter(k => st.q1[k]).map(k => data.PT[k].n + " " + st.q1[k]);
       parts.push("1번 문제 배치 " + placed.length + "/4" + (placed.length ? ": " + placed.join(", ") + "." : ", 아직 세운 발전소 없음."));
     } else {
-      parts.push("2번 문제 발전소 " + st.q2.length + "기" + (st.q2.length ? ": " + st.q2.map(p => PT[p.type].s + " " + p.cell + (p.to ? "→" + p.to : "")).join(", ") + "." : "."));
+      parts.push("2번 문제 발전소 " + st.q2.length + "기" + (st.q2.length ? ": " + st.q2.map(p => SHORT[p.type] + " " + p.cell + (p.to ? "→" + p.to : "")).join(", ") + "." : "."));
       parts.push("마을 공급: " + villages().map(v => v.n + " " + st.got[v.n] + "/" + v.need + (st.got[v.n] >= v.need ? " 불 켜짐" : st.got[v.n] ? " 일부 켜짐" : " 꺼짐")).join(", ") + ".");
       parts.push("발전 비용 " + st.cost + "(재구성: 기당), 전선 " + st.wire + "칸, 총비용 " + st.total + "(연습실 가정: 전선 1칸당 비용 1). ");
     }
     if (st.plants.some(p => p.type === "fossil")) parts.push("화석 연료 발전소 굴뚝 연기가 바람을 따라 흐름.");
-    if (phase === "prep") parts.push("선택한 도구: " + ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || PT[st.tool].n) + ".");
+    if (phase === "prep") parts.push("선택한 도구: " + ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || data.PT[st.tool].n) + ".");
     return parts.join(" ");
   }
   function chipsOf(st, narrow) {
@@ -860,14 +856,14 @@
           { label: "전선", value: st.wire + "칸 · 1칸당 비용 1(연습실 가정)", tone: "info" },
           { label: "총비용", value: String(st.total), tone: "info" });
       } else if (st.focus.villages.length) out.push({ label: "강조", value: st.focus.villages.join("·"), tone: "info" });
-      else if (st.focus.plants.length) out.push({ label: "강조", value: [...new Set(st.focus.plants.map(p => PT[p.type].s))].join("·"), tone: "info" });
+      else if (st.focus.plants.length) out.push({ label: "강조", value: [...new Set(st.focus.plants.map(p => SHORT[p.type]))].join("·"), tone: "info" });
       return out;
     }
     if (st.mode === "q1") {
       const n = TYPES.filter(k => st.q1[k]).length;
       const out = [{ label: "문제", value: "1번", tone: "plain" }, { label: "배치", value: n + "/4", tone: n === 4 ? "ok" : "plain" }];
       if (!narrow) {
-        out.push({ label: "도구", value: ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || PT[st.tool].s), tone: "info" });
+        out.push({ label: "도구", value: ({ erase: "지우개", wire: "전선 놓기", unwire: "전선 지우기" }[st.tool] || SHORT[st.tool]), tone: "info" });
         out.push({ label: "데이터", value: OVN[st.overlay], tone: "plain" });
       }
       return out;

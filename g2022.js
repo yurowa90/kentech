@@ -420,25 +420,25 @@
           G.mode === "q2" && p ? p.to ? `${p.to} 마을 전선 ${connected[id] ? "연결됨" : "미연결"}` : "공급 마을 미지정" : "",
           hit.has(id) ? `${[fossilAir.has(id) ? "미세먼지" : "", nuclearAir.has(id) ? "사고 시 방사성 물질" : ""].filter(Boolean).join("·") || "영향"}의 바람 경로 (재구성)` : "", hit.has("~" + id) ? "사고 시 해류 경로 (재구성)" : "",
           wireStart === id ? "전선 시작점" : ""].filter(Boolean).join(" · ");
-        const tag = interactive ? "button" : "div";
-        h += `<${tag} class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : ""} ${hit.has("~" + id) ? "hit2" : ""} ${wireStart === id ? "wire-start" : ""}" ${interactive ? `type="button" role="gridcell" aria-colindex="${c + 2}" data-cell="${id}" tabindex="${id === focusCell ? 0 : -1}" aria-label="${esc(name)}"` : ""} title="${esc(title)}">
+        // 셀 자체가 유일한 포커스 대상이다. 클릭·키보드 조작은 renderPrep에서 처리한다.
+        h += `<div class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : ""} ${hit.has("~" + id) ? "hit2" : ""} ${wireStart === id ? "wire-start" : ""}" ${interactive ? `role="gridcell" aria-colindex="${c + 2}" data-cell="${id}" tabindex="${id === focusCell ? 0 : -1}" aria-label="${esc(name)}"` : ""} title="${esc(title)}">
           ${lines.length ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">${lines.map(l => `<line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--ink)" stroke-width="10"/><line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--accent)" stroke-width="5"/>`).join("")}</svg>` : ""}
           ${ov !== "" ? `<span class="ov"><span class="map-value">${ov}</span></span>` : label}
-          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</${tag}>`;
+          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</div>`;
       }
       h += "</div>";
     });
     return h + "</div>";
   }
 
-  // 공개 지도 자료는 원본과 분리한 깊은 복사다. 중첩 배열·객체까지 동결한다.
+  // 공개 지도·발전 설비 자료는 원본과 분리한 깊은 복사다. 중첩 배열·객체까지 동결한다.
   const MAP_DATA = (function freeze(value) {
     if (value && typeof value === "object") {
       Object.values(value).forEach(freeze);
       Object.freeze(value);
     }
     return value;
-  })(JSON.parse(JSON.stringify({ ROWS, TERR, FEAT, VILL, SOLAR, WIND, WDIR, CURR })));
+  })(JSON.parse(JSON.stringify({ ROWS, TERR, FEAT, VILL, SOLAR, WIND, WDIR, CURR, PT })));
 
   KCP.games["2022"] = {
     model: { normalizeGame, supply, editWire, data: MAP_DATA },
@@ -561,7 +561,8 @@
         KCP.$("#warn", root).innerHTML = an.warn.map((w) => `<li style="color:${w.lv === "bad" ? "var(--bad)" : "inherit"}">${esc(w.t)}</li>`).join("") || "<li>설치한 발전소가 없습니다.</li>";
         KCP.$$("[data-cell]", KCP.$("#grid", root)).forEach((b) => {
           b.onfocus = () => rememberFocus(b.dataset.cell);
-          b.onclick = () => { rememberFocus(b.dataset.cell); clickCell(b.dataset.cell); };
+          // div는 포인터 클릭만으로 초점을 받지 않는다. 설치가 거부돼도 누른 칸을 유지한다.
+          b.onclick = () => { focusMapCell(b.dataset.cell); clickCell(b.dataset.cell); };
           b.onkeydown = (e) => {
             const id = b.dataset.cell, [r, c] = rc(id);
             let to;
