@@ -1,12 +1,14 @@
-"""2022 충실판 단위 1~3의 독립 수용 검사.
+"""2022 충실판 단위 1~3·5·6의 독립 수용 검사.
 
-근거 경로: _briefs/lanes/2022/{u1-reflect,u2-scene,u3-a11y}.md.
+근거 경로: _briefs/lanes/2022/{u1-reflect,u2-scene,u3-a11y,u5-cell,u6-pick}.md.
 각 함수의 주석에 명세 줄을 적었다. 기대값은 명세·D-68에서 정하며,
 구현은 저장 봉투와 기존 UI 선택자를 찾는 데만 참고한다.
 
 해석: 카드 키·문구·후보 우선순위는 고정하지 않는다(u1:14~19의 예).
 풍력만 있는 2번 계획은 '풍력에 크게 기대는 계획'이다. 옛 twist 부재는
-부재 또는 빈 문자열 3개로 허용한다. 손상 twist는 빈 문자열로 정규화한다.
+부재 또는 빈 문자열 4개(pick 포함)로 허용한다. 손상 twist는 빈 문자열로 정규화한다.
+태풍 강조는 캡션의 '바닷가 풍력 강조: ….' 절만 검사한다. 전체 배치 목록에는
+내륙 풍력이 있어도 된다. 선택 요소는 select 또는 라디오를 모두 허용한다.
 빈 칸에는 검사할 글자가 없으므로 대비는 실제 렌더링된 글자만 측정한다.
 성찰 타이머는 직전 면접의 25분 표시를 보존한다(기존 공통 흐름 계약).
 
@@ -28,7 +30,7 @@ EXAMPLE_CELLS = (
     "F1", "G1", "H1", "I1", "J1",
 )
 Q1 = {"fossil": "B4", "nuclear": "F2", "solar": "H7", "wind": "H2"}
-EMPTY_TWIST = {"k": "", "line": "", "keep": ""}
+EMPTY_TWIST = {"k": "", "pick": "", "line": "", "keep": ""}
 
 
 def _game(q1=None, q2=None, wires=None):
@@ -43,6 +45,19 @@ def _wind_game():
     return _game(q2=[{"type": "wind", "cell": "B5", "to": "참살이"}],
                  wires=[["B5", "B4"], ["B4", "B3"], ["B3", "B2"],
                         ["B2", "C2"], ["C2", "D2"]])
+
+
+def _mixed_game():
+    # u2:22~25, u6:12~16: q1과 다른 2번 혼합 계획. B5 해상, H2 해안, H8 내륙.
+    # 원문 지도·생산 규칙: 화석 60, 원자력 90, 풍속 20/10/5, I행 일사량 20.
+    return _game(q1=Q1, q2=[
+        {"type": "fossil", "cell": "A10", "to": "배멧"},
+        {"type": "nuclear", "cell": "B7", "to": "배멧"},
+        {"type": "wind", "cell": "B5", "to": "참살이"},
+        {"type": "wind", "cell": "H2", "to": "빛가람"},
+        {"type": "wind", "cell": "H8", "to": "빛가람"},
+        {"type": "solar", "cell": "I8", "to": "빛가람"},
+    ], wires=_wind_game()["wires"])
 
 
 def _seed(c, game, phase="prep", extra=None):
@@ -169,6 +184,33 @@ def _cards(c):
     c.page.wait_for_selector("#tw22")
     return c.page.locator("#tw22 [data-tw22]").evaluate_all(
         "els => els.map(e=>({k:e.dataset.tw22,text:e.textContent}))")
+
+
+def _caption_has(c, patterns, label):
+    # u2:20,30: 2초 동안 캔버스 이름 자체를 기다린다(고정 sleep·별도 캡션 대체 없음).
+    matched = True
+    try:
+        c.page.wait_for_function("""a => {
+          const text=document.querySelector(a.sel)?.getAttribute('aria-label') || '';
+          return a.patterns.every(p=>new RegExp(p).test(text));
+        }""", arg={"sel": SCENE, "patterns": patterns}, timeout=2000)
+    except Exception as exc:
+        if type(exc).__name__ != "TimeoutError":
+            raise
+        matched = False
+    c.expect(matched, f"{label} 2초 안에 캔버스 이름에 질문 대상·강조: {_caption(c)}")
+
+
+def _pick_controls(c):
+    # u6:12,17: 빈 option은 미선택이며, 라디오는 checked가 없어야 한다.
+    return c.page.locator('#tw22 select#tw22-pick, #tw22 select[name="tw22-pick"], '
+                          '#tw22 input[type="radio"]#tw22-pick, '
+                          '#tw22 input[type="radio"][name="tw22-pick"]')
+
+
+def _picked(c):
+    return _pick_controls(c).evaluate_all("""els=>els.filter(e=>
+      e.tagName==='SELECT' || e.checked).map(e=>e.value).filter(Boolean)""")
 
 
 def t_A1_grid_roles_navigation_and_install(c: Ctx):
@@ -507,7 +549,8 @@ def t_C1_twist_wind_result_order_and_export(c: Ctx):
     c.page.fill("#tw22-line", memo)
     c.page.fill("#tw22-keep", keep)
     saved = _saved(c).get("game", {})
-    c.eq(saved.get("twist"), {"k": chosen, "line": memo, "keep": keep}, "C1 twist 문자열 세 필드 저장")
+    c.eq(saved.get("twist"), {"k": chosen, "pick": "", "line": memo, "keep": keep},
+         "C1 twist 문자열 네 필드 저장(u6:15 미선택 pick 포함)")
     c.eq({k: v for k, v in saved.items() if k != "twist"},
          {k: v for k, v in plan_before.items() if k != "twist"}, "C1 조건 계산·메모가 기존 계획을 바꾸지 않음")
     c.eq({k: v for k, v in saved.items() if k != "twist"},
@@ -643,6 +686,206 @@ def t_D1_real_flow_timer_and_report_questions(c: Ctx):
     c.eq(c.page.inner_text("#clock"), "25:00", "D1 성찰에서 직전 답변 타이머 표시 보존")
     c.eq(c.page.inner_text("#tlabel"), "답변", "D1 성찰 타이머 라벨")
     c.check("D1 성찰")
+
+
+def t_E1_question_target_highlights(c: Ctx):
+    # u2:20~25,27,30: 후속·발산·인문 질문의 대상과 수치도 캔버스 이름으로 읽힌다.
+    game = _mixed_game()
+    _seed(c, game, "room")
+    indices = {q["k"]: i for i, q in enumerate(_questions(c))}
+    # D-68: 발전 15+15+2+2+2+2=38, 무방향 공유 전선 5칸, 총비용 43.
+    cases = (
+        ("22-q1-nuc", 1, [r"원자력[^.]*\bF2\b[^.]*강조"]),
+        ("22-q1-fos", 1, [r"화석[^.]*\bB4\b[^.]*강조"]),
+        ("22-div-typhoon", 2, [r"바닷가\s*풍력\s*강조\s*:[^.]*\bB5\b",
+                                r"바닷가\s*풍력\s*강조\s*:[^.]*\bH2\b",
+                                r"바닷가\s*풍력\s*강조\s*:(?![^.]*\bH8\b)[^.]*\."]),
+        ("22-hum-vote", 2, [r"빛가람[^.]*강조"]),
+        ("22-hum-future", 2, [r"(?:배멧[^.]*참살이|참살이[^.]*배멧)[^.]*강조"]),
+        ("22-q2-cost", 2, [r"전선[^.]*강조", r"전선\s*5\s*칸(?!\d)",
+                           r"총비용\s*43(?!\d)"]),
+    )
+    for key, number, patterns in cases:
+        c.expect(key in indices, f"E1 {key} 질문 존재")
+        if key not in indices:
+            continue
+        i = indices[key]
+        c.page.locator(".qdeck .qcard").nth(i).click()
+        _caption_has(c, [rf"질문\s*{i + 1}(?!\d)", *patterns], f"E1 {key}")
+        cells = Q1.values() if number == 1 else [p["cell"] for p in game["q2"]]
+        _scene_plan(c, number, cells, question=i + 1)
+        if key == "22-div-typhoon":
+            # 전체 배치 목록에는 H8이 있어야 한다. 강조 절에만 H8이 없어야 한다.
+            focus = re.search(r"바닷가\s*풍력\s*강조\s*:\s*([^.]+)\.", _caption(c))
+            c.expect(focus is not None, "E1 태풍의 강조 대상 절 존재")
+            if focus:
+                targets = set(re.findall(r"\b[A-J](?:10|[1-9])\b", focus[1]))
+                c.eq(targets, {"B5", "H2"}, "E1 해상·해안 풍력만 강조하고 내륙 H8은 제외")
+        c.check(f"E1 {key} 장면 강조")
+
+
+def t_E2_gridcell_html_and_space_scroll(c: Ctx):
+    # u5:14~18: ARIA in HTML의 button/gridcell 위반 제거, 키보드·탭 계약 유지.
+    # A1~A4는 그대로 두고 별도로 구조·Space의 페이지 스크롤을 검사한다.
+    _seed(c, _wind_game())
+    grid = c.page.locator('#grid [role="grid"]')
+    c.eq(grid.count(), 1, "E2 준비실 grid 한 개")
+    c.eq(grid.locator('button[role="gridcell"]').count(), 0, "E2 button의 금지된 gridcell 역할 0개")
+    cells = grid.locator('[role="gridcell"]')
+    c.eq(cells.count(), 100, "E2 gridcell 100개")
+    c.eq(grid.locator('[tabindex="0"]').count(), 1, "E2 그리드 안 탭 정지점 한 개")
+    c.expect(cells.evaluate_all("""els=>els.every(e=>e.tagName!=='BUTTON' &&
+      (e.matches('[tabindex]') || e.querySelector('button')))"""),
+             "E2 각 gridcell은 버튼이 아닌 포커스 셀 또는 버튼을 포함한 셀")
+    _keyboard(c, '[data-tool="erase"]')
+    _tab_into_grid(c)
+    c.page.keyboard.press("Control+Home")
+    c.page.keyboard.press("ArrowDown")
+    for _ in range(4):
+        c.page.keyboard.press("ArrowRight")
+    c.eq(_active(c), "B5", "E2 Space를 보낼 설치 칸 B5 포커스")
+    # 이동·포커스 스크롤이 끝난 뒤 측정한다. Space의 기본 스크롤은 keyup 뒤도 확인.
+    c.page.wait_for_timeout(100)
+    before = c.page.evaluate("window.scrollY")
+    c.expect(c.page.evaluate("document.documentElement.scrollHeight > innerHeight"),
+             "E2 페이지가 실제로 스크롤 가능한 조건")
+    c.page.keyboard.press("Space")
+    c.expect(_live_has(c, "B5", "지웠"), "E2 Space로 지우기 알림")
+    c.eq(c.page.locator('#grid .cell[data-cell="B5"] .plant').count(), 0, "E2 Space 지우기 적용")
+    c.eq(_saved(c).get("game", {}).get("q2"), [], "E2 Space 삭제 저장 후에도 스크롤 측정")
+    c.eq(c.page.evaluate("window.scrollY"), before, "E2 Space 전후 window.scrollY 불변")
+    c.eq(_active(c), "B5", "E2 Space 재그리기 뒤 포커스 유지")
+    c.eq(grid.locator('[tabindex="0"]').count(), 1, "E2 Space 뒤 탭 정지점 한 개")
+    c.check("E2 칸 구조·Space")
+
+
+def t_E3_scene_uses_frozen_plant_table(c: Ctx):
+    # u5:19: 장면에 생산·비용 사본을 두지 않고 깊게 동결한 model.data.PT 공개.
+    c.goto("#y2022", wait="#grid .cell")
+    source = c.page.evaluate("""async () => {const r=await fetch('ui/stage-2022.js');
+      return {status:r.status,text:await r.text()}}""")
+    c.eq(source["status"], 200, "E3 장면 소스 fetch 성공")
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", source["text"], flags=re.S)
+    literals = re.findall(r'''(?:\b(?:out|cost)\b|["'](?:out|cost)["'])\s*:\s*\d+(?:\.\d+)?''', code)
+    c.eq(literals, [], "E3 장면 소스에 out/cost 생산·비용 숫자 리터럴 사본 없음")
+    table = c.page.evaluate("""() => {
+      const pt=KCP.games['2022'].model?.data?.PT;
+      const frozen=x=>!x || typeof x!=='object' ||
+        (Object.isFrozen(x) && Object.values(x).every(frozen));
+      return {exists:!!pt,deep:!!pt && frozen(pt),pt:pt || {}};
+    }""")
+    c.expect(table["exists"], "E3 model.data.PT 존재")
+    c.expect(table["deep"], "E3 PT 표와 중첩 발전 설비 객체 동결")
+    pt = table["pt"]
+    c.eq(set(pt), {"fossil", "nuclear", "wind", "solar"}, "E3 PT 발전 설비 네 종류")
+    for kind, output, cost in (("fossil", 60, 15), ("nuclear", 90, 15),
+                               ("wind", None, 2), ("solar", None, 2)):
+        entry = pt.get(kind, {})
+        c.expect(bool(entry.get("n")), f"E3 {kind} 종류 이름 공개")
+        c.eq(entry.get("cost"), cost, f"E3 {kind} 기당 비용")
+        if output is None:
+            c.expect(entry.get("out") is None, f"E3 {kind} 생산은 좌표별 자료에 따르며 고정값 없음")
+        else:
+            c.eq(entry.get("out"), output, f"E3 {kind} 생산량")
+
+
+def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
+    # u6:12~17: 자동 선택 없이 학생이 고른 한 기만 정지, 저장·복사·삭제 뒤 안내.
+    game = _mixed_game()
+    _seed(c, game, "reflect")
+    _cards(c)
+    community = c.page.locator('#tw22 [data-tw22="community"]').filter(
+        has=c.page.locator("b").filter(has_text="협의"))
+    c.eq(community.count(), 1, "E4 제목에 협의가 있는 community 카드")
+    if not community.count():
+        return
+    community.click()
+    controls = _pick_controls(c)
+    c.expect(controls.count() > 0, "E4 #tw22-pick 또는 name=tw22-pick 선택 요소")
+    if not controls.count():
+        return
+    c.eq(_picked(c), [], "E4 발전소 기본 선택 없음")
+    c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), "", "E4 미선택 pick 빈 문자열 저장")
+    result = c.page.locator("#tw22-result")
+    c.eq(result.get_attribute("role"), "status", "E4 선택 결과 role=status")
+    text = result.inner_text()
+    c.expect("고르면" in text, "E4 미선택 결과는 고르면 안내")
+    c.expect(not re.search(r"\d|전체\s*생산량|총비용", text), "E4 미선택 결과에 계산 수치 없음")
+    # q1 태양광 H7(15)과도 다르다. q2 I8(20)을 골라 205→185이어야 한다.
+    pick, amount = "I8", 20
+    produced = sum((60, 90, 20, 10, 5, 20))
+    if controls.first.evaluate("e=>e.tagName==='SELECT'"):
+        controls.first.select_option(pick)
+    else:
+        c.page.locator(f'#tw22 input[type="radio"][value="{pick}"]').check()
+    c.eq(_picked(c), [pick], "E4 원자력이 아닌 I8 태양광 하나 선택")
+    text = result.inner_text()
+    c.expect("태양광" in text and pick in text, "E4 결과에 고른 발전소 종류·좌표")
+    totals = re.search(r"전체\s*생산량\s*[:：]\s*(\d+(?:\.\d+)?)\s*(?:→|->)\s*(\d+(?:\.\d+)?)", text)
+    c.expect(totals is not None, "E4 전체 생산량 전후 수치 존재")
+    if totals:
+        before, after = map(float, totals.groups())
+        c.eq(before, produced, "E4 혼합 2번 계획 전체 생산량(1번 배치와 구분)")
+        c.eq(after, produced - amount, "E4 선택한 태양광 생산만큼 감소")
+        c.eq(before - after, amount, "E4 원자력 90 자동 정지가 아닌 I8 생산 20 감소")
+    c.expect("왜" in text and "누구" in text and "협의" in text, "E4 선택 이유·협의 대상 메모 안내")
+    saved = _saved(c).get("game", {})
+    c.eq(saved.get("twist", {}).get("pick"), pick, "E4 state.game.twist.pick 좌표 저장")
+    c.eq(saved.get("q2"), game["q2"], "E4 가정 적용이 실제 2번 발전소를 지우지 않음")
+    c.eq(_wire_keys(saved.get("wires", [])), _wire_keys(game["wires"]), "E4 가정 적용 뒤 전선 보존")
+    c.page.reload()
+    c.page.wait_for_selector("#tw22-result")
+    c.eq(_picked(c), [pick], "E4 새로고침 뒤 고른 발전소 복원")
+    c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), pick, "E4 새로고침 뒤 pick 저장 보존")
+    c.eq(result.inner_text(), text, "E4 새로고침 뒤 같은 선택 결과 복원")
+    # 메모를 입력하지 않아도 고른 발전소만으로 답안에 선택 한 줄을 내보내야 한다.
+    c.page.evaluate("""() => {window.__g22clip=null;
+      Object.defineProperty(navigator,'clipboard',{configurable:true,
+        value:{writeText:text=>{window.__g22clip=text;return Promise.resolve()}}});} """)
+    c.page.click("#copyAll")
+    c.page.wait_for_function("window.__g22clip!==null || document.querySelector('#copyFallback-2022')", timeout=2000)
+    copied = c.page.evaluate("window.__g22clip ?? document.querySelector('#copyFallback-2022')?.value ?? ''")
+    # recap의 발전소 목록을 선택 한 줄로 오인하지 않고 조건 절에서 따로 찾는다.
+    section = copied.partition("조건이 바뀐다면")[2]
+    c.expect(any("고른 발전소" in line and "태양광" in line and pick in line
+                 for line in section.splitlines()), "E4 답안 복사 조건 절에 고른 발전소 종류·좌표 한 줄")
+    _phase(c, "prep")
+    _keyboard(c, '[data-mode="q2"]')
+    _keyboard(c, '[data-tool="erase"]')
+    c.page.locator(f'#grid .cell[data-cell="{pick}"]').click()
+    c.expect(_live_has(c, pick, "지웠"), "E4 계획에서 선택 발전소 삭제 알림")
+    changed = _saved(c).get("game", {})
+    c.expect(all(p["cell"] != pick for p in changed.get("q2", [])), "E4 선택 발전소가 실제 계획에서 삭제됨")
+    c.eq(changed.get("twist", {}).get("pick"), pick, "E4 삭제 뒤 이전 pick을 지우지 않음")
+    _phase(c, "reflect")
+    stale = result.inner_text()
+    c.expect("다시 고르세요" in stale, "E4 없어진 발전소는 다시 고르세요 안내")
+    c.expect(not re.search(r"\d|전체\s*생산량|총비용", stale), "E4 없어진 선택에는 효과 미적용·수치 없음")
+    c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), pick, "E4 성찰 재진입 뒤에도 이전 pick 보존")
+    c.check("E4 주민 협의 선택·복원·삭제")
+
+
+def t_E4_community_pick_legacy_and_corrupt_saves(c: Ctx):
+    # u6:15,18: 옛 pick 부재·숫자·범위 밖 문자열은 빈 문자열, 메모·계획 보존.
+    for label, fields in (("옛 pick 없음", {}), ("숫자 pick", {"pick": 5}),
+                           ("범위 밖 pick", {"pick": "Z9"})):
+        game = _mixed_game()
+        game["twist"] = {"k": "community", "line": "가상 협의 이유", "keep": "가상 유지 이유", **fields}
+        _seed(c, game, "reflect")
+        expected = {**game["twist"], "pick": ""}
+        normalized = c.page.evaluate("raw => KCP.games['2022'].model.normalizeGame(raw)", game)
+        c.eq(normalized.get("twist"), expected, f"E4 {label} normalizeGame 검증·메모 보존")
+        saved = _saved(c).get("game", {})
+        c.eq(saved.get("twist"), expected, f"E4 {label} 화면 저장도 빈 pick으로 정규화")
+        c.expect(_pick_controls(c).count() > 0, f"E4 {label} 협의 선택 요소로 열림")
+        c.eq(_picked(c), [], f"E4 {label} 자동 발전소 선택 없음")
+        text = c.page.locator("#tw22-result").inner_text()
+        c.expect("고르면" in text and not re.search(r"\d|전체\s*생산량|총비용", text),
+                 f"E4 {label} 계산 대신 미선택 안내")
+        for field in ("q1", "r1", "q2", "q2text", "wireVersion"):
+            c.eq(saved.get(field), game[field], f"E4 {label} 기존 {field} 보존")
+        c.eq(_wire_keys(saved.get("wires", [])), _wire_keys(game["wires"]), f"E4 {label} 전선 보존")
+        c.check(f"E4 {label}")
 
 
 if __name__ == "__main__":
