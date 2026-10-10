@@ -2,7 +2,7 @@
  * 둥근 모서리의 두꺼운 테두리 메뉴 창. 밝은 화면은 크림색 창 + 남색 테두리, 어두운 화면은 짙은 파란 띠 창 + 흰 테두리.
  * 제목은 var(--display), 숫자는 var(--mono). 지도 칸은 바다·풀밭·호수 타일처럼 칠하되 판정 표시(hit, hit2, vil)는 그대로 둔다.
  * 모든 선택자는 html.v2-skin-2022 아래에만 둔다. #strip/.strip의 위치·여백·z-index·배경은 바꾸지 않는다(띠 배경은 --ink).
- * 게임 내부 배치(grid·width·display·overflow·position)는 바꾸지 않는다. 초점 윤곽은 색만 바꾼다. */
+ * 지도 접근성: 좁은 화면의 44px 칸은 styles.css가 맡고, 이 스킨은 글자 배경·색과 도구 크기를 보완한다. */
 
 @media screen {
   html.v2-skin-2022:root {
@@ -26,6 +26,11 @@
     --sea-2: #8cc2e2;
     --land: #c6e3a6;
     --lake: #96d6df;
+    --sn-plant-ink: #ffffff;
+    --sn-fossil: #6b2b86;
+    --sn-nuclear: #806000;
+    --sn-wind: #245fbb;
+    --sn-solar: #176b46;
     --shadow: 0 3px 0 rgba(27, 37, 80, 0.18);
     --sn-frame: #1b2550;
     --sn-ring: #ffffff;
@@ -62,6 +67,11 @@
       --sea-2: #25508a;
       --land: #284a2c;
       --lake: #1d5866;
+      --sn-plant-ink: #101b35;
+      --sn-fossil: #d4a0e8;
+      --sn-nuclear: #e5c054;
+      --sn-wind: #8abaff;
+      --sn-solar: #90d8aa;
       --shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
       --sn-frame: #eef2fb;
       --sn-ring: #4a68b4;
@@ -98,6 +108,11 @@
     --sea-2: #25508a;
     --land: #284a2c;
     --lake: #1d5866;
+    --sn-plant-ink: #101b35;
+    --sn-fossil: #d4a0e8;
+    --sn-nuclear: #e5c054;
+    --sn-wind: #8abaff;
+    --sn-solar: #90d8aa;
     --shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
     --sn-frame: #eef2fb;
     --sn-ring: #4a68b4;
@@ -240,13 +255,42 @@
     font-weight: 700;
   }
 
-  /* ---------- 지도 칸: 16비트 타일처럼(판정 표시 box-shadow·outline은 건드리지 않는다) ---------- */
+  /* ---------- 지도 칸: 16비트 타일처럼 ---------- */
+  /* 대비 검산(2026-10-10): WCAG 상대 휘도, 불투명한 글자 배경 기준.
+   * 바다·육지·호수 글자는 지형지물, 마을, 겹쳐 보기 숫자·화살표에 공통 적용한다.
+   * 시스템 어두운 테마와 data-theme="dark"의 색은 같다.
+   * | 표시 | 밝음: 글자 / 배경 | 대비 | 어두움: 글자 / 배경 | 대비 |
+   * |---|---|---:|---|---:|
+   * | 바다 글자 | #1b2550 / #a9d4ee | 9.35:1 | #f4f6ff / #1d3d6e | 10.01:1 |
+   * | 육지 글자 | #1b2550 / #c6e3a6 | 10.47:1 | #f4f6ff / #284a2c | 9.25:1 |
+   * | 호수 글자 | #1b2550 / #96d6df | 9.10:1 | #f4f6ff / #1d5866 | 7.38:1 |
+   * | 화석 기호 | #ffffff / #6b2b86 | 9.07:1 | #101b35 / #d4a0e8 | 8.12:1 |
+   * | 원자력 기호 | #ffffff / #806000 | 5.85:1 | #101b35 / #e5c054 | 9.75:1 |
+   * | 풍력 기호 | #ffffff / #245fbb | 6.12:1 | #101b35 / #8abaff | 8.57:1 |
+   * | 태양광 기호 | #ffffff / #176b46 | 6.51:1 | #101b35 / #90d8aa | 10.23:1 |
+   * | 전선 시작점 | #e6e1cc / #1b2550 | 11.22:1 | #060b1e / #f4f6ff | 18.13:1 |
+   * | 고정 행 머리 | #39416a / #fcf8ea | 9.24:1 | #cfd8f3 / #11296a | 9.53:1 |
+   * | 행·열 머리 / 창 위 | #39416a / #fcf8ea | 9.24:1 | #cfd8f3 / #183a8e | 7.26:1 |
+   * | 행·열 머리 / 창 아래 | #39416a / #f3ecd2 | 8.30:1 | #cfd8f3 / #0c2058 | 10.83:1 |
+   */
   html.v2-skin-2022 .mgrid .hd { font-weight: 600; color: var(--ink-2); }
   html.v2-skin-2022 .cell { border-radius: 2px; }
   html.v2-skin-2022 .cell.sea { background-image: var(--sn-sea-tex); }
   html.v2-skin-2022 .cell.lake { background-image: var(--sn-sea-tex); }
   html.v2-skin-2022 .cell.land { background-image: var(--sn-land-tex); }
   html.v2-skin-2022 .cell .plant { border-radius: 5px; }
+  html.v2-skin-2022 .cell.sea { --sn-cell-label: var(--sea); }
+  html.v2-skin-2022 .cell.land { --sn-cell-label: var(--land); }
+  html.v2-skin-2022 .cell.lake { --sn-cell-label: var(--lake); }
+  /* 글자 밑만 타일의 단색으로 덮어 전선·무늬와 겹치지 않게 한다. */
+  html.v2-skin-2022 .cell .ft,
+  html.v2-skin-2022 .cell .map-value { color: var(--ink); background: var(--sn-cell-label); padding: 1px 2px; border-radius: 2px; }
+  html.v2-skin-2022 .cell .plant,
+  html.v2-skin-2022 .toolbar .plant { color: var(--sn-plant-ink); }
+  html.v2-skin-2022 .plant.p-fossil { background: var(--sn-fossil); }
+  html.v2-skin-2022 .plant.p-nuclear { background: var(--sn-nuclear); }
+  html.v2-skin-2022 .plant.p-wind { background: var(--sn-wind); }
+  html.v2-skin-2022 .plant.p-solar { background: var(--sn-solar); }
   html.v2-skin-2022 .legend i { border-radius: 2px; }
 
   /* ---------- 자료 카드: 작은 메뉴 창 ---------- */
@@ -355,13 +399,30 @@
   html.v2-skin-2022 .v2-stage-chip.tone-bad b { color: var(--bad); }
   html.v2-skin-2022 .v2-stage-chip.tone-info b { color: var(--accent); }
   html.v2-skin-2022 .v2-stage-broken .v2-stage-canvas { visibility: hidden; }
+
+  /* 면접실은 질문·비용 칩이 늘어나도 지도를 덮지 않도록 상태줄을 문서 흐름에 둔다. */
+  html.v2-skin-2022 .v2-stage[data-phase="room"] {
+    --sn-room-map: 220px;
+    height: auto;
+  }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] .v2-stage-canvas { height: var(--sn-room-map); }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] .v2-stage-hud {
+    position: relative;
+    bottom: auto;
+    margin-top: calc(var(--sn-bar) + var(--sn-room-map));
+  }
 }
 
 @media screen and (max-width: 760px) {
+  html.v2-skin-2022 [data-tool],
+  html.v2-skin-2022 [data-ov],
+  html.v2-skin-2022 [data-mode],
+  html.v2-skin-2022 #wire-cancel { min-width: 44px; min-height: 44px; }
   html.v2-skin-2022 .v2-stage { --sn-bar: 24px; --sn-status: 34px; }
   html.v2-skin-2022 .v2-stage-top { gap: 8px; padding: 0 8px; }
   html.v2-skin-2022 .v2-stage-kicker { font-size: 10px; letter-spacing: 0.1em; }
   html.v2-skin-2022 .v2-stage-title { font-size: 14px; }
   html.v2-skin-2022 .v2-stage-hud { gap: 4px; padding: 4px 5px; }
   html.v2-skin-2022 .v2-stage-chip { gap: 4px; padding: 1px 6px; }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] { --sn-room-map: 180px; }
 }
