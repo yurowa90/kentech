@@ -8,7 +8,10 @@ function data(source) { const ctx=vm.createContext({KCP:{}}); ctx.window=ctx; vm
 const before=data(original('ui/econ-data.js')), after=data(fs.readFileSync('ui/econ-data.js','utf8'));
 for(const [key,entry] of Object.entries(before.params)) if(entry.grade!=='G') equal(after.params[key],entry,`근거 ${key} 불변`);
 for(const key of Object.keys(before)) if(key!=='params') equal(after[key],before[key],`자료 ${key} 불변`);
-for(const file of ['ui/econ.js','ui/tech-data.js','ui/build.js','tests/league/recal.js'])
+// S4는 econ의 H01 변경을 승인했다. 점수 함수·공개 API는 여전히 바이트 보존.
+const scoreSection = source => source.slice(source.indexOf('  /* ---------- 점수 · 순위 ---------- */'));
+equal(scoreSection(fs.readFileSync('ui/econ.js','utf8')),scoreSection(original('ui/econ.js')),'H01과 별개인 점수식·공개 API 보존');
+for(const file of ['ui/tech-data.js','ui/build.js','tests/league/recal.js'])
  equal(fs.readFileSync(file,'utf8'),original(file),`${file} 점수·근거·recal 바이트 불변`);
 // 혼합 세율은 동방향 계열에는 없지만 한 축의 6도시 독식을 만들 수 있다.
 const ids=['a','b','c','d','e','f'];

@@ -5,6 +5,7 @@ global.window = { KCP: {} };
 Math.random = () => { throw new Error("Math.random 호출 금지"); };
 require(path.resolve(__dirname, "../../ui/econ-data.js"));
 require(path.resolve(__dirname, "../../ui/econ.js"));
+require(path.resolve(__dirname, "../../ui/league-data.js"));
 const { econ: X, ECON_DATA: D } = window.KCP;
 const IDS = Object.keys(D.start);
 const SMALL = IDS.reduce((a, b) => D.start[a].cash0 <= D.start[b].cash0 ? a : b);
@@ -609,6 +610,40 @@ block("B17", () => {
     ok(fixed && finite(first) && first > 0 && finite(later) && finite(delta) && delta <= 0.3,
       `${id} 첫달/13달째 한도=${fmt(first)}/${fmt(later)}, 첫달 대비 차이=${fmt(delta * 100)}% (≤30%)`);
   }));
+});
+
+block("H01 PM2.5 증분·정전 상한", () => {
+  // 독립 손계산: 석탄 10,000 MWh → .07㎍/㎥, 이웃 → .042㎍/㎥.
+  // CO₂ 대리값 재도입, 소비량 사용, 이웃의 재전파, eduAir의 이주 적용을 잡는다.
+  const E = X.initCities(IDS, D, { seed: "s4-air", months: 36 });
+  const normal = inputs(E, id => ({ energy: { co2Local: 0, co2: 0,
+    genMWh: { coal: id === "dangjin" ? 10000 : 0, lng: 0, diesel: 0, biomass: 0 } } }));
+  const start = X.calibrate(E, normal, D);
+  const expected = { dangjin: 77.97, pyeongtaek: 78.782, hwaseong: 78.782,
+    asan: 78.782, cheonan: 80, anseong: 80 };
+  for (const id of IDS) ok(Math.abs(start.cities[id].lagL.air - expected[id]) < 1e-9,
+    `${id} 직접·인접만 PM 반영: ${start.cities[id].lagL.air}`);
+  ok(Math.abs(start.cities.dangjin.groupParts.air - 71.88) < 1e-9, "집단 만족만 대기 영향 ×4");
+  for (const [fuel, want] of [["coal", 77.97], ["diesel", 78.376], ["biomass", 78.376], ["lng", 79.8985]]) {
+    const I = clone(normal); I.dangjin.energy.genMWh = { [fuel]: 10000 };
+    const a = X.calibrate(E, I, D).cities.dangjin;
+    ok(Math.abs(a.lagL.air - want) < 1e-9, `${fuel} 연료별 PM: ${a.lagL.air}`);
+    I.dangjin.energy.co2Local = 999999; I.dangjin.energy.co2 = 999999;
+    I.dangjin.energy.importMWh = 99999; I.dangjin.energy.servedMWh = 0;
+    ok(X.calibrate(E, I, D).cities.dangjin.lagL.air === a.lagL.air, `${fuel} CO₂·소비·수입과 독립`);
+  }
+  const noEdu = clone(D); noEdu.params.eduAir.v = 1;
+  const plain = X.calibrate(E, normal, noEdu);
+  ok(plain.cities.dangjin.L === start.cities.dangjin.L, "eduAir는 이주용 L 불변");
+  ok(Math.abs(plain.cities.dangjin.groupParts.air - 77.97) < 1e-9, "eduAir=1 집단 만족 원래 크기");
+  const off = clone(normal);
+  IDS.forEach(id => Object.assign(off[id].energy, { unsPct: 100, servedMWh: 0, co2: 0,
+    co2Local: 0, genMWh: { coal: 0, lng: 0, diesel: 0, biomass: 0 } }));
+  const r = X.monthStep(start, off, D);
+  const rise = r.report.cities.dangjin.Lparts.air - start.cities.dangjin.lagL.air;
+  console.log(`H01 측정 시작 ΔPM=0.07, 정전 air 상승=${rise}, 상한=2.03`);
+  ok(rise >= 0 && rise <= 2.03 + 1e-9, "§7.2 전면 정전 air 상승 상한");
+  ok(r.report.cities.dangjin.Lparts.air === 80, "무배출도 airBase까지, 100점 아님");
 });
 
 failures.forEach(message => console.log(`FAIL ${message}`));
