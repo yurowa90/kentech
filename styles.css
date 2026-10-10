@@ -399,8 +399,9 @@ svg.hexmap .t-L + text, svg.hexmap .t-M + text, svg.hexmap .t-F + text { fill: #
 .lost { filter: blur(3px); user-select: none; }
 
 /* ===== 2022 Mission ===== */
-.gridwrap { overflow-x: auto; }
+.gridwrap { overflow-x: auto; min-width: 0; max-width: 100%; }
 .mgrid { display: grid; grid-template-columns: 22px repeat(10, minmax(34px, 1fr)); gap: 2px; min-width: 430px; }
+.mgrid .mgrid-row { display: contents; }
 .mgrid .hd { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: grid; place-items: center; }
 .cell {
   position: relative; aspect-ratio: 1; border-radius: 3px; border: 0; padding: 0; cursor: pointer;
@@ -421,6 +422,22 @@ svg.hexmap .t-L + text, svg.hexmap .t-M + text, svg.hexmap .t-F + text { fill: #
 .cell.hit2 { outline: 2px dashed var(--warn); outline-offset: -3px; }
 .arr { display: inline-block; line-height: 1; font-family: var(--body); }
 .cell.wire { box-shadow: inset 0 0 0 2px var(--volt); }
+/* 2022만 사용하는 격자. 데스크톱 열 너비는 유지하고 좁은 화면만 내부 스크롤한다. */
+.mgrid .cell[role="gridcell"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 0; z-index: 4; }
+.mgrid .cell.hit2::before {
+  content: ""; position: absolute; inset: 4px; z-index: 2; border: 2px dashed var(--warn); pointer-events: none;
+}
+.mgrid .cell.wire-start::after {
+  content: "시작"; position: absolute; right: 1px; bottom: 1px; z-index: 3;
+  padding: 2px; border: 1px dashed var(--volt); background: var(--ink); color: var(--paper); font-size: 9px;
+}
+.mgrid[role="img"] .cell { cursor: default; }
+@media (max-width: 760px) {
+  .gridwrap { padding: 4px; scroll-padding-inline: 26px 4px; }
+  .mgrid { grid-template-columns: 22px repeat(10, minmax(44px, 1fr)); min-width: 482px; }
+  .mgrid .cell { min-width: 44px; min-height: 44px; }
+  .mgrid .row-hd { position: sticky; left: 0; z-index: 5; background: var(--sheet); }
+}
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
 .toolbar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .cards7 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }

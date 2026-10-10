@@ -652,6 +652,13 @@ def t_F5_baseline_flows(c: Ctx):
     c.page.locator('[data-tool="wind"]').click()
     for cell in ("A6", "A7", "B6"):
         c.page.locator(f'[data-cell="{cell}"]').click()
+    # D-68(PDF p35 조건 3): 공급은 학생이 고른 마을과 직접 놓은 공유 전선으로만 센다.
+    for i in range(3):
+        c.page.locator(f"#to-{i}").select_option("배멧")
+    c.page.locator('[data-tool="wire"]').click()
+    for a, b in (("A6", "A7"), ("A6", "B6"), ("B6", "B9")):
+        c.page.locator(f'[data-cell="{a}"]').click()
+        c.page.locator(f'[data-cell="{b}"]').click()
     c.expect("충족" in c.page.locator("table.supply").first.inner_text(), "F5 2022 배멧 공급 충족을 표시한다")
     c.page.locator("#to-0").select_option("참살이")
     c.page.locator('[data-del="2"]').click()

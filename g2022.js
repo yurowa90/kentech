@@ -183,6 +183,13 @@
       q1: {}, r1: {}, q2: [], q2text: typeof R.q2text === "string" ? R.q2text : "",
       wireVersion: 2, wires: wireEdges(R.wireVersion === 2 ? R.wires : []),
       wireNotice: ["migrated", "repaired"].includes(R.wireNotice) ? R.wireNotice : "" };
+    if (R.twist !== undefined) {
+      const t = record(R.twist);
+      G.twist = { k: own(TWIST22, t.k) ? t.k : "",
+        pick: isCell(t.pick) ? t.pick : "",
+        line: typeof t.line === "string" ? t.line.slice(0, 140) : "",
+        keep: typeof t.keep === "string" ? t.keep.slice(0, 140) : "" };
+    }
     const used1 = new Set(), used2 = new Set();
     Object.keys(PT).forEach(type => {
       const c = record(R.q1)[type];
@@ -203,6 +210,147 @@
     return G;
   }
   function g(state) { return (state.game = normalizeGame(state.game)); }
+
+  // 성찰 전용 가정. 원문 예시·좌표를 읽지 않고 학생 계획만 비교한다.
+  const TWIST22 = {
+    wind: { title: "바람이 약한 날이 이어진다면", condition: "2주 동안 풍속이 평소의 절반이라고 가정한다. 과제 규칙(생산량 = 풍속)에 따라 풍력 생산량도 절반으로 센다." },
+    solar: { title: "장마로 햇빛이 줄어든다면", condition: "장마로 한 달 동안 일사량이 평소의 절반이라고 가정한다. 과제 규칙에 따라 태양광 생산량도 절반으로 센다." },
+    fossil: { title: "탄소 배출에 비용이 붙는다면", condition: "탄소 배출 비용을 더해 화석 연료 발전소 1기당 발전 비용이 15에서 30으로 오른다고 가정한다." },
+    nuclear: { title: "원자력 발전소가 정기 점검에 들어간다면", condition: "정기 점검으로 원자력 발전소가 한 달 동안 모두 멈춘다고 가정한다. 그동안 원자력 생산량은 0으로 센다." },
+    demand: { title: "빛가람의 관광객이 늘어난다면", condition: "관광객 증가로 빛가람의 전력 필요량이 100에서 130으로 늘어난다고 가정한다." },
+    community: { title: "주민과 더 협의해야 한다면", condition: "내가 고른 발전소 한 기의 가동을 한 달 미룬다고 가정한다. 협의가 필요한 발전소와 대상은 내가 판단한다." },
+    wire: { title: "전선을 놓는 비용이 오른다면", condition: "전선 1칸당 비용이 1에서 3으로 오른다고 가정한다. 공유 전선과 연결되지 않은 전선도 기존 규칙대로 센다." },
+  };
+
+  function twistPlan(G) {
+    const q2 = G.q2.length > 0;
+    const plants = q2 ? G.q2.map(p => ({ ...p })) : Object.entries(G.q1).map(([type, cell]) => ({ type, cell, to: "" }));
+    const wires = q2 ? G.wires.map(e => e.slice()) : [];
+    // 생산량이 큰 발전원부터, 동률은 고정 순서. 모든 발전원 후보를 보존한다.
+    const keys = ["wind", "solar", "fossil", "nuclear"].filter(k => plants.some(p => p.type === k));
+    const production = k => plants.filter(p => p.type === k).reduce((sum, p) => sum + out(p.type, p.cell), 0);
+    keys.sort((a, b) => production(b) - production(a));
+    if (plants.length) {
+      // 주민 협의는 특정 발전원에만 붙이지 않는 공통 카드다(균형 원칙). 2번 계획에는 수학적 사고 카드(공통) 하나도
+      // 늘 남긴다. 카드는 최대 4장이므로 남는 자리에 생산량이 큰 발전원 카드부터 둔다.
+      const common = wires.length ? ["wire", "demand"] : ["demand", "wire"];
+      const reserved = q2 ? ["community", common[0]] : ["community"];
+      keys.length = Math.min(keys.length, 4 - reserved.length);
+      keys.push(...reserved);
+      common.slice(1).forEach(k => { if (q2 && keys.length < 4) keys.push(k); });
+    }
+    return { q2, plants, wires, keys };
+  }
+
+  function twistResult(plan, key, pick = "") {
+    // 고르기 전이나 계획에서 사라진 선택에는 가정을 적용하지 않는다.
+    const paused = key === "community" ? plan.plants.findIndex(p => p.cell === pick) : -1;
+    if (key === "community" && paused < 0) return `<p>${pick ? "고른 발전소가 계획에 없습니다. 다시 고르세요." : "미룰 발전소를 고르면 바뀐 수치를 보여 줍니다."}</p><p class="small">협의 결과를 예측한 것이 아닙니다.</p>`;
+    // supply의 연결 판정을 재사용하며 계산 결과만 바꾼다. 저장·지도 자료는 불변이다.
+    const before = supply(plan.plants, plan.wires);
+    const after = { ...before, got: { ...before.got } };
+    const need = Object.fromEntries(Object.entries(VILL).map(([v, data]) => [v, data.need]));
+    let produced = 0, changed = 0;
+    plan.plants.forEach((p, i) => {
+      const amount = out(p.type, p.cell);
+      const factor = key === "community" ? (i === paused ? 0 : 1) : p.type === key ? (key === "wind" || key === "solar" ? 0.5 : key === "nuclear" ? 0 : 1) : 1;
+      produced += amount;
+      changed += amount * factor;
+      if (before.connected[i]) after.got[p.to] += amount * (factor - 1);
+      if (key === "fossil" && p.type === "fossil") after.plantCost += 15;
+    });
+    if (key === "demand") need.빛가람 = 130;
+    const wireCost = before.wire * (key === "wire" ? 3 : 1);
+    after.total = after.plantCost + wireCost;
+    let html = `<p><b>${esc(TWIST22[key].title)}</b> · 현재 ${plan.q2 ? "2번 계획" : "1번 배치"}에 적용</p>
+      <p>전체 생산량: ${produced} → ${changed}</p>${paused >= 0 ? `<p>가동을 미루는 발전소: ${esc(PT[plan.plants[paused].type].n)} ${esc(plan.plants[paused].cell)}(생산 ${out(plan.plants[paused].type, plan.plants[paused].cell)})</p>` : ""}`;
+    if (plan.q2) {
+      html += Object.keys(VILL).map(v => `<p><b>${esc(v)}</b> · 공급 ${before.got[v]} → ${after.got[v]} / 필요 ${VILL[v].need} → ${need[v]} · 부족분 ${Math.max(0, VILL[v].need - before.got[v])} → ${Math.max(0, need[v] - after.got[v])}</p>`).join("");
+      html += `<p>총비용: ${before.total} → ${after.total} (변화 ${after.total - before.total >= 0 ? "+" : ""}${after.total - before.total})<br>발전 ${before.plantCost} → ${after.plantCost}, 전선 ${before.wire}칸 비용 ${before.wire} → ${wireCost}</p>`;
+    } else {
+      html += `<p>1번은 공급 마을·전선을 정하는 계획이 아니므로 마을별 공급과 부족분은 계산하지 않습니다.</p>
+        <p>배치한 발전소의 기당 비용 합: ${before.plantCost} → ${after.plantCost} (전선 비용 제외)</p>`;
+      if (key === "demand") html += "<p>빛가람 필요량: 100 → 130 (증가 30). 공급 계획은 2번에서 정합니다.</p>";
+      if (key === "wire") html += "<p>전선 1칸당 비용: 1 → 3 (증가 2). 1번 배치에는 전선이 없어 총비용은 계산하지 않습니다.</p>";
+    }
+    html += '<p class="small"><span class="tag-mine">재구성(기당)</span> ' + (plan.q2 ? '비용은 기당 발전 비용과 전선 비용의 합입니다. ' : '') + '달라진 조건 외의 값은 그대로 두며, 기간을 곱해 누적 전력량이나 누적 비용으로 바꾸지 않습니다.</p>';
+    if (key === "wind") html += '<p class="small">이 과제에서는 생산량을 풍속과 같게 셉니다. 실제 풍력 발전기의 출력은 대략 풍속의 세제곱에 비례해, 풍속이 절반이면 약 1/8로 줄어듭니다.</p>';
+    if (key === "nuclear") html += '<p class="small">점검 기간과 비용은 연습실 가정입니다. 멈춰도 기당 비용은 그대로 둡니다.</p>';
+    if (key === "community") html += '<p>왜 이 발전소인지, 누구와 협의할지 아래 ‘내 계획 한 줄 수정’에 적어 보세요.</p><p class="small">협의 결과를 예측한 것이 아닙니다. 한 달 연기는 연습실 가정이며, 협의 비용과 주민 의견은 숫자에 넣지 않았습니다.</p>';
+    return html;
+  }
+
+  function afterReflect22(root, state, save) {
+    const next = KCP.$("#nextstep-2022", root)?.closest(".panel");
+    if (!next) return;
+    if (!KCP.$("#tw22", root)) next.insertAdjacentHTML("beforebegin", '<section class="panel" id="tw22" aria-labelledby="tw22-title" style="min-width:0;overflow-wrap:anywhere"></section>');
+    const panel = KCP.$("#tw22", root);
+    const G = normalizeGame(state.game), plan = twistPlan(G);
+    let memo = G.twist || { k: "", pick: "", line: "", keep: "" };
+    const persist = () => {
+      // 다른 성찰 처리에서 game을 정규화해도 이전 객체에 쓰지 않는다.
+      state.game = { ...record(state.game), twist: { ...memo } };
+      save();
+    };
+    const paint = () => {
+      const stale = !!memo.k && !plan.keys.includes(memo.k);
+      const hasPlan = plan.plants.length > 0;
+      panel.innerHTML = `<h3 class="h-wrap" id="tw22-title">조건이 바뀐다면 <span class="tag-mine">연습실 질문</span></h3>
+        <p>조건 하나를 골라 내 계획에서 얻는 것과 잃는 것을 살펴보세요.</p>
+        ${hasPlan ? `<p class="small">${plan.q2 ? "2번 계획의 발전소·공급 마을·전선" : "2번 계획이 없어 1번 배치"}를 기준으로 비교합니다.</p>
+          <div class="stack" role="group" aria-label="후속 조건 선택">${plan.keys.map(k => `<button type="button" class="btn" data-tw22="${k}" aria-pressed="${memo.k === k}" aria-controls="tw22-result" style="min-height:44px;min-width:44px;white-space:normal;text-align:left;display:block"><b>${esc(TWIST22[k].title)}</b><br><span class="tag-mine">연습실 가정</span> ${esc(TWIST22[k].condition)}</button>`).join("")}</div>` :
+          '<p>준비실 계획이 없어 질문을 만들 수 없습니다.</p><button type="button" class="btn" id="tw22-prep" style="min-height:44px;min-width:44px">준비실로 가기</button>'}
+        ${stale ? `<p id="tw22-stale"><b>이 메모를 쓸 때의 조건:</b> ${esc(TWIST22[memo.k].condition)} <span class="tag-mine">연습실 가정</span><br>지금 계획의 후보에는 없는 조건입니다. 적어 둔 글은 남겨 둡니다. 새 카드를 고르면 이 글도 새 조건에 연결됩니다.</p>` : ""}
+        ${!memo.k && (memo.line || memo.keep) ? '<p>메모의 조건을 확인할 수 없어 글만 보존했습니다. 조건을 다시 골라 주세요.</p>' : ""}
+        ${memo.k === "community" && hasPlan ? `<div class="field"><label for="tw22-pick">한 달 동안 가동을 미룰 발전소</label>
+          <select id="tw22-pick" aria-controls="tw22-result" style="min-height:44px;min-width:44px;width:100%;max-width:100%;background:var(--sheet);color:var(--ink)">
+            <option value=""${!memo.pick ? " selected" : ""}>발전소를 고르세요</option>
+            ${memo.pick && !plan.plants.some(p => p.cell === memo.pick) ? `<option value="${esc(memo.pick)}" selected disabled>이전 선택 ${esc(memo.pick)} (계획에 없음)</option>` : ""}
+            ${plan.plants.map(p => `<option value="${esc(p.cell)}"${memo.pick === p.cell ? " selected" : ""}>${esc(PT[p.type].n)} · ${esc(p.cell)} · 생산 ${out(p.type, p.cell)}</option>`).join("")}
+          </select></div>` : ""}
+        <div id="tw22-result" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p id="tw22-help" class="small">좌표·설비·전선 중 무엇을 어떻게 바꿀지 한 줄로 적으세요(각 140자 이내). 메모는 준비실 계획이나 장면을 바꾸지 않습니다.</p>
+        <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.line)}</textarea></div>
+        <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.keep)}</textarea></div>`;
+      const showResult = () => {
+        KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && (memo.k === "community" || !stale) ? twistResult(plan, memo.k, memo.pick) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
+      };
+      showResult();
+      const pick = KCP.$("#tw22-pick", panel);
+      if (pick) pick.addEventListener("change", e => {
+        memo = { ...memo, pick: isCell(e.target.value) ? e.target.value : "" };
+        persist();
+        showResult();
+      });
+      KCP.$$("[data-tw22]", panel).forEach(b => {
+        b.onclick = () => {
+          const key = b.dataset.tw22;
+          memo = { ...memo, k: key };
+          persist();
+          paint();
+          KCP.$(`[data-tw22="${key}"]`, panel).focus();
+        };
+      });
+      ["line", "keep"].forEach(field => KCP.$(`#tw22-${field}`, panel).addEventListener("input", e => {
+        memo = { ...memo, [field]: e.target.value.slice(0, 140) };
+        persist();
+      }));
+      const prep = KCP.$("#tw22-prep", panel);
+      if (prep) prep.onclick = () => KCP.goPhase("prep");
+    };
+    paint();
+  }
+
+  // 단독 모형 검사에는 이벤트 버스가 없다. 실제 앱에서는 항상 등록한다.
+  KCP.on?.("export:text", ({ year, state, parts }) => {
+    if (year !== "2022") return;
+    const G = normalizeGame(state.game), t = G.twist;
+    if (!t || (!t.line && !t.keep && !(t.k === "community" && t.pick))) return;
+    const condition = t.k ? `${TWIST22[t.k].condition} (연습실 가정)` : "조건 확인 불가";
+    const picked = t.k === "community" ? twistPlan(G).plants.find(p => p.cell === t.pick) : null;
+    const pickLine = t.k === "community" ? `\n고른 발전소: ${picked ? `${PT[picked.type].n} ${picked.cell}` : t.pick ? `${t.pick} (현재 계획에 없음·종류 확인 불가)` : "미선택"}` : "";
+    parts.push(`\n■ 조건이 바뀐다면(연습실 질문)\n조건: ${condition}${pickLine}\n한 줄 수정: ${t.line}\n유지 이유: ${t.keep}\n`);
+  });
 
   // 학생이 고른 직선만 한 칸 선분으로 편집한다. 꺾이는 곳도 학생이 지정한다.
   function editWire(G, from, to, erase = false) {
@@ -247,9 +395,17 @@
     return { got, plantCost, wire: edges.length, total: plantCost + edges.length, connected, edges };
   }
 
-  function gridHTML(G, plants, hit, interactive, wireStart = null) {
+  function gridHTML(G, plants, hit, interactive, wireStart = null, focusCell = "A1") {
     const pmap = {};
     plants.forEach((p) => (pmap[p.cell] = p));
+    const connection = G.mode === "q2" ? supply(plants, G.wires).connected : [];
+    const connected = Object.fromEntries(plants.map((p, i) => [p.cell, connection[i]]));
+    // 데이터 화살표는 바람이 불어 가는 쪽이다(PDF p33). 이름은 불어오는 쪽으로 부르는 관례를 함께 쓴다.
+    const windName = { S: "남쪽으로 부는 바람(북풍)", SW: "남서쪽으로 부는 바람(북동풍)", W: "서쪽으로 부는 바람(동풍)" };
+    const currentName = { E: "동쪽으로 흐름", S: "남쪽으로 흐름", W: "서쪽으로 흐름", N: "북쪽으로 흐름", NS: "남북 양쪽으로 갈라져 흐름" };
+    // 칸 이름에서 바람 경로의 출처(화석 미세먼지/원자력 사고)를 나눈다. analyze와 같은 smog 규칙.
+    const fossilAir = new Set(plants.filter(p => p.type === "fossil").flatMap(p => smog(p.cell)));
+    const nuclearAir = new Set(plants.filter(p => p.type === "nuclear").flatMap(p => smog(p.cell)));
     const segments = {};
     if (G.mode === "q2") wireEdges(G.wires).forEach(([a, b]) => {
       [[a, b], [b, a]].forEach(([from, to]) => {
@@ -257,9 +413,11 @@
         (segments[from] ||= []).push({ to, x: 50 + (cc - c) * 50, y: 50 + (rr - r) * 50 });
       });
     });
-    let h = `<div class="mgrid" role="grid" aria-label="KENTECH 도시 지도"><span class="hd"></span>${Array.from({ length: 10 }, (_, c) => `<span class="hd">${c + 1}</span>`).join("")}`;
+    const summary = `예시 배치 지도: ${plants.map(p => `${p.cell} ${PT[p.type].n}`).join(", ")}${G.mode === "q2" ? `, 전선 ${wireEdges(G.wires).length}칸` : ""}`;
+    let h = `<div class="mgrid" ${interactive ? 'role="grid" aria-label="KENTECH 도시 지도" aria-rowcount="11" aria-colcount="11" aria-describedby="grid-help"' : `role="img" aria-label="${esc(summary)}"`}>
+      <div class="mgrid-row" ${interactive ? 'role="row"' : 'aria-hidden="true"'}><span class="hd" aria-hidden="true"></span>${Array.from({ length: 10 }, (_, c) => `<span class="hd" ${interactive ? `role="columnheader" aria-colindex="${c + 2}"` : ""}>${c + 1}</span>`).join("")}</div>`;
     ROWS.forEach((R, r) => {
-      h += `<span class="hd">${R}</span>`;
+      h += `<div class="mgrid-row" ${interactive ? 'role="row"' : 'aria-hidden="true"'}><span class="hd row-hd" ${interactive ? 'role="rowheader" aria-colindex="1"' : ""}>${R}</span>`;
       for (let c = 0; c < 10; c++) {
         const id = R + (c + 1);
         const t = terr(id);
@@ -273,17 +431,35 @@
         const p = pmap[id];
         const title = `${id} · ${t === "sea" ? "바다" : t === "lake" ? "호수" : "육지"}${v ? " · " + v + " 마을" : f ? " · " + FNAME[f][1] : ""} · 일사량 ${SOLAR[r]} · 풍속 ${WIND[r][c]}`;
         const lines = segments[id] || [];
-        h += `<button class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : hit.has("~" + id) ? "hit2" : ""}" ${interactive ? `data-cell="${id}"` : "tabindex=-1"} ${wireStart === id ? 'style="outline:3px solid var(--accent);outline-offset:-3px"' : ""} title="${title}" aria-label="${title}${p ? " · " + PT[p.type].n : ""}${lines.length ? " · 전선: " + lines.map(l => l.to).join(", ") : ""}${wireStart === id ? " · 전선 시작점" : ""}">
+        const data = G.overlay === "solar" ? `일사량 ${SOLAR[r]}` : G.overlay === "wind" ? `풍속 ${WIND[r][c]}, ${windName[WDIR[r][c]]}` : G.overlay === "current" ? `해류 ${currentName[CURR[id]] || "표시 없음"}` : "";
+        const name = [id, p ? `${PT[p.type].n}, 생산 ${out(p.type, id)}` : "", v ? `${v} 마을` : f ? FNAME[f][1] : "",
+          t === "sea" ? "바다" : t === "lake" ? "호수" : "육지", data,
+          G.mode === "q2" ? lines.length ? `전선 연결: ${lines.map(l => l.to).join(", ")}` : "전선 없음" : "",
+          G.mode === "q2" && p ? p.to ? `${p.to} 마을 전선 ${connected[id] ? "연결됨" : "미연결"}` : "공급 마을 미지정" : "",
+          hit.has(id) ? `${[fossilAir.has(id) ? "미세먼지" : "", nuclearAir.has(id) ? "사고 시 방사성 물질" : ""].filter(Boolean).join("·") || "영향"}의 바람 경로 (재구성)` : "", hit.has("~" + id) ? "사고 시 해류 경로 (재구성)" : "",
+          wireStart === id ? "전선 시작점" : ""].filter(Boolean).join(" · ");
+        // 셀 자체가 유일한 포커스 대상이다. 클릭·키보드 조작은 renderPrep에서 처리한다.
+        h += `<div class="cell ${t} ${v ? "vil" : ""} ${hit.has(id) ? "hit" : ""} ${hit.has("~" + id) ? "hit2" : ""} ${wireStart === id ? "wire-start" : ""}" ${interactive ? `role="gridcell" aria-colindex="${c + 2}" data-cell="${id}" tabindex="${id === focusCell ? 0 : -1}" aria-label="${esc(name)}"` : ""} title="${esc(title)}">
           ${lines.length ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">${lines.map(l => `<line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--ink)" stroke-width="10"/><line x1="50" y1="50" x2="${l.x}" y2="${l.y}" stroke="var(--accent)" stroke-width="5"/>`).join("")}</svg>` : ""}
-          ${ov !== "" ? `<span class="ov">${ov}</span>` : label}
-          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</button>`;
+          ${ov !== "" ? `<span class="ov"><span class="map-value">${ov}</span></span>` : label}
+          ${p ? `<span class="plant p-${p.type}">${PT[p.type].s}</span>` : ""}</div>`;
       }
+      h += "</div>";
     });
     return h + "</div>";
   }
 
+  // 공개 지도·발전 설비 자료는 원본과 분리한 깊은 복사다. 중첩 배열·객체까지 동결한다.
+  const MAP_DATA = (function freeze(value) {
+    if (value && typeof value === "object") {
+      Object.values(value).forEach(freeze);
+      Object.freeze(value);
+    }
+    return value;
+  })(JSON.parse(JSON.stringify({ ROWS, TERR, FEAT, VILL, SOLAR, WIND, WDIR, CURR, PT })));
+
   KCP.games["2022"] = {
-    model: { normalizeGame, supply, editWire },
+    model: { normalizeGame, supply, editWire, data: MAP_DATA },
     brief() {
       return `<div class="scenario">
           <p class="label">문제 상황</p>
@@ -303,6 +479,8 @@
     renderPrep(root, state, save, next) {
       const G = g(state);
       let wireStart = null;
+      // 초점은 화면에만 기억한다. 계획·저장 형식에는 넣지 않는다.
+      let focusId = isCell(root._kcp2022Focus) ? root._kcp2022Focus : "A1";
       const savePlan = () => {
         G.wireNotice = "";
         const notice = KCP.$("#wire-notice", root);
@@ -330,9 +508,11 @@
                   <button class="btn small" data-tool="unwire" aria-pressed="${G.tool === "unwire"}">전선 지우기</button>
                   <button class="btn small ghost" id="wire-cancel">시작점 취소</button>
                 </div>
-                <p class="hint" id="wire-status" role="status"></p>
+                <p class="hint" id="wire-status"></p>
               </div>
               <div class="gridwrap" id="grid"></div>
+              <p class="hint" id="grid-live" role="status" aria-live="polite" aria-atomic="true"></p>
+              <p class="hint" id="grid-help">방향키로 이동, Home·End로 행 처음·끝, Ctrl+Home·End로 지도 처음·끝으로 이동합니다. Enter·Space로 현재 도구를 쓰고, Esc로 전선 시작점을 취소합니다. 좁은 화면에서는 지도를 옆으로 밀어 볼 수 있습니다.</p>
               <div class="legend" style="margin-top:8px">
                 <span><i style="background:var(--sea)"></i>바다</span><span><i style="background:var(--land)"></i>육지</span><span><i style="background:var(--lake)"></i>호수</span>
                 ${Object.values(FNAME).map(([s, n]) => `<span><b>${s}</b> ${n}</span>`).join("")}
@@ -367,38 +547,87 @@
         </div>`;
 
       const plantsNow = () => (G.mode === "q1" ? Object.entries(G.q1).filter(([, c]) => c).map(([type, cell]) => ({ type, cell })) : G.q2);
+      const announce = (message, error = false) => {
+        const live = KCP.$("#grid-live", root);
+        live.textContent = "";
+        // 같은 오류가 반복되어도 라이브 영역의 새 알림으로 전달한다.
+        if (window.requestAnimationFrame) window.requestAnimationFrame(() => { live.textContent = message; });
+        else live.textContent = message;
+        if (error) KCP.toast(message);
+      };
+      const rememberFocus = (id) => {
+        focusId = id;
+        root._kcp2022Focus = id;
+        KCP.$$("[data-cell]", KCP.$("#grid", root)).forEach(b => b.setAttribute("tabindex", b.dataset.cell === id ? "0" : "-1"));
+      };
+      const focusMapCell = (id) => {
+        rememberFocus(id);
+        const cell = KCP.$(`[data-cell="${id}"]`, KCP.$("#grid", root));
+        cell.focus({ preventScroll: true });
+        cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      };
       const paint = (focusCell) => {
+        const active = typeof document !== "undefined" ? document.activeElement : null;
+        const restore = focusCell || (active && KCP.$$("[data-cell]", KCP.$("#grid", root)).includes(active) ? active.dataset.cell : null);
+        if (restore) { focusId = restore; root._kcp2022Focus = restore; }
         const plants = plantsNow();
         const an = analyze(plants);
-        KCP.$("#grid", root).innerHTML = gridHTML(G, plants, an.hit, true, wireStart);
+        KCP.$("#grid", root).innerHTML = gridHTML(G, plants, an.hit, true, wireStart, focusId);
         KCP.$("#wire-tools", root).hidden = G.mode !== "q2";
         KCP.$("#wire-status", root).textContent = wireStart ? `${wireStart}에서 같은 행·열의 끝점을 누르세요. 같은 칸을 누르면 취소합니다.` : "전선 도구를 고른 뒤 시작점과 같은 행·열의 끝점을 누르세요. 꺾이는 곳은 구간을 나누어 놓습니다.";
         KCP.$$("[data-tool]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tool === G.tool)));
         KCP.$("#warn", root).innerHTML = an.warn.map((w) => `<li style="color:${w.lv === "bad" ? "var(--bad)" : "inherit"}">${esc(w.t)}</li>`).join("") || "<li>설치한 발전소가 없습니다.</li>";
-        KCP.$$("[data-cell]", root).forEach((b) => (b.onclick = () => clickCell(b.dataset.cell)));
+        KCP.$$("[data-cell]", KCP.$("#grid", root)).forEach((b) => {
+          b.onfocus = () => rememberFocus(b.dataset.cell);
+          // div는 포인터 클릭만으로 초점을 받지 않는다. 설치가 거부돼도 누른 칸을 유지한다.
+          b.onclick = () => { focusMapCell(b.dataset.cell); clickCell(b.dataset.cell); };
+          b.onkeydown = (e) => {
+            const id = b.dataset.cell, [r, c] = rc(id);
+            let to;
+            if (e.key === "ArrowUp") to = idOf(Math.max(0, r - 1), c);
+            if (e.key === "ArrowDown") to = idOf(Math.min(9, r + 1), c);
+            if (e.key === "ArrowLeft") to = idOf(r, Math.max(0, c - 1));
+            if (e.key === "ArrowRight") to = idOf(r, Math.min(9, c + 1));
+            if (e.key === "Home") to = e.ctrlKey ? "A1" : idOf(r, 0);
+            if (e.key === "End") to = e.ctrlKey ? "J10" : idOf(r, 9);
+            if (to) { e.preventDefault(); return focusMapCell(to); }
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (e.repeat) return; return clickCell(id); }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (wireStart) { wireStart = null; paint(id); announce("전선 시작점을 취소했습니다."); }
+            }
+          };
+        });
         paintWork();
-        if (focusCell) KCP.$(`[data-cell="${focusCell}"]`, root).focus();
+        if (restore) focusMapCell(restore);
       };
       const clickCell = (id) => {
         if (["wire", "unwire"].includes(G.tool)) {
           if (G.mode !== "q2") return;
-          if (!wireStart) { wireStart = id; return paint(id); }
+          if (!wireStart) { wireStart = id; paint(id); return announce(`${id}에서 시작점. 같은 행·열의 끝점을 고르세요.`); }
+          if (wireStart === id) { wireStart = null; paint(id); return announce("전선 시작점을 취소했습니다."); }
+          const start = wireStart;
           const why = editWire(G, wireStart, id, G.tool === "unwire");
-          if (why) return KCP.toast(why);
-          wireStart = null; savePlan(); return paint(id);
+          if (why) return announce(`${id}: ${why}`, true);
+          wireStart = null; savePlan(); paint(id);
+          return announce(`${start}에서 ${id}까지 전선을 ${G.tool === "unwire" ? "지웠습니다" : "놓았습니다"}. 전체 전선 ${G.wires.length}칸.`);
         }
         if (G.tool === "erase") {
+          const removed = plantsNow().find(p => p.cell === id);
           if (G.mode === "q1") Object.keys(G.q1).forEach((k) => G.q1[k] === id && delete G.q1[k]);
           else G.q2 = G.q2.filter((p) => p.cell !== id);
-          savePlan(); return paint(id);
+          savePlan(); paint(id);
+          return announce(removed ? `${id}의 ${PT[removed.type].n}를 지웠습니다.` : `${id}에는 지울 발전소가 없습니다.`);
         }
         const why = canPlace(G.tool, id);
-        if (why) return KCP.toast(why);
+        if (why) return announce(`${id}: ${why}`, true);
         const occupied = G.mode === "q1" ? Object.entries(G.q1).find(([k, c]) => c === id && k !== G.tool) : G.q2.find((p) => p.cell === id);
-        if (occupied) return KCP.toast("1개의 좌표에는 1개의 발전소만 설치할 수 있습니다");
+        if (occupied) return announce(`${id}: 1개의 좌표에는 1개의 발전소만 설치할 수 있습니다.`, true);
+        const previous = G.mode === "q1" ? G.q1[G.tool] : null;
         if (G.mode === "q1") G.q1[G.tool] = id;
         else G.q2.push({ type: G.tool, cell: id, to: "" });
         savePlan(); paint(id);
+        announce(previous && previous !== id ? `${previous}의 ${PT[G.tool].n}를 ${id}로 옮겼습니다. 생산 ${out(G.tool, id)}.` : `${id}에 ${PT[G.tool].n}를 설치했습니다. 생산 ${out(G.tool, id)}.`);
       };
       const paintWork = () => {
         const w = KCP.$("#work", root);
@@ -431,7 +660,7 @@
       KCP.$$("[data-ov]", root).forEach((b) => (b.onclick = () => { G.overlay = b.dataset.ov; KCP.$$("[data-ov]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); savePlan(); paint(); }));
       KCP.$$("[data-tool]", root).forEach((b) => (b.onclick = () => { G.tool = b.dataset.tool; wireStart = null; savePlan(); paint(); }));
       KCP.$$("[data-mode]", root).forEach((b) => (b.onclick = () => { G.mode = b.dataset.mode; wireStart = null; if (G.mode === "q1" && ["wire", "unwire"].includes(G.tool)) G.tool = "wind"; savePlan(); paint(); }));
-      KCP.$("#wire-cancel", root).onclick = () => { wireStart = null; paint(); };
+      KCP.$("#wire-cancel", root).onclick = () => { wireStart = null; paint(); announce("전선 시작점을 취소했습니다."); };
       KCP.$("#go22", root).onclick = next;
       paint();
     },
@@ -467,6 +696,8 @@
         { t: "2번 문제 · 설명", d: G.q2text },
       ];
     },
+
+    afterReflect: afterReflect22,
 
     reflectExtra() {
       const ex = [{ type: "fossil", cell: "F5" }, { type: "nuclear", cell: "I9" }, { type: "solar", cell: "I7" }, { type: "wind", cell: "B1" }];
