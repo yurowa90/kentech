@@ -69,6 +69,48 @@
     return [...seen];
   }
 
+  /* ---------- 좁은 화면 면접실의 문제 상황·장면 위치 ----------
+   * 질문 카드 다음에 문제 상황과 장면을 둔다. 원래 자리는 표시점으로 기억해 시간 안내 등 주변 요소의
+   * 상대 순서를 보존한다. 표시점은 화면·접근성 트리에 나타나지 않으며 저장값에도 넣지 않는다. */
+  const narrowQuery = window.matchMedia ? window.matchMedia("(max-width: 760px)") : null;
+  let stageHome = null;
+  function restoreStage() {
+    if (!stageHome) return;
+    const { app, el, brief, stageSlot, briefSlot } = stageHome;
+    if (stageSlot.parentNode === app && el.parentNode === app) stageSlot.after(el);
+    if (briefSlot.parentNode === app && brief.parentNode === app) briefSlot.after(brief);
+  }
+  function clearStageHome() {
+    restoreStage();
+    if (stageHome) {
+      stageHome.stageSlot.remove();
+      stageHome.briefSlot.remove();
+      stageHome = null;
+    }
+  }
+  function placeStage(phase) {
+    const el = document.getElementById("v2-stage"), app = document.getElementById("app"), main = document.getElementById("phase");
+    if (!el || !app || !main || !app.contains(el) || !document.documentElement.classList.contains("v2-skin-" + ID)) return;
+    const brief = app.querySelector(".brief");
+    if (!brief || brief.parentNode !== app || el.parentNode !== app || main.parentNode !== app) return;
+    if (!stageHome || stageHome.el !== el || stageHome.brief !== brief) {
+      clearStageHome();
+      const stageSlot = document.createComment("2022 장면 원래 위치"), briefSlot = document.createComment("2022 문제 상황 원래 위치");
+      el.before(stageSlot);
+      brief.before(briefSlot);
+      stageHome = { app, el, brief, stageSlot, briefSlot };
+    }
+    if (phase === "room" && narrowQuery && narrowQuery.matches) {
+      if (main.nextElementSibling !== brief) main.after(brief);
+      if (brief.nextElementSibling !== el) brief.after(el);
+    } else restoreStage();
+  }
+  if (narrowQuery) {
+    const replace = () => { const el = document.getElementById("v2-stage"); if (el && el.dataset.phase) placeStage(el.dataset.phase); };
+    if (narrowQuery.addEventListener) narrowQuery.addEventListener("change", replace);
+    else if (narrowQuery.addListener) narrowQuery.addListener(replace);
+  }
+
   /* ---------- 면접실의 현재 질문(저장하지 않는 메모리) ---------- */
   let questionIndex = 0, offRoom = null;
   function clearQuestion() {
@@ -77,11 +119,16 @@
     questionIndex = 0;
   }
   if (typeof KCP.on === "function") {
-    KCP.on("route:change", clearQuestion);
-    KCP.on("phase:change", clearQuestion);
+    KCP.on("route:change", () => { clearQuestion(); clearStageHome(); });
+    KCP.on("phase:change", ({ year, to } = {}) => {
+      clearQuestion();
+      if (year === ID) placeStage(to);
+      else clearStageHome();
+    });
     KCP.on("room:render", ({ year, root }) => {
       clearQuestion();
       if (year !== ID || !root) return;
+      placeStage("room");
       const follow = event => {
         const card = event.target?.closest?.(".qdeck .qcard");
         const answer = card && card.querySelector("textarea[data-a]");
@@ -621,6 +668,18 @@
     if (key === "22-hum-future") return "배멧·참살이 마을 강조. 계획이 두 마을의 미래에 주는 영향을 설명해 보세요.";
     return (st.mode === "q1" ? "1번" : "2번") + " 계획" + (st.mode === "q2" ? "과 직접 놓은 전선" : "") + "입니다. 위치를 고른 이유를 설명해 보세요.";
   }
+  function briefAdvice(st) {
+    const q = st.question;
+    const targets = {
+      "22-q1": "1번 배치", "22-q2": "2번 공급·전선",
+      "22-q1-nuc": "원자력 · 풍향·해류", "22-q1-fos": "화석 · 풍향",
+      "22-q2-cost": "전선·비용", "22-q2-one": "한 종류 발전소",
+      "22-div-typhoon": "해상·해안 풍력", "22-hum-vote": "빛가람 주민",
+      "22-hum-future": "배멧·참살이",
+    };
+    return (q ? "질문 " + (q.index + 1) : st.mode === "q1" ? "1번" : "2번") + " · " +
+      (st.empty ? "계획 없음" : targets[q?.key] || "내 계획");
+  }
   function advice(st, phase) {
     if (phase === "room") return questionLabel(st) + ". " + (st.empty ? "준비실에서 이 문제의 계획을 아직 세우지 않았습니다. 준비실로 돌아가 계획을 세워 보세요." : questionDetail(st));
     if (phase === "reflect") return "성찰 단계입니다. 내가 세운 배치를 다시 보며 무엇을 무겁게 보았는지 돌아보세요.";
@@ -785,7 +844,8 @@
       g.fillText(inline ? lab : "조언", fx, top);
       g.font = "400 " + fs + "px " + F.body;
       g.fillStyle = P.ink;
-      const lines = wrap(g, advice(st, phase), maxW - labW);
+      // 좁은 면접실은 질문 번호·대상만 표시한다. 전체 설명은 기존 캔버스 이름에 남긴다.
+      const lines = wrap(g, narrow && phase === "room" ? briefAdvice(st) : advice(st, phase), maxW - labW);
       lines.slice(0, maxLines).forEach((ln, i) => {
         let txt = ln;
         if (i === maxLines - 1 && lines.length > maxLines) {

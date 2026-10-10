@@ -330,6 +330,13 @@
   html.v2-skin-2022 textarea.note:focus,
   html.v2-skin-2022 input.note:focus { border-color: var(--accent); }
   html.v2-skin-2022 .caution { border-width: 2px; border-radius: 8px; }
+  /* 오류도 화면에 보이는 라이브 영역 하나로 전달한다. 두 테마의 --bad / --bad-soft 대비는 4.5:1 이상. */
+  html.v2-skin-2022 #grid-live[data-error="true"] {
+    color: var(--bad);
+    background: var(--bad-soft);
+    border-left: 4px solid var(--bad);
+    padding: 8px 10px;
+  }
 
   /* ---------- 장면: 위 제목 창 + 지도 화면 + 아래 상태 표시줄 ---------- */
   html.v2-skin-2022 .v2-stage {
