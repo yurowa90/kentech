@@ -355,6 +355,18 @@
   html.v2-skin-2022 .v2-stage-chip.tone-bad b { color: var(--bad); }
   html.v2-skin-2022 .v2-stage-chip.tone-info b { color: var(--accent); }
   html.v2-skin-2022 .v2-stage-broken .v2-stage-canvas { visibility: hidden; }
+
+  /* 면접실은 질문·비용 칩이 늘어나도 지도를 덮지 않도록 상태줄을 문서 흐름에 둔다. */
+  html.v2-skin-2022 .v2-stage[data-phase="room"] {
+    --sn-room-map: 220px;
+    height: auto;
+  }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] .v2-stage-canvas { height: var(--sn-room-map); }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] .v2-stage-hud {
+    position: relative;
+    bottom: auto;
+    margin-top: calc(var(--sn-bar) + var(--sn-room-map));
+  }
 }
 
 @media screen and (max-width: 760px) {
@@ -364,4 +376,5 @@
   html.v2-skin-2022 .v2-stage-title { font-size: 14px; }
   html.v2-skin-2022 .v2-stage-hud { gap: 4px; padding: 4px 5px; }
   html.v2-skin-2022 .v2-stage-chip { gap: 4px; padding: 1px 6px; }
+  html.v2-skin-2022 .v2-stage[data-phase="room"] { --sn-room-map: 180px; }
 }

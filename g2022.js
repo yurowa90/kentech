@@ -282,8 +282,17 @@
     return h + "</div>";
   }
 
+  // 공개 지도 자료는 원본과 분리한 깊은 복사다. 중첩 배열·객체까지 동결한다.
+  const MAP_DATA = (function freeze(value) {
+    if (value && typeof value === "object") {
+      Object.values(value).forEach(freeze);
+      Object.freeze(value);
+    }
+    return value;
+  })(JSON.parse(JSON.stringify({ ROWS, TERR, FEAT, VILL, SOLAR, WIND, WDIR, CURR })));
+
   KCP.games["2022"] = {
-    model: { normalizeGame, supply, editWire },
+    model: { normalizeGame, supply, editWire, data: MAP_DATA },
     brief() {
       return `<div class="scenario">
           <p class="label">문제 상황</p>
