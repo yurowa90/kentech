@@ -1,14 +1,17 @@
-"""2022 충실판 단위 1~3·5·6의 독립 수용 검사.
+"""2022 충실판 단위 1~3·5·6과 선택 저장·장면 위치의 독립 수용 검사.
 
 근거 경로: _briefs/lanes/2022/{u1-reflect,u2-scene,u3-a11y,u5-cell,u6-pick}.md.
 각 함수의 주석에 명세 줄을 적었다. 기대값은 명세·D-68에서 정하며,
 구현은 저장 봉투와 기존 UI 선택자를 찾는 데만 참고한다.
+선택 종류 저장과 좁은 화면 장면 위치는 2026-10-10 총괄 명세 1·2를 따른다.
 
 해석: 카드 키·문구·후보 우선순위는 고정하지 않는다(u1:14~19의 예).
 풍력만 있는 2번 계획은 '풍력에 크게 기대는 계획'이다. 옛 twist 부재는
-부재 또는 빈 문자열 4개(pick 포함)로 허용한다. 손상 twist는 빈 문자열로 정규화한다.
+부재 또는 빈 문자열 5개(pick·pickType 포함)로 허용한다. 손상 twist는 빈 문자열로 정규화한다.
 태풍 강조는 캡션의 '바닷가 풍력 강조: ….' 절만 검사한다. 전체 배치 목록에는
-내륙 풍력이 있어도 된다. 선택 요소는 select 또는 라디오를 모두 허용한다.
+내륙 풍력이 있어도 된다. 2026-10-10 총괄 명세의 선택 요소는 #tw22-pick select이며,
+option 값은 좌표:종류다. 같은 좌표의 종류 변경은 옛 선택을 보존하고 재선택을 요구한다.
+F1은 같은 명세의 760px 경계·단계·연도별 장면 위치를 DOM과 화면에서 함께 검사한다.
 빈 칸에는 검사할 글자가 없으므로 대비는 실제 렌더링된 글자만 측정한다.
 성찰 타이머는 직전 면접의 25분 표시를 보존한다(기존 공통 흐름 계약).
 
@@ -30,7 +33,7 @@ EXAMPLE_CELLS = (
     "F1", "G1", "H1", "I1", "J1",
 )
 Q1 = {"fossil": "B4", "nuclear": "F2", "solar": "H7", "wind": "H2"}
-EMPTY_TWIST = {"k": "", "pick": "", "line": "", "keep": ""}
+EMPTY_TWIST = {"k": "", "pick": "", "pickType": "", "line": "", "keep": ""}
 
 
 def _game(q1=None, q2=None, wires=None):
@@ -202,15 +205,89 @@ def _caption_has(c, patterns, label):
 
 
 def _pick_controls(c):
-    # u6:12,17: 빈 option은 미선택이며, 라디오는 checked가 없어야 한다.
-    return c.page.locator('#tw22 select#tw22-pick, #tw22 select[name="tw22-pick"], '
-                          '#tw22 input[type="radio"]#tw22-pick, '
-                          '#tw22 input[type="radio"][name="tw22-pick"]')
+    # 2026-10-10 총괄 명세 1: id와 option의 좌표:종류 형식을 고정한다.
+    return c.page.locator('#tw22 select#tw22-pick')
 
 
 def _picked(c):
-    return _pick_controls(c).evaluate_all("""els=>els.filter(e=>
-      e.tagName==='SELECT' || e.checked).map(e=>e.value).filter(Boolean)""")
+    return _pick_controls(c).evaluate_all("els=>els.map(e=>e.value).filter(Boolean)")
+
+
+def _copied_pick_line(c, label):
+    # recap의 발전소 목록이 아니라 조건 절 안의 선택 한 줄만 판정한다.
+    c.page.evaluate("""() => {window.__g22clip=null;
+      Object.defineProperty(navigator,'clipboard',{configurable:true,
+        value:{writeText:text=>{window.__g22clip=text;return Promise.resolve()}}});} """)
+    c.page.click("#copyAll")
+    c.page.wait_for_function("window.__g22clip!==null || document.querySelector('#copyFallback-2022')", timeout=2000)
+    copied = c.page.evaluate("window.__g22clip ?? document.querySelector('#copyFallback-2022')?.value ?? ''")
+    section = copied.partition("조건이 바뀐다면")[2]
+    lines = [line for line in section.splitlines() if "고른 발전소" in line]
+    c.eq(len(lines), 1, f"{label} 답안 복사 조건 절의 고른 발전소 한 줄")
+    return lines[0] if lines else ""
+
+
+def _stale_pick(c, expected, label):
+    text = c.page.locator("#tw22-result").inner_text()
+    c.expect("다시 고르세요" in text, f"{label} 다시 고르세요 안내")
+    c.expect(not re.search(r"\d|전체\s*생산량|총비용", text), f"{label} 효과 미적용·계산 수치 없음")
+    c.eq(_saved(c).get("game", {}).get("twist"), expected, f"{label} 좌표·종류·메모 보존")
+    c.expect("계획에 없거나 종류가 바뀜" in _copied_pick_line(c, label),
+             f"{label} 답안 복사의 선택 줄에 계획 부재·종류 변경 표시")
+
+
+def _stage_position(c, after_phase, label, room=False):
+    # 2026-10-10 총괄 명세 2: CSS로 시각 순서만 바꿔도, DOM만 옮겨도 통과하지 않는다.
+    ready = True
+    try:
+        c.page.wait_for_function("""after => {
+          const stage=document.querySelector('#v2-stage'), phase=document.querySelector('#phase'),
+            brief=document.querySelector('#app .brief');
+          if(!stage || !phase || !brief || stage.parentElement!==phase.parentElement ||
+             stage.parentElement!==brief.parentElement) return false;
+          const before=(a,b)=>!!(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING);
+          return after ? before(phase,stage) : before(stage,brief);
+        }""", arg=after_phase, timeout=2000)
+    except Exception as exc:
+        if type(exc).__name__ != "TimeoutError":
+            raise
+        ready = False
+    c.expect(ready, f"F1 {label} 2초 안에 지정된 DOM 위치로 이동")
+    positions = c.page.evaluate("""() => {
+      const stage=document.querySelector('#v2-stage'), phase=document.querySelector('#phase'),
+        brief=document.querySelector('#app .brief'), question=document.querySelector('#phase .qdeck .qcard');
+      const rect=e=>{if(!e)return null;const r=e.getBoundingClientRect();
+        return {top:r.top,bottom:r.bottom,width:r.width,height:r.height,
+          visible:getComputedStyle(e).visibility!=='hidden' && !!e.getClientRects().length}};
+      const before=(a,b)=>!!(a && b && (a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING));
+      return {stage:rect(stage),phase:rect(phase),brief:rect(brief),question:rect(question),
+        phaseBeforeStage:before(phase,stage),stageBeforeBrief:before(stage,brief),
+        questionBeforeStage:before(question,stage),stageBeforeQuestion:before(stage,question),
+        sameParent:!!stage && !!phase && !!brief && stage.parentElement===phase.parentElement &&
+          stage.parentElement===brief.parentElement};
+    }""")
+    c.eq(c.page.locator("#v2-stage").count(), 1, f"F1 {label} 장면 한 개")
+    c.expect(positions["sameParent"], f"F1 {label} 장면은 단계 화면·문제 상황과 같은 부모")
+    for key in ("stage", "phase", "brief") + (("question",) if room else ()):
+        r = positions[key]
+        c.expect(r is not None and r["visible"] and r["width"] > 0 and r["height"] > 0,
+                 f"F1 {label} {key}를 숨기거나 크기를 없애지 않음")
+    stage, phase, brief, question = (positions[k] for k in ("stage", "phase", "brief", "question"))
+    if after_phase:
+        c.expect(positions["phaseBeforeStage"], f"F1 {label} DOM에서 #phase 뒤에 #v2-stage")
+        c.expect(bool(stage and phase and phase["bottom"] <= stage["top"]),
+                 f"F1 {label} 화면에서 단계 화면 아래에 장면")
+    else:
+        c.expect(positions["stageBeforeBrief"], f"F1 {label} DOM에서 .brief 앞에 #v2-stage")
+        c.expect(bool(stage and brief and stage["bottom"] <= brief["top"]),
+                 f"F1 {label} 화면에서 문제 상황 위에 장면")
+    if room:
+        c.expect(positions["questionBeforeStage"] if after_phase else positions["stageBeforeQuestion"],
+                 f"F1 {label} 첫 질문 카드와 장면의 DOM 순서")
+        c.expect(bool(stage and question and
+                      (question["bottom"] <= stage["top"] if after_phase else stage["bottom"] <= question["top"])),
+                 f"F1 {label} 첫 질문 카드와 장면의 화면 순서·겹침 없음")
+    c.check(f"F1 {label}")
 
 
 def t_A1_grid_roles_navigation_and_install(c: Ctx):
@@ -549,8 +626,8 @@ def t_C1_twist_wind_result_order_and_export(c: Ctx):
     c.page.fill("#tw22-line", memo)
     c.page.fill("#tw22-keep", keep)
     saved = _saved(c).get("game", {})
-    c.eq(saved.get("twist"), {"k": chosen, "pick": "", "line": memo, "keep": keep},
-         "C1 twist 문자열 네 필드 저장(u6:15 미선택 pick 포함)")
+    c.eq(saved.get("twist"), {"k": chosen, "pick": "", "pickType": "", "line": memo, "keep": keep},
+         "C1 twist 문자열 다섯 필드 저장(미선택 pick·pickType 포함)")
     c.eq({k: v for k, v in saved.items() if k != "twist"},
          {k: v for k, v in plan_before.items() if k != "twist"}, "C1 조건 계산·메모가 기존 계획을 바꾸지 않음")
     c.eq({k: v for k, v in saved.items() if k != "twist"},
@@ -790,7 +867,7 @@ def t_E3_scene_uses_frozen_plant_table(c: Ctx):
 
 
 def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
-    # u6:12~17: 자동 선택 없이 학생이 고른 한 기만 정지, 저장·복사·삭제 뒤 안내.
+    # u6:12~17 + 2026-10-10 총괄 명세 1: 좌표·종류 저장·복사·삭제 뒤 안내.
     game = _mixed_game()
     _seed(c, game, "reflect")
     _cards(c)
@@ -801,24 +878,26 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
         return
     community.click()
     controls = _pick_controls(c)
-    c.expect(controls.count() > 0, "E4 #tw22-pick 또는 name=tw22-pick 선택 요소")
+    c.eq(controls.count(), 1, "E4 #tw22-pick select 한 개")
     if not controls.count():
         return
     c.eq(_picked(c), [], "E4 발전소 기본 선택 없음")
-    c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), "", "E4 미선택 pick 빈 문자열 저장")
+    expected = {**EMPTY_TWIST, "k": "community"}
+    c.eq(_saved(c).get("game", {}).get("twist"), expected, "E4 미선택 pick·pickType 빈 문자열 저장")
+    options = controls.locator("option").evaluate_all("els=>els.map(e=>e.value).filter(Boolean)")
+    c.eq(sorted(options), sorted(f"{p['cell']}:{p['type']}" for p in game["q2"]),
+         "E4 계획의 모든 option 값은 좌표:종류(1번 배치를 섞지 않음)")
     result = c.page.locator("#tw22-result")
     c.eq(result.get_attribute("role"), "status", "E4 선택 결과 role=status")
     text = result.inner_text()
     c.expect("고르면" in text, "E4 미선택 결과는 고르면 안내")
     c.expect(not re.search(r"\d|전체\s*생산량|총비용", text), "E4 미선택 결과에 계산 수치 없음")
     # q1 태양광 H7(15)과도 다르다. q2 I8(20)을 골라 205→185이어야 한다.
-    pick, amount = "I8", 20
+    pick, pick_type, amount = "I8", "solar", 20
+    pick_value = f"{pick}:{pick_type}"
     produced = sum((60, 90, 20, 10, 5, 20))
-    if controls.first.evaluate("e=>e.tagName==='SELECT'"):
-        controls.first.select_option(pick)
-    else:
-        c.page.locator(f'#tw22 input[type="radio"][value="{pick}"]').check()
-    c.eq(_picked(c), [pick], "E4 원자력이 아닌 I8 태양광 하나 선택")
+    controls.select_option(pick_value)
+    c.eq(_picked(c), [pick_value], "E4 원자력이 아닌 I8 태양광 하나 선택")
     text = result.inner_text()
     c.expect("태양광" in text and pick in text, "E4 결과에 고른 발전소 종류·좌표")
     totals = re.search(r"전체\s*생산량\s*[:：]\s*(\d+(?:\.\d+)?)\s*(?:→|->)\s*(\d+(?:\.\d+)?)", text)
@@ -831,24 +910,21 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
     c.expect("왜" in text and "누구" in text and "협의" in text, "E4 선택 이유·협의 대상 메모 안내")
     saved = _saved(c).get("game", {})
     c.eq(saved.get("twist", {}).get("pick"), pick, "E4 state.game.twist.pick 좌표 저장")
+    c.eq(saved.get("twist", {}).get("pickType"), pick_type, "E4 state.game.twist.pickType 종류 저장")
+    expected.update(pick=pick, pickType=pick_type)
+    c.eq(saved.get("twist"), expected, "E4 선택 뒤 twist 다섯 필드 저장")
     c.eq(saved.get("q2"), game["q2"], "E4 가정 적용이 실제 2번 발전소를 지우지 않음")
     c.eq(_wire_keys(saved.get("wires", [])), _wire_keys(game["wires"]), "E4 가정 적용 뒤 전선 보존")
     c.page.reload()
     c.page.wait_for_selector("#tw22-result")
-    c.eq(_picked(c), [pick], "E4 새로고침 뒤 고른 발전소 복원")
+    c.eq(_picked(c), [pick_value], "E4 새로고침 뒤 고른 발전소 좌표·종류 복원")
     c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), pick, "E4 새로고침 뒤 pick 저장 보존")
+    c.eq(_saved(c).get("game", {}).get("twist"), expected, "E4 새로고침 뒤 pickType·메모도 보존")
     c.eq(result.inner_text(), text, "E4 새로고침 뒤 같은 선택 결과 복원")
     # 메모를 입력하지 않아도 고른 발전소만으로 답안에 선택 한 줄을 내보내야 한다.
-    c.page.evaluate("""() => {window.__g22clip=null;
-      Object.defineProperty(navigator,'clipboard',{configurable:true,
-        value:{writeText:text=>{window.__g22clip=text;return Promise.resolve()}}});} """)
-    c.page.click("#copyAll")
-    c.page.wait_for_function("window.__g22clip!==null || document.querySelector('#copyFallback-2022')", timeout=2000)
-    copied = c.page.evaluate("window.__g22clip ?? document.querySelector('#copyFallback-2022')?.value ?? ''")
-    # recap의 발전소 목록을 선택 한 줄로 오인하지 않고 조건 절에서 따로 찾는다.
-    section = copied.partition("조건이 바뀐다면")[2]
-    c.expect(any("고른 발전소" in line and "태양광" in line and pick in line
-                 for line in section.splitlines()), "E4 답안 복사 조건 절에 고른 발전소 종류·좌표 한 줄")
+    line = _copied_pick_line(c, "E4 유효 선택")
+    c.expect("태양광" in line and pick in line, "E4 답안 복사 조건 절에 고른 발전소 종류·좌표 한 줄")
+    c.expect("계획에 없거나 종류가 바뀜" not in line, "E4 유효 선택의 복사 줄에는 변경 안내 없음")
     _phase(c, "prep")
     _keyboard(c, '[data-mode="q2"]')
     _keyboard(c, '[data-tool="erase"]')
@@ -857,35 +933,149 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
     changed = _saved(c).get("game", {})
     c.expect(all(p["cell"] != pick for p in changed.get("q2", [])), "E4 선택 발전소가 실제 계획에서 삭제됨")
     c.eq(changed.get("twist", {}).get("pick"), pick, "E4 삭제 뒤 이전 pick을 지우지 않음")
+    c.eq(changed.get("twist"), expected, "E4 삭제 뒤 이전 pickType·메모도 지우지 않음")
     _phase(c, "reflect")
     stale = result.inner_text()
     c.expect("다시 고르세요" in stale, "E4 없어진 발전소는 다시 고르세요 안내")
     c.expect(not re.search(r"\d|전체\s*생산량|총비용", stale), "E4 없어진 선택에는 효과 미적용·수치 없음")
     c.eq(_saved(c).get("game", {}).get("twist", {}).get("pick"), pick, "E4 성찰 재진입 뒤에도 이전 pick 보존")
+    _stale_pick(c, expected, "E4 삭제 뒤 성찰")
     c.check("E4 주민 협의 선택·복원·삭제")
 
 
 def t_E4_community_pick_legacy_and_corrupt_saves(c: Ctx):
-    # u6:15,18: 옛 pick 부재·숫자·범위 밖 문자열은 빈 문자열, 메모·계획 보존.
-    for label, fields in (("옛 pick 없음", {}), ("숫자 pick", {"pick": 5}),
-                           ("범위 밖 pick", {"pick": "Z9"})):
-        game = _mixed_game()
+    # 2026-10-10 총괄 명세 1: 키 부재만 현재 계획에서 종류 이전. 손상·빈 종류는 추정하지 않는다.
+    cases = [
+        ("옛 pick 없음", {}, "", "", False),
+        ("숫자 pick", {"pick": 5}, "", "", False),
+        ("범위 밖 pick", {"pick": "Z9"}, "", "", False),
+        ("옛 좌표가 현재 2번 계획에 있음", {"pick": "I8"}, "I8", "solar", False),
+        ("옛 좌표가 현재 계획에 없음", {"pick": "C5"}, "C5", "", False),
+        ("옛 좌표가 1번에만 있고 현재 2번에는 없음", {"pick": "H7"}, "H7", "", False),
+        ("옛 좌표를 1번 배치에서 이전", {"pick": "H7"}, "H7", "solar", True),
+        ("알 수 없는 pickType", {"pick": "I8", "pickType": "tidal"}, "I8", "", False),
+        ("숫자 pickType", {"pick": "I8", "pickType": 5}, "I8", "", False),
+        ("null pickType", {"pick": "I8", "pickType": None}, "I8", "", False),
+        ("명시적으로 빈 pickType", {"pick": "I8", "pickType": ""}, "I8", "", False),
+        ("손상 좌표·유효 종류", {"pick": "I8:solar", "pickType": "solar"}, "", "solar", False),
+    ]
+    # 종류 네 개 모두 허용한다는 계약도 전체 객체 비교로 고정한다.
+    for kind, coord in (("fossil", "A10"), ("nuclear", "B7"), ("wind", "H8"), ("solar", "I8")):
+        cases.append((f"유효 {kind} 저장", {"pick": coord, "pickType": kind}, coord, kind, False))
+    names = {"fossil": "화석", "nuclear": "원자력", "wind": "풍력", "solar": "태양광"}
+    for label, fields, pick, pick_type, q1_only in cases:
+        game = _game(q1=Q1) if q1_only else _mixed_game()
         game["twist"] = {"k": "community", "line": "가상 협의 이유", "keep": "가상 유지 이유", **fields}
         _seed(c, game, "reflect")
-        expected = {**game["twist"], "pick": ""}
+        expected = {**game["twist"], "pick": pick, "pickType": pick_type}
         normalized = c.page.evaluate("raw => KCP.games['2022'].model.normalizeGame(raw)", game)
         c.eq(normalized.get("twist"), expected, f"E4 {label} normalizeGame 검증·메모 보존")
+        again = c.page.evaluate("raw => KCP.games['2022'].model.normalizeGame(raw)", normalized)
+        c.eq(again, normalized, f"E4 {label} 정규화 재읽기는 멱등")
         saved = _saved(c).get("game", {})
-        c.eq(saved.get("twist"), expected, f"E4 {label} 화면 저장도 빈 pick으로 정규화")
-        c.expect(_pick_controls(c).count() > 0, f"E4 {label} 협의 선택 요소로 열림")
-        c.eq(_picked(c), [], f"E4 {label} 자동 발전소 선택 없음")
+        c.eq(saved.get("twist"), expected, f"E4 {label} 화면 저장도 좌표·종류 정규화")
+        c.eq(_pick_controls(c).count(), 1, f"E4 {label} 협의 select 한 개로 열림")
         text = c.page.locator("#tw22-result").inner_text()
-        c.expect("고르면" in text and not re.search(r"\d|전체\s*생산량|총비용", text),
-                 f"E4 {label} 계산 대신 미선택 안내")
+        if pick and pick_type:
+            c.eq(_picked(c), [f"{pick}:{pick_type}"], f"E4 {label} 현재 발전소의 좌표·종류 복원")
+            c.expect(names[pick_type] in text and pick in text and "전체 생산량" in text,
+                     f"E4 {label} 일치하는 발전소만 효과 적용")
+            line = _copied_pick_line(c, f"E4 {label}")
+            c.expect(names[pick_type] in line and pick in line and "계획에 없거나 종류가 바뀜" not in line,
+                     f"E4 {label} 유효 복사 줄은 발전소 이름·좌표")
+        elif pick:
+            _stale_pick(c, expected, f"E4 {label}")
+        else:
+            c.eq(_picked(c), [], f"E4 {label} 자동 발전소 선택 없음")
+            c.expect("고르면" in text and not re.search(r"\d|전체\s*생산량|총비용", text),
+                     f"E4 {label} 계산 대신 미선택 안내")
         for field in ("q1", "r1", "q2", "q2text", "wireVersion"):
             c.eq(saved.get(field), game[field], f"E4 {label} 기존 {field} 보존")
         c.eq(_wire_keys(saved.get("wires", [])), _wire_keys(game["wires"]), f"E4 {label} 전선 보존")
         c.check(f"E4 {label}")
+
+
+def t_E4_community_same_cell_changed_type_requires_reselection(c: Ctx):
+    # 2026-10-10 총괄 명세 1: I8 태양광을 고른 뒤 준비실에서 I8 풍력으로 바꾼다.
+    _seed(c, _mixed_game(), "reflect")
+    c.page.locator('#tw22 [data-tw22="community"]').click()
+    _pick_controls(c).select_option("I8:solar")
+    c.page.fill("#tw22-line", "가상 협의에서 영향을 먼저 설명한다.")
+    c.page.fill("#tw22-keep", "이웃의 의견을 확인할 기준은 유지한다.")
+    expected = {"k": "community", "pick": "I8", "pickType": "solar",
+                "line": "가상 협의에서 영향을 먼저 설명한다.",
+                "keep": "이웃의 의견을 확인할 기준은 유지한다."}
+    before = _saved(c).get("game", {})
+    c.eq(before.get("twist"), expected, "E4 종류 변경 전 태양광 선택·메모 저장")
+    _phase(c, "prep")
+    _keyboard(c, '[data-mode="q2"]')
+    _keyboard(c, '[data-tool="erase"]')
+    cell = c.page.locator('#grid .cell[data-cell="I8"]')
+    cell.click()
+    c.expect(_live_has(c, "I8", "지웠"), "E4 종류 변경 전에 I8 태양광 삭제")
+    _keyboard(c, '[data-tool="wind"]')
+    cell.click()
+    changed = _saved(c).get("game", {})
+    c.eq([p for p in changed.get("q2", []) if p["cell"] == "I8"],
+         [{"type": "wind", "cell": "I8", "to": ""}], "E4 같은 I8 좌표에 풍력 설치")
+    c.eq(changed.get("twist"), expected, "E4 준비실의 종류 변경이 이전 선택·메모를 지우지 않음")
+    c.eq(_wire_keys(changed.get("wires", [])), _wire_keys(before["wires"]), "E4 종류 변경 뒤 공유 전선 보존")
+    _phase(c, "reflect")
+    _stale_pick(c, expected, "E4 같은 좌표의 종류 변경")
+    c.expect(_picked(c) != ["I8:wind"], "E4 새 풍력으로 자동 선택하지 않음")
+    c.page.reload()
+    c.page.wait_for_selector("#tw22-result")
+    _stale_pick(c, expected, "E4 종류 변경 뒤 새로고침")
+    _pick_controls(c).select_option("I8:wind")
+    expected["pickType"] = "wind"
+    c.eq(_picked(c), ["I8:wind"], "E4 학생이 현재 종류를 다시 선택")
+    c.eq(_saved(c).get("game", {}).get("twist"), expected, "E4 재선택 시에만 pickType을 풍력으로 갱신")
+    text = c.page.locator("#tw22-result").inner_text()
+    # AUDIT §8.3의 원문 대조 풍속 자료: I8 풍력 10. 기존 태양광 20과 혼동하면 안 된다.
+    c.expect(bool(re.search(r"전체\s*생산량\s*[:：]\s*195\s*(?:→|->)\s*185(?!\d)", text)),
+             "E4 재선택 뒤 현재 풍력 생산 10만 감소(195→185)")
+    line = _copied_pick_line(c, "E4 풍력 재선택")
+    c.expect("풍력" in line and "I8" in line and "계획에 없거나 종류가 바뀜" not in line,
+             "E4 재선택 뒤 복사 줄도 현재 풍력 이름·좌표")
+    c.check("E4 같은 좌표 종류 변경·재선택")
+
+
+def t_F1_scene_order_by_width_phase_and_year(c: Ctx):
+    # 2026-10-10 총괄 명세 2: harness의 1280/390 × 밝음/어두움 네 환경에서 실행.
+    _seed(c, _mixed_game())
+    _stage_position(c, False, f"{c.cfg.name} 준비실")
+    _phase(c, "room")
+    _stage_position(c, c.cfg.width <= 760, f"{c.cfg.name} 면접실", room=True)
+    _phase(c, "reflect")
+    _stage_position(c, False, f"{c.cfg.name} 성찰")
+    _phase(c, "prep")
+    _stage_position(c, False, f"{c.cfg.name} 준비실 복귀")
+    _phase(c, "room")
+    # 페이지를 다시 열지 않고 창 폭만 바꾼다. 760/761도 포함해 경계의 등호를 검사한다.
+    for width in (1280, 390, 760, 761, 1280, 390):
+        c.page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
+        _stage_position(c, width <= 760, f"2022 면접실 폭 변경 {width}px", room=True)
+        c.eq(_saved(c).get("phase"), "room", f"F1 폭 {width}px 변경 뒤에도 면접실 유지")
+    # 좁은 2022 면접실에서 떠나도, 남은 2022 미디어 쿼리 처리기가 2023을 옮기면 안 된다.
+    c.goto("#y2023", wait="#v2-stage .v2-stage-canvas")
+    c.expect(c.page.locator("html.v2-skin-2023").count() == 1, "F1 2023 스킨으로 이동")
+    _stage_position(c, False, "2023 준비실 390px")
+    c.phase("room")
+    c.page.wait_for_selector(".qdeck .qcard")
+    _stage_position(c, False, "2023 면접실 390px", room=True)
+    for width in (1280, 390):
+        c.page.set_viewport_size({"width": width, "height": 900 if width == 1280 else 844})
+        _stage_position(c, False, f"2023 면접실 폭 변경 {width}px", room=True)
+    c.goto("#y2022", wait=".qdeck .qcard")
+    c.expect(c.page.locator("html.v2-skin-2022").count() == 1, "F1 2022 스킨으로 복귀")
+    _stage_position(c, True, "2023에서 2022 면접실 복귀 390px", room=True)
+    _phase(c, "reflect")
+    _stage_position(c, False, "2022 성찰 복귀 390px")
+    for width in (1280, 390):
+        c.page.set_viewport_size({"width": width, "height": 900 if width == 1280 else 844})
+        _stage_position(c, False, f"2022 성찰 폭 변경 {width}px")
+    _phase(c, "prep")
+    _stage_position(c, False, "2022 준비실 최종 복귀 390px")
 
 
 if __name__ == "__main__":
