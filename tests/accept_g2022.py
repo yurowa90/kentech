@@ -1,6 +1,6 @@
-"""2022 충실판 단위 1~3·5·6과 선택 저장·장면 위치의 독립 수용 검사.
+"""2022 충실판 단위 1~3·5~7과 선택 저장·장면 위치의 독립 수용 검사.
 
-근거 경로: _briefs/lanes/2022/{u1-reflect,u2-scene,u3-a11y,u5-cell,u6-pick}.md.
+근거 경로: _briefs/lanes/2022/{u1-reflect,u2-scene,u3-a11y,u5-cell,u6-pick,u7-follow}.md.
 각 함수의 주석에 명세 줄을 적었다. 기대값은 명세·D-68에서 정하며,
 구현은 저장 봉투와 기존 UI 선택자를 찾는 데만 참고한다.
 선택 종류 저장과 좁은 화면 장면 위치는 2026-10-10 총괄 명세 1·2를 따른다.
@@ -11,7 +11,8 @@
 태풍 강조는 캡션의 '바닷가 풍력 강조: ….' 절만 검사한다. 전체 배치 목록에는
 내륙 풍력이 있어도 된다. 2026-10-10 총괄 명세의 선택 요소는 #tw22-pick select이며,
 option 값은 좌표:종류다. 같은 좌표의 종류 변경은 옛 선택을 보존하고 재선택을 요구한다.
-F1은 같은 명세의 760px 경계·단계·연도별 장면 위치를 DOM과 화면에서 함께 검사한다.
+F1은 u7-1의 760px 경계·단계·연도별 장면/문제 상황 위치와 형제 순서를 검사한다.
+단계 판정은 DOM으로 하며, 저장 검사는 KCP.flush로 대기 저장을 먼저 끝낸다.
 빈 칸에는 검사할 글자가 없으므로 대비는 실제 렌더링된 글자만 측정한다.
 성찰 타이머는 직전 면접의 25분 표시를 보존한다(기존 공통 흐름 계약).
 
@@ -78,6 +79,8 @@ def _seed(c, game, phase="prep", extra=None):
 
 
 def _saved(c):
+    # 후속 검사 지시 2: 부하에 따라 400ms 대기만으로 저장 완료를 보장할 수 없다.
+    c.page.evaluate("() => KCP.flush()")
     c.wait_saved(400)
     state = c.ls(KEY)
     c.expect(isinstance(state, dict), "저장 봉투 kcp:v1:2022는 객체")
@@ -136,6 +139,53 @@ def _no_examples(c, text, label):
 
 def _questions(c):
     return c.page.evaluate("KCP.games['2022'].questions(KCP.load('2022'))")
+
+
+def _capture_scene_text(c):
+    # B2·u7-4: 캡션과 별도로 실제 장면 캔버스의 최근 프레임 글자를 가로챈다.
+    c.page.add_init_script("""(() => {
+      window.__g22DrawText=[];
+      const p=CanvasRenderingContext2D.prototype, text=p.fillText, image=p.drawImage;
+      p.drawImage=function(...args){
+        if(this.canvas.matches?.('#v2-stage .v2-stage-canvas')) window.__g22DrawText=[];
+        return image.apply(this,args);
+      };
+      p.fillText=function(...args){
+        if(this.canvas.matches?.('#v2-stage .v2-stage-canvas')) {
+          window.__g22DrawText.push(String(args[0]));
+          if(window.__g22DrawText.length>500)window.__g22DrawText.shift();
+        }
+        return text.apply(this,args);
+      };
+    })();""")
+
+
+def _room_dom(c, label):
+    # 후속 검사 지시 2: localStorage의 phase 대신 현재 화면과 단계 버튼을 판정한다.
+    c.expect(c.page.locator('#phase .qdeck .qcard').count() > 0,
+             f"F1 {label} DOM에 면접 질문 카드 존재")
+    pressed = c.page.locator('.phases [data-phase][aria-pressed="true"]')
+    c.eq(pressed.evaluate_all("els=>els.map(e=>e.dataset.phase)"), ["room"],
+         f"F1 {label} 현재 단계 버튼은 면접실 하나")
+
+
+def _stage_siblings(c, remember=False):
+    # u7-1: 이동 대상 둘을 제외한 모든 형제의 순서와 원래 전체 순서를 보존한다.
+    # 라우트 재진입은 새 노드를 만들므로 id(없는 요소는 태그·클래스) 순서로 비교한다.
+    return c.page.evaluate("""remember => {
+      const app=document.querySelector('#app'), stage=app.querySelector('#v2-stage'),
+        brief=app.querySelector('.brief');
+      const children=[...app.children], other=children.filter(e=>e!==stage && e!==brief);
+      const key=e=>e.id ? '#'+e.id : e.tagName+'.'+[...e.classList].sort().join('.');
+      const all=children.map(key), rest=other.map(key);
+      const savedByRoute=window.__g22StageSiblings ||= {};
+      if(remember) savedByRoute[location.hash]={all,rest};
+      const saved=savedByRoute[location.hash];
+      const equal=(a,b)=>a.length===b.length && a.every((e,i)=>e===b[i]);
+      return {other:!!saved && equal(rest,saved.rest),full:!!saved && equal(all,saved.all),
+        unique:new Set(all).size===all.length,
+        tip:!!document.querySelector('#tm-tip') && other.includes(document.querySelector('#tm-tip'))};
+    }""", remember)
 
 
 
@@ -238,7 +288,7 @@ def _stale_pick(c, expected, label):
 
 
 def _stage_position(c, after_phase, label, room=False):
-    # 2026-10-10 총괄 명세 2: CSS로 시각 순서만 바꿔도, DOM만 옮겨도 통과하지 않는다.
+    # u7-1·총괄 명세 2: 세 요소의 DOM 순서와 실제 화면 순서를 함께 검사한다.
     ready = True
     try:
         c.page.wait_for_function("""after => {
@@ -247,7 +297,8 @@ def _stage_position(c, after_phase, label, room=False):
           if(!stage || !phase || !brief || stage.parentElement!==phase.parentElement ||
              stage.parentElement!==brief.parentElement) return false;
           const before=(a,b)=>!!(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING);
-          return after ? before(phase,stage) : before(stage,brief);
+          return after ? before(phase,brief) && before(brief,stage) :
+            before(stage,brief) && before(brief,phase);
         }""", arg=after_phase, timeout=2000)
     except Exception as exc:
         if type(exc).__name__ != "TimeoutError":
@@ -263,6 +314,8 @@ def _stage_position(c, after_phase, label, room=False):
       const before=(a,b)=>!!(a && b && (a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING));
       return {stage:rect(stage),phase:rect(phase),brief:rect(brief),question:rect(question),
         phaseBeforeStage:before(phase,stage),stageBeforeBrief:before(stage,brief),
+        phaseBeforeBrief:before(phase,brief),briefBeforeStage:before(brief,stage),
+        briefBeforePhase:before(brief,phase),questionBeforeBrief:before(question,brief),
         questionBeforeStage:before(question,stage),stageBeforeQuestion:before(stage,question),
         sameParent:!!stage && !!phase && !!brief && stage.parentElement===phase.parentElement &&
           stage.parentElement===brief.parentElement};
@@ -276,18 +329,37 @@ def _stage_position(c, after_phase, label, room=False):
     stage, phase, brief, question = (positions[k] for k in ("stage", "phase", "brief", "question"))
     if after_phase:
         c.expect(positions["phaseBeforeStage"], f"F1 {label} DOM에서 #phase 뒤에 #v2-stage")
+        c.expect(positions["phaseBeforeBrief"] and positions["briefBeforeStage"],
+                 f"F1 {label} DOM 순서는 #phase → .brief → #v2-stage")
+        c.expect(bool(phase and brief and stage and
+                      phase["bottom"] <= brief["top"] and brief["bottom"] <= stage["top"]),
+                 f"F1 {label} 화면 순서는 단계 → 문제 상황 → 장면·겹침 없음")
         c.expect(bool(stage and phase and phase["bottom"] <= stage["top"]),
                  f"F1 {label} 화면에서 단계 화면 아래에 장면")
     else:
         c.expect(positions["stageBeforeBrief"], f"F1 {label} DOM에서 .brief 앞에 #v2-stage")
+        c.expect(positions["briefBeforePhase"], f"F1 {label} DOM에서 .brief 뒤에 #phase")
+        c.expect(bool(brief and phase and brief["bottom"] <= phase["top"]),
+                 f"F1 {label} 화면에서 문제 상황 아래에 단계·겹침 없음")
         c.expect(bool(stage and brief and stage["bottom"] <= brief["top"]),
                  f"F1 {label} 화면에서 문제 상황 위에 장면")
     if room:
+        _room_dom(c, label)
+        if after_phase:
+            c.expect(positions["questionBeforeBrief"], f"F1 {label} 첫 질문 카드가 .brief보다 먼저")
+            c.expect(bool(question and brief and question["bottom"] <= brief["top"]),
+                     f"F1 {label} 첫 질문 카드가 문제 상황 위·겹침 없음")
         c.expect(positions["questionBeforeStage"] if after_phase else positions["stageBeforeQuestion"],
                  f"F1 {label} 첫 질문 카드와 장면의 DOM 순서")
         c.expect(bool(stage and question and
                       (question["bottom"] <= stage["top"] if after_phase else stage["bottom"] <= question["top"])),
                  f"F1 {label} 첫 질문 카드와 장면의 화면 순서·겹침 없음")
+    siblings = _stage_siblings(c)
+    c.expect(siblings["unique"], f"F1 {label} 형제 순서 비교 키는 중복 없음")
+    c.expect(siblings["tip"], f"F1 {label} #tm-tip 형제 유지")
+    c.expect(siblings["other"], f"F1 {label} 이동 대상 외 모든 형제의 상대 순서 유지")
+    if not after_phase:
+        c.expect(siblings["full"], f"F1 {label} 장면·문제 상황도 원래 전체 형제 순서로 복원")
     c.check(f"F1 {label}")
 
 
@@ -511,21 +583,7 @@ def t_B1_shared_frozen_map_data(c: Ctx):
 
 def t_B2_scene_follows_cards_and_peer(c: Ctx):
     # u2:15~20,22~23,27,29~30,33: mode와 무관하게 현재 질문을 따른다.
-    c.page.add_init_script("""(() => {
-      window.__g22DrawText=[];
-      const p=CanvasRenderingContext2D.prototype, text=p.fillText, image=p.drawImage;
-      p.drawImage=function(...args){
-        if(this.canvas.matches?.('#v2-stage .v2-stage-canvas')) window.__g22DrawText=[];
-        return image.apply(this,args);
-      };
-      p.fillText=function(...args){
-        if(this.canvas.matches?.('#v2-stage .v2-stage-canvas')) {
-          window.__g22DrawText.push(String(args[0]));
-          if(window.__g22DrawText.length>500)window.__g22DrawText.shift();
-        }
-        return text.apply(this,args);
-      };
-    })();""")
+    _capture_scene_text(c)
     game = _wind_game()
     game["q1"] = dict(Q1)
     _seed(c, game)
@@ -834,6 +892,12 @@ def t_E2_gridcell_html_and_space_scroll(c: Ctx):
     c.eq(c.page.evaluate("window.scrollY"), before, "E2 Space 전후 window.scrollY 불변")
     c.eq(_active(c), "B5", "E2 Space 재그리기 뒤 포커스 유지")
     c.eq(grid.locator('[tabindex="0"]').count(), 1, "E2 Space 뒤 탭 정지점 한 개")
+    # u5-1·보강 후보: div 셀도 마우스 클릭 때 직접 초점을 받아야 한다.
+    c.page.locator('#grid .cell[data-cell="B7"]').click()
+    c.eq(c.page.evaluate("document.activeElement?.dataset.cell"), "B7",
+         "E2 마우스로 누른 B7 칸이 activeElement")
+    c.eq(c.page.locator('#grid [tabindex="0"]').evaluate_all("els=>els.map(e=>e.dataset.cell)"),
+         ["B7"], "E2 마우스로 누른 칸만 지도 tabindex=0")
     c.check("E2 칸 구조·Space")
 
 
@@ -846,6 +910,21 @@ def t_E3_scene_uses_frozen_plant_table(c: Ctx):
     code = re.sub(r"/\*.*?\*/|//[^\n]*", "", source["text"], flags=re.S)
     literals = re.findall(r'''(?:\b(?:out|cost)\b|["'](?:out|cost)["'])\s*:\s*\d+(?:\.\d+)?''', code)
     c.eq(literals, [], "E3 장면 소스에 out/cost 생산·비용 숫자 리터럴 사본 없음")
+    # u5-2·보강 후보: 종류별 스칼라·중첩 표·비용 배열 사본도 금지한다.
+    # 발전 설비 키/이름 또는 설비 표 변수 안으로 범위를 묶어 그림 좌표와 구분한다.
+    plant_key = r'''(?:\b(?:fossil|nuclear|wind|solar)\b|["'](?:화석(?: 연료)?|원자력|풍력|태양광)["'])'''
+    patterns = (
+        ("종류별 스칼라", plant_key + r'''["']?\s*:\s*(?:60|90|15|2)(?![\d.])'''),
+        ("종류별 생산·비용 필드", plant_key +
+         r'''["']?\s*:\s*\{[^{}]*?(?:out|cost|output|production|발전량|생산량|비용)["']?\s*:\s*\d+(?:\.\d+)?'''),
+        ("종류별 생산·비용 배열", plant_key +
+         r'''["']?\s*:\s*\[\s*(?:60|90|null)\s*,\s*(?:15|2)\s*\]'''),
+        ("발전 설비 비용 배열", r'''\b(?:PT|PLANT\w*|\w*plant\w*|\w*[Cc][Oo][Ss][Tt]\w*)\s*=\s*\[\s*15\s*,\s*2\s*,\s*2\s*,\s*15\s*\]'''),
+        ("설비 이름 뒤 비용 배열", plant_key +
+         r'''["']?\s*[,;][^;\n]{0,160}?\[\s*15\s*,\s*2\s*,\s*2\s*,\s*15\s*\]'''),
+    )
+    for label, pattern in patterns:
+        c.eq(re.findall(pattern, code), [], f"E3 장면에 {label} 숫자 사본 없음")
     table = c.page.evaluate("""() => {
       const pt=KCP.games['2022'].model?.data?.PT;
       const frozen=x=>!x || typeof x!=='object' ||
@@ -877,11 +956,22 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
     c.eq(community.count(), 1, "E4 제목에 협의가 있는 community 카드")
     if not community.count():
         return
+    card_text = community.inner_text()
+    c.expect("생산량이 가장 큰" not in card_text, "E4 협의 카드가 최대 생산 발전소를 자동으로 정하지 않음")
+    c.expect("내가 고른" in card_text and "연습실 가정" in card_text,
+             "E4 협의 카드는 학생 선택과 연습실 가정을 밝힘")
     community.click()
     controls = _pick_controls(c)
     c.eq(controls.count(), 1, "E4 #tw22-pick select 한 개")
     if not controls.count():
         return
+    labels = controls.evaluate("""e=>[...(e.labels||[])].map(l=>l.textContent.trim()).filter(Boolean)""")
+    c.expect(bool(labels), "E4 주민 협의 선택 요소에 연결된 label")
+    if labels:
+        c.eq(c.page.get_by_label(labels[0], exact=True).evaluate_all("els=>els.map(e=>e.id)"),
+             ["tw22-pick"], "E4 get_by_label로 주민 협의 선택 요소를 찾음")
+    c.expect(controls.evaluate("e=>e.getBoundingClientRect().height>=44"),
+             "E4 주민 협의 선택 요소 높이 44px 이상")
     c.eq(_picked(c), [], "E4 발전소 기본 선택 없음")
     expected = {**EMPTY_TWIST, "k": "community"}
     c.eq(_saved(c).get("game", {}).get("twist"), expected, "E4 미선택 pick·pickType 빈 문자열 저장")
@@ -891,6 +981,7 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
     result = c.page.locator("#tw22-result")
     c.eq(result.get_attribute("role"), "status", "E4 선택 결과 role=status")
     text = result.inner_text()
+    c.expect("협의 결과를 예측한 것이 아닙니다" in text, "E4 미선택 결과에도 협의 예측 아님을 밝힘")
     c.expect("고르면" in text, "E4 미선택 결과는 고르면 안내")
     c.expect(not re.search(r"\d|전체\s*생산량|총비용", text), "E4 미선택 결과에 계산 수치 없음")
     # q1 태양광 H7(15)과도 다르다. q2 I8(20)을 골라 205→185이어야 한다.
@@ -900,6 +991,7 @@ def t_E4_community_pick_result_save_export_and_removed_plant(c: Ctx):
     controls.select_option(pick_value)
     c.eq(_picked(c), [pick_value], "E4 원자력이 아닌 I8 태양광 하나 선택")
     text = result.inner_text()
+    c.expect("협의 결과를 예측한 것이 아닙니다" in text, "E4 선택 결과에도 협의 예측 아님을 밝힘")
     c.expect("태양광" in text and pick in text, "E4 결과에 고른 발전소 종류·좌표")
     totals = re.search(r"전체\s*생산량\s*[:：]\s*(\d+(?:\.\d+)?)\s*(?:→|->)\s*(\d+(?:\.\d+)?)", text)
     c.expect(totals is not None, "E4 전체 생산량 전후 수치 존재")
@@ -950,6 +1042,8 @@ def t_E4_community_pick_legacy_and_corrupt_saves(c: Ctx):
         ("옛 pick 없음", {}, "", "", False),
         ("숫자 pick", {"pick": 5}, "", "", False),
         ("범위 밖 pick", {"pick": "Z9"}, "", "", False),
+        # 후속 검사 지시 7(총괄 결정): 무효 좌표면 유효한 종류도 함께 비운다.
+        ("범위 밖 좌표·유효 종류", {"pick": "Z9", "pickType": "solar"}, "", "", False),
         ("옛 좌표가 현재 2번 계획에 있음", {"pick": "I8"}, "I8", "solar", False),
         ("옛 좌표가 현재 계획에 없음", {"pick": "C5"}, "C5", "", False),
         ("옛 좌표가 1번에만 있고 현재 2번에는 없음", {"pick": "H7"}, "H7", "", False),
@@ -958,7 +1052,7 @@ def t_E4_community_pick_legacy_and_corrupt_saves(c: Ctx):
         ("숫자 pickType", {"pick": "I8", "pickType": 5}, "I8", "", False),
         ("null pickType", {"pick": "I8", "pickType": None}, "I8", "", False),
         ("명시적으로 빈 pickType", {"pick": "I8", "pickType": ""}, "I8", "", False),
-        ("손상 좌표·유효 종류", {"pick": "I8:solar", "pickType": "solar"}, "", "solar", False),
+        ("손상 좌표·유효 종류", {"pick": "I8:solar", "pickType": "solar"}, "", "", False),
     ]
     # 종류 네 개 모두 허용한다는 계약도 전체 객체 비교로 고정한다.
     for kind, coord in (("fossil", "A10"), ("nuclear", "B7"), ("wind", "H8"), ("solar", "I8")):
@@ -1044,6 +1138,7 @@ def t_E4_community_same_cell_changed_type_requires_reselection(c: Ctx):
 def t_F1_scene_order_by_width_phase_and_year(c: Ctx):
     # 2026-10-10 총괄 명세 2: harness의 1280/390 × 밝음/어두움 네 환경에서 실행.
     _seed(c, _mixed_game())
+    _stage_siblings(c, remember=True)
     _stage_position(c, False, f"{c.cfg.name} 준비실")
     _phase(c, "room")
     _stage_position(c, c.cfg.width <= 760, f"{c.cfg.name} 면접실", room=True)
@@ -1056,10 +1151,11 @@ def t_F1_scene_order_by_width_phase_and_year(c: Ctx):
     for width in (1280, 390, 760, 761, 1280, 390):
         c.page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
         _stage_position(c, width <= 760, f"2022 면접실 폭 변경 {width}px", room=True)
-        c.eq(_saved(c).get("phase"), "room", f"F1 폭 {width}px 변경 뒤에도 면접실 유지")
+        _room_dom(c, f"폭 {width}px 변경 뒤")
     # 좁은 2022 면접실에서 떠나도, 남은 2022 미디어 쿼리 처리기가 2023을 옮기면 안 된다.
     c.goto("#y2023", wait="#v2-stage .v2-stage-canvas")
     c.expect(c.page.locator("html.v2-skin-2023").count() == 1, "F1 2023 스킨으로 이동")
+    _stage_siblings(c, remember=True)
     _stage_position(c, False, "2023 준비실 390px")
     c.phase("room")
     c.page.wait_for_selector(".qdeck .qcard")
@@ -1077,6 +1173,150 @@ def t_F1_scene_order_by_width_phase_and_year(c: Ctx):
         _stage_position(c, False, f"2022 성찰 폭 변경 {width}px")
     _phase(c, "prep")
     _stage_position(c, False, "2022 준비실 최종 복귀 390px")
+
+
+def t_F2_twist_live_node_focus_and_in_progress_memo(c: Ctx):
+    # u7-2: 카드 전환 때 이미 붙어 있는 라이브 영역·입력 노드를 교체하지 않는다.
+    _seed(c, _mixed_game(), "reflect")
+    cards = _cards(c)
+    c.expect(len(cards) >= 2, "F2 서로 바꿔 누를 조건 카드 두 개 이상")
+    if len(cards) < 2:
+        return
+    c.page.evaluate("""() => {
+      window.__g22TwistNodes={result:document.querySelector('#tw22-result'),
+        line:document.querySelector('#tw22-line'),keep:document.querySelector('#tw22-keep')};
+    }""")
+    memo = ""
+    previous_result = None
+    for index, key in enumerate((cards[0]["k"], cards[1]["k"], cards[0]["k"])):
+        button = c.page.locator(f'#tw22 [data-tw22="{key}"]')
+        # 직전 입력 뒤 저장 대기를 넣지 않고 다른 카드를 누른다.
+        button.click()
+        c.expect(button.evaluate("e=>e===document.activeElement"),
+                 f"F2 {key} 누른 카드에 포커스 유지")
+        c.eq(button.get_attribute("aria-pressed"), "true", f"F2 {key} 누른 카드 선택 상태")
+        c.eq(c.page.locator('#tw22 [data-tw22][aria-pressed="true"]').count(), 1,
+             f"F2 {key} 선택 카드 한 개")
+        nodes = c.page.evaluate("""() => Object.fromEntries(Object.entries(window.__g22TwistNodes)
+          .map(([key,node])=>[key,node.isConnected && node===document.querySelector('#tw22-'+key)]))""")
+        c.eq(nodes, {"result": True, "line": True, "keep": True},
+             f"F2 {key} 결과·수정 글·유지 이유는 같은 DOM 노드")
+        result = c.page.locator("#tw22-result")
+        c.eq(result.get_attribute("role"), "status", f"F2 {key} 기존 결과의 role=status 유지")
+        result_text = result.inner_text().strip()
+        c.expect(bool(result_text), f"F2 {key} 같은 결과 노드에 안내 갱신")
+        if previous_result is not None:
+            c.expect(result_text != previous_result, f"F2 {key} 다른 조건을 누르면 결과 내용도 바뀜")
+        previous_result = result_text
+        c.eq(c.page.input_value("#tw22-line"), memo, f"F2 {key} 카드 전환 뒤 입력 중인 수정 글 보존")
+        saved = _saved(c).get("game", {}).get("twist", {})
+        c.eq(saved.get("line"), memo, f"F2 {key} 카드 전환마다 저장된 수정 글 보존")
+        if index == 2:
+            break
+        line = c.page.locator("#tw22-line")
+        line.focus()
+        c.expect(line.evaluate("e=>e===document.activeElement"), "F2 수정 글 입력에 포커스")
+        c.page.keyboard.press("End")
+        chunk = ("가상 계획의 협의 대상을", " 먼저 확인한다.")[index]
+        line.press_sequentially(chunk)
+        memo += chunk
+        c.eq(line.input_value(), memo, "F2 입력 이벤트 뒤 수정 글 유지")
+        c.expect(line.evaluate("e=>e===document.activeElement"), "F2 타이핑 중 입력 포커스 유지")
+    saved = _saved(c).get("game", {}).get("twist", {})
+    c.eq(saved.get("line"), memo, "F2 입력 중 카드 두 번 전환 뒤 저장된 수정 글 유지")
+    c.eq(saved.get("k"), cards[0]["k"], "F2 마지막으로 누른 조건만 저장")
+    c.check("F2 같은 성찰 라이브 노드·포커스·입력 보존")
+
+
+def t_F3_grid_error_single_notice_contrast_and_clear(c: Ctx):
+    # u7-3: 원자력의 바다 설치 오류는 보이는 지도 라이브 영역 한 곳에서 알린다.
+    # 토스트 선택자는 app.js KCP.toast의 div.toast[role=status] 구현에서 확인했다.
+    _seed(c, _game())
+    _keyboard(c, '[data-tool="nuclear"]')
+    live = c.page.locator("#grid-live")
+    visual = """e=>{const s=getComputedStyle(e);return {
+      color:s.color,background:s.backgroundColor,weight:s.fontWeight,
+      border:s.borderColor,borderStyle:s.borderStyle,
+      before:getComputedStyle(e,'::before').content,after:getComputedStyle(e,'::after').content};}"""
+    normal = live.evaluate(visual)
+    c.page.evaluate("""() => {
+      window.__g22Toasts=[];
+      const collect=()=>document.querySelectorAll('.toast').forEach(e=>{
+        if(e.textContent.trim())window.__g22Toasts.push(e.textContent.trim());
+      });
+      window.__g22ToastObserver=new MutationObserver(collect);
+      window.__g22ToastObserver.observe(document.body,{subtree:true,childList:true,characterData:true});
+      collect();
+    }""")
+    c.page.locator('#grid .cell[data-cell="A3"]').click()
+    c.expect(_live_has(c, "A3", "원자력"), "F3 바다 A3의 원자력 설치 오류가 #grid-live에 표시")
+    message = live.inner_text().strip()
+    c.expect(bool(message), "F3 지도 오류 문장이 비어 있지 않음")
+    c.eq(live.get_attribute("role"), "status", "F3 오류도 기존 지도 role=status로 전달")
+    c.eq(c.page.locator('#grid .cell[data-cell="A3"] .plant').count(), 0,
+         "F3 바다의 원자력 설치는 거부됨")
+    c.expect(live.evaluate(visual) != normal, "F3 오류 문장에 시각적 강조")
+    readings = c.page.evaluate(CONTRAST, ["#grid-live"])
+    c.expect(bool(readings), "F3 보이는 오류 문장 대비 표본 존재")
+    for r in readings:
+        c.expect(r["ratio"] >= 4.5,
+                 f"F3 {c.cfg.scheme} 오류 문장 대비 {r['ratio']:.3f} ≥4.5")
+    # 잠깐 생겼다 사라지는 토스트도 놓치지 않도록 DOM 변화를 기록한다.
+    toast_texts = c.page.evaluate("""() => [...window.__g22Toasts,
+      ...[...document.querySelectorAll('.toast')].map(e=>e.textContent.trim())]""")
+    c.expect(not any(message and message in text for text in toast_texts),
+             "F3 .toast에 지도 오류와 같은 문장을 중복 생성하지 않음")
+    c.page.locator('#grid .cell[data-cell="F2"]').click()
+    c.expect(_live_has(c, "F2", "원자력", "설치"), "F3 오류 다음 정상 설치 알림")
+    c.eq(c.page.locator('#grid .cell[data-cell="F2"] .plant').count(), 1,
+         "F3 오류 다음 F2 원자력 정상 설치")
+    c.eq(live.evaluate(visual), normal, "F3 정상 설치 뒤 오류 강조가 원래 상태로 풀림")
+    c.expect(message not in live.inner_text(), "F3 정상 설치 뒤 이전 오류 문장 제거")
+    c.page.evaluate("window.__g22ToastObserver.disconnect()")
+    c.check("F3 단일 지도 오류 알림·대비·강조 해제")
+
+
+def t_F4_mobile_advice_without_ellipsis_and_full_caption(c: Ctx):
+    # u7-4: 요약 표현은 허용하지만 조언이 실제 그려져야 하며 전체 설명은 aria-label에 남는다.
+    c.page.set_viewport_size({"width": 390, "height": 844})
+    _capture_scene_text(c)
+    _seed(c, _mixed_game(), "room")
+    indices = {q["k"]: i for i, q in enumerate(_questions(c))}
+    cases = (
+        ("22-q1-nuc", [r"원자력[^.]*F2[^.]*강조", r"풍향.*경로", r"해류.*경로", r"재구성"]),
+        ("22-q1-fos", [r"화석[^.]*B4[^.]*강조", r"미세먼지.*풍향.*경로", r"재구성"]),
+        ("22-div-typhoon", [r"바닷가\s*풍력[^.]*B5", r"바닷가\s*풍력[^.]*H2", r"태풍.*설명해 보세요"]),
+        ("22-hum-vote", [r"빛가람.*강조", r"보전.*개발.*주민", r"설명해 보세요"]),
+        ("22-q2-cost", [r"전선\s*5\s*칸", r"총비용\s*43", r"재구성.*기당", r"연습실 가정"]),
+    )
+    for key, patterns in cases:
+        c.expect(key in indices, f"F4 {key} 좁은 화면에서 바꿔 볼 질문 존재")
+        if key not in indices:
+            continue
+        index = indices[key]
+        c.page.locator(".qdeck .qcard").nth(index).click()
+        _caption_has(c, [rf"질문\s*{index + 1}(?!\d)", *patterns], f"F4 {key} 전체 설명")
+        # 캡션이 먼저 바뀌고 새 프레임이 아직 안 그려진 경우도 기다린다.
+        ready = True
+        try:
+            c.page.wait_for_function(r"""number => {
+              const drawn=window.__g22DrawText||[], start=drawn.findIndex(t=>t.trim()==='조언');
+              return start>=0 && new RegExp('질문\\s*'+number+'(?![0-9])').test(drawn.slice(start+1).join(' '));
+            }""", arg=index + 1, timeout=2000)
+        except Exception as exc:
+            if type(exc).__name__ != "TimeoutError":
+                raise
+            ready = False
+        c.expect(ready, f"F4 {key} 2초 안에 조언 창에 현재 질문 글자를 그림")
+        drawn = c.page.evaluate("window.__g22DrawText || []")
+        start = next((i for i, text in enumerate(drawn) if text.strip() == "조언"), -1)
+        advice = drawn[start + 1:] if start >= 0 else []
+        c.expect(bool(advice) and any(t.strip() for t in advice), f"F4 {key} 그려진 조언 본문 존재")
+        c.expect(all("…" not in t and "..." not in t for t in advice),
+                 f"F4 {key} 실제 캔버스 조언 글에 말줄임 없음")
+        caption = _caption(c)
+        c.expect("…" not in caption and "..." not in caption, f"F4 {key} 캔버스 전체 설명도 말줄임 없음")
+        c.check(f"F4 390×844 {key} 조언")
 
 
 if __name__ == "__main__":
