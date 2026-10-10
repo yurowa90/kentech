@@ -302,7 +302,7 @@
           '<p>준비실 계획이 없어 질문을 만들 수 없습니다.</p><button type="button" class="btn" id="tw22-prep" style="min-height:44px;min-width:44px">준비실로 가기</button>'}
         ${stale ? `<p id="tw22-stale"><b>이 메모를 쓸 때의 조건:</b> ${esc(TWIST22[memo.k].condition)} <span class="tag-mine">연습실 가정</span><br>지금 계획의 후보에는 없는 조건입니다. 적어 둔 글은 남겨 둡니다. 새 카드를 고르면 이 글도 새 조건에 연결됩니다.</p>` : ""}
         ${!memo.k && (memo.line || memo.keep) ? '<p>메모의 조건을 확인할 수 없어 글만 보존했습니다. 조건을 다시 골라 주세요.</p>' : ""}
-        ${memo.k === "community" ? `<div class="field"><label for="tw22-pick">한 달 동안 가동을 미룰 발전소</label>
+        ${memo.k === "community" && hasPlan ? `<div class="field"><label for="tw22-pick">한 달 동안 가동을 미룰 발전소</label>
           <select id="tw22-pick" aria-controls="tw22-result" style="min-height:44px;min-width:44px;width:100%;max-width:100%;background:var(--sheet);color:var(--ink)">
             <option value=""${!memo.pick ? " selected" : ""}>발전소를 고르세요</option>
             ${memo.pick && !plan.plants.some(p => p.cell === memo.pick) ? `<option value="${esc(memo.pick)}" selected disabled>이전 선택 ${esc(memo.pick)} (계획에 없음)</option>` : ""}
@@ -313,7 +313,7 @@
         <div class="field"><label for="tw22-line">내 계획 한 줄 수정</label><textarea class="note" id="tw22-line" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.line)}</textarea></div>
         <div class="field"><label for="tw22-keep">바꾸지 않는다면 그 이유 (선택)</label><textarea class="note" id="tw22-keep" rows="2" maxlength="140" aria-describedby="tw22-help" style="min-height:44px;min-width:0;outline:revert"${!memo.k ? " readonly" : ""}>${esc(memo.keep)}</textarea></div>`;
       const showResult = () => {
-        KCP.$("#tw22-result", panel).innerHTML = memo.k === "community" || (hasPlan && memo.k && !stale) ? twistResult(plan, memo.k, memo.pick) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
+        KCP.$("#tw22-result", panel).innerHTML = hasPlan && memo.k && (memo.k === "community" || !stale) ? twistResult(plan, memo.k, memo.pick) : '<p>현재 계획의 조건 카드를 고르면 바뀐 수치를 보여 줍니다.</p>';
       };
       showResult();
       const pick = KCP.$("#tw22-pick", panel);
@@ -591,7 +591,7 @@
             if (e.key === "Home") to = e.ctrlKey ? "A1" : idOf(r, 0);
             if (e.key === "End") to = e.ctrlKey ? "J10" : idOf(r, 9);
             if (to) { e.preventDefault(); return focusMapCell(to); }
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); return clickCell(id); }
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (e.repeat) return; return clickCell(id); }
             if (e.key === "Escape") {
               e.preventDefault();
               if (wireStart) { wireStart = null; paint(id); announce("전선 시작점을 취소했습니다."); }
