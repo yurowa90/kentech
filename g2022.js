@@ -217,6 +217,7 @@
     fossil: { title: "탄소 배출에 비용이 붙는다면", condition: "탄소 배출 비용을 더해 화석 연료 발전소 1기당 발전 비용이 15에서 30으로 오른다고 가정한다." },
     nuclear: { title: "원자력 발전소가 정기 점검에 들어간다면", condition: "정기 점검으로 원자력 발전소가 한 달 동안 모두 멈춘다고 가정한다. 그동안 원자력 생산량은 0으로 센다." },
     demand: { title: "빛가람의 관광객이 늘어난다면", condition: "관광객 증가로 빛가람의 전력 필요량이 100에서 130으로 늘어난다고 가정한다." },
+    community: { title: "주민과 더 협의해야 한다면", condition: "주민 설명회와 추가 협의를 위해, 내 계획에서 생산량이 가장 큰 발전소 한 기의 가동을 한 달 미룬다고 가정한다. 발전원 종류와 관계없이 같은 규칙을 쓴다." },
     wire: { title: "전선을 놓는 비용이 오른다면", condition: "전선 1칸당 비용이 1에서 3으로 오른다고 가정한다. 공유 전선과 연결되지 않은 전선도 기존 규칙대로 센다." },
   };
 
@@ -229,10 +230,13 @@
     const production = k => plants.filter(p => p.type === k).reduce((sum, p) => sum + out(p.type, p.cell), 0);
     keys.sort((a, b) => production(b) - production(a));
     if (plants.length) {
+      // 주민 협의는 특정 발전원에만 붙이지 않는 공통 카드다(균형 원칙). 2번 계획에는 수학적 사고 카드(공통) 하나도
+      // 늘 남긴다. 카드는 최대 4장이므로 남는 자리에 생산량이 큰 발전원 카드부터 둔다.
       const common = wires.length ? ["wire", "demand"] : ["demand", "wire"];
-      // 2번 계획에는 수학적 사고 카드(공통) 하나를 늘 남긴다. 카드는 최대 4장이므로 생산량이 가장 작은 발전원 카드를 뺀다.
-      if (q2 && keys.length >= 4) keys.length = 3;
-      common.forEach(k => { if (keys.length < 4) keys.push(k); });
+      const reserved = q2 ? ["community", common[0]] : ["community"];
+      keys.length = Math.min(keys.length, 4 - reserved.length);
+      keys.push(...reserved);
+      common.slice(1).forEach(k => { if (q2 && keys.length < 4) keys.push(k); });
     }
     return { q2, plants, wires, keys };
   }
@@ -243,9 +247,12 @@
     const after = { ...before, got: { ...before.got } };
     const need = Object.fromEntries(Object.entries(VILL).map(([v, data]) => [v, data.need]));
     let produced = 0, changed = 0;
+    // 주민 협의 카드: 생산량이 가장 큰 발전소 한 기(동률이면 계획에 먼저 놓인 것)만 멈춘다.
+    let paused = -1;
+    if (key === "community") plan.plants.forEach((p, i) => { if (paused < 0 || out(p.type, p.cell) > out(plan.plants[paused].type, plan.plants[paused].cell)) paused = i; });
     plan.plants.forEach((p, i) => {
       const amount = out(p.type, p.cell);
-      const factor = p.type === key ? (key === "wind" || key === "solar" ? 0.5 : key === "nuclear" ? 0 : 1) : 1;
+      const factor = key === "community" ? (i === paused ? 0 : 1) : p.type === key ? (key === "wind" || key === "solar" ? 0.5 : key === "nuclear" ? 0 : 1) : 1;
       produced += amount;
       changed += amount * factor;
       if (before.connected[i]) after.got[p.to] += amount * (factor - 1);
@@ -255,7 +262,7 @@
     const wireCost = before.wire * (key === "wire" ? 3 : 1);
     after.total = after.plantCost + wireCost;
     let html = `<p><b>${esc(TWIST22[key].title)}</b> · 현재 ${plan.q2 ? "2번 계획" : "1번 배치"}에 적용</p>
-      <p>전체 생산량: ${produced} → ${changed}</p>`;
+      <p>전체 생산량: ${produced} → ${changed}</p>${paused >= 0 ? `<p>가동을 미루는 발전소: ${esc(PT[plan.plants[paused].type].n)} ${esc(plan.plants[paused].cell)}(생산 ${out(plan.plants[paused].type, plan.plants[paused].cell)})</p>` : ""}`;
     if (plan.q2) {
       html += Object.keys(VILL).map(v => `<p><b>${esc(v)}</b> · 공급 ${before.got[v]} → ${after.got[v]} / 필요 ${VILL[v].need} → ${need[v]} · 부족분 ${Math.max(0, VILL[v].need - before.got[v])} → ${Math.max(0, need[v] - after.got[v])}</p>`).join("");
       html += `<p>총비용: ${before.total} → ${after.total} (변화 ${after.total - before.total >= 0 ? "+" : ""}${after.total - before.total})<br>발전 ${before.plantCost} → ${after.plantCost}, 전선 ${before.wire}칸 비용 ${before.wire} → ${wireCost}</p>`;
@@ -268,6 +275,7 @@
     html += '<p class="small"><span class="tag-mine">재구성(기당)</span> ' + (plan.q2 ? '비용은 기당 발전 비용과 전선 비용의 합입니다. ' : '') + '달라진 조건 외의 값은 그대로 두며, 기간을 곱해 누적 전력량이나 누적 비용으로 바꾸지 않습니다.</p>';
     if (key === "wind") html += '<p class="small">이 과제에서는 생산량을 풍속과 같게 셉니다. 실제 풍력 발전기의 출력은 대략 풍속의 세제곱에 비례해, 풍속이 절반이면 약 1/8로 줄어듭니다.</p>';
     if (key === "nuclear") html += '<p class="small">점검 기간과 비용은 연습실 가정입니다. 멈춰도 기당 비용은 그대로 둡니다.</p>';
+    if (key === "community") html += '<p class="small">협의 결과를 예측한 것이 아닙니다. 어떤 발전소를 얼마나 미룰지는 연습실 가정이며, 협의 비용과 주민 의견은 숫자에 넣지 않았습니다.</p>';
     return html;
   }
 
