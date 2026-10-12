@@ -296,13 +296,17 @@ def solo(checks, context, base, width, label, pages):
     checks.ok(set(geometry['kinds']) >= {'outage', 'build', 'policy'}, label + ' 원/설/정 세 표지 실제 검사 [13]')
     note = page.evaluate(NOTES)['3']
     text = page.locator('#lg-decisions [data-decision-month="3"]').inner_text()
+    basis = (note.get('outageFrozen') or note.get('missedCarry') or {}).get('basis', note.get('missedBasis'))
+    names = {'choice': '내 선택', 'weather': '날씨·계절·운전 기간' if basis == 'monthly' else '날씨·운전 기간',
+             'event': '사건·대응', 'trade': '이웃 거래', 'grid': '접속 대기',
+             'progress': '접속·공사·기술 진행', 'growth': '도시 성장·연료 값'}
     if note.get('missed'):
-        names = {'choice': '내 선택', 'weather': '날씨·운전 기간', 'event': '사건', 'trade': '이웃 거래', 'grid': '접속 대기'}
-        checks.ok(names[note['missed']] in text and names[note['missed']] in cause_text, label + ' 고른 원인 기록 연결 [12]')
+        name = names.get(note['missed'])
+        checks.ok(name is not None and name in text and name in cause_text, label + ' 고른 원인 기록 연결 [12]')
     if note.get('outageLargest'):
         largest = note['outageLargest']
-        names = {'choice': '내 선택', 'weather': '날씨·운전 기간', 'event': '사건', 'trade': '이웃 거래'}
-        match = re.search(r'가장 큰 몫:\s*' + re.escape(names[largest['key']]) + r'\s*([+−-]?[\d,.]+)\s*%p', text)
+        name = names.get(largest.get('key'))
+        match = re.search(r'가장 큰 몫:\s*' + re.escape(name) + r'\s*([+−-]?[\d,.]+)\s*%p', text) if name is not None else None
         checks.ok(bool(match) and abs(float(match[1].replace(',', '').replace('−', '-')) - largest['value']) <= .0051,
                   label + ' 공개한 가장 큰 몫 이름·수치=기기 기록 [12]')
     elif note.get('outageSingleShown'):
