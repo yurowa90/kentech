@@ -927,13 +927,16 @@ def t_T0a_12_print(c: Ctx):
 
 QUESTION_KEYS = {
     "2022": "22-q1 22-q1-nuc 22-q1-fos 22-q2 22-q2-cost 22-q2-one 22-div-typhoon 22-hum-vote 22-hum-future".split(),
-    "2023": "23-q1 23-q1-conflict 23-q1-oppose 23-q2 23-q2-top 23-q2-timing 23-q2-gap 23-q2-avoid 23-q2-event 23-lost 23-flex 23-hum-verify".split(),
+    # 2023b spec §1: 보고서 순서의 24개 키(조건부 질문 포함).
+    "2023": "23-q1 23-q1-check 23-q1-like 23-q1-nation 23-q1-policy 23-q1-sustain 23-q1-oppose 23-q1-export 23-q1-conflict 23-q1-whole 23-q1-live 23-q2 23-q2-top 23-q2-avoid 23-q2-timing 23-q2-event 23-q2-lead 23-lost 23-q2-gap 23-flex 23-q2-shorten 23-q2-real 23-q2-coop 23-hum-verify".split(),
     "2024": "24-c1 24-c2 24-c3 24-c4 24-c5-yes 24-c5-diff 24-c6 24-i-energy-short 24-i-energy-over 24-i-lab 24-i-nolab 24-i-attr-all 24-i-attr-high 24-i-attr-low".split(),
     "2025": "25-q 25-first 25-swap 25-data 25-div-ai 25-div-fifth 25-hum-access 25-hum-future".split(),
     "2026": "26-q1 26-q2 26-sum 26-low 26-div-hidden 26-math 26-runner 26-hum-10y 26-hum-crit".split(),
 }
 REPORT_KEYS = {
-    "2022": {"22-q1", "22-q2"}, "2023": {"23-q1", "23-q2"},
+    "2022": {"22-q1", "22-q2"},
+    # 2023b spec §1·§1.7: 틀 채움도 포함하여 전부 보고서 문항.
+    "2023": set(QUESTION_KEYS["2023"]),
     "2024": {"24-c1", "24-c2", "24-c3", "24-c4", "24-c5-yes", "24-c5-diff", "24-c6"},
     "2025": {"25-q"}, "2026": {"26-q1", "26-q2"},
 }
@@ -946,8 +949,19 @@ def _question_contract(c, year, label):
     c.eq(len(keys), len(set(keys)), f"T0a-13 {year} {label} 질문 키 중복 없음")
     c.expect(all(k in QUESTION_KEYS[year] for k in keys), f"T0a-13 {year} {label} 지정된 고정 키 사용")
     reports = [q for q in questions if q.get("src") == "report"]
-    c.eq(len(reports), {"2022":2,"2023":2,"2024":6,"2025":1,"2026":2}[year], f"T0a-13 {year} {label} 보고서 문항 개수")
+    # 2023b spec §1.7: 빈 상태 18개, _prep23 예시 계획 뒤 24개.
+    c.eq(len(reports), {"2022":2,"2023":18 if label == "빈 상태" else 24,"2024":6,"2025":1,"2026":2}[year], f"T0a-13 {year} {label} 보고서 문항 개수")
     c.expect(all((q.get("src") == "report") == (q.get("k") in REPORT_KEYS[year]) for q in questions), f"T0a-13 {year} {label} 보고서 문항에만 출처 부여")
+    # 2023b spec-v2 V4·W3: 기본 다섯 키 중 나온 질문 + 실제 선택한 유실 항목만 frame.
+    frames = {"23-q2-top", "23-q2-lead", "23-q2-gap", "23-q2-shorten", "23-q2-real"} if year == "2023" else set()
+    if year == "2023":
+        plan = c.page.evaluate("KCP.load('2023').game.plan || []")
+        lost = set("3A 3B 3D 3E 3F 3G 3H 4A 4C 4D 4E 4F".split())  # spec §0
+        if lost.intersection(plan):
+            frames.add("23-lost")
+        c.expect(all("frame" not in q for q in questions if q.get("k") not in frames), f"T0a-13 {year} {label} 틀을 채우지 않은 질문은 frame 속성 없음")
+    c.eq({q.get("k") for q in questions if q.get("frame") is True}, frames.intersection(keys), f"T0a-13 {year} {label} 틀 채움 키 집합")
+    c.expect(all(not q.get("frame") for q in questions if q.get("k") not in frames), f"T0a-13 {year} {label} 그 밖의 질문은 틀 채움 아님")
     return questions
 
 
