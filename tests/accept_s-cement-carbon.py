@@ -470,7 +470,8 @@ def t_12_3_lock_and_revisit(c: Ctx):
     c.page.wait_for_selector("#cc-unlock")
     c.phase("room")
     c.page.locator('textarea[data-a="0"]').fill("가상 보존할 이전 답변")
-    c.wait_saved()
+    # 고정 400ms 뒤 원본을 읽지 않고 답변이 저장소에 반영될 때까지 기다린다(250ms 지연 저장과 부하 경합).
+    c.page.wait_for_function("key => (JSON.parse(localStorage.getItem(key)).answers || {})['0'] === '가상 보존할 이전 답변'", arg=KEY)
     answers = c.ls(KEY)["answers"]
     answer_q = c.ls(KEY)["answerQ"]
     c.phase("prep")
@@ -606,8 +607,11 @@ def t_12_3_recovery(c: Ctx):
             expected = dict(DEFAULT, d=10)
             expected[field] = DEFAULT[field]
             _inject(c, dict(phase="prep", game=dict(version=1, plan=plan), memo="가상 메모"))
-            c.page.locator("#cc-memo").fill("가상 필드 복구 메모")
-            c.wait_saved()
+            # N1과 같은 이유: 고정 400ms 뒤 localStorage 원본을 읽으면 부하로 250ms 지연 저장이 밀릴 때
+            # 주입한 훼손값을 그대로 읽는다(저장 타이머를 700ms로 늦춘 변형에서 16건 재현). 메모 반영을 기다린다.
+            field_memo = f"가상 필드 복구 메모 — {field} {bad!r}"
+            c.page.locator("#cc-memo").fill(field_memo)
+            c.page.wait_for_function("([key, memo]) => JSON.parse(localStorage.getItem(key)).memo === memo", arg=[KEY, field_memo])
             c.eq(c.ls(KEY)["game"]["plan"], expected, f"{aid} {field}의 {bad!r}는 형·격자 검사로 복구")
     long_line = "가상 문장" * 70
     _inject(c, dict(phase="prep", game=dict(version=1, plan=DEFAULT, oneLine=long_line)))
@@ -644,8 +648,9 @@ def t_12_3_recovery(c: Ctx):
     state["game"]["prediction"]["plan"]["capture"] = "60"
     _inject(c, state)
     c.expect(c.page.locator("#cc-next").is_disabled(), f"{aid} 훼손 예측으로 이동 활성화 안 됨")
+    # 위 필드 반복과 같은 이유로 고정 대기 대신 메모 반영을 기다린 뒤 원본을 읽는다.
     c.page.locator("#cc-memo").fill("가상 복구 메모 수정")
-    c.wait_saved()
+    c.page.wait_for_function("([key, memo]) => JSON.parse(localStorage.getItem(key)).memo === memo", arg=[KEY, "가상 복구 메모 수정"])
     g = c.ls(KEY)["game"]
     c.eq(g["criteria"], ["", ""], f"{aid} 중복 기준 둘 다 초기화")
     c.eq(g["prediction"], None, f"{aid} 예측 필드 하나 훼손되어도 snapshot 전체 폐기")
