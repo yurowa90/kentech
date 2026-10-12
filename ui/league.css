@@ -797,6 +797,7 @@ section#lg-missed.lg-outage { display: block; }
   .lg-regioncity span { overflow-wrap: anywhere; }
   .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
   .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
+  .lg-team-map .bd-cap .lg-debt-note { display: none; }
   .lg-team-map .bd-cap[data-cap="time"] .v2-cap-v { font-size: 10px; }
 }
 #lg-final-summary p,
@@ -970,4 +971,24 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .lg-actions .lg-readybtn[aria-pressed="true"] { background: var(--ui-cyan); }
   html.bd-drawer-open .lg-team-map .bd-dock { right: 10px; }
   .lg-team-map .bd-drawer { bottom: calc(var(--bd-dock, 90px) + 8px); }
+}
+
+/* S8 이유와 다음 달 계획 비교는 기기 안에서만 읽는다. */
+#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; bottom: calc(var(--bd-dock, 100px) + 10px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
+html.bd-drawer-open #lg-plan-reminder,
+#bd-root:has(#lg-panel:not([hidden])) #lg-plan-reminder { display: none; }
+#lg-plan-reminder span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#lg-plan-reminder-close { flex: none; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.lg-plan-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.lg-plan-comparison > * { min-width: 0; margin: 0; }
+.lg-plan-comparison p { margin: 0; }
+.lg-debt-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.lg-trend-scroll { overflow-x: auto; }
+#lg-timeline [data-change] text { font-size: 11px; }
+#lg-decisions li { margin: 8px 0; }
+.lg-host-details [data-host-card]:not([open]) { align-self: start; }
+@media (min-width: 761px) and (max-width: 1279px) {
+  .lg-team-map #lg-panel[data-stage="review"]:is([data-tab="result"], [data-tab="journal"]),
+  .lg-team-map #lg-panel[data-stage="end"]:is([data-tab="result"], [data-tab="journal"]) { width: calc(50vw - 12px); box-sizing: border-box; }
+  .lg-team-map[data-result-drawer="true"] #lg-map-result { max-width: calc(50vw - 28px); }
 }
