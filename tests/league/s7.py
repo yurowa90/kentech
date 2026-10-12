@@ -1,11 +1,12 @@
 """S7 명세 수용 검사 — 브라우저 실행은 샌드박스 밖 총괄 담당.
 
 실행: tests/.venv/bin/python tests/league/s7.py http://127.0.0.1:9430/index.html
-근거: _briefs/lanes/league/S7-fix3.md가 우선. 아래 I 번호는 유지된 기존
+근거: 2월 이후는 _briefs/lanes/league/C-fix2.md와 총괄 확정 여섯 단계 명세.
+1월은 _briefs/lanes/league/S7-fix3.md가 우선. 아래 I 번호는 유지된 기존
 S7-impl.md 항목의 행 번호이며 '겹침=남는 값'·겹침 막대 명세는 폐기한다.
 _briefs/design/s7/notes.md 19–25, LEAGUE-CANON.md 12·14행(목표 4·6).
 I3/D-65 비전송, I12–19 분해·캐시, I20–25 고르기/공개, I26 이어붙이기,
-I28 모바일, I37–40 2022 연결. 네 환경·진단·캡처는 검사 요청 8번.
+I28 모바일, I37–40 2022 연결. 1280 밝음·1180×820 태블릿·390 어두움에서 진단·캡처한다.
 
 S7 DOM은 전달받은 id/data 속성만 쓴다. 기존 흐름 조작은 league_flow,
 econui, solo의 선택자를 재사용한다. 결과/약속/분해값을 주입하지 않는다.
@@ -26,8 +27,10 @@ from econui import (Checks, context_for, diagnostics, local_address, monitored_p
 from solo import click_next, close_drawer, read
 
 VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%(?:p)?")
-NAMES = {"choice": "내 선택", "weather": "날씨·운전 기간", "event": "사건",
+NAMES = {"choice": "내 선택", "weather": "날씨·운전 기간", "event": "사건·대응",
          "trade": "이웃 거래"}
+MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기간",
+                 "event": "사건·대응", "progress": "접속·공사·기술 진행", "growth": "도시 성장·연료 값", "trade": "이웃 거래"}
 STATE = "() => { const l=KCP.league.state(); return l.S || l.snap; }"
 SYNC = "([r,p]) => {const l=KCP.league.state(),s=l&&(l.S||l.snap); return s?.round===r&&s?.phase===p;}"
 
@@ -202,8 +205,10 @@ def copy_worksheet(page):
 
 
 def no_answer_records(checks, page, label):
+    if page.evaluate(STATE)["round"] > 1:
+        return monthly_no_answer_records(checks, page, label)
     note = current_note(page)
-    checks.ok(not any(note.get(k) for k in ("outageOpened", "outageSingleShown", "outageLargest")),
+    checks.ok(not any(note.get(k) for k in ("outageOpened", "outageSingleShown", "outageLargest", "outageFrozen")),
               f"{label} 열기/요약 표시 전 최대 몫 저장 없음")
     # 끝 단계까지 가지 않은 달에도 같은 공개 타임라인 렌더러 전체를 검사한다.
     # 기존 기록이나 결과·약속 값을 주입하지 않는다. 범례도 문구 금지의 예외가 아니다.
@@ -222,7 +227,9 @@ def no_answer_records(checks, page, label):
 
 def hidden_answer(checks, root, label, card=False):
     surface = root.evaluate(SURFACE)
-    checks.ok(not re.search(r"\d\s*%p", surface["text"]), f"{label} 열기 전 DOM에 원인 %p 없음 [I20–21]")
+    checks.ok(not re.search(r"\d\s*%p", surface["text"]) and
+              not any(s in surface["text"] for s in ("가장 큰 몫", "가장 큼", "가장 큰 것")),
+              f"{label} 열기 전 DOM에 원인 %p·최대 없음 [I20–21]")
     leaks = [(key, value) for key, value in surface["attrs"] if
              (key == "data-out-value" and value.strip()) or
              (key.startswith("data-") and re.search(r"\d", value)) or
@@ -322,7 +329,7 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 고른 카드 꼬리표 [I22]")
     checks.ok(page.locator('[data-out-tag="largest"]').inner_text() == "가장 큼", f"{label} 최대 몫 꼬리표 [I22]")
     order = page.locator("#lg-outage-order").inner_text()
-    checks.ok(all(s in order for s in ("순서", "내 선택", "날씨·운전 기간", "사건", "이웃 거래", "달라", "추정", "겹친 효과", "뒤 단계 몫")),
+    checks.ok(all(s in order for s in ("순서", "내 선택", "날씨·운전 기간", "사건·대응", "이웃 거래", "달라", "추정", "겹친 효과", "뒤 단계 몫")),
               f"{label} 순서 의존 안내 [I23]")
     rows = page.locator("#lg-outage-waterfall [data-out-step]")
     values, visible = {}, {}
@@ -345,9 +352,9 @@ def scene(checks, page, requests, label, width, trial, actual):
       const L=KCP.league.state(), V=L.snap || L.S;
       return KCP.league.uiMath.outageAttribution(V,V.results.at(-1),L.team).replay;
     }""")
-    checks.ok(("replay" in values) == (abs(replay) >= .01) and
-              page.locator("#lg-outage-replay").count() == int(abs(replay) >= .01),
-              f"{label} 재현 차이·설명은 절댓값 0.01%p 이상일 때만")
+    checks.ok(("replay" in values) == (abs(replay) >= .005) and
+              page.locator("#lg-outage-replay").count() == int(abs(replay) >= .005),
+              f"{label} 재현 차이·설명은 절댓값 0.005%p 이상일 때만")
     checks.ok(all(n.get_attribute("data-out-other") in NAMES for n in page.locator('[data-out-other]').all()),
               f"{label} 나머지 후보도 네 원인만")
     waterfall = page.locator("#lg-outage-waterfall")
@@ -359,11 +366,11 @@ def scene(checks, page, requests, label, width, trial, actual):
     checks.ok(abs(values["trial"] - trial["unsPct"]) <= 1e-9 and abs(values["actual"] - actual) <= 1e-9,
               f"{label} 폭포 출발·도착 = 실제 저장 시험·운영")
     checks.ok(abs(values["trial"] + replay + sum(values[k] for k in NAMES) - values["actual"]) <= 1e-9,
-              f"{label} 재현 차이를 포함한 원시 합계 항등식")
+              f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
     checks.ok(abs(sum(v for k, v in values.items() if k != "actual") - values["actual"]) <= .0200001,
-              f"{label} 재현 생략을 고려한 폭포 합계 ±0.02%p")
+              f"{label} 배선 일치: 재현 생략을 고려한 폭포 합계 ±0.02%p")
     checks.ok(abs(sum(v for k, v in visible.items() if k != "actual") - visible["actual"]) <= .0200001,
-              f"{label} 화면 합계 ±0.02%p [요청3]")
+              f"{label} 배선 일치: 화면 합계 ±0.02%p [요청3]")
     largest = max(NAMES, key=lambda k: abs(values[k]))
     top = sorted(NAMES, key=lambda k: abs(values[k]), reverse=True)[:3]
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
@@ -372,9 +379,9 @@ def scene(checks, page, requests, label, width, trial, actual):
     checks.ok(card_keys == [key for key in NAMES if key in card_keys],
               f"{label} 카드 표시 순서는 분해 순서의 부분열(크기 순위와 무관)")
     checks.ok(card_keys == closed_card_keys, f"{label} 열기 전후 카드 순서 동일")
-    checks.ok(page.locator('[data-missed="weather"] strong').count() == 0 or
-              page.locator('[data-missed="weather"] strong').inner_text() == NAMES["weather"],
-              f"{label} 날씨 표시 이름")
+    for card in cards.all():
+        checks.ok(card.locator("strong").inner_text() == NAMES[card.get_attribute("data-missed")],
+                  f"{label} 시험 카드 이름 = 순서·폭포 이름")
     checks.ok(page.locator(f'[data-missed="{largest}"] [data-out-tag="largest"]').count() == 1,
               f"{label} 가장 큼은 절댓값 최대 원인")
     checks.ok(page.locator("[data-out-grid]").count() == 1 and
@@ -390,7 +397,8 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 판단 비교 세 줄 [I22]")
     simulations = int(root.get_attribute("data-simulations"))
     ms = float(root.get_attribute("data-ms"))
-    checks.ok(0 < simulations <= 5, f"{label} 추가 시뮬레이션 ≤5 [I17]")
+    expected_calls = 5 if current_attribution(page)["grid"]["waitingMW"] > 0 else 4
+    checks.ok(simulations == expected_calls, f"{label} 시험 기준 대기에 따라 {expected_calls}회 [I17]")
     checks.ok(math.isfinite(ms) and ms >= 0, f"{label} data-ms 읽기 [I18]")
     print(json.dumps({"S7_performance": label, "ms": ms, "simulations": simulations}, ensure_ascii=False), flush=True)
     calls = page.evaluate("window.__s7SimCalls")
@@ -458,37 +466,296 @@ def end_record(checks, page, expected, label):
                   f"{label} {kind} 표시 y={y} (월 이름과 분리)")
 
 
-def later_outage(checks, page, label):
-    """2월 정전 오예측: 지난달 기준 안내와 무사건 후보도 검사한다."""
-    state = read(page)["S"]
-    player = read(page)["player"]
-    trial = plan_and_trial(page, renewable=True)
-    actual = expected_operation(page, player)
-    baseline = state["results"][-1]["team"][player]["unsPct"]
-    promise(page, trial, actual, baseline=baseline)
-    page.wait_for_function(SYNC, arg=[state["round"], "review"])
+def device_data(page):
+    return page.evaluate("""() => {
+      const L=KCP.league.state();
+      return L.role==='solo' ? JSON.parse(localStorage.getItem('kcp-league-solo-v1')).interview :
+        JSON.parse(localStorage.getItem(`kcp-league-data-v1:${L.room}:${L.team}`));
+    }""")
+
+
+def snapshot_contract(checks, page, label):
+    state = page.evaluate(STATE)
+    month = state["round"]
+    snapshots = device_data(page).get("outageSnapshots", {})
+    required(checks, sorted(map(int, snapshots)) == ([1] if month == 1 else [month-1, month]),
+             f"{label} {month}월 기기 사본 최근 2달만(3월에 1월 삭제)")
+    snap = snapshots[str(month)]
+    checks.ok(all(k in snap for k in ("round", "plan", "seed", "days", "season", "mods",
+                                      "unsPct", "isolatedUnsPct")), f"{label} 운영 사본 필수 입력")
+    result = state['results'][-1]
+    checks.ok(all(snap[k] == result[k] for k in ('seed', 'days', 'season')),
+              f"{label} 사본 재사용 조건 = 실제 seed·days·season")
+    checks.ok(snap["unsPct"] == result["team"]["pyeongtaek"]["unsPct"],
+              f"{label} 사본 실제 = 운영 결과")
+    checks.ok(not private_fields(public_state(page)), f"{label} D-65 공개 상태에 사본 없음")
+    size = len(json.dumps(snap, ensure_ascii=False, separators=(",", ":")).encode())
+    print(json.dumps({"S7_snapshot": label, "month": month, "bytes": size}, ensure_ascii=False), flush=True)
+    return snapshots
+
+
+def monthly_no_answer_records(checks, page, label):
+    """이미 연 지난달 기록을 보존하며 현재 닫힌 달의 모든 기록 표면을 검사."""
+    note = current_note(page)
+    checks.ok(not any(note.get(k) for k in ("outageOpened", "outageSingleShown", "outageLargest",
+                                            "outageFrozen")), f"{label} 현재 닫힌 달 기기 답 기록 없음")
+    result = page.evaluate("""() => {
+      const L=KCP.league.state(), V=L.snap || L.S, rd=KCP.leagueCore.roundsOf(V)[V.round-1];
+      const month=`${rd.year}년 ${rd.month}월`;
+      const html=KCP.league.uiMath.trendHTML(V,L.team,true);
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const current=[...doc.querySelectorAll('li,title')].filter(n=>n.textContent.startsWith(month+' '));
+      return {month, current:current.map(n=>n.textContent),
+        marks:current.filter(n=>n.closest('[data-change="outage"]')).length};
+    }""")
+    checks.ok(result["marks"] == 0 and not any("가장 큰 몫" in t for t in result["current"]),
+              f"{label} 현재 닫힌 달 타임라인 DOM·title에 답 없음")
+    open_panel(page, "journal")
+    panel = page.locator("#lg-panel")
+    # 이전 달 이어붙이기 한 줄은 이미 공개된 기록이다. 그 줄을 제외하고 검사.
+    text = panel.evaluate("""el => {
+      const copy=el.cloneNode(true); copy.querySelector('#lg-missed-carry')?.remove();
+      return copy.textContent;
+    }""")
+    checks.ok("가장 큰 몫" not in text, f"{label} 현재 일지 DOM에 답 없음")
+    worksheet = copy_worksheet(page)
+    header = "■ " + result["month"]
+    required(checks, header in worksheet, f"{label} 활동지 현재 달 블록 존재")
+    block = worksheet.split(header, 1)[1].split("■ ", 1)[0]
+    checks.ok("가장 큰 몫" not in block and not re.search(r"[0-9]\s*%p", block),
+              f"{label} 현재 닫힌 달 활동지에 몫/최대 없음")
+    open_panel(page, "result")
+
+
+def monthly_scene(checks, page, requests, label, width, baseline, actual):
+    """C-lastmonth §2–5: 월간 분해·기준 일치·공개 전후·화면 검산."""
     open_panel(page, "result")
     required(checks, "예상과 다름" in page.locator('[data-compare="uns"]').inner_text(),
-             f"{label} 2월 이후 지난달 대비 오예측")
-    note = page.locator("#lg-outage-baseline")
-    required(checks, note.count() == 1 and note.is_visible(), f"{label} 지난달/시험 비교 기준 안내 표시")
-    text = note.inner_text()
-    checks.ok(all(word in text for word in ("약속", "지난달 대비", "나누기", "시험", "대비")),
-              f"{label} 약속은 지난달 대비·나누기는 시험 대비")
-    required(checks, page.locator("#lg-missed").get_attribute("data-single") in ("true", "false"),
-             f"{label} 2월 유효한 분해(시험 없음 안내로 대체 불가)")
-    if shown(page, "#lg-outage-open"):
-        page.locator("#lg-outage-cards [data-missed]").first.click()
-        page.locator("#lg-outage-open").click()
-    keys = page.locator('#lg-missed [data-missed], #lg-missed [data-out-other]').evaluate_all(
-        "nodes => nodes.map(n => n.dataset.missed || n.dataset.outOther)")
-    checks.ok(bool(keys) and all(key in NAMES for key in keys), f"{label} 2월 후보 네 원인 안에서만")
-    checks.ok(page.locator('[data-out-step="overlap"]').count() == 0, f"{label} 2월 겹침 막대 없음")
-    event = page.locator('[data-out-step="event"]')
-    if not read(page)["S"].get("events"):
-        checks.ok(float(event.get_attribute("data-out-value")) == 0 and
-                  "사건 없음" in page.locator("#lg-missed").text_content(), f"{label} 무사건 원인 몫 0·단서")
-    capture(checks, page, label, "later-baseline")
+             f"{label} 지난달 대비 정전 오예측")
+    root = page.locator("#lg-missed")
+    required(checks, root.get_attribute("data-single") in ("true", "false"),
+             f"{label} 사본 있는 달 월간 분해")
+    required(checks, page.locator("#lg-outage-baseline").inner_text() ==
+             "약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.", f"{label} 같은 비교 기준 안내")
+    checks.ok("시험 1주 대비" not in root.text_content(), f"{label} 시험 대비 분해 안내 폐기")
+    comparison = page.locator('#lg-trial-compare').inner_text()
+    checks.ok('원인 카드는 지난달 실제 → 이번 달 실제의 정전 변화를 나눠요.' in comparison and
+              '위 시험 / 실제 차이와는 기준이 달라요.' in comparison,
+              f"{label} 시험 비교 절도 월간 원인 카드와 기준 차이를 설명")
+    cards = page.locator('#lg-outage-cards [data-missed]')
+    keys = [c.get_attribute('data-missed') for c in cards.all()]
+    multi = root.get_attribute("data-single") == "false"
+    before_requests = len(requests)
+    if multi:
+        required(checks, cards.count() == 3, f"{label} 월간 원인 카드 3장")
+        for card in cards.all():
+            checks.ok(card.locator("strong").inner_text() == MONTHLY_NAMES[card.get_attribute("data-missed")],
+                      f"{label} 월간 카드 이름 = 순서·폭포 이름")
+        checks.ok(keys == [k for k in MONTHLY_NAMES if k in keys], f"{label} 닫힌 카드 분해 순서 부분열")
+        checks.ok(not shown(page, '#lg-outage-waterfall') and not shown(page, '#lg-outage-verdict'),
+                  f"{label} 열기 전 폭포/판정 비노출")
+        for c in cards.all():
+            hidden_answer(checks, c, label + ' 월간 닫힌 카드', card=True)
+        hidden_answer(checks, page.locator('#lg-outage-others'), label + ' 월간 나머지 후보')
+        # 루트는 공개된 총 차이·성능만 갖는다. 원인 크기/최대 속성은 전체 자손 검사.
+        attrs = root.evaluate(SURFACE)['attrs']
+        checks.ok(not any((k == 'data-out-value' and v.strip()) or
+                          (k == 'data-out-tag' and v == 'largest') or
+                          any(s in v for s in ('가장 큰 몫', '가장 큼', '가장 큰 것')) for k, v in attrs),
+                  f"{label} 전체 DOM aria/data 원인 답 비노출")
+        no_answer_records(checks, page, label)
+        checks.ok(page.locator('#lg-outage-open').is_disabled(), f"{label} 고르기 전 열기 불가")
+        page.locator(f'[data-missed="{keys[0]}"]').click()
+        checks.ok(current_note(page).get('missedBasis') == 'monthly',
+                  f"{label} 열기 전 선택 저장도 월간 기준 보존")
+        for c in cards.all():
+            hidden_answer(checks, c, label + ' 월간 선택 뒤 닫힌 카드', card=True)
+        capture(checks, page, label, 'monthly-closed')
+        page.locator('#lg-outage-open').click()
+        checks.ok(page.evaluate('document.activeElement?.id') == 'lg-outage-verdict', f"{label} 판정 초점")
+    a = current_attribution(page)
+    required(checks, a and a.get('basis') == 'monthly', f"{label} 월간 계산 API")
+    checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")
+    checks.ok(abs(a['trial'] - baseline) <= 1e-9 and abs(a['actual'] - actual) <= 1e-9,
+              f"{label} 분해 출발/도착 = 지난달/이번 실제")
+    # 판정 화면과 저장 outcome도 독립 baseline·actual로 계산한 방향/차이에 대조.
+    delta = actual - baseline
+    direction = 'same' if abs(delta) < .5 else 'up' if delta > 0 else 'down'
+    outcome = current_note(page).get('outcome', {})
+    compare = page.locator('[data-compare="uns"]').inner_text()
+    matches = VALUE.findall(compare)
+    checks.ok(outcome.get('actual') == direction and outcome.get('hit') is False and
+              '지난달 대비' in compare and matches and
+              abs(float(matches[0].replace('−','-').replace(',','')) - delta) <= .0051,
+              f"{label} 약속 판정값과 분해 기준 수치 일치")
+    snapshots = device_data(page)['outageSnapshots']
+    old_snap = snapshots[str(a['round'] - 1)]
+    current_snap = snapshots[str(a['round'])]
+    trade = next(p['value'] for p in a['parts'] if p['key'] == 'trade')
+    # 지난달 조건 재계산 = 저장 고립값 + 재현 진단. 독립 모델 검산은 32번에서 수행.
+    old_recalculated = old_snap['isolatedUnsPct'] + a['replay']
+    wired_trade = (actual - current_snap['isolatedUnsPct']) - (baseline - old_recalculated)
+    checks.ok(abs(trade - wired_trade) <= 1e-9, f"{label} 배선 일치: 거래 = 두 달 실제−고립 효과의 변화량")
+    checks.ok(a.get('replayOutsideSum') is True and
+              abs(sum(p['value'] for p in a['parts']) - delta) <= 1e-9,
+              f"{label} 배선 일치: 재현은 합계 밖·여섯 몫만의 합계 1e-9")
+    rows = page.locator('#lg-outage-waterfall [data-out-step]')
+    expected = ['previous'] + list(MONTHLY_NAMES) + ['actual']
+    required(checks, [r.get_attribute('data-out-step') for r in rows.all()] == expected, f"{label} 폭포 전체 순서")
+    raw, visible = {}, {}
+    parts = {p['key']: p['value'] for p in a['parts']}
+    expected_values = {'previous': baseline, **parts, 'actual': actual}
+    for row in rows.all():
+        k = row.get_attribute('data-out-step')
+        raw[k] = float(row.get_attribute('data-out-value'))
+        matches = VALUE.findall(row.inner_text())
+        required(checks, len(matches) == 1, f"{label} {k} 표시 숫자 1개")
+        visible[k] = float(matches[0].replace('−', '-').replace(',', ''))
+        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - raw[k]) <= .0051,
+                  f"{label} {k} API/DOM 원시값·반올림")
+        track = row.locator('.lg-out-track').bounding_box()
+        checks.ok(track and track['width'] > 0, f"{label} {width}px {k} 실제 막대 칸")
+    checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
+              f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
+    checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - visible['actual']) <= .0200001,
+              f"{label} 배선 일치: 화면 합계 ±0.02%p")
+    waterfall = page.locator('#lg-outage-waterfall')
+    aria = waterfall.get_attribute('aria-label') or ''
+    aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]
+    checks.ok(waterfall.get_attribute('role') == 'img' and aria_values == list(visible.values()) and
+              all(name in aria for name in ('지난달 실제', *MONTHLY_NAMES.values(), '이번 달 실제')),
+              f"{label} aria 요약 수치·이름 일치")
+    candidates = page.locator('#lg-missed [data-missed], #lg-missed [data-out-other]').evaluate_all(
+        "nodes => nodes.map(n=>n.dataset.missed || n.dataset.outOther)")
+    checks.ok(candidates and all(k in MONTHLY_NAMES for k in candidates), f"{label} 되돌림·재현은 후보 밖")
+    if multi:
+        ranked = sorted(a['parts'], key=lambda p: abs(p['value']), reverse=True)
+        top = {p['key'] for p in ranked[:3]}
+        checks.ok(keys == [k for k in MONTHLY_NAMES if k in top], f"{label} 크기 상위3 집합·분해순 배치")
+        checks.ok([c.get_attribute('data-missed') for c in cards.all()] == keys, f"{label} 연 전후 카드 순서 고정")
+        checks.ok(page.locator(f'[data-missed="{ranked[0]["key"]}"] [data-out-tag="largest"]').count() == 1,
+                  f"{label} 공개 최대는 여섯 후보 중 최대")
+    checks.ok('priorTrade' not in a and page.locator('#lg-outage-prior-trade').count() == 0 and
+              '지난달 거래 되돌림' not in root.text_content() and
+              page.locator('#lg-outage-replay').count() == int(abs(a['replay']) >= .005),
+              f"{label} 되돌림 폐기·재현 설명 0.005%p 문턱")
+    order = page.locator('#lg-outage-order').inner_text()
+    checks.ok('내 선택 → 날씨·계절·운전 기간 → 사건·대응 → 접속·공사·기술 진행 → 도시 성장·연료 값 → 이웃 거래' in order and
+              '뒤 단계 몫' in order, f"{label} 순서 의존 안내")
+    if a['grid']['waitingMW'] == 0:
+        checks.ok('접속 대기' not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략")
+    simulations = int(root.get_attribute('data-simulations'))
+    expected_calls = 6 if a['grid']['waitingMW'] > 0 else 5
+    checks.ok(simulations == expected_calls, f"{label} 월간 사본 재사용·대기에 따라 {expected_calls}회")
+    before_calls = page.evaluate('window.__s7SimCalls')
+    close_drawer(page); open_panel(page, 'result')
+    checks.ok(current_attribution(page) == a and page.evaluate('window.__s7SimCalls') == before_calls,
+              f"{label} 재열기 캐시 추가 실행 0")
+    page.locator('#lg-outage-carry').click()
+    saved = current_note(page)
+    checks.ok(saved.get('missedCarry', {}).get('basis') == 'monthly' and
+              saved.get('outageFrozen', {}).get('basis') == 'monthly', f"{label} 다음 달·고정 분해의 기준 보존")
+    if multi:
+        timeline = page.evaluate("""() => {
+          const L=KCP.league.state(), V=L.snap || L.S, C=KCP.leagueCore;
+          const rd=C.roundsOf(V)[V.round-1], prefix=`${rd.year}년 ${rd.month}월 `;
+          const doc=new DOMParser().parseFromString(KCP.league.uiMath.trendHTML(V,L.team,true),'text/html');
+          return [...doc.querySelectorAll('li,title')].filter(n=>n.textContent.startsWith(prefix)).map(n=>n.textContent).join(' / ');
+        }""")
+        checks.ok(f"놓친 것: {MONTHLY_NAMES[saved['missed']]}" in timeline and
+                  f"가장 큰 몫: {MONTHLY_NAMES[ranked[0]['key']]}" in timeline,
+                  f"{label} 월간 타임라인 선택·최대 이름 일치")
+    checks.ok(len(requests) == before_requests, f"{label} 선택/공개/이어붙이기 HTTP 요청 증가 0")
+    capture(checks, page, label, 'monthly-opened')
+    # 재시험/새로고침 뒤 고정 경로도 월간 기준으로 검사한다.
+    frozen_after_retrial(checks, page, label)
+    return a
+
+
+def previous_carry_names(checks, page, label):
+    state = page.evaluate(STATE)
+    note = device_data(page).get('interview', {}).get('months', {}).get(str(state['round'] - 1), {})
+    saved = note.get('missedCarry')
+    if not saved:
+        return
+    basis = saved.get('basis') or note.get('outageFrozen', {}).get('basis')
+    names = MONTHLY_NAMES if basis == 'monthly' else NAMES
+    open_panel(page, 'journal')
+    text = page.locator('#lg-missed-carry').inner_text()
+    selected = saved.get('missed')
+    if selected in names and not note.get('outageSingleShown'):
+        checks.ok(f"지난달 놓친 것: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
+    largest = saved.get('largest')
+    if largest:
+        checks.ok(f"가장 큰 몫 {names[largest['key']]}" in text, f"{label} 지난달 최대 이름은 기록 basis 기준")
+    if basis != 'monthly':
+        checks.ok('날씨·계절·운전 기간' not in text, f"{label} 시험 기록에 월간 이름 섞이지 않음")
+    close_drawer(page)
+
+
+def later_outage(checks, page, requests, label, width, hit=False, host=None):
+    """혼자 하기 2·3월 또는 멀티 2월을 실제 UI로 진행. 자동 현금 달은 실패."""
+    previous_carry_names(checks, page, label)
+    state = page.evaluate(STATE)
+    player = 'pyeongtaek'
+    required(checks, state['econ']['cities'][player]['cash'] >= 0, f"{label} 정전 약속 경로 유지(생략 금지)")
+    trial = plan_and_trial(page, renewable=True, change_after=False)
+    if host:
+        host.wait_for_function("() => !KCP.league.state().S.teams.pyeongtaek.plan.policies.includes('save')")
+    actual = expected_operation(host or page, player)
+    baseline = state['results'][-1]['team'][player]['unsPct']
+    promise(page, trial, actual, baseline=baseline, hit=hit)
+    if host:
+        host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.ready")
+        host.locator('#lg-next').click()
+    page.wait_for_function(SYNC, arg=[state['round'], 'review'])
+    open_panel(page, 'result')
+    snapshots = snapshot_contract(checks, page, label)
+    required(checks, snapshots[str(state['round']-1)]['unsPct'] == baseline, f"{label} 판정 기준 = 사본 지난달 실제")
+    if hit:
+        checks.ok('예상과 같음' in page.locator('[data-compare="uns"]').inner_text(), f"{label} 3월 적중")
+        checks.ok(page.locator('#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall').count() == 0,
+                  f"{label} 월간 적중 달 원인 답 비노출")
+        no_answer_records(checks, page, label)
+        capture(checks, page, label, 'monthly-hit')
+    else:
+        a = monthly_scene(checks, page, requests, label, width, baseline, actual)
+        checks.ok(abs(a['trial'] - snapshots[str(state['round']-1)]['unsPct']) <= 1e-9,
+                  f"{label} 분해 출발 = 저장 지난달 = 판정 기준")
+
+
+def missing_snapshot_after_reload(checks, page, base, label):
+    page.goto(base + '#league'); select_mode(page, 'solo')
+    page.locator('[data-select="lg-solo-city"][data-value="pyeongtaek"]').click()
+    page.get_by_text('날씨·사건 · 연습 방식', exact=True).click()
+    page.locator('#lg-solo-seed').select_option('fixed'); start_solo(page, months=12)
+    page.wait_for_function(SYNC, arg=[1, 'plan'])
+    trial = plan_and_trial(page, renewable=True)
+    promise(page, trial, expected_operation(page, 'pyeongtaek'))
+    page.wait_for_function(SYNC, arg=[1, 'review']); open_panel(page, 'result')
+    snapshot_contract(checks, page, label + '-jan')
+    click_next(page, page.evaluate(STATE)); page.wait_for_function(SYNC, arg=[2, 'plan'])
+    state = page.evaluate(STATE)
+    trial = plan_and_trial(page, renewable=True, change_after=False)
+    promise(page, trial, expected_operation(page, 'pyeongtaek'), baseline=state['results'][-1]['team']['pyeongtaek']['unsPct'])
+    page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
+    required(checks, page.locator('#lg-missed').get_attribute('data-single') == 'false',
+             f"{label} 사본 삭제 전 미공개 월간 복수 후보(고정 자료로 우회 금지)")
+    page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
+    before = public_state(page)
+    page.evaluate("""() => {
+      const key='kcp-league-solo-v1', save=JSON.parse(localStorage.getItem(key));
+      delete save.interview.outageSnapshots[1]; localStorage.setItem(key,JSON.stringify(save));
+    }""")
+    page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
+    required(checks, '지난달 운영 조건이 이 기기에 없어 나누지 못해요' in page.locator('#lg-missed').text_content(),
+             f"{label} 재로딩 후 localStorage 사본 삭제 지정 안내")
+    checks.ok(page.locator('#lg-missed [data-missed], #lg-missed [data-out-other], #lg-outage-waterfall, #lg-outage-single, #lg-outage-open').count() == 0,
+              f"{label} 사본 없으면 시험 대체·카드·폭포 없음")
+    checks.ok('시험' not in page.locator('#lg-missed').text_content(), f"{label} 시험 대비 경로 없음")
+    checks.ok(public_state(page) == before, f"{label} 사본 삭제가 공개 상태 변경하지 않음")
+    no_answer_records(checks, page, label)
+    capture(checks, page, label, 'missing-snapshot')
 
 
 def isolated_branch(checks, page, base, label, correct):
@@ -596,6 +863,7 @@ def solo(checks, page, requests, base, label, width):
     page.wait_for_function(SYNC, arg=[1, "review"])
     actual = read(page)["S"]["results"][-1]["team"][player]["unsPct"]
     checks.ok(actual == expected, f"{label} 복제 운영 방향과 실제 운영 일치")
+    snapshot_contract(checks, page, label + "-jan")
     picked = scene(checks, page, requests, label, width, trial, actual)
     # 실제 새 탭 이동도 확인하고 원래 판의 달·단계를 보존한다(I40).
     popup_events = {"error": [], "warning": [], "pageerror": []}
@@ -620,10 +888,10 @@ def solo(checks, page, requests, base, label, width):
     page.wait_for_function(SYNC, arg=[2, "plan"])
     checks.ok(carry(checks, page, picked, label + "-reload") == before,
               f"{label} 새로고침 뒤 기기 저장 유지 [I26]")
-    if read(page)["S"]["econ"]["cities"][player]["cash"] >= 0:
-        later_outage(checks, page, label)
-    else:
-        print(f"미실행: {label} 2월은 자동 현금 주제 — Node 2월 안내 검사로 별도 확인", flush=True)
+    later_outage(checks, page, requests, label + '-feb', width)
+    click_next(page, read(page)['S'])
+    page.wait_for_function(SYNC, arg=[3, 'plan'])
+    later_outage(checks, page, requests, label + '-mar', width, hit=True)
     cash_checked = False
     for _ in range(25):
         state = read(page)["S"]
@@ -668,8 +936,15 @@ def public_state(page):
 
 
 def private_fields(value):
+    if isinstance(value, str):
+        try:
+            return private_fields(json.loads(value)) if value.lstrip().startswith(('{', '[')) else []
+        except (ValueError, TypeError):
+            return []
     if isinstance(value, dict):
-        return [k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache", k, re.I)] + [
+        snapshot_shape = {"round", "plan", "seed", "days", "season", "mods", "unsPct", "isolatedUnsPct"}
+        return (["운영 사본 객체"] if snapshot_shape <= value.keys() else []) + [
+            k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache|outageSnapshots|outageOperatingIntl", k, re.I)] + [
             k for v in value.values() for k in private_fields(v)]
     if isinstance(value, list):
         return [k for v in value for k in private_fields(v)]
@@ -709,6 +984,7 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     # 정기 공개 갱신 한 주기(4초)도 지나서 읽는다. now만 제외, 새 필드는 모두 비교.
     before_h, before_t = public_state(host), public_state(team)
     before_dom = json.dumps(host.locator("body").evaluate(SURFACE), ensure_ascii=False)
+    snapshot_contract(checks, team, label + "-team-jan")
     chosen = scene(checks, team, requests, label + "-team", width, trial, actual)
     team.wait_for_timeout(4500)
     after_h, after_t = public_state(host), public_state(team)
@@ -723,6 +999,13 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     checks.ok(serialized.count(NAMES[chosen["picked"]]) <= before_dom.count(NAMES[chosen["picked"]]),
               f"{label} 진행자 DOM에 고른 범주 문구도 새로 나타나지 않음")
     capture(checks, host, label + "-host", "private")
+    # 같은 팀 기기의 2월 월간 경로도 진행자 버튼으로 운영한다.
+    host.locator('#lg-next').click()
+    team.wait_for_function(SYNC, arg=[2, 'plan'])
+    host.wait_for_function(SYNC, arg=[2, 'plan'])
+    later_outage(checks, team, requests, label + '-team-feb', width, host=host)
+    for p in (host, team):
+        checks.ok(not private_fields(public_state(p)), f"{label} 월간 공개 상태에 사본/답 없음")
     # 진행자 버튼으로 마지막 달까지 운영. 팀 끝 연결도 확인한다.
     for _ in range(25):
         state = host.evaluate(STATE)
@@ -744,33 +1027,49 @@ def main():
         base = local_address(sys.argv)
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
-            for width, height in ((1280, 900), (390, 844)):
-                for scheme in ("light", "dark"):
-                    label = f"{width}x{height}-{scheme}"
-                    for mode in ("solo", "multi", "solo-correct", "solo-single"):
-                        context, external = context_for(browser, base, width, height, scheme)
-                        requests, pages = [], []
-                        context.on("request", lambda request, sink=requests: sink.append(request.url))
-                        try:
-                            if mode.startswith("solo"):
-                                page, events = monitored_page(context)
-                                pages.append((page, events, "solo"))
-                                if mode == "solo":
-                                    solo(checks, page, requests, base, label + "-solo", width)
-                                else:
-                                    isolated_branch(checks, page, base, label + "-" + mode,
-                                                    correct=mode == "solo-correct")
+            for width, height, scheme in ((1280, 900, "light"), (1180, 820, "light"), (390, 844, "dark")):
+                label = f"{width}x{height}-{scheme}"
+                modes = ("solo", "solo-correct", "solo-single", "solo-missing")
+                if width == 1280:
+                    modes += ("multi",)
+                for mode in modes:
+                    context, external = context_for(browser, base, width, height, scheme)
+                    requests, pages, wire = [], [], []
+                    context.expose_binding("__s7ObserveWire", lambda source, message, sink=wire: sink.append(message))
+                    context.add_init_script("""(() => {
+                      const post=BroadcastChannel.prototype.postMessage;
+                      BroadcastChannel.prototype.postMessage=function(message) {
+                        window.__s7ObserveWire(structuredClone(message));
+                        return post.call(this,message);
+                      };
+                    })();""")
+                    context.on("request", lambda request, sink=requests: sink.append(
+                        {"url": request.url, "body": request.post_data}))
+                    try:
+                        if mode.startswith("solo"):
+                            page, events = monitored_page(context)
+                            pages.append((page, events, "solo"))
+                            if mode == "solo":
+                                solo(checks, page, requests, base, label + "-solo", width)
+                            elif mode == "solo-missing":
+                                missing_snapshot_after_reload(checks, page, base, label + "-missing")
                             else:
-                                multiplayer(checks, context, base, label, width, pages, requests)
-                        except Exception as exc:
-                            checks.ok(False, f"{label} {mode} {type(exc).__name__}: {str(exc).splitlines()[0][:250]}")
-                            for page, _, role in pages:
-                                screenshot(checks, page, f"s7-{label}-{role}-failure.png")
-                        finally:
-                            for page, events, role in pages:
-                                diagnostics(checks, events, f"{label} {role}")
-                            checks.ok(not external, f"{label} {mode} 외부 연결 시도 0: {external}")
-                            context.close()
+                                isolated_branch(checks, page, base, label + "-" + mode,
+                                                correct=mode == "solo-correct")
+                        else:
+                            multiplayer(checks, context, base, label, width, pages, requests)
+                    except Exception as exc:
+                        checks.ok(False, f"{label} {mode} {type(exc).__name__}: {str(exc).splitlines()[0][:250]}")
+                        for page, _, role in pages:
+                            screenshot(checks, page, f"s7-{label}-{role}-failure.png")
+                    finally:
+                        for page, events, role in pages:
+                            diagnostics(checks, events, f"{label} {role}")
+                            overflow(checks, page, f"{label} {mode} {role} final")
+                        checks.ok(not private_fields(wire), f"{label} 모든 새로고침 전후 BroadcastChannel 요청/공개 메시지에 사본·사적 답 없음 [D-65]")
+                        checks.ok(not private_fields(requests), f"{label} HTTP 요청 본문에 사본·사적 답 없음 [D-65]")
+                        checks.ok(not external, f"{label} {mode} 외부 연결 시도 0: {external}")
+                        context.close()
             browser.close()
     except Exception as exc:
         checks.ok(False, f"검사 실행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:250]}")
