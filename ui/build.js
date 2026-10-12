@@ -2620,6 +2620,7 @@
     return root;
   }
 
+  const powerChipDefinition = "설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(7월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.";
   function refreshHUD() {
     const set = (k, v, tone) => {
       const el = S.root.querySelector(`[data-cap="${k}"]`);
@@ -2632,6 +2633,11 @@
     const left = budgetLeft();
     set("budget", `${fmt(left, Math.abs(left % 1) > 1e-9 ? 1 : 0)}억`, left < 6 ? "danger" : "");
     const R = S.run, res = S.result;
+    if (LG) {
+      const power = S.root.querySelector('[data-cap="power"]');
+      power.classList.remove("tone-mint");
+      power.title = R || res ? "" : powerChipDefinition;
+    }
     if (R) {
       const ch = curHour();
       set("time", `D${ch.d + 1} ${hh(ch.h)}`);
@@ -2647,10 +2653,23 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw), 0);
+      const grid = LG && S.opts.leagueGrid?.(S.st);
+      const disabled = LG ? leagueMods(S.st)?.disabledBuilds || [] : [];
+      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => {
+        if (LG && disabled.includes(`${n.kind}:${n.tile}`)) return a;
+        if (LG && n.kind !== "lng" && n.kind !== "coal" && n.kind !== "import") {
+          const b = BLD[n.kind];
+          if (b.cls === "bat") return a; // 저장은 발전 용량에 더하지 않는다.
+          if (b.hostLimited && grid && !grid.entries?.some(e => e.key === `${n.kind}:${n.tile}` && e.allocatedMW >= e.mw)) return a;
+        }
+        return a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw);
+      }, 0);
       const peak = previewPeak(S.st);
+      const outageRisk = LG ? S.opts.leagueOutageRisk?.() : null;
+      const powerRisk = capMW < peak || outageRisk === true;
       set("time", PK.climate ? (x => `${x.name} ${x.m + 1}월`)(SEASONS.find(q => q.id === S.st.season) || SEASONS[1]) : "건설 중");
-      set("power", `${fmt(capMW, 0)}/${fmt(peak, 1)}`, capMW < peak ? "danger" : "");
+      set("power", `${fmt(capMW, LG ? 1 : 0)}/${fmt(peak, 1)}`, powerRisk ? "danger" : "");
+      if (LG) S.root.querySelector('[data-cap="power"]').classList.toggle("tone-mint", !powerRisk && outageRisk === false);
       set("co2", "—");
       const cp = complaints(S.st, null);
       set("cp", `${cp.issues}건`, cp.issues > 1 ? "danger" : "");
@@ -3207,7 +3226,23 @@
     html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
-    V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b: (dock.height ? dock.top : H) - 6 };
+    if (S.opts.league && W >= 761 && W <= 1279 && S.root.dataset.resultDrawer === "true") {
+      const drawer = S.root.querySelector("#lg-panel");
+      if (drawer && !drawer.hidden) r = drawer.getBoundingClientRect().left - 8;
+    }
+    let b = (dock.height ? dock.top : H) - 6;
+    if (S.opts.league) {
+      const reminder = S.root.querySelector("#lg-plan-reminder");
+      if (reminder) {
+        const stage = S.root.querySelector(".bd-stage").getBoundingClientRect();
+        reminder.style.left = `${Math.max(10, 8 - stage.left)}px`;
+        reminder.style.right = `${Math.max(10, stage.right - r)}px`;
+        reminder.style.bottom = `${stage.bottom - (dock.height ? dock.top : H) + 10}px`;
+        const height = reminder.getBoundingClientRect().height;
+        if (height) b -= height + 10;
+      }
+    }
+    V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -3394,6 +3429,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
+    powerChipDefinition,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
