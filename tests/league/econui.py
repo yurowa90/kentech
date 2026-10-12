@@ -640,8 +640,17 @@ def economic(checks, context, base, label, pages):
             team.locator('#lg-panel [data-answer="keep"]').click()
             team.locator('[data-note="askReason"]').fill('실제 결과와 비교했고 다음 달에도 근거를 확인한다')
             team.locator('[data-note="askReason"]').press('Tab')
+            # S8N-next.md:11 — 일반 이유만으로는 달성이 아니다. 실제 다음 달
+            # 계획 변경 분기는 s8n.py에서 설비 1기를 추가하여 별도로 검증한다.
+            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
+                      f"{label} 일반 유지 이유·다음 달 변경 없음은 미달성 [S8N:11]")
+            team.locator('[data-note="askReason"]').fill('정전 결과를 확인하여 다음 달에도 유지한다')
+            team.locator('[data-note="askReason"]').press('Tab')
             checks.ok(team.locator('#lg-learning-mission').inner_text().strip() == '학습 미션: 달성',
-                      f"{label} 근거→예측→실제 비교→유지·수정 완료로 학습 미션 달성")
+                      f"{label} 결과 원인 단어를 인용한 유지 이유는 달성 [S8N:11]")
+            team.locator('#lg-panel [data-answer="revise"]').click()
+            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
+                      f"{label} 결과를 인용해도 수정 약속만 하고 실제 변경 전이면 미달성 [S8N:11]")
         # // ECON-UI v1.1: 결과로 자동 전환된 서랍에서 도시 탭을 직접 열어 검사한다.
         checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda:
                     (open_panel(team, "city"), disabled_policies(team))[1])
