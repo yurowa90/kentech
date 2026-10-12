@@ -205,7 +205,7 @@
     return (h >>> 0).toString(36);
   };
   KCP.srcTag = (q) => q && q.src === "report"
-    ? '<span class="tag-official">보고서 문항</span>' : '<span class="tag-mine">연습용 질문</span>';
+    ? '<span class="tag-official">보고서 문항</span>' + (q.frame ? ' <span class="tag-mine">내 계획으로 채움</span>' : '') : '<span class="tag-mine">연습용 질문</span>';
   KCP.josa = function (word, pair) {
     const w = String(word).trim(), code = w.charCodeAt(w.length - 1);
     const jong = code >= 0xAC00 && code <= 0xD7A3 ? (code - 0xAC00) % 28 : null;
@@ -1149,7 +1149,7 @@
       game.recap(state).forEach((r) => (out += `- ${r.t}: ${r.text != null ? r.text : r.d || "(비어 있음)"}\n`));
       out += "\n■ 면접실 답변 메모\n";
       qs.forEach((q, i) => {
-        out += `Q${i + 1}. [${q.src === "report" ? "보고서 문항" : "연습용 질문"}] ${q.q}\n`;
+        out += `Q${i + 1}. [${q.src === "report" ? "보고서 문항" + (q.frame ? " · 내 계획으로 채움" : "") : "연습용 질문"}] ${q.q}\n`;
         out += `→ ${staleAnswer(state, q, i) ? `(메모를 쓸 때의 질문: ${state.answerQ[i]}) ` : ""}${state.answers[i] || "(미작성)"}\n`;
       });
       orphanKeys(state, qs).forEach((key) => {
