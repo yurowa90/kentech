@@ -618,7 +618,7 @@
   function firstStrategy(V) { return !(V.results || []).length; }
   function needsLoop(V) { return !!V.econ && V.phase === "plan"; }
   function needsExplanation(V) { return firstStrategy(V) || largeDecision(); }
-  const LEARNING_WORDS = ["정전", "CO₂", "CO2", "현금", "사건", "날씨", "민원", "접속", "거래", "수요", "풍속", "LNG", "탄소", "배출", "지지", "주민", "폭염", "한파", "부족", "피크", "출력제어", "연계선"];
+  const LEARNING_WORDS = ["정전", "CO₂", "CO2", "현금", "사건", "날씨", "민원", "접속", "거래", "수요", "풍속", "LNG", "탄소", "배출", "지지", "주민", "폭염", "한파", "부족", "피크", "출력제어", "연계선", "연료", "성장", "공사", "기술"];
   const LEARNING_RULE = `판정: 근거·예측·비교·이유를 마친 뒤, 다음 달 계획을 바꾸거나 지난달 결과 숫자(단위 %·t·억·시간·MW 필요) 또는 원인 단어(${LEARNING_WORDS.join("·")})를 인용해 유지하면 달성해요(기기에만).`;
   const legacyLearningNote = n => !!n && ["operatingPlan", "followingPlanChanged", "resultNumbers"].every(k => !Object.hasOwn(n, k));
   function loopComplete(n) {
@@ -2308,7 +2308,7 @@
           choice: `지난달 뒤 설비 ${[...newBuilds].filter(k => !oldBuilds.has(k)).length}개 추가 / ${[...oldBuilds].filter(k => !newBuilds.has(k)).length}개 제거${disconnectedMW > 0 ? ` · 접속 감소 ${fmt(disconnectedMW, 1)} MW` : ""}${restarted ? ` · 공사 재시작 ${restarted}기` : ""}${changed.length ? ` · ${changed.map(k => ({ lines: "전선", policies: "정책", shed: "배분", fab2: "산업 증설", rq: "연구" }[k])).join("·")} 변경` : ""}`,
           weather: `날씨 씨앗 ${old.seed} → ${current.seed} · ${SEASON_NAME[old.season]} → ${SEASON_NAME[current.season]} · 대표 운전 ${old.days} → ${current.days}일`,
           event: `지난달 ${eventNames(old)} → 이번 달 ${eventNames(current)}`,
-          progress: `접속 ${signed(connectedMW, 1)} MW${Math.abs(neighborHostMW) > 1e-9 ? ` · 이웃 연계선 변화로 접속 ${signed(neighborHostMW, 1)} MW` : ""} · 공사 완료 ${completed}기 · 새 기술 ${adopted}개 · 출력제어 ${fmt(weatherMods.curtailP * 100, 2)} → ${fmt(current.mods.curtailP * 100, 2)}%`,
+          progress: `접속 ${signed(connectedMW, 1)} MW${Math.abs(neighborHostMW) > 1e-9 ? ` · 연계선 변화(이웃 단절·새 연계선)로 접속 ${signed(neighborHostMW, 1)} MW` : ""} · 공사 완료 ${completed}기 · 새 기술 ${adopted}개 · 출력제어 ${fmt(weatherMods.curtailP * 100, 2)} → ${fmt(current.mods.curtailP * 100, 2)}%`,
           growth: `운영 당시 주민 ${change("pop")} · 산업 ${change("ind")} · 연료 지수 ${fmt(old.facts.fuel, 3)} → ${fmt(current.facts.fuel, 3)}`,
           trade: `구매 ${fmt(previous.imp * resultPeriod(V, previousResult).mul, 1)} → ${fmt(res.team[id].imp * resultPeriod(V, res).mul, 1)} / 판매 ${fmt(previous.exp * resultPeriod(V, previousResult).mul, 1)} → ${fmt(res.team[id].exp * resultPeriod(V, res).mul, 1)} MWh(월 환산)`
         };

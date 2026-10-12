@@ -171,14 +171,16 @@ def frozen_after_retrial(checks, page, label):
     trial = page.evaluate("() => KCP.buildGame.lastTrial()")
     required(checks, trial["days"] == 7, f"{label} 재시험 전 저장 시험 1주")
     state = read(page)["S"]
+    # D-67: 멀티에서는 1달·3달 시험 버튼이 숨겨져 있으므로 1주를 다시 실행한다.
+    days = 30 if page.evaluate("() => KCP.league.state().role") == "solo" else 7
     close_drawer(page)
-    page.locator('[data-run="30"]').click()
+    page.locator(f'[data-run="{days}"]').click()
     page.wait_for_selector("#bd-skip")
     page.locator("#bd-skip").click()
     page.wait_for_selector("#bd-res-title")
     next_trial = page.evaluate("() => KCP.buildGame.lastTrial()")
-    required(checks, next_trial["days"] == 30 and next_trial["month"] == trial["month"],
-             f"{label} 결과 단계에서 같은 달 시험 1주 → 1달 실제 재실행")
+    required(checks, next_trial["days"] == days and next_trial["month"] == trial["month"],
+             f"{label} 결과 단계에서 같은 달 시험 1주 → {'1달' if days == 30 else '1주'} 실제 재실행")
     page.locator("#bd-drawer-x").click()
     open_panel(page, "result")
     checks.ok(page.evaluate(SYNC, [state["round"], "review"]), f"{label} 재시험 뒤 같은 달 결과 단계")
@@ -384,10 +386,16 @@ def scene(checks, page, requests, label, width, trial, actual):
                   f"{label} 시험 카드 이름 = 순서·폭포 이름")
     checks.ok(page.locator(f'[data-missed="{largest}"] [data-out-tag="largest"]').count() == 1,
               f"{label} 가장 큼은 절댓값 최대 원인")
-    checks.ok(page.locator("[data-out-grid]").count() == 1 and
-              math.isfinite(float(page.locator("[data-out-grid]").get_attribute("data-out-grid"))) and
-              "합계" in page.locator("#lg-outage-grid").inner_text() and
-              "따로" in page.locator("#lg-outage-grid").inner_text(), f"{label} 접속 대기 별도 표시 [I15]")
+    waiting_mw = current_attribution(page)["grid"]["waitingMW"]
+    if waiting_mw > 0:
+        checks.ok(page.locator("[data-out-grid]").count() == 1 and
+                  page.locator("#lg-outage-grid").count() == 1 and
+                  math.isfinite(float(page.locator("[data-out-grid]").get_attribute("data-out-grid"))) and
+                  "합계" in page.locator("#lg-outage-grid").inner_text() and
+                  "따로" in page.locator("#lg-outage-grid").inner_text(), f"{label} 접속 대기 별도 표시 [I15]")
+    else:
+        checks.ok(page.locator("[data-out-grid], #lg-outage-grid").count() == 0 and
+                  "접속 대기" not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략 [I15]")
     verdict = page.locator("#lg-outage-verdict").inner_text()
     if nonlargest:
         checks.ok(.05 <= abs(values[picked]) < abs(values[largest]) and picked != largest and
@@ -743,12 +751,19 @@ def missing_snapshot_after_reload(checks, page, base, label):
              f"{label} 사본 삭제 전 미공개 월간 복수 후보(고정 자료로 우회 금지)")
     page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
     before = public_state(page)
-    page.evaluate("""() => {
+    # pagehide의 saveSolo가 메모리 사본을 다시 저장하므로 다음 문서에서 삭제한다.
+    page.context.add_init_script("""(() => {
+      const flag='s7-delete-outage-snapshot', previous=sessionStorage.getItem(flag);
+      if (previous === null) return;
       const key='kcp-league-solo-v1', save=JSON.parse(localStorage.getItem(key));
-      delete save.interview.outageSnapshots[1]; localStorage.setItem(key,JSON.stringify(save));
-    }""")
+      delete save.interview.outageSnapshots[previous];
+      localStorage.setItem(key,JSON.stringify(save));
+      sessionStorage.removeItem(flag);
+    })();""")
+    page.evaluate("previous => sessionStorage.setItem('s7-delete-outage-snapshot', String(previous))",
+                  state['round'] - 1)
     page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
-    required(checks, '지난달 운영 조건이 이 기기에 없어 나누지 못해요' in page.locator('#lg-missed').text_content(),
+    required(checks, '지난달 운영 조건이 이 기기에 없어 나누지 못해요.' in page.locator('#lg-missed').text_content(),
              f"{label} 재로딩 후 localStorage 사본 삭제 지정 안내")
     checks.ok(page.locator('#lg-missed [data-missed], #lg-missed [data-out-other], #lg-outage-waterfall, #lg-outage-single, #lg-outage-open').count() == 0,
               f"{label} 사본 없으면 시험 대체·카드·폭포 없음")

@@ -638,7 +638,7 @@ for (const side of ['neighbor', 'own']) test(`${side} 연계선 접속점 전선
         eq(removedLines, 2, 'h3 재현과 같은 이웃 전선 2개 삭제');
         near(part('choice'), 0, '우리 계획 불변이면 이웃 단절 선택 몫 ≈ 0');
         ok(part('progress') > .05, '이웃 접속 감소의 유의미한 정전 증가가 ④');
-        const neighborClue = a.clues.progress.match(/이웃 연계선 변화로 접속 −([\d.,]+) MW/);
+        const neighborClue = a.clues.progress.match(/연계선 변화\(이웃 단절·새 연계선\)로 접속 −([\d.,]+) MW/);
         ok(neighborClue, '④ 단서에 이웃 연계선 감소 MW 명시');
         near(neighborClue ? +neighborClue[1].replaceAll(',', '') : NaN, lostHost,
           '④ 이웃 연계선 단서의 감소량 = 독립 접속 상한 감소');
