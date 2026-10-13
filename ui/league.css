@@ -472,22 +472,24 @@ section#lg-missed.lg-outage { display: block; }
   html.v2-league-host .lg-hmeta h1 { font: 400 21px/1.4 var(--display); }
   html.v2-league-host .lg-room { order: 3; margin-left: auto; background: transparent; color: var(--ui-muted); padding: 6px; gap: 6px; }
   html.v2-league-host .lg-room b { font: 600 14px var(--mono); letter-spacing: .06em; color: var(--ui-gold); }
-  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
-  html.v2-league-host .lg-host-board { display: grid; grid-template-columns: auto minmax(110px, auto) auto minmax(0, 1fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
+  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: start; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
+  #lg-host-overview { display: contents; }
+  html.v2-league-host .lg-host-board { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, 1.6fr) minmax(0, .9fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
   .lg-host-board > div { min-width: 0; display: grid; align-content: center; gap: 6px; }
+  html.v2-league-host .lg-host-board > .lg-proj-key { min-height: 132px; align-content: start; grid-template-rows: auto 1fr auto; padding: 10px; box-sizing: border-box; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
   .lg-host-board small { color: var(--ui-muted); font: 600 12px var(--body); }
-  .lg-command-month > b { font: 400 40px/1.1 var(--display); white-space: nowrap; }
+  /* 핵심 네 칸은 기존 달 숫자 규칙을 공유한다. 크기는 시각 갈래에서 조정한다. */
+  .lg-proj-key > b { font: 400 40px/1.1 var(--display); overflow-wrap: anywhere; }
   .lg-phase-chip { width: max-content; padding: 4px 10px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-gold); font-size: 12px; }
-  #lg-host-time { font: 600 34px/1.2 var(--mono); white-space: nowrap; }
-  #lg-host-time[data-unlimited="true"] { font: 600 14px var(--body); white-space: normal; }
   #lg-host-time[data-low="true"] { color: var(--ui-danger); }
-  #lg-host-ready > b { font: 600 30px/1.2 var(--mono); white-space: nowrap; }
   #lg-host-ready b small { margin-left: 2px; }
   .lg-ready-pips { display: flex; gap: 4px; }
   .lg-ready-pips i { width: 10px; height: 16px; background: var(--ui-border); clip-path: polygon(0 0,100% 0,100% 100%,50% 75%,0 100%); }
   .lg-ready-pips i[data-ready="true"] { background: var(--ui-mint); }
-  .lg-command-goals { border-left: 1px solid var(--ui-border); padding-left: 14px; }
-  #lg-host-goals { font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
+  .lg-command-goals { min-width: 0; }
+  #lg-host-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
+  .lg-goal-chip { display: grid; align-content: start; gap: 4px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
+  .lg-goal-note { grid-column: 1 / -1; }
   .lg-goalbar { display: grid; grid-template-columns: 34px minmax(20px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
   .lg-goalbar > div { position: relative; height: 8px; border-radius: var(--ui-radius); background: var(--ui-border); }
   .lg-goalbar i { display: block; height: 100%; border-radius: var(--ui-radius); background: var(--ui-mint); }
@@ -495,16 +497,18 @@ section#lg-missed.lg-outage { display: block; }
   .lg-goalbar b { font: 600 12px var(--mono); white-space: nowrap; }
   .lg-goalbar[data-bad="true"] b { color: var(--ui-danger); }
   .lg-goalbar[data-bad="true"] i { background: var(--ui-danger); }
-  .lg-host-actions { display: grid; gap: 8px; }
+  .lg-host-actions { display: grid; grid-template-rows: minmax(56px, auto) auto; gap: 8px; align-self: start; }
   .lg-host-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
   .lg-host-tools #lg-extend { grid-column: 1 / -1; }
   html.v2-league-host .lg-host-tools .v2-btn { padding: 6px 8px; font-size: 11px; white-space: nowrap; overflow-wrap: normal; background: transparent; color: var(--ui-muted); }
   .lg-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
   #lg-host-risk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .lg-host-city-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .lg-unready-chip { padding: 6px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   .lg-risk-chip { display: inline-flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--ui-danger); border-radius: var(--ui-radius); color: var(--ui-danger); font-size: 12px; }
   /* A16: 접속 대기만 있는 도시는 '주의' — 위험(정전·남은 돈·지지율)과 색·기호·테두리를 나눈다. */
   .lg-risk-chip[data-level="caution"] { border-style: dashed; border-color: var(--ui-gold); color: var(--ui-muted); }
-  #lg-host-unready { color: var(--ui-muted); font-size: 12px; }
+  #lg-host-unready { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ui-muted); font-size: 12px; }
   html.v2-league-host #lg-host-summary { padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host #lg-host-summary h2 { font: 400 23px var(--display); margin: 0 0 8px; }
   html.v2-league-host #lg-host-summary-table { table-layout: auto; font-size: 18px; }
@@ -529,10 +533,6 @@ section#lg-missed.lg-outage { display: block; }
   html.v2-league-host .lg-table td[data-bad="true"] { text-decoration: none; }
   html.v2-league-host #lg-host-summary-table td[data-bad="true"] { border-bottom-color: var(--ui-border); }
   html.v2-league-host .lg-evsize i { color: var(--ui-panel); }
-  @media (max-width: 1100px) {
-    html.v2-league-host .lg-host-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .lg-command-goals { grid-column: 1 / -1; border-left: 0; padding-left: 0; }
-  }
   @media (max-width: 900px) {
     html.v2-league-lobby .lg-topline { flex-wrap: wrap; }
     html.v2-league-lobby .lg-modes { order: 4; flex-basis: 100%; }
@@ -571,9 +571,10 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-seat .lg-hud-pill { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
     .lg-host-command { grid-template-columns: minmax(0, 1fr); padding: 12px; }
     html.v2-league-host .lg-host-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
-    .lg-command-month { grid-column: 1 / -1; }
-    .lg-command-month > b { font-size: 36px; }
-    #lg-host-time { font-size: 32px; }
+    .lg-command-room { grid-column: 1 / -1; }
+    .lg-proj-key > b { font-size: 36px; }
+    #lg-host-goals { grid-template-columns: minmax(0, 1fr); }
+    .lg-host[data-econ="true"] .lg-host-actions { grid-row: 2; }
     .lg-host-tools .v2-btn { font-size: 12px; }
     html.v2-league-host .lg-hmeta { flex-basis: 180px; }
     html.v2-league-host .lg-hmeta h1 { font-size: 18px; }

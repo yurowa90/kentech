@@ -1699,7 +1699,7 @@
         <main class="lg-host" data-econ="${!!V.econ}">
           <header class="lg-hbar">
             <a class="lg-back" href="#league" aria-label="로비로">←</a>
-            <div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
+            ${V.econ ? "" : `<div class="lg-room"><span>방 코드</span><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>`}
             <div class="lg-hmeta">
               <p class="v2-kicker">${esc(reg.short)}</p>
               <h1 id="lg-h1"></h1>
@@ -1712,7 +1712,7 @@
             ${V.econ ? '<section id="lg-host-overview" aria-label="진행 현황"></section>' : ""}
             <div class="lg-host-actions">
               <button type="button" class="v2-btn primary" id="lg-next"></button>
-              <div class="lg-host-tools"><button type="button" class="v2-btn" id="lg-extend">+1분</button>
+              <div class="lg-host-tools" role="group" aria-label="진행 보조"><button type="button" class="v2-btn" id="lg-extend">+1분</button>
               <button type="button" class="v2-btn" id="lg-link">참가 링크 복사</button><button type="button" class="v2-btn" id="lg-download">기록 내려받기</button></div>
             </div>
           </section>
@@ -1858,15 +1858,22 @@
     const region = res && resultReport(V, res)?.region;
     const goal = { uns: V.goals.unsPct, co2: V.goals.co2Plan ?? V.goals.co2 * (rd.mdays || rd.days) / rd.days };
     const lastGoal = region?.goal || (res ? { uns: V.goals.unsPct, co2: V.goals.co2 * resultPeriod(V, res).mul } : null);
-    const goalText = V.econ && ["lobby", "plan"].includes(V.phase)
-      ? `정전 ≤ ${esc(fmt(goal.uns, 2))}% · ${esc(planCo2Text(V))}`
-      : `정전 ≤ ${esc(fmt(lastGoal?.uns ?? goal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal?.co2 ?? goal.co2))} t`;
+    const planning = ["lobby", "plan"].includes(V.phase), shownGoal = planning ? goal : lastGoal || goal;
     const bar = (label, value, target, unit, digits) => {
       if (!Number.isFinite(value) || !Number.isFinite(target)) return "";
       const scale = Math.max(target * 2, value, 1), width = Math.min(100, 100 * value / scale), marker = 100 * target / scale;
       return `<div class="lg-goalbar" data-bad="${value > target}"><span>${label}</span><div role="meter" aria-label="${label} · 지난달 운영 / 목표" aria-valuemin="0" aria-valuemax="${scale}" aria-valuenow="${value}" aria-valuetext="${fmt(value, digits)}${unit} / 목표 ${fmt(target, digits)}${unit}"><i style="width:${width}%"></i><em style="left:${marker}%"></em></div><b>${value > target ? "▲ " : ""}${esc(fmt(value, digits))}${unit}</b></div>`;
     };
-    return `<div class="lg-host-board"><div class="lg-command-month"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div><div class="lg-command-time"><small>남은 시간</small><b id="lg-host-time"></b></div>${showReady ? `<div id="lg-host-ready"><small>준비</small><b>${teams.length - unready.length}<small>/${teams.length}팀</small></b><span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span></div>` : ""}<div class="lg-command-goals"><small>지역 공동목표 · 지난달 운영 / 지금</small>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) + bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}<p id="lg-host-goals">공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</p></div></div>`;
+    return `<div class="lg-host-board" aria-label="프로젝터 핵심 현황">
+      <div class="lg-command-room lg-proj-key"><small>방 코드</small><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
+      <div class="lg-command-month lg-proj-key"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div>
+      <div class="lg-command-time lg-proj-key"><small>남은 시간</small><b id="lg-host-time"></b></div>
+      <div class="lg-command-ready lg-proj-key"${showReady ? ' id="lg-host-ready"' : ""}><small>${showReady ? "준비" : "진행"}</small><b>${showReady ? `${teams.length - unready.length}<small>/${teams.length}팀</small>` : V.phase === "end" ? "리그 종료" : "운영 완료"}</b>${showReady ? `<span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span>` : ""}</div>
+    </div><div class="lg-command-goals"><div id="lg-host-goals">
+      <div class="lg-goal-chip"><span>정전 목표 ≤ ${esc(fmt(shownGoal.uns, 2))}%</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.unsPct, 2))}%` : " · 첫 운영 전"}</span>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) : ""}</div>
+      <div class="lg-goal-chip" aria-label="CO₂ 목표와 지난달 실제"><span>${planning ? "이번 달 CO₂ 목표" : "목표 CO₂"} ≤ ${esc(fmt(shownGoal.co2))} t</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.co2))} t` : " · 첫 운영 전"}</span>${region ? bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}</div>
+      ${planning ? `<small class="lg-goal-note">${V.phase === "lobby" ? "첫 달 목표 · " : ""}계획 시작 때 확정 · 기준: ${esc(V.goals.co2Basis)}</small>` : ""}
+    </div></div>`;
   }
   function hostRiskHTML(V, res) {
     // 등급: 정전 목표 초과·남은 돈 음수·지지율 평가선 미달 = 위험(▲), 접속 대기만 = 주의(●). 위험 도시를 먼저 보인다.
@@ -1874,7 +1881,7 @@
     const risks = teams.map(t => { const why = hostRisk(V, res, t.id); return { t, why, level: why.some(k => !CAUTION.has(k)) ? "risk" : "caution" }; })
       .filter(x => x.why.length).sort((a, b) => (a.level === "risk" ? 0 : 1) - (b.level === "risk" ? 0 : 1));
     const short = { "정전 목표 초과": "정전", "남은 돈 음수": "남은 돈", "지지율 평가선 미달": "지지율", "접속 대기": "접속 대기" };
-    return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험·주의 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" data-level="${x.level}" title="${esc((x.level === "risk" ? "위험: " : "주의: ") + x.why.join(" · "))}"><b>${x.level === "risk" ? "▲" : "●"} ${esc(x.t.name)}</b> ${x.level === "caution" ? "주의 · " : ""}${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
+    return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험·주의 도시</span><ul class="lg-host-city-chips" aria-label="위험·주의 도시 목록">${risks.length ? risks.map(x => `<li class="lg-risk-chip" data-level="${x.level}"><b>${x.level === "risk" ? "▲ 위험" : "● 주의"} · ${esc(x.t.name)}</b><span>${x.why.map(k => esc(short[k] || k)).join(" · ")}</span></li>`).join("") : '<li class="lg-hint">없음</li>'}</ul></div>${["lobby", "plan"].includes(V.phase) ? `<div id="lg-host-unready"><span>미준비</span><ul class="lg-host-city-chips" aria-label="미준비 도시 목록">${teams.filter(t => !V.teams[t.id].ready).map(t => `<li class="lg-unready-chip">${esc(t.name)}</li>`).join("") || '<li class="lg-hint">없음</li>'}</ul></div>` : ""}</div>`;
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
