@@ -15,6 +15,10 @@ F1은 u7-1의 760px 경계·단계·연도별 장면/문제 상황 위치와 형
 단계 판정은 DOM으로 하며, 저장 검사는 KCP.flush로 대기 저장을 먼저 끝낸다.
 빈 칸에는 검사할 글자가 없으므로 대비는 실제 렌더링된 글자만 측정한다.
 성찰 타이머는 직전 면접의 25분 표시를 보존한다(기존 공통 흐름 계약).
+표시점(t5 명세 1): ui/stage-2022.js가 만드는 주석의 글 '2022 장면 원래 위치'·
+'2022 문제 상황 원래 위치'만 센다. '늘어나지 않는다'는 어느 시점에도 상한 2개(글마다 1개)를
+넘지 않는다는 뜻으로 읽는다. #home은 연도 화면이 아니므로 상한만 검사하고 0을 요구하지 않는다.
+성찰 재호출(t5 명세 2): 기대 카드 목록은 바뀐 계획을 새로 연 성찰 화면에서 읽어 비교한다.
 
 실행·네 환경·KCP_BASE/KCP_RESULT·마지막 problems: N·콘솔/페이지 오류·
 가로 스크롤 집계는 harness.main에 맡긴다. 이 파일 작성 중 브라우저는
@@ -287,6 +291,36 @@ def _stale_pick(c, expected, label):
              f"{label} 답안 복사의 선택 줄에 계획 부재·종류 변경 표시")
 
 
+STAGE_MARKERS = ("2022 장면 원래 위치", "2022 문제 상황 원래 위치")  # ui/stage-2022.js placeStage
+
+
+def _markers(c):
+    # t5 명세 1: #app 직계 자식 주석 중 표시점 글과 같은 것만 센다. 문서 전체 수도 함께 본다.
+    return c.page.evaluate("""texts => {
+      const app=document.querySelector('#app');
+      const direct=app ? [...app.childNodes].filter(n=>n.nodeType===Node.COMMENT_NODE && texts.includes(n.data.trim())) : [];
+      const walker=document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+      let all=0;
+      while(walker.nextNode()) if(texts.includes(walker.currentNode.data.trim())) all++;
+      return {direct:direct.length, all, perText:texts.map(t=>direct.filter(n=>n.data.trim()===t).length)};
+    }""", list(STAGE_MARKERS))
+
+
+def _marker_check(c, label, other_year=None):
+    # 2022 경로는 2개 이하(글마다 1개 이하), 다른 연도 화면은 0개.
+    m = _markers(c)
+    if other_year is None:
+        other_year = c.page.locator("html.v2-skin-2022").count() == 0 and \
+            c.page.evaluate("() => /^#y\\d{4}/.test(location.hash) && location.hash!=='#y2022'")
+    if other_year:
+        c.eq(m["all"], 0, f"표시점 {label} 다른 연도 화면에는 2022 표시점 0개")
+    else:
+        c.expect(m["direct"] <= 2, f"표시점 {label} #app 직계 표시점 2개 이하(실제 {m['direct']})")
+        c.expect(all(n <= 1 for n in m["perText"]), f"표시점 {label} 같은 글의 표시점 중복 없음 {m['perText']}")
+        c.expect(m["all"] <= 2, f"표시점 {label} 문서 전체 표시점 2개 이하(실제 {m['all']})")
+    return m
+
+
 def _stage_position(c, after_phase, label, room=False):
     # u7-1·총괄 명세 2: 세 요소의 DOM 순서와 실제 화면 순서를 함께 검사한다.
     ready = True
@@ -360,6 +394,7 @@ def _stage_position(c, after_phase, label, room=False):
     c.expect(siblings["other"], f"F1 {label} 이동 대상 외 모든 형제의 상대 순서 유지")
     if not after_phase:
         c.expect(siblings["full"], f"F1 {label} 장면·문제 상황도 원래 전체 형제 순서로 복원")
+    _marker_check(c, f"F1 {label}")
     c.check(f"F1 {label}")
 
 
@@ -1226,6 +1261,118 @@ def t_F2_twist_live_node_focus_and_in_progress_memo(c: Ctx):
     c.eq(saved.get("line"), memo, "F2 입력 중 카드 두 번 전환 뒤 저장된 수정 글 유지")
     c.eq(saved.get("k"), cards[0]["k"], "F2 마지막으로 누른 조건만 저장")
     c.check("F2 같은 성찰 라이브 노드·포커스·입력 보존")
+
+
+def t_F1m_stage_markers_history_home_and_other_year(c: Ctx):
+    # t5 명세 1: 단계 전환·폭 변경·뒤로/앞으로·#home·#y2023 왕복 뒤에도 표시점이 쌓이지 않는다.
+    _seed(c, _mixed_game())
+    _stage_siblings(c, remember=True)  # 마지막 위치 검사의 원래 형제 순서 기준
+    _marker_check(c, "준비실 첫 화면")
+    for phase in ("room", "reflect", "prep", "room"):
+        _phase(c, phase)
+        _marker_check(c, f"단계 {phase}")
+    for width in (1280, 390, 1280, 390):
+        c.page.set_viewport_size({"width": width, "height": 900 if width == 1280 else 844})
+        c.page.wait_for_timeout(150)
+        _marker_check(c, f"면접실 폭 {width}px")
+    # _seed는 #home 뒤 #y2022로 왔으므로 뒤로 = #home, 앞으로 = #y2022 면접실.
+    for n in range(2):
+        c.page.go_back()
+        c.page.wait_for_selector(".home-grid")
+        c.page.wait_for_timeout(150)
+        _marker_check(c, f"뒤로 #home {n + 1}회", other_year=False)
+        c.page.go_forward()
+        c.page.wait_for_selector(".qdeck .qcard")
+        c.page.wait_for_timeout(150)
+        _marker_check(c, f"앞으로 2022 면접실 {n + 1}회", other_year=False)
+    for n in range(2):
+        c.goto("#home", wait=".home-grid")
+        _marker_check(c, f"#home 왕복 {n + 1}회", other_year=False)
+        c.goto("#y2022", wait=".qdeck .qcard")
+        _marker_check(c, f"#home에서 2022 복귀 {n + 1}회", other_year=False)
+        _phase(c, "reflect")
+        _phase(c, "room")
+        _marker_check(c, f"#home 왕복 뒤 단계 전환 {n + 1}회", other_year=False)
+    for n in range(2):
+        c.goto("#y2023", wait="#v2-stage .v2-stage-canvas")
+        _marker_check(c, f"#y2023 {n + 1}회", other_year=True)
+        c.phase("room")
+        c.page.wait_for_selector(".qdeck .qcard")
+        for width in (1280, 390):
+            c.page.set_viewport_size({"width": width, "height": 900 if width == 1280 else 844})
+            c.page.wait_for_timeout(150)
+            _marker_check(c, f"#y2023 면접실 폭 {width}px {n + 1}회", other_year=True)
+        c.page.go_back()
+        c.page.wait_for_selector(".qdeck .qcard")
+        c.page.wait_for_timeout(150)
+        c.expect(c.page.locator("html.v2-skin-2022").count() == 1, f"표시점 뒤로 2022 복귀 {n + 1}회")
+        _marker_check(c, f"#y2023에서 뒤로 2022 {n + 1}회", other_year=False)
+        c.page.go_forward()
+        c.page.wait_for_selector("html.v2-skin-2023")
+        c.page.wait_for_timeout(150)
+        _marker_check(c, f"앞으로 #y2023 {n + 1}회", other_year=True)
+        c.goto("#y2022", wait=".qdeck .qcard")
+        _marker_check(c, f"#y2023 왕복 뒤 2022 {n + 1}회", other_year=False)
+    # 왕복을 마친 뒤에도 표시점이 원래 자리 복원에 쓰인다(좁은 면접실 → 성찰).
+    c.page.set_viewport_size({"width": 390, "height": 844})
+    _stage_position(c, True, "표시점 왕복 뒤 390 면접실", room=True)
+    _phase(c, "reflect")
+    _stage_position(c, False, "표시점 왕복 뒤 390 성찰")
+
+
+def t_F5_twist_rerun_follows_changed_plan(c: Ctx):
+    # t5 명세 2: 같은 #tw22에 afterReflect가 다시 불릴 때 계획이 바뀌었으면 카드 묶음이 새 계획을 따르고,
+    # 계획이 같으면 #tw22-result·#tw22-line 노드를 유지한다(F2 기준). 한 줄 글은 저장값대로 남는다.
+    solar = {"type": "solar", "cell": "I8", "to": "빛가람"}
+    changed = _wind_game()
+    changed["q2"] = changed["q2"] + [solar]
+    # 기대 카드: 바뀐 계획을 처음부터 연 성찰 화면의 카드 목록(재호출 경로와 독립).
+    _seed(c, changed, "reflect")
+    expected_changed = [x["k"] for x in _cards(c)]
+    _seed(c, _wind_game(), "reflect")
+    original = [x["k"] for x in _cards(c)]
+    c.expect(expected_changed != original, f"F5 전제: 태양광 추가로 카드 후보가 달라짐 {original} → {expected_changed}")
+    c.page.locator(f'#tw22 [data-tw22="{original[0]}"]').click()
+    memo, keep = "가상 계획의 전선 경로를 먼저 다시 본다.", "가상 마을의 필요량 기준은 그대로 둔다."
+    c.page.fill("#tw22-line", memo)
+    c.page.fill("#tw22-keep", keep)
+    _saved(c)
+    rerun = """add => {
+      const root=document.querySelector('#phase'), st=KCP.load('2022');
+      if(add) st.game={...st.game, q2:[...st.game.q2, add]};
+      KCP.games['2022'].afterReflect(root, st, ()=>{});
+      return {panels:document.querySelectorAll('#tw22').length,
+        keys:[...document.querySelectorAll('#tw22 [data-tw22]')].map(e=>e.dataset.tw22),
+        pressed:[...document.querySelectorAll('#tw22 [data-tw22][aria-pressed="true"]')].map(e=>e.dataset.tw22)};
+    }"""
+    remember = """() => { window.__g22RerunNodes={panel:document.querySelector('#tw22'),
+      result:document.querySelector('#tw22-result'),line:document.querySelector('#tw22-line')}; }"""
+    same = """() => Object.fromEntries(Object.entries(window.__g22RerunNodes)
+      .map(([k,n])=>[k,n.isConnected && n===document.querySelector(k==='panel'?'#tw22':'#tw22-'+k)]))"""
+    # 1) 계획이 같으면 노드 유지.
+    c.page.evaluate(remember)
+    got = c.page.evaluate(rerun, None)
+    c.eq(got["panels"], 1, "F5 같은 계획 재호출 뒤 #tw22 한 개")
+    c.eq(got["keys"], original, "F5 같은 계획 재호출 뒤 카드 목록 그대로")
+    c.eq(c.page.evaluate(same), {"panel": True, "result": True, "line": True},
+         "F5 같은 계획 재호출 뒤 패널·#tw22-result·#tw22-line 같은 노드")
+    c.eq(c.page.input_value("#tw22-line"), memo, "F5 같은 계획 재호출 뒤 한 줄 글 유지")
+    # 2) 계획이 바뀌면 카드 묶음이 새 계획을 따른다.
+    c.page.evaluate(remember)
+    got = c.page.evaluate(rerun, solar)
+    c.eq(got["panels"], 1, "F5 바뀐 계획 재호출 뒤 #tw22 한 개")
+    c.eq(c.page.evaluate("() => window.__g22RerunNodes.panel === document.querySelector('#tw22')"), True,
+         "F5 바뀐 계획도 같은 #tw22 패널에서 다시 그림")
+    c.eq(got["keys"], expected_changed, "F5 바뀐 계획 재호출 뒤 카드 목록이 새 계획의 후보와 같음")
+    c.eq(got["pressed"], [original[0]] if original[0] in expected_changed else [],
+         "F5 바뀐 계획 재호출 뒤 저장된 조건만 선택 표시")
+    c.eq(c.page.input_value("#tw22-line"), memo, "F5 바뀐 계획 재호출 뒤 한 줄 글은 저장값대로")
+    c.eq(c.page.input_value("#tw22-keep"), keep, "F5 바뀐 계획 재호출 뒤 유지 이유도 저장값대로")
+    # 3) 원래 계획으로 다시 부르면 원래 후보로 돌아온다.
+    got = c.page.evaluate(rerun, None)
+    c.eq(got["keys"], original, "F5 원래 계획으로 재호출하면 원래 카드 목록")
+    c.eq(c.page.input_value("#tw22-line"), memo, "F5 원래 계획 재호출 뒤 한 줄 글 유지")
+    c.check("F5 성찰 재호출 계획 서명")
 
 
 def t_F3_grid_error_single_notice_contrast_and_clear(c: Ctx):
