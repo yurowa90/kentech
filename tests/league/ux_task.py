@@ -197,6 +197,9 @@ def month_one(r):
     page.wait_for_timeout(800)
     if page.locator(".lg-modes [data-mode='solo']").get_attribute("aria-pressed") != "true":
         r.act(".lg-modes [data-mode='solo']", "혼자 하기 탭")
+    if getattr(r, "city", None):
+        # 기준선(옛 기본 도시)과 같은 조건으로 비교할 때만 도시를 고른다. 고르기도 행동 하나로 센다.
+        r.select("#lg-solo-city", r.city, "내 도시 고르기")
     r.act("#lg-solo-start", "혼자 시작")
     page.wait_for_selector("#lg-bar", timeout=60000)
     page.wait_for_timeout(1500)
@@ -314,6 +317,7 @@ def main():
     ap.add_argument("base")
     ap.add_argument("--cfg", default="desktop", choices=list(CFG))
     ap.add_argument("--out", default="tests/results/ux")
+    ap.add_argument("--city", default=None, help="혼자 하기 도시 id(생략하면 로비 기본값)")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -328,6 +332,7 @@ def main():
         page.on("dialog", lambda d: d.accept())
         r = Run(page, a.cfg, out)
         r.base = a.base
+        r.city = a.city
         t0 = time.monotonic()
         err = None
         try:
@@ -341,7 +346,7 @@ def main():
         total = round(time.monotonic() - t0, 1)
         browser.close()
     acts = [s for s in r.steps if s["kind"] != "view"]
-    summary = {"cfg": a.cfg, "completed": err is None, "error": err, "totalSec": total,
+    summary = {"cfg": a.cfg, "city": a.city or "기본", "completed": err is None, "error": err, "totalSec": total,
                "actions": len(acts), "scrolls": sum(bool(s.get("scrolled")) for s in r.steps),
                "occluded": sum(bool(s.get("occluded")) for s in acts),
                "smallTargets": sum(bool(s.get("small")) for s in acts),
