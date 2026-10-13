@@ -1167,7 +1167,8 @@ def _question_keys(c, aid, year, state):
     c.expect(all(isinstance(k, str) and re.fullmatch(year[2:] + r"-[a-z0-9-]+", k) for k in keys),
              f"{aid} T0a-13 {year} 질문 키가 고정 형식을 따른다")
     c.eq(len(set(keys)), len(keys), f"{aid} T0a-13 {year} 질문 키가 중복되지 않는다")
-    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 2, "2024": 6, "2025": 1, "2026": 2}[year],
+    # 2023b spec §1.7·spec-v2 W1: T0b-2는 빈 상태 18개, 예시 계획 뒤 24개를 검사한다.
+    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 24 if state.get("game", {}).get("plan") else 18, "2024": 6, "2025": 1, "2026": 2}[year],
          f"{aid} T0a-13 {year} 보고서 문항 수를 유지한다")
 
 

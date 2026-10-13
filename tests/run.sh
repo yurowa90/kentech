@@ -7,7 +7,7 @@
 set -u
 T="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(dirname "$T")"; PY="$T/.venv/bin/python"
 mkdir -p "$T/results"
-ALL=(regression base screens routine probe peer drill integration originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal g2022)
+ALL=(regression base screens routine probe peer drill integration originals s-island-grid s-cement-carbon s-variant-desk s-shuttle-permit s-riverdeal g2022 g2023)
 SUITES=("${@:-${ALL[@]}}")
 [ $# -eq 0 ] && SUITES=("${ALL[@]}")
 run_one() {

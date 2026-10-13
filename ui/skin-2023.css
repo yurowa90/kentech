@@ -25,6 +25,8 @@
     --sci: #b0235a;
     --hap: #1f58b8;
     --env: #2c6a1c;
+    --nb23-picked-bg: #493218;
+    --nb23-picked-ink: #fffaf0;
     --ot-rule: #2a1f12;
     --ot-shadow: rgba(42, 31, 18, 0.28);
     --ot-bar: #2a1f12;
@@ -56,6 +58,8 @@
       --sci: #ff7ab8;
       --hap: #7fb2ff;
       --env: #8fe36a;
+      --nb23-picked-bg: #47d16a;
+      --nb23-picked-ink: #021004;
       --ot-rule: #47d16a;
       --ot-shadow: rgba(71, 209, 106, 0.18);
       --ot-bar: #000000;
@@ -87,6 +91,8 @@
     --sci: #ff7ab8;
     --hap: #7fb2ff;
     --env: #8fe36a;
+    --nb23-picked-bg: #47d16a;
+    --nb23-picked-ink: #021004;
     --ot-rule: #47d16a;
     --ot-shadow: rgba(71, 209, 106, 0.18);
     --ot-bar: #000000;

@@ -72,6 +72,9 @@
     const raw = Array.isArray(g.plan) ? g.plan : [];
     const plan = [];
     raw.forEach(id => { if (typeof id === "string" && own(IT, id) && !plan.includes(id) && plan.length < 10) plan.push(id); });
+    const game = KCP.games["2023"];
+    const plannedYears = plan.length;
+    if (ctx.phase === "prep" && game && typeof game.shownYears === "function") plan.splice(game.shownYears({ ...g, plan }));
     const res = compute(plan, true);
     const n = plan.length;
     const mine = cumAt(res, n);
@@ -82,7 +85,7 @@
       const lvs = [0, 1, 2].map(k => (n ? level(c[k] - mine[k]) : ""));
       return { name: nb.name, cum: c, diff: (c[0] + c[1] + c[2]) - (mine[0] + mine[1] + mine[2]), lv: lvs.reduce(worse, "") };
     });
-    return { plan, res, n, mine, lv, nbs };
+    return { plan, res, n, mine, lv, nbs, hiddenYears: n < plannedYears };
   }
 
   /* ---------- 색 ---------- */
@@ -542,9 +545,11 @@
     if (n >= 3 && st.res.epi) ev.push("4년 차 전염병 깃발");
     if (n >= 6 && st.res.fair) ev.push("7년 차 박람회 깃발 줄");
     const caption = n
-      ? `가람국 개척 길 그림. ${n}년 차까지 고른 항목: ${route}. 누적 과학 ${st.mine[0]}, 행복 ${st.mine[1]}, 환경 ${st.mine[2]}.` +
+      ? `가람국 개척 길 그림. ${n}년 차까지 ${st.hiddenYears ? "누적을 확인한 항목" : "고른 항목"}: ${route}. 누적 과학 ${st.mine[0]}, 행복 ${st.mine[1]}, 환경 ${st.mine[2]}.` +
         `${warnTxt ? " 이웃보다 낮은 지수: " + warnTxt + "." : ""} ${nbTxt}.${ev.length ? " " + ev.join(", ") + "." : ""}`
-      : "가람국 개척 길 그림. 아직 고른 실행 항목이 없어 세 나라 마차가 출발점에 서 있습니다.";
+      : st.hiddenYears
+        ? "가람국 개척 길 그림. 누적을 확인한 해가 아직 없어 세 나라 마차가 출발점에 서 있습니다."
+        : "가람국 개척 길 그림. 아직 고른 실행 항목이 없어 세 나라 마차가 출발점에 서 있습니다.";
     return { caption, chips, animate: !still };
   }
 
