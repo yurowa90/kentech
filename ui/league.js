@@ -1257,6 +1257,9 @@
 
   function soloDefaultCity(reg, saved) {
     if (saved?.state && reg.teams.some(t => t.id === saved.team)) return saved.team;
+    // 지역 자료의 필수 도시(reg.must)가 첫 경험의 기본이다. 없을 때만 시작 지도 기존 발전소 용량으로 고른다.
+    const must = (reg.must || []).find(id => reg.teams.some(t => t.id === id));
+    if (must) return must;
     // 시작 지도 기존 발전소 용량(게임 MW): build-maps.js sites[].cap. 외부 접속점은 설비에 넣지 않는다.
     const capacity = t => (BG.PACKS[t.pack]?.sites || []).reduce((mw, site) => mw + (site.kind === "plant" && Number.isFinite(site.cap) ? site.cap : 0), 0);
     return reg.teams.reduce((best, t) => !best || capacity(t) > capacity(best) ? t : best, null)?.id;
