@@ -1051,7 +1051,8 @@ html.bd-drawer-open #lg-plan-reminder,
 html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border-top: 0; }
 
 /* 다음 달 알림은 지도 아래 접속 칩과 떨어진 지도 위쪽에 둔다. */
-.lg-team-map .bd-toast { top: calc(var(--lg-mapbar-bottom, 210px) + 8px); bottom: auto; }
+/* 토스트는 지도 아래쪽에 두되 왼쪽 아래 접속 칩 줄보다 위로(서랍 제목과 겹치지 않게). */
+.lg-team-map .bd-toast { top: auto; bottom: calc(var(--bd-dock, 90px) + 56px); }
 
 @media (max-width: 760px) {
   .lg-team-map #lg-bar .lg-status { gap: 4px; }
@@ -1061,7 +1062,5 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map .bd-mapbar { flex-wrap: wrap; }
   .lg-team-map .bd-layers { flex-wrap: wrap; min-width: 0; max-width: 100%; }
   .lg-team-map .lg-lenses { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; gap: 2px; }
-  .lg-team-map[data-league-drawer="true"] .bd-dock { visibility: hidden; pointer-events: none; }
-  .lg-team-map[data-league-drawer="true"] .bd-dock > * { pointer-events: none; }
-  .lg-team-map #lg-panel { bottom: 8px; max-height: none; }
+  .lg-team-map #lg-panel { bottom: calc(var(--bd-dock, 100px) + 8px); max-height: none; }
 }

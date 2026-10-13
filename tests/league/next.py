@@ -692,6 +692,10 @@ def solo(context, base, checks, pages):
     after = page.evaluate(READ)["S"]
     checks.ok(before == after, "cancel solo restart preserves complete game state")
     page.remove_listener("dialog", cancel)
+    # 위에서 '처음부터'를 찾으려고 연 도움말 서랍을 닫고 원래 화면에서 이어 간다.
+    if page.locator("#lg-solo-restart").is_visible():
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
     # Fast-forward only this end-screen fixture with public next(). No event
     # or learning UI is replaced; confirmation above is exercised by clicks.
     compared_month_trial = False
