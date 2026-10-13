@@ -288,7 +288,7 @@ async function transport() {
 }
 async function uiProtocol() {
   const vm = require("node:vm"), fs = require("node:fs");
-  const storage = () => { const values = new Map(); return { writes: 0, fail: false, getItem: k => values.get(k) || null, setItem(k, v) { if (this.fail) throw Error("full"); this.writes++; values.set(k, v); }, removeItem: k => values.delete(k) }; };
+  const storage = () => { const values = new Map(); return { writes: 0, fail: false, getItem: k => values.get(k) || null, setItem(k, v) { if (this.fail) throw Error("full"); this.writes++; values.set(k, v); }, removeItem: k => values.delete(k), clear: () => values.clear() }; };
   const localStorage = storage(), sessionStorage = storage(), connections = [], timers = new Map(), events = {}, dom = {};
   let notices = [], cryptoAvailable = true, timerId = 0, uiNow = null;
   class UIDate extends Date { static now() { return uiNow ?? Date.now(); } }
@@ -301,7 +301,7 @@ async function uiProtocol() {
   const source = fs.readFileSync(path.resolve(__dirname, "../../ui/league.js"), "utf8");
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, `
     renderHost = () => {}; mountCity = () => { KCP.mounts = (KCP.mounts || 0) + 1; }; seatPicker = () => {}; renderPanel = () => {}; sendPlan = () => { KCP.planSends = (KCP.planSends || 0) + 1; };
-    KCP.secUI = { normalizeRoom, newRoom, validRoom, displayRoom, onSnap, send, queueCrit, teamSave, teamView, hostView, hostInit, close, saveHost, flushHost, joinLink, replaySolo,
+    KCP.secUI = { normalizeRoom, newRoom, validRoom, displayRoom, onSnap, send, queueCrit, teamSave, teamView, hostView, hostInit, close, saveHost, flushHost, joinLink, replaySolo, s7data,
       replayFixture: () => { startSolo = (app, save) => { KCP.replayed = save; }; },
       set: value => { L = value; }, get: () => L };
   })();`), context);
@@ -547,6 +547,7 @@ async function uiProtocol() {
   ok(typeof ui.get().S.sid === "string" && ui.get().S.sid !== "old", "F3-9 검증 실패 새 저장 대체 상태 sid");
   ui.close();
   const priorData = { journal: { fixture: "가상 일지" }, docs: {}, interview: { answer: "가상 답변" } };
+  localStorage.clear(); // 앞선 승인 세션의 같은 방·팀 자료와 격리한다(가짜 저장소만 초기화).
   localStorage.setItem("kcp-league-data-v1:OLD42:" + team, JSON.stringify(priorData));
   sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify({ room, net: { kind: "local" }, team, migrationFrom: { room: "OLD42", team } }));
   ui.teamView({}); const migrated = connections.at(-1);
@@ -555,6 +556,99 @@ async function uiProtocol() {
   await migrated.emit("ack", await hostWire("ack", migratedClaim));
   ok(localStorage.getItem("kcp-league-data-v1:" + room + ":" + team) === JSON.stringify(priorData) && localStorage.getItem("kcp-league-data-v1:OLD42:" + team), "F3-9 같은 팀 새 방 참가 때 일지·답변 복사·옛 키 보존");
   ui.close();
+  // S7 분리 뒤에도 빈 컨테이너는 이전을 막지 않고, 새 방 학생 자료는 덮어쓰지 않는다.
+  const teamKey = "kcp-league-data-v1:" + room + ":" + team;
+  const s7Key = "kcp-league-s7-v1:" + room + ":" + team;
+  const occupiedData = { docs: {}, journal: { fixture: "가상 새 방 일지" },
+    interview: { answer: "가상 새 방 답변" } };
+  const planState = state(room); planState.sid = S.sid; C.host(planState, "next", 0);
+  const planSnap = C.publicView(planState, Date.now()), planIntl = planSnap.econ.intl.cur || planSnap.econ.intl;
+  ok(planSnap.phase === "plan" && Number.isFinite(planIntl.fuelMul), "F3-9 이전 검사에 실제 plan 국제 지수 사용");
+  for (const [label, destination] of [["빈 docs·journal", { docs: {}, journal: {} }],
+    ["C 안내·rev만 있음", { guideSeen: true, rev: 0 }],
+    ["D 새 방 학생 일지", occupiedData], ["새 방 키 없음", null]]) {
+    localStorage.clear();
+    localStorage.setItem("kcp-league-data-v1:OLD42:" + team, JSON.stringify(priorData));
+    if (destination) localStorage.setItem(teamKey, JSON.stringify(destination));
+    sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify({ room, net: { kind: "local" }, team,
+      migrationFrom: { room: "OLD42", team } }));
+    ui.teamView({}); const joined = connections.at(-1);
+    await joined.emit("snap", await hostWire("snap", planSnap)); await ui.get().sending;
+    const claim = N.requestBody(joined.sent.at(-1).payload);
+    ok(!ui.get().claimAccepted && claim.type === "claim", "F3-9 " + label + " plan snap 수신 후 승인 대기");
+    const beforeAck = JSON.parse(localStorage.getItem(teamKey) || "{}");
+    ok(!Object.hasOwn(beforeAck, "outageSnapshots") && !Object.hasOwn(beforeAck, "outageOperatingIntl"),
+      "F3-9 " + label + " 승인 전 plan snap이 팀 자료 키에 S7 필드를 만들지 않음");
+    ok(localStorage.getItem(s7Key) === null &&
+      localStorage.getItem(teamKey) === (destination ? JSON.stringify(destination) : null),
+      "F3-9 " + label + " 승인 전 plan snap은 S7 키도 만들지 않고 팀 자료 그대로");
+    await joined.emit("ack", await hostWire("ack", claim));
+    ok(ui.get().claimAccepted, "F3-9 " + label + " 실제 서명 claim ack 승인");
+    await joined.emit("snap", await hostWire("snap", planSnap));
+    const afterAckS7 = JSON.parse(localStorage.getItem(s7Key) || "{}");
+    ok(N.canonical(afterAckS7.outageOperatingIntl) === N.canonical({ round: planSnap.round, intl: planIntl }),
+      "F3-9 " + label + " 승인 뒤 plan snap의 국제 지수는 S7 키에 정확히 저장");
+    const afterAck = JSON.parse(localStorage.getItem(teamKey) || "{}");
+    ok(!Object.hasOwn(afterAck, "outageSnapshots") && !Object.hasOwn(afterAck, "outageOperatingIntl"),
+      "F3-9 " + label + " 승인 뒤에도 팀 자료 키에는 S7 필드 없음");
+    ok(localStorage.getItem(teamKey) === JSON.stringify(destination === occupiedData ? occupiedData : priorData),
+      "F3-9 " + label + (destination === occupiedData ? " 기존 일지·답변 덮어쓰기 금지" : " 옛 자료 전체 정확히 복사"));
+    ok(localStorage.getItem("kcp-league-data-v1:OLD42:" + team) === JSON.stringify(priorData),
+      "F3-9 " + label + " 옛 방 자료 원본 보존");
+    ui.close();
+  }
+  // 이전 자체의 사본 보존은 lobby에서 검사한다. plan 수신이 국제 지수를 갱신하는 동작과 분리한다.
+  const oldTeamKey = "kcp-league-data-v1:OLD42:" + team;
+  const oldS7Key = "kcp-league-s7-v1:OLD42:" + team;
+  const oldCopies = { outageSnapshots: { 1: { round: 1, fixture: "가상 옛 방 사본", unsPct: 3.25 } },
+    outageOperatingIntl: { round: 2, intl: { fuelMul: 1.1 } } };
+  const newCopies = { outageSnapshots: { 2: { round: 2, fixture: "가상 새 방 사본", unsPct: 1.75 } },
+    outageOperatingIntl: { round: 3, intl: { fuelMul: 1.2 } } };
+  const lobbyState = state(room); lobbyState.sid = S.sid;
+  const lobbySnap = C.publicView(lobbyState, Date.now());
+  ok(lobbySnap.phase === "lobby", "F3-9 사본 보존 검사는 plan 갱신 없는 lobby");
+  for (const scenario of [
+    { label: "A 새 방 분리 전 사본만", destination: { docs: {}, journal: {}, ...newCopies }, expectedS7: newCopies },
+    { label: "B 옛 방 분리 키 따라옴", sourceS7: oldCopies, expectedS7: oldCopies },
+    { label: "B 새 방 분리 키 우선", sourceS7: oldCopies, destinationS7: newCopies, expectedS7: newCopies },
+    { label: "E 옛 팀 자료의 S7 분리", source: { ...priorData, ...oldCopies }, expectedS7: oldCopies },
+    { label: "F 분리 키와 잔여 S7 공존", destination: { ...occupiedData, ...oldCopies },
+      destinationS7: newCopies, expectedS7: newCopies, readS7: true }
+  ]) {
+    localStorage.clear();
+    const sourceData = scenario.source || priorData;
+    localStorage.setItem(oldTeamKey, JSON.stringify(sourceData));
+    if (scenario.sourceS7) localStorage.setItem(oldS7Key, JSON.stringify(scenario.sourceS7));
+    if (scenario.destination) localStorage.setItem(teamKey, JSON.stringify(scenario.destination));
+    if (scenario.destinationS7) localStorage.setItem(s7Key, JSON.stringify(scenario.destinationS7));
+    sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify({ room, net: { kind: "local" }, team,
+      migrationFrom: { room: "OLD42", team } }));
+    ui.teamView({}); const joined = connections.at(-1);
+    await joined.emit("snap", await hostWire("snap", lobbySnap)); await ui.get().sending;
+    const claim = N.requestBody(joined.sent.at(-1).payload);
+    ok(!ui.get().claimAccepted && claim.type === "claim", "F3-9 " + scenario.label + " 승인 대기");
+    ok(localStorage.getItem(teamKey) === (scenario.destination ? JSON.stringify(scenario.destination) : null) &&
+      localStorage.getItem(s7Key) === (scenario.destinationS7 ? JSON.stringify(scenario.destinationS7) : null),
+      "F3-9 " + scenario.label + " 승인 전에는 기존 저장 내용 그대로");
+    await joined.emit("ack", await hostWire("ack", claim));
+    ok(ui.get().claimAccepted, "F3-9 " + scenario.label + " 서명 claim ack 승인");
+    if (scenario.readS7) {
+      ok(localStorage.getItem(teamKey) === JSON.stringify(scenario.destination),
+        "F3-9 F s7data 읽기 전에는 학생 일지와 잔여 S7 유지");
+      ok(N.canonical(ui.s7data()) === N.canonical(newCopies), "F3-9 F s7data는 기존 분리 키 사본 반환");
+    }
+    const actualTeam = JSON.parse(localStorage.getItem(teamKey) || "{}");
+    ok(N.canonical(actualTeam) === N.canonical(scenario.readS7 ? occupiedData : priorData),
+      "F3-9 " + scenario.label + " 일지·답변 전체 정확히 " + (scenario.readS7 ? "유지" : "복사"));
+    ok(!Object.hasOwn(actualTeam, "outageSnapshots") && !Object.hasOwn(actualTeam, "outageOperatingIntl"),
+      "F3-9 " + scenario.label + " 팀 자료 키에서 S7 필드 제거");
+    ok(N.canonical(JSON.parse(localStorage.getItem(s7Key) || "{}")) === N.canonical(scenario.expectedS7),
+      "F3-9 " + scenario.label + " S7 사본 전체 보존·기존 분리 키 덮어쓰기 금지");
+    ok(localStorage.getItem(oldTeamKey) === JSON.stringify(sourceData) &&
+      localStorage.getItem(oldS7Key) === (scenario.sourceS7 ? JSON.stringify(scenario.sourceS7) : null),
+      "F3-9 " + scenario.label + " 옛 방 팀 자료·S7 키 원본 보존");
+    ui.close();
+  }
   const initial = state("REPLAY", "room"), summaryState = structuredClone(initial);
   summaryState.phase = "end"; summaryState.round = 5;
   // 실제 같은 조건으로 다시 함수의 시작 상태 복원을 검사한다. DOM 시작만 대체한다.

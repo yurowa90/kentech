@@ -31,7 +31,10 @@ vm.runInContext(source.replace('let L = null;', 'let L = globalThis.__session;')
   .replace('state: () =>', '__receive: onSnap, state: () =>'), ctx);
 const { leagueCore: C, buildGame: B, ECON_DATA: D, league: U } = ctx.KCP, R = C.regionOf('south');
 assert.equal(typeof U.uiMath.outageAttributionMonthly, 'function');
-const key = `kcp-league-data-v1:${session.room}:${id}`;
+const key = `kcp-league-s7-v1:${session.room}:${id}`;
+const teamKey = `kcp-league-data-v1:${session.room}:${id}`;
+const teamData = () => JSON.parse(storage.get(teamKey) || '{}');
+const saveTeam = d => storage.set(teamKey, JSON.stringify(d));
 const data = () => JSON.parse(storage.get(key) || '{}');
 const save = d => storage.set(key, JSON.stringify(d));
 let checks = 0, failures = 0, orderDiffers = 0;
@@ -271,12 +274,12 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   if (multi) {
     const n = {}, html = U.uiMath.outageCardsHTML(V, res, id, n);
     cards(html, a); eq(n, {}, '닫힌 HTML 생성으로 기기 노트 변경 없음');
-    const saved = data().interview?.months?.[res.round] || {};
+    const saved = teamData().interview?.months?.[res.round] || {};
     ok(!saved.outageLargest && !saved.outageFrozen, '닫힌 달 기기 기록에도 원인 크기/최대 없음');
     ok(!/data-out-value=|data-out-tag="largest"|가장 큰 몫|lg-outage-waterfall/.test(html), '닫힌 DOM·aria·data 수치/최대 비노출');
     ok(!session.outShownPending, '열기 전 최대 저장 대기 없음');
     const trend = U.uiMath.trendHTML(V, id, true);
-    const shownMonths = Object.entries(data().interview?.months || {}).filter(([, n]) => n.outageOpened || n.outageSingleShown);
+    const shownMonths = Object.entries(teamData().interview?.months || {}).filter(([, n]) => n.outageOpened || n.outageSingleShown);
     eq((trend.match(/data-change="outage"/g) || []).length, shownMonths.length,
       '닫힌 현재 달을 타임라인에 추가하지 않음(이미 공개한 지난달은 유지)');
   }
@@ -310,8 +313,8 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   eq(session.outShownPending.largest?.key || null, Math.abs(ranked[0].value) < .05 ? null : ranked[0].key,
     '기기 저장 최대도 여섯 후보만(재현 제외)');
   if (session.outShownPending.largest) note.outageLargest = clone(session.outShownPending.largest);
-  const frozenData = data(); frozenData.interview ||= {}; frozenData.interview.months ||= {};
-  frozenData.interview.months[res.round] = note; save(frozenData);
+  const frozenData = teamData(); frozenData.interview ||= {}; frozenData.interview.months ||= {};
+  frozenData.interview.months[res.round] = note; saveTeam(frozenData);
   // 연 뒤 시험 교체·캐시 제거에도 공개 당시 분해 고정.
   storage.set('kcp-build-trial-v1', '{}'); resetCache(); calls = [];
   eq(U.uiMath.outageAttributionMonthly(V, res, id), a, '연 뒤 기기 저장 분해 고정');
@@ -320,10 +323,10 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   if (note.outageLargest) {
     ok(timeline.includes(names[ranked[0].key]), '월간 타임라인 최대 이름 일치');
     for (const cause of causes) {
-      const labelled = clone(frozenData); labelled.interview.months[res.round].missed = cause; save(labelled);
+      const labelled = clone(frozenData); labelled.interview.months[res.round].missed = cause; saveTeam(labelled);
       ok(U.uiMath.trendHTML(V, id, true).includes(`놓친 것: ${names[cause]}`), `${cause} 월간 타임라인 선택 이름 일치`);
     }
-    save(frozenData);
+    saveTeam(frozenData);
   }
   console.log(JSON.stringify({ month: res.round, replayOffset, simulations: count, parts: a.parts }));
   return a;
@@ -336,6 +339,8 @@ test('실제 수신·사본 저장·2달 보관', () => {
     if (month > 1) C.host(S, 'next', 0);
     S.teams[id].plan.policies = month % 2 ? [] : ['save'];
     const m = operate(S); months.push(m);
+    ok(!Object.hasOwn(teamData(), 'outageSnapshots') && !Object.hasOwn(teamData(), 'outageOperatingIntl'),
+      `${month}월 팀 자료 키에 S7 필드가 새로 생기지 않음`);
     const snapshots = data().outageSnapshots;
     eq(Object.keys(snapshots).map(Number), month === 1 ? [1] : [month - 1, month], `${month}월 최근2달만(3월에1월 삭제)`);
     const snap = snapshots[month];
@@ -426,7 +431,7 @@ test('월간 뚜렷한 원인 없음·고르기 생략', () => {
   const html = U.uiMath.outageCardsHTML(second.V, second.res, id, {});
   ok(html.includes('뚜렷한 원인 없음') && html.includes('data-single="true"'), '미미한 여섯 몫은 한줄 요약');
   ok(!html.includes('data-missed=') && !html.includes('data-out-tag="largest"'), '큰 보정으로 카드/최대 만들지 않음');
-  ok(!data().interview.months[2].outageLargest, '최대 몫 기기 기록 없음');
+  ok(!teamData().interview.months[2].outageLargest, '최대 몫 기기 기록 없음');
 });
 test('사본 삭제·손상·중간 참가 = 안내만', () => {
   const S = game(); operate(S); C.host(S, 'next', 0); const { V, res } = operate(S), original = data();
@@ -624,7 +629,7 @@ for (const side of ['neighbor', 'own']) test(`${side} 연계선 접속점 전선
       side === 'neighbor' ? id : 'dangjin');
     const current = operate(S);
     if (month === 8) {
-      const saved = clone(data()), a = validate(previous, current);
+      const saved = clone(data()), savedTeam = teamData(), a = validate(previous, current);
       const part = key => a.parts.find(p => p.key === key).value;
       const lostHost = previous.model.grid.hostMW - current.model.grid.hostMW;
       const lostConnected = previous.model.grid.connectedMW - current.model.grid.connectedMW;
@@ -645,7 +650,7 @@ for (const side of ['neighbor', 'own']) test(`${side} 연계선 접속점 전선
         ok(!a.clues.choice.includes('접속 감소'), '이웃 단절을 우리 선택의 접속 감소로 표시하지 않음');
         // C-fix3: 연계선 정보가 없는 옛 사본은 실제 접속 할당의 min을 유지한다.
         for (const field of ['hostMW', 'tieHostMW', 'hostTies']) delete saved.outageSnapshots[7][field];
-        save(saved); resetCache();
+        save(saved); saveTeam(savedTeam); resetCache();
         const legacy = validate(previous, current, 0, { legacyTies: true });
         ok(legacy.parts.find(p => p.key === 'choice').value > .05, '옛 사본은 기존 접속 감소 계산으로 ①');
         near(legacy.parts.find(p => p.key === 'progress').value, 0, '옛 사본은 이웃 복원을 새로 추측하지 않음');
@@ -716,16 +721,43 @@ test('큰 재현 차이만으로 거래 후보·최대·고르기 분기가 바�
 });
 test('열지 않은 월간 선택도 다음 달 타임라인 이름을 월간 기준으로 유지', () => {
   const S = game(); operate(S); C.host(S, 'next', 0); operate(S);
-  const d = data();
-  d.interview = { months: { 2: { missed: 'weather', missedBasis: 'monthly' } } }; save(d);
+  const d = teamData();
+  d.interview = { months: { 2: { missed: 'weather', missedBasis: 'monthly' } } }; saveTeam(d);
   // 실제 선택 저장의 missedBasis는 s7.py에서 클릭 직후 검사한다.
   C.host(S, 'next', 0); const current = operate(S);
-  const before = clone(data().interview.months[2]);
+  const before = clone(teamData().interview.months[2]);
   const html = U.uiMath.trendHTML(current.V, id, true);
   ok(html.includes('놓친 것: 날씨·계절·운전 기간'), '옛 frozen 없이 missedBasis만으로 월간 이름');
   ok(!html.includes('놓친 것: 날씨·운전 기간') && !html.includes('가장 큰 몫'),
     '열지 않은 선택을 시험 이름·최대 답으로 꾸미지 않음');
-  eq(data().interview.months[2], before, '닫힌 선택의 다음 달 렌더링은 기록 불변');
+  eq(teamData().interview.months[2], before, '닫힌 선택의 다음 달 렌더링은 기록 불변');
+});
+test('분리 전 저장: S7 사본만 옮기고 일지·답변과 월간 분해 보존', () => {
+  const S = game(); operate(S); C.host(S, 'next', 0); const { V, res } = operate(S);
+  resetCache();
+  const before = U.uiMath.outageAttributionMonthly(V, res, id);
+  ok(before?.basis === 'monthly' && before.parts.length === 6, '이전 비교용 월간 분해 실제 생성');
+  const beforeHTML = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true });
+  const snapshots = data();
+  snapshots.outageOperatingIntl = { round: res.round, intl: clone(V.econ.intl.cur || V.econ.intl) };
+  const notes = { docs: { fixture: { journal: '가상 도시 일지' } }, journal: { fixture: '가상 일지' },
+    interview: { months: { 2: { answer: '가상 답변', missed: 'weather', missedBasis: 'monthly' } } } };
+  saveTeam({ ...clone(notes), ...clone(snapshots) }); storage.delete(key); resetCache();
+  ok(!storage.has(key) && Object.hasOwn(teamData(), 'outageSnapshots') &&
+    Object.hasOwn(teamData(), 'outageOperatingIntl'), '분리 전 팀 자료만 있고 별도 S7 키 없음');
+  const afterHTML = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true });
+  eq(data(), snapshots, '첫 월간 그리기에서 두 S7 필드 원본 그대로 이전');
+  eq(teamData(), notes, 'S7 필드 제거 후 팀 자료의 일지·답변 전체 보존');
+  // 다시 계산한 실행 시간만 비교에서 제외한다. 수치·단서·호출 수는 그대로 비교한다.
+  const withoutTiming = html => html.replace(/ data-ms="[^"]*"/, '');
+  eq(withoutTiming(afterHTML), withoutTiming(beforeHTML), '이전 전후 월간 분해 화면 동일');
+  const { ms: beforeMs, ...beforeResult } = before;
+  const { ms: afterMs, ...afterResult } = U.uiMath.outageAttributionMonthly(V, res, id) || {};
+  eq(afterResult, beforeResult, '이전 전후 월간 분해 결과 동일');
+  resetCache();
+  eq(withoutTiming(U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true })), withoutTiming(beforeHTML), '다시 그려도 이전 결과 유지');
+  eq(data(), snapshots, '다시 읽어도 S7 사본·운영 지수 유지');
+  eq(teamData(), notes, '다시 읽어도 팀 자료에 S7 필드 재생성 없음');
 });
 test('크기 순위와 다른 카드 배치 실제 실행', () => ok(orderDiffers > 0, '크기순 회귀를 잡을 사례 존재'));
 console.log(`S7 monthly: ${checks} assertions, ${failures} failures`);
