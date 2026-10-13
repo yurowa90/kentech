@@ -309,7 +309,8 @@
             <section class="panel">
               <h3>1. 평가표 <span class="chip">1점 매우 부정적 ↔ 5점 매우 긍정적</span></h3>
               <div class="table-wrap"><table class="scoretable" id="score"></table></div>
-              <p class="hint" style="margin-top:6px">면접관은 평가표 점수를 보고 질문을 이어 갑니다. 점수마다 자료의 근거를 하나씩 떠올려 두세요.</p>
+              <p class="small muted score-note26" style="margin-top:6px"><span class="tag-mine">연습실 합계</span> 다섯 항목을 같은 무게로 더한 값입니다. 수험생이 받은 빈 기준표에는 합계 칸이 없습니다(보고서 9쪽). <span class="tag-official">보고서</span></p>
+              <p class="hint" style="margin-top:6px">면접관은 평가표 점수를 활용해 질문을 이어 갈 수 있습니다(보고서 7쪽). 점수마다 자료의 근거를 하나씩 떠올려 두세요.</p>
             </section>
             <section class="panel">
               <h3>숨은 영향 찾기</h3>
@@ -348,11 +349,10 @@
       const table = KCP.$("#score", root);
       const paintScore = () => {
         const totals = TECH.map((t) => total(G.scores[t.id]));
-        const max = Math.max(...totals);
-        table.innerHTML = `<thead><tr><th>기술명</th>${CRIT.map((c) => `<th title="${esc(c.d)}">${c.n}</th>`).join("")}<th>합계</th></tr></thead>
+        table.innerHTML = `<thead><tr><th>기술명</th>${CRIT.map((c) => `<th title="${esc(c.d)}">${c.n}</th>`).join("")}<th>연습실 합계</th></tr></thead>
           <tbody>${TECH.map((t, i) => {
             const sc = G.scores[t.id] || {};
-            return `<tr class="${max > 0 && totals[i] === max ? "best" : ""}"><td class="name">${esc(t.name)}</td>${CRIT.map(
+            return `<tr><td class="name">${esc(t.name)}</td>${CRIT.map(
               (c) => `<td><select aria-label="${esc(t.name)} ${c.n}" data-t="${t.id}" data-c="${c.k}" id="sc-${t.id}-${c.k}">
                 <option value="">-</option>${[1, 2, 3, 4, 5].map((v) => `<option ${Number(sc[c.k]) === v ? "selected" : ""}>${v}</option>`).join("")}</select></td>`
             ).join("")}<td class="total">${totals[i] || "-"}</td></tr>`;
@@ -367,7 +367,7 @@
         );
         TECH.forEach((t, i) => {
           const el = KCP.$(`[data-tot="${t.id}"]`, root);
-          if (el) el.textContent = totals[i] ? `합계 ${totals[i]}점` : "미채점";
+          if (el) el.textContent = totals[i] ? `연습실 합계 ${totals[i]}점` : "미채점";
         });
       };
       paintScore();

@@ -863,7 +863,7 @@
       save();
       phaseEl.innerHTML = "";
       if (p === "prep") {
-        phaseEl.innerHTML = '<div id="prep-top" class="stack ext-slot"></div><div id="prep-body"></div>';
+        phaseEl.innerHTML = `<div id="prep-top" class="stack ext-slot"></div><div id="prep-body" data-prep-year="${esc(year)}"></div>`;
         const top = KCP.$("#prep-top", phaseEl), body = KCP.$("#prep-body", phaseEl);
         game.renderPrep(body, state, save, () => showPhase("room"));
         KCP.emit("prep:render", { root: phaseEl, top, body, year, meta, state, save });
@@ -901,10 +901,10 @@
         <div class="stack">
           <section class="panel">
             <h3>면접 질문 카드 <span class="chip num">${qs.length}개</span></h3>
-            <p class="small muted" style="margin-bottom:10px">질문을 소리 내어 읽고 1~3분 안에 말로 답해 보세요. 짝이 있다면 짝이 면접위원이 되어 읽어 줍니다. 답한 뒤 핵심만 적어 둡니다.</p>
-            <p class="small muted room-sources">${meta.original
+            <p class="small muted room-tip" style="margin-bottom:10px">${meta.roomTip || "질문을 소리 내어 읽고 1~3분 안에 말로 답해 보세요. 짝이 있다면 짝이 면접위원이 되어 읽어 줍니다. 답한 뒤 핵심만 적어 둡니다."}</p>
+            <p class="small muted room-sources">${meta.roomSources || (meta.original
               ? "이 게임의 질문은 모두 연습실이 준비실 결과에 맞춰 만든 연습용 질문입니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."
-              : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."}</p>
+              : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다.")}</p>
             ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}
             <div id="room-tools" class="stack ext-slot"></div>
             ${qs.length ? "" : `<div class="caution room-empty" id="room-empty">아직 질문이 없습니다. 준비실에서 계획을 확정하면 내 선택에 맞춘 질문이 만들어집니다.
