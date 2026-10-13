@@ -11,17 +11,7 @@
   if (!KCP || !KCP.v2 || typeof KCP.v2.skin !== "function") return;
 
   /* ---------- 공개 자료(게임 화면에 그대로 보이는 지도와 아이템 이름) ---------- */
-  const MAP = [
-    "..LLDDMDLL.",
-    ".LDDFFWMDLL",
-    "LMFFFWWMDDL",
-    "LFFFFWWGGDL",
-    "LMFWWFGGGGM",
-    "LDMWWGGWGGL",
-    ".DDMFFGWWDL",
-    ".LDDMWWDDL.",
-    "..LLMDDLL..",
-  ];
+  const game = KCP.games["2024"];
   const TER_N = { L: "용암", W: "호수", M: "갯벌", D: "사막", F: "숲", G: "초원" };
   const TCOL = { L: [200, 72, 58], W: [114, 205, 196], M: [122, 97, 82], D: [225, 184, 112], F: [63, 138, 76], G: [185, 220, 90] };
   const MAX_TILES = 7, MAX_ITEMS = 10;
@@ -51,7 +41,7 @@
    * 준비실 화면에 그려진 지도(#map polygon[data-hex])에서 칸 id·지형·중심·육각형 방향을 읽는다.
    * 지도 배열이나 좌표 규칙(odd-r, even-q, 뾰족·평평)이 바뀌어도 장면이 그대로 따라가게 하기 위해서다.
    * 좌표는 육각형 외접 반지름이 1이 되도록 정규화한다. 화면 지도가 없으면(면접실·성찰·홈 미리보기)
-   * 마지막으로 읽은 지도를, 그것도 없으면 아래 내장 지도(odd-r, 뾰족)를 쓴다. */
+   * g2024.js가 노출한 보고서 지도(even-q, 위아래 변이 평평한 육각형)를 쓴다. */
   function makeGeo(list, orient) {
     const byId = Object.create(null);
     list.forEach(t => { byId[t.id] = t; });
@@ -67,10 +57,12 @@
     const hw = orient === "flat" ? 1 : SQ3 / 2, hh = orient === "flat" ? SQ3 / 2 : 1;
     return { tiles: list, byId, orient, nd, x0: x0 - hw, x1: x1 + hw, y0: y0 - hh, y1: y1 + hh };
   }
-  const BUILTIN = (() => {
+  const REPORT_GEO = (() => {
     const list = [];
-    MAP.forEach((row, r) => row.split("").forEach((t, c) => { if (t !== ".") list.push({ id: r + "-" + c, t, x: SQ3 * (c + 0.5 * (r & 1)), y: 1.5 * r }); }));
-    return makeGeo(list, "pointy");
+    game.MAP.forEach((row, r) => row.split("").forEach((t, c) => {
+      if (t !== ".") list.push({ id: game.tileId(r, c), t, x: 1.5 * c, y: SQ3 * (r + (c % 2 === 0 ? 0.5 : 0)) });
+    }));
+    return makeGeo(list, "flat");
   })();
   let domGeo = null, domKey = "";
   function geoFromDom(root) {
@@ -111,7 +103,7 @@
     domKey = key;
     return domGeo;
   }
-  const geoOf = root => geoFromDom(root) || domGeo || BUILTIN;
+  const geoOf = root => geoFromDom(root) || REPORT_GEO;
 
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
   const rgb = (c, a) => (a == null ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`);
