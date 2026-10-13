@@ -65,10 +65,11 @@
     saveSolo();
     flushHost();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
+    clearInterval(L.guidanceTimer); L.guidanceTimer = null;
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
     if (L.conn) L.conn.close();
-    if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler);
+    if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler, true);
     L = null;
   }
   KCP.on("route:change", ({ name, arg }) => {
@@ -325,14 +326,21 @@
   function choosePlanTool(type) {
     closePanel(); BG.closeDrawer?.();
     const root = document.getElementById("bd-root");
+    const groupSelector = `[data-group="${type === "line" ? "grid" : "fire"}"]`;
     const tool = root?.querySelector(`[data-tool="${type}"]`);
-    if (!tool) {
-      const group = root?.querySelector(`[data-group="${type === "line" ? "grid" : "fire"}"]`);
+    if (!tool || tool.closest("[hidden]")) {
+      const group = root?.querySelector(groupSelector);
       if (group?.getAttribute("aria-expanded") !== "true") group?.click();
     }
     const button = root?.querySelector(`[data-tool="${type}"]`);
-    if (button?.getAttribute("aria-pressed") !== "true") button?.click();
-    button?.focus({ preventScroll: true });
+    if (!button?.disabled && button?.getAttribute("aria-pressed") !== "true") button?.click();
+    // 도구 선택은 하위 단추를 다시 그려 접는다. 새 단추를 펼친 뒤 포커스를 준다.
+    const selected = root?.querySelector(`[data-tool="${type}"]`);
+    const group = root?.querySelector(groupSelector);
+    if (!selected || selected.closest("[hidden]")) {
+      if (group?.getAttribute("aria-expanded") !== "true") group?.click();
+    }
+    (root?.querySelector(`[data-tool="${type}"]:not(:disabled)`) || root?.querySelector(groupSelector))?.focus({ preventScroll: true });
   }
   function updatePlanIssues() {
     const el = document.getElementById("lg-plan-issues");
@@ -361,12 +369,14 @@
       card.remove();
       const current = planIssueCounts();
       if (current.unlinked) choosePlanTool("line");
-      else { closePanel(); const group = root.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); }
+      else choosePlanTool("diesel");
     };
     card.querySelector("#lg-issue-go").onclick = () => {
       card.remove();
-      if (L.snap?.phase !== "plan") return;
+      if (L.snap?.phase !== "plan") { document.getElementById("lg-ready")?.focus({ preventScroll: true }); return; }
       const { d, n } = monthNote(); n.issueCheckPassed = true; putData(d); readyAction(skip);
+      const promise = L.panel === "journal" ? root.querySelector("#lg-predict")?.querySelector("button:not(:disabled), select") : null;
+      (promise || document.getElementById("lg-ready"))?.focus({ preventScroll: true });
     };
     card.querySelector("#lg-issue-fix").focus({ preventScroll: true });
   }
@@ -380,9 +390,10 @@
   function showFirstGuide(root, again = false) {
     if (!root || L.away || !["team", "solo"].includes(L.role)) return;
     const d = tdata();
-    if (!again && (L.coach || d.guideSeen || L.previous || L.snap?.round !== 1 || curRound().month !== 1 || L.snap?.results?.length)) return;
+    const reattach = !again && !!L.coach;
+    if (!again && !reattach && (d.guideSeen || L.previous || L.snap?.round !== 1 || curRound().month !== 1 || L.snap?.results?.length)) return;
     document.getElementById("lg-coach")?.remove();
-    L.coach = { step: again && ["review", "end"].includes(L.snap?.phase) ? 5 : 0,
+    if (!reattach) L.coach = { step: again && ["review", "end"].includes(L.snap?.phase) ? 5 : 0,
       round: L.snap.round, builds: BG.current()?.builds.length || 0 };
     const el = document.createElement("aside"); el.id = "lg-coach"; el.setAttribute("aria-label", "첫 달 코치");
     el.innerHTML = '<span id="lg-coach-task" role="status" aria-live="polite"></span><button type="button" class="lg-bbtn" id="lg-coach-action"></button><button type="button" class="lg-bbtn" id="lg-coach-skip">건너뛰기</button><button type="button" class="lg-bbtn" id="lg-coach-close" aria-label="코치 닫기"><span id="lg-guide-close">닫기</span></button>';
@@ -390,7 +401,7 @@
     el.querySelector("#lg-coach-close").onclick = () => closeCoach(true);
     el.querySelector("#lg-coach-skip").onclick = () => { if (L.coach.step < 7) L.coach.step++; else closeCoach(true); updateCoach(false); };
     el.querySelector("#lg-coach-action").onclick = coachAction;
-    updateCoach();
+    updateCoach(!reattach);
   }
   function coachSteps(issues, n) {
     // 말풍선 gridWaitInfo도 hostLimited가 없는 설비에는 접속 대기를 적용하지 않는다.
@@ -443,30 +454,39 @@
     else if (!target.disabled) target.click();
   }
   function setupMapGuidance(root) {
+    clearInterval(L.guidanceTimer);
     const stack = document.createElement("div"); stack.className = "lg-map-guidance";
     stack.innerHTML = '<div id="lg-plan-issues" aria-label="이번 달 계획 확인" hidden></div>';
+    // 기존 결과 요약도 같은 묶음에 두어 코치·서랍과 자리를 나눈다.
+    const summary = root.querySelector("#lg-map-result");
+    if (summary) stack.append(summary);
     root.append(stack);
     stack.addEventListener("click", e => {
       const issue = e.target.closest("[data-issue]");
       if (issue?.dataset.issue === "line") choosePlanTool("line");
       if (issue?.dataset.issue === "wait") {
-        const text = BG.planIssues().waiting.map(b => `${b.name}: ${b.months == null ? "상한 확보까지 대기" : `${b.months}달 대기`}`).join(" · ");
+        const text = BG.planIssues().waiting.map(b => `${b.name}: ${b.months == null ? "대기(말풍선에서 확인)" : `${b.months}달 대기`}`).join(" · ");
         BG.toast(`접속 대기 설비는 이번 달 발전하지 않아요. ${text}`);
       }
       if (issue?.dataset.issue === "supply") { const group = root.querySelector('[data-group="fire"]'); closePanel(); BG.closeDrawer?.(); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); }
     });
     L.guidanceObserver?.disconnect();
-    L.guidanceObserver = new ResizeObserver(() => {
-      if (stack.isConnected) root.style.setProperty("--lg-guidance-bottom", `${Math.ceil(stack.getBoundingClientRect().bottom + 8)}px`);
-    });
+    const syncBottom = () => {
+      if (!stack.isConnected) return;
+      const bottom = `${Math.ceil(stack.getBoundingClientRect().bottom + 8)}px`;
+      if (root.style.getPropertyValue("--lg-guidance-bottom") !== bottom) root.style.setProperty("--lg-guidance-bottom", bottom);
+    };
+    L.guidanceObserver = new ResizeObserver(syncBottom);
     L.guidanceObserver.observe(stack);
     const session = L;
-    L.timers.push(setInterval(() => {
+    L.guidanceTimer = setInterval(() => {
       if (L !== session || !root.isConnected || L.away) return;
       updatePlanIssues(); updateCoach();
       if (L.snap?.phase !== "plan") document.getElementById("lg-issue-check")?.remove();
-    }, 500));
-    updatePlanIssues();
+      // 지도 머리가 움직여도 띠 크기는 같을 수 있어 위치는 주기마다 확인한다.
+      syncBottom();
+    }, 500);
+    updatePlanIssues(); syncBottom();
   }
   function publicCSV(V) {
     // 열을 명시해 자유 서술·약속서·로그가 내려받기에 섞이지 않게 한다.
@@ -3418,7 +3438,7 @@
       onMount: root => { addBar(root); setupTeamMap(root); window.dispatchEvent(new Event("resize")); }
     });
     if (resume) {
-      if (L.coach) { const coach = L.coach; showFirstGuide(document.getElementById("bd-root"), true); L.coach = coach; updateCoach(false); }
+      if (L.coach) showFirstGuide(document.getElementById("bd-root"));
       return;
     }
     send("claim");
@@ -3699,9 +3719,20 @@
       if (p) { L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return; }
       if (e.target.closest("#lg-ready")) readyAction(false);
     });
-    if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler);
-    L.escapeHandler = e => { if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return; if (root.querySelector("#lg-guide-close")) { root.querySelector("#lg-guide-close").click(); e.preventDefault(); } else if (L.panel) { e.preventDefault(); closePanel(true); } };
-    document.addEventListener("keydown", L.escapeHandler);
+    if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler, true);
+    L.escapeHandler = e => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
+      const check = root.querySelector("#lg-issue-check"), coach = root.querySelector("#lg-coach");
+      if (check) { check.remove(); document.getElementById("lg-ready")?.focus({ preventScroll: true }); }
+      else if (L.panel) closePanel(true);
+      // 코치 안에 포커스가 있거나, 고른 건설 도구가 없을 때만 코치를 닫는다(도구 취소용 Escape가 코치를 닫지 않게).
+      else if (coach && (coach.contains(document.activeElement) || !document.getElementById("bd-root")?.dataset.mode)) closeCoach(true);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    // 건설 화면의 도구 팝업 처리기보다 리그의 열린 확인·서랍을 먼저 닫는다.
+    document.addEventListener("keydown", L.escapeHandler, true);
     panel.addEventListener("click", onPanelClick);
     panel.addEventListener("change", onPanelChange);
     panel.addEventListener("input", e => {
