@@ -1944,7 +1944,7 @@
   function paintLeagueLayers(g) {
     const actual = S.opts.leagueResult?.(), summary = $("#lg-map-result"), gridText = $("#lg-lens-grid");
     if (summary) {
-      summary.hidden = !actual || !S.lenses.result || !!S.run;
+      summary.hidden = !actual || !S.lenses.result || !!(S.run && !S.run.replay);
       summary.dataset.faded = String(!!actual?.faded);
       if (actual) {
         // MWh / representative operating hours is an actual average shortage, not a peak estimate.
