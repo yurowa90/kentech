@@ -94,6 +94,7 @@
     if (!L) return;
     saveSolo();
     flushHost();
+    L.resultReplayWait?.();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect();
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
@@ -817,7 +818,7 @@
       <p id="lg-promise-baseline" class="lg-hint">비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${esc(comparison.label)} · 정전 ${Number.isFinite(comparison.value) ? `${esc(fmt(comparison.value, 2))}%` : "시험 기록 없음"}`}</p>
       <label class="lg-field">2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향<select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <h4>3. 얼마나 확신하나요?</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div>
-      <p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${L.awaitReady ? `<div class="lg-promise-actions"><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip">자유 실험 · 건너뛰고 준비</button>' : ""}</div>` : ""}</section>${promiseHistoryHTML(V)}${calibrationHTML()}`;
+      <p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section>${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
   function promiseResultHTML(V, n) {
     if (!n.evidence || !n.pred || n.skipped) return "";
@@ -3264,9 +3265,38 @@
       const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
       const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
         sound: kind => { if (kind === "outage") signal("outage"); else if (kind === "done") signal("complete"); } });
+      foldResultDuringReplay(replayed);
       if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
     }
     else if (V.phase === "plan") { BG.clearTrialDisplay?.(); closePanel(); }
+  }
+  function foldResultDuringReplay(replayed) {
+    if (!replayed || !matchMedia("(max-width: 767px)").matches ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches || KCP.v2?.reduced?.()) return;
+    const session = L, panel = document.getElementById("lg-panel"), round = L.snap.round;
+    if (!panel || L.panel !== "result") return;
+    // monthEnd는 다음 틱의 재계산을 기다릴 때도 true다. playing만으로 종료를 판단하지 않는다.
+    const finished = () => {
+      const state = KCP.fxTurn?.state?.();
+      return !state || state.skipped || state.cardsOpen || (!state.playing && (state.replayed || state.ms === 0));
+    };
+    if (finished()) return;
+    const active = () => L === session && !session.away && session.panel === "result" &&
+      session.snap.round === round && ["review", "end"].includes(session.snap.phase) &&
+      panel.isConnected && !panel.hidden && document.getElementById("lg-panel") === panel;
+    let poll, limit;
+    const stop = () => {
+      clearInterval(poll); clearTimeout(limit);
+      if (session.resultReplayWait === stop) session.resultReplayWait = null;
+    };
+    const reveal = () => {
+      const show = active(); stop();
+      if (show) { session.panelFolded = false; renderPanel(); }
+    };
+    session.resultReplayWait = stop;
+    session.panelFolded = true; renderPanel();
+    poll = setInterval(() => { if (!active()) stop(); else if (finished()) reveal(); }, 100);
+    limit = setTimeout(reveal, 6000);
   }
   function lockMsg() {
     if (L?.away) return "관전 중 · 읽기 전용 — 우리 도시로 돌아가 편집해요";
@@ -3645,7 +3675,7 @@
       const p = e.target.closest("[data-panel]");
       if (p?.dataset.panel === "region") { teamRegion(); return; }
       if (p) { L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return; }
-      if (e.target.closest("#lg-ready")) readyAction(false);
+      if (e.target.closest("#lg-ready")) readyAction(!!L.awaitReady && L.panel === "journal" && !L.panelFolded && freeExperiment());
     });
     if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler);
     L.escapeHandler = e => { if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return; if (root.querySelector("#lg-guide-close")) { root.querySelector("#lg-guide-close").click(); e.preventDefault(); } else if (L.panel) { e.preventDefault(); closePanel(true); } };
@@ -3711,6 +3741,7 @@
     tickTimer();
   }
   function openPanel(tab) {
+    L.resultReplayWait?.();
     const previous = L.panel, active = document.activeElement;
     if (active && !active.closest("#lg-panel") && active !== document.body) L.panelTrigger = active;
     BG.closeDrawer?.(); document.getElementById("lg-first-guide")?.remove();
@@ -3740,9 +3771,11 @@
     const before = root.dataset.resultDrawer, drawerBefore = root.dataset.leagueDrawer;
     root.dataset.resultDrawer = String(wide);
     root.dataset.leagueDrawer = String(!!p && !p.hidden);
+    root.dataset.promiseOpen = String(!!p && !p.hidden && !L.panelFolded && L.panel === "journal" && !!p.querySelector("#lg-ready-confirm"));
     if (before !== root.dataset.resultDrawer || drawerBefore !== root.dataset.leagueDrawer) window.dispatchEvent(new Event("resize"));
   }
   function closePanel(restore = false) {
+    L.resultReplayWait?.();
     L.panel = null; const p = document.getElementById("lg-panel"); if (p) p.hidden = true;
     syncResultMapSpace();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", "false"));
@@ -3847,12 +3880,12 @@
     if (tab === "result" && V) body = V.phase === "end" ? body + techResultHTML(V) : techResultHTML(V) + body;
     p.dataset.stage = V?.phase || ""; p.dataset.tab = tab;
     p.classList.toggle("lg-tech-drawer", tab === "tech");
-    syncResultMapSpace();
     p.dataset.folded = String(!!L.panelFolded);
     if (V?.econ && V.phase === "plan") body = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>` + body;
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
+    syncResultMapSpace();
     const summary = p.querySelector("#lg-promise-summary");
     if (summary) panelBody.prepend(summary);
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });
