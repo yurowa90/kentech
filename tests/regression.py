@@ -194,7 +194,10 @@ def game2024(page, rec):
     page.check("#showK")
     rec.expect(page.locator(".hexmap text").count() > 0, "2024 채굴량 표시 토글")
     page.click("#sim")
-    rec.expect(page.locator("#gauges .gauge").count() == 6, "2024 시뮬레이션 후 속성 6개 표시")
+    # D-76 / AUDIT-2024 §5.2·§5.5: 실전에서는 막대 대신 기록으로 실행 확인.
+    rec.expect(page.locator("#gauges .gauge").count() == 0, "2024 실전 속성 막대 없음")
+    rec.expect(bool(page.inner_text("#log").strip()), "2024 시뮬레이션 기록 문장 표시")
+    rec.expect("시뮬레이션 1회" in page.inner_text("#runs"), "2024 시뮬레이션 실행 기록")
     rec.expect(page.locator("#go24").is_disabled(), "2024 확정 전 면접실 버튼 비활성")
     page.click("#lock")
     page.wait_for_selector("#unlock", timeout=5000)
@@ -217,6 +220,8 @@ def game2025(page, rec):
     for pid in ["red", "green", "black", "blue"]:
         page.click(f'[data-tab="{pid}"]')
         rec.check(page, f"2025/paper-{pid}")
+    # D-76 / AUDIT-2025 §5.1: 단서 삽입은 연습 모드에서, 마우스 배치 경로는 그대로.
+    page.evaluate("() => KCP.setSettings({timeMode:'ext'})")
     page.locator("[data-fact]").first.click()
     rec.expect(page.input_value("#overall25").startswith("["), "2025 단서 카드 → 종합 설명에 삽입")
     for pid, slot in [("red", 0), ("blue", 1), ("green", 2), ("black", 3)]:
@@ -245,8 +250,10 @@ def game2026(page, rec):
     for t, v in [("bb", "4"), ("db", "3"), ("ml", "2"), ("wc", "5")]:
         for k in "fsegu":
             page.select_option(f"#sc-{t}-{k}", v)
-    rec.expect(page.locator("tr.best td.name").inner_text() == "울버린 켄텍카솔", "2026 합계 최고 행 강조")
-    rec.expect(page.locator('[data-tot="wc"]').inner_text() == "합계 25점", "2026 추천 버튼 합계 표시")
+    # D-76 / AUDIT-2026 §5.2: 자동 최고 강조 제거, 합계는 연습실 계산으로 명시.
+    rec.expect(page.locator("#score tr.best").count() == 0, "2026 최고 합계 행 강조 없음")
+    rec.expect(page.locator("#score th").last.inner_text() == "연습실 합계", "2026 합계 출처 표시")
+    rec.expect(page.locator('[data-tot="wc"]').inner_text() == "연습실 합계 25점", "2026 추천 버튼 연습실 합계 표시")
     page.click('[data-pick="ml"]')
     page.fill("#reason26", "사회/윤리 기준을 가장 무겁게 봄.")
     page.fill("#note-bb", "그래프와 문구 불일치")

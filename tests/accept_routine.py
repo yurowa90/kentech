@@ -688,7 +688,10 @@ def t_F5_baseline_flows(c: Ctx):
     c.page.locator("#showK").check()
     c.expect(c.page.locator(".hexmap text").count() > 0, "F5 2024 채굴량 표시를 켠다")
     c.page.locator("#sim").click()
-    c.eq(c.page.locator("#gauges .gauge").count(), 6, "F5 2024 시뮬레이션은 속성 여섯 개를 표시한다")
+    # D-76 / AUDIT-2024 §5.2·§5.5: 실전 막대 0개, 시뮬레이션 기록은 유지.
+    c.eq(c.page.locator("#gauges .gauge").count(), 0, "F5 2024 실전 속성 막대가 없다")
+    c.expect(bool(_text(c, "#log").strip()), "F5 2024 시뮬레이션 기록 문장을 표시한다")
+    c.expect("시뮬레이션 1회" in _text(c, "#runs"), "F5 2024 시뮬레이션 실행을 기록한다")
     c.expect(c.page.locator("#go24").is_disabled(), "F5 2024 확정 전 면접실 버튼은 비활성이다")
     c.page.locator("#lock").click()
     c.page.wait_for_selector("#unlock")
@@ -708,6 +711,8 @@ def t_F5_baseline_flows(c: Ctx):
     for paper in ("red", "green", "black", "blue"):
         c.page.locator(f'[data-tab="{paper}"]').click()
         c.check("F5 2025/" + paper)
+    # D-76 / AUDIT-2025 §5.1: 단서 삽입은 연습 모드에서, 마우스 배치 경로는 그대로.
+    c.page.evaluate("() => KCP.setSettings({timeMode:'ext'})")
     c.page.locator("[data-fact]").first.click()
     c.expect(c.page.locator("#overall25").input_value().startswith("["), "F5 2025 단서 카드를 종합 설명에 삽입한다")
     for paper, slot in (("red", 0), ("blue", 1), ("green", 2), ("black", 3)):
@@ -734,8 +739,10 @@ def t_F5_baseline_flows(c: Ctx):
     for tech, value in (("bb", "4"), ("db", "3"), ("ml", "2"), ("wc", "5")):
         for criterion in "fsegu":
             c.page.locator(f"#sc-{tech}-{criterion}").select_option(value)
-    c.eq(_text(c, "tr.best td.name"), "울버린 켄텍카솔", "F5 2026 최고 합계 기술을 강조한다")
-    c.eq(_text(c, '[data-tot="wc"]'), "합계 25점", "F5 2026 추천 버튼에 합계를 표시한다")
+    # D-76 / AUDIT-2026 §5.2: 최고 합계 행 강조 없이 연습실 합계만 제공.
+    c.eq(c.page.locator("#score tr.best").count(), 0, "F5 2026 최고 합계 행 강조가 없다")
+    c.eq(c.page.locator("#score th").last.inner_text(), "연습실 합계", "F5 2026 합계 출처를 표시한다")
+    c.eq(_text(c, '[data-tot="wc"]'), "연습실 합계 25점", "F5 2026 추천 버튼에 연습실 합계를 표시한다")
     c.page.locator('[data-pick="ml"]').click()
     c.page.locator("#reason26").fill("사회/윤리 기준을 가장 무겁게 봄.")
     c.page.locator("#note-bb").fill("그래프와 문구 불일치")

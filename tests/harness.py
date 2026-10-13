@@ -171,7 +171,7 @@ def _run_cfg(pw, cfg, tests, only):
     return rec
 
 
-def main(ns):
+def main(ns, *, strict_errors=False):
     args = sys.argv[1:]
     only, cfgs = [], [c.name for c in CONFIGS]
     while args:
@@ -196,8 +196,10 @@ def main(ns):
     for name, r in out.items():
         ok = sum(1 for a in r["asserts"] if a["ok"])
         tot = len(r["asserts"])
-        cons = [c for c in r["console"] if "fonts.g" not in c["text"]]
-        fails = [f for f in r["failed"] if "fonts.g" not in f["url"]]
+        # D-76 검사 작성 지시: 새 연도 검사는 콘솔 error/warning·실패 요청 모두 0.
+        # 기존 호출의 판정은 유지하고, 명시한 새 검사에서만 광범위한 폰트 제외를 끈다.
+        cons = r["console"] if strict_errors else [c for c in r["console"] if "fonts.g" not in c["text"]]
+        fails = r["failed"] if strict_errors else [f for f in r["failed"] if "fonts.g" not in f["url"]]
         n_bad = (tot - ok) + len(cons) + len(r["pageerrors"]) + len(r["overflow"]) + len(r["exceptions"]) + len(fails)
         bad += n_bad
         print(f"{name:14} {ok:>4}/{tot:<4} {len(cons):>8} {len(r['pageerrors']):>8} {len(r['overflow']):>9} {len(r['exceptions']):>7}")

@@ -140,6 +140,8 @@ def _prep23(c, ident):
 
 def _prep24(c, ident, lock=True):
     c.goto("#y2024", wait="[data-hex]")
+    # D-76: 다른 연도 단서 삽입 검사에서 바꾼 모드와 독립적으로 실전 계약 검사.
+    c.page.evaluate("() => KCP.setSettings({timeMode:'real'})")
     c.check(f"{ident} 2024 준비실")
     hexes = c.page.locator("[data-hex]")
     for i in range(min(hexes.count(), 16)):
@@ -155,8 +157,11 @@ def _prep24(c, ident, lock=True):
     c.page.check("#showK")
     c.expect(c.page.locator(".hexmap text").count() > 0, f"{ident} 2024 채굴량 표시")
     c.page.click("#sim")
-    _wait(c, "#gauges .gauge")
-    c.eq(c.page.locator("#gauges .gauge").count(), 6, f"{ident} 2024 속성 여섯 개")
+    # D-76 / AUDIT-2024 §5.2·§5.5: 실전에서는 숨은 속성을 막대로 출력하지 않는다.
+    _wait(c, "#log li")
+    c.eq(c.page.locator("#gauges .gauge").count(), 0, f"{ident} 2024 실전 속성 막대 없음")
+    c.expect(bool(c.page.inner_text("#log").strip()), f"{ident} 2024 시뮬레이션 기록 문장 표시")
+    c.expect("시뮬레이션 1회" in c.page.inner_text("#runs"), f"{ident} 2024 시뮬레이션 실행 기록")
     c.expect(c.page.locator("#go24").is_disabled(), f"{ident} 2024 확정 전 면접실 이동 비활성")
     if lock:
         _lock24(c, ident)
@@ -177,6 +182,8 @@ def _prep25(c, ident):
     for paper in ("red", "green", "black", "blue"):
         c.page.click(f'[data-tab="{paper}"]')
         c.check(f"{ident} 2025 신문 {paper}")
+    # D-76 / AUDIT-2025 §5.1: 단서 삽입은 연습 모드에서, 마우스 배치 경로는 그대로.
+    c.page.evaluate("() => KCP.setSettings({timeMode:'ext'})")
     c.page.locator("[data-fact]").first.click()
     c.expect(c.page.input_value("#overall25").startswith("["), f"{ident} 2025 종합 설명에 단서 삽입")
     for paper, slot in (("red", 0), ("blue", 1), ("green", 2), ("black", 3)):
@@ -204,8 +211,10 @@ def _prep26(c, ident):
     for tech, score in (("bb", "4"), ("db", "3"), ("ml", "2"), ("wc", "5")):
         for key in "fsegu":
             c.page.select_option(f"#sc-{tech}-{key}", score)
-    c.eq(c.page.locator("tr.best td.name").inner_text(), "울버린 켄텍카솔", f"{ident} 2026 합계 최고 행 강조")
-    c.eq(c.page.locator('[data-tot="wc"]').inner_text(), "합계 25점", f"{ident} 2026 추천 버튼 합계")
+    # D-76 / AUDIT-2026 §5.2: 합계는 유지하고 최고 행 강조만 없앤다.
+    c.eq(c.page.locator("#score tr.best").count(), 0, f"{ident} 2026 최고 합계 행 강조 없음")
+    c.eq(c.page.locator("#score th").last.inner_text(), "연습실 합계", f"{ident} 2026 합계 출처 표시")
+    c.eq(c.page.locator('[data-tot="wc"]').inner_text(), "연습실 합계 25점", f"{ident} 2026 추천 버튼 연습실 합계")
     c.page.click('[data-pick="ml"]')
     c.page.fill("#reason26", "사회/윤리 기준을 가장 무겁게 봄.")
     c.page.fill("#note-bb", "그래프와 문구 불일치")
@@ -937,7 +946,8 @@ REPORT_KEYS = {
     "2022": {"22-q1", "22-q2"},
     # 2023b spec §1·§1.7: 틀 채움도 포함하여 전부 보고서 문항.
     "2023": set(QUESTION_KEYS["2023"]),
-    "2024": {"24-c1", "24-c2", "24-c3", "24-c4", "24-c5-yes", "24-c5-diff", "24-c6"},
+    # AUDIT-2024 §3-1 / A-2024 작업 2: 공통 및 개별 7키 모두 보고서 문항.
+    "2024": set(QUESTION_KEYS["2024"]),
     "2025": {"25-q"}, "2026": {"26-q1", "26-q2"},
 }
 
@@ -949,11 +959,14 @@ def _question_contract(c, year, label):
     c.eq(len(keys), len(set(keys)), f"T0a-13 {year} {label} 질문 키 중복 없음")
     c.expect(all(k in QUESTION_KEYS[year] for k in keys), f"T0a-13 {year} {label} 지정된 고정 키 사용")
     reports = [q for q in questions if q.get("src") == "report"]
-    # 2023b spec §1.7: 빈 상태 18개, _prep23 예시 계획 뒤 24개.
-    c.eq(len(reports), {"2022":2,"2023":18 if label == "빈 상태" else 24,"2024":6,"2025":1,"2026":2}[year], f"T0a-13 {year} {label} 보고서 문항 개수")
+    # 2023b spec §1.7: 18→24개. AUDIT-2024 §3-1: 확정 전 6→확정 뒤 8개.
+    c.eq(len(reports), {"2022":2,"2023":18 if label == "빈 상태" else 24,"2024":6 if label == "빈 상태" else 8,"2025":1,"2026":2}[year], f"T0a-13 {year} {label} 보고서 문항 개수")
     c.expect(all((q.get("src") == "report") == (q.get("k") in REPORT_KEYS[year]) for q in questions), f"T0a-13 {year} {label} 보고서 문항에만 출처 부여")
     # 2023b spec-v2 V4·W3: 기본 다섯 키 중 나온 질문 + 실제 선택한 유실 항목만 frame.
     frames = {"23-q2-top", "23-q2-lead", "23-q2-gap", "23-q2-shorten", "23-q2-real"} if year == "2023" else set()
+    # AUDIT-2024 §3-1: 개별 문항은 보고서 문장에 내 계획을 채운 frame.
+    if year == "2024":
+        frames = {k for k in QUESTION_KEYS[year] if k.startswith("24-i-")}
     if year == "2023":
         plan = c.page.evaluate("KCP.load('2023').game.plan || []")
         lost = set("3A 3B 3D 3E 3F 3G 3H 4A 4C 4D 4E 4F".split())  # spec §0
@@ -997,7 +1010,8 @@ def t_T0a_13_question_variants(c: Ctx):
       const wc = KCP.games['2026'].questions(state);
       return [[a && b && a.q !== b.q && a.k === b.k, '준비실 선택으로 문장은 바뀌어도 핵심 키 유지'],
         [c1.time === '약 2~4분' && c1.rec === undefined, '2024 권장 시간은 time으로 분리'],
-        [c4.time === undefined && c4.rec === undefined, '2024 공통 4에는 시간과 기준 메모 없음'],
+        // AUDIT-2024 §2 / A-2024 작업 3: 공통 4도 문항카드의 약 2~4분.
+        [c4.time === '약 2~4분' && c4.rec === undefined, '2024 공통 4 권장 시간과 기준 메모 없음'],
         [div.rec.startsWith('보고서의 면접 질문 기준') && div.time === undefined, '2025 기준 메모를 답변 시간으로 쓰지 않는다'],
         [empty.find(q=>q.k==='26-q2').q === '최우수 기술 하나를 추천하고 그 이유를 설명해 주세요.' && !empty.some(q=>q.k==='26-runner'), '2026 추천 전 문장과 탈락 질문 숨김'],
         [ml.find(q=>q.k==='26-q2').q.includes('AI 마음렌즈') && ml.some(q=>q.k==='26-runner') && ml[2].k === '26-sum', '2026 합계와 다른 추천의 질문 및 고정 키'],

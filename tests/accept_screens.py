@@ -149,6 +149,8 @@ def _prepare2022(c, aid):
 
 def _prepare2024(c, aid, lock=True):
     _prep(c, "2024")
+    # D-76: 이 준비 helper는 실전 모드의 시뮬레이션 기록을 검사한다.
+    c.page.evaluate("() => KCP.setSettings({timeMode:'real'})")
     hexes = c.page.locator("[data-hex]")
     for i in range(min(hexes.count(), 16)):
         hexes.nth(i).click()
@@ -163,8 +165,11 @@ def _prepare2024(c, aid, lock=True):
     c.page.locator("#showK").check()
     c.expect(c.page.locator(".hexmap text").count() > 0, f"{aid} 채굴량을 표시한다")
     c.page.locator("#sim").click()
-    c.page.wait_for_selector("#gauges .gauge")
-    c.eq(c.page.locator("#gauges .gauge").count(), 6, f"{aid} 속성 여섯 개를 표시한다")
+    # D-76 / AUDIT-2024 §5.2·§5.5: 막대 대신 기록으로 시뮬레이션 동작을 확인.
+    c.page.wait_for_selector("#log li")
+    c.eq(c.page.locator("#gauges .gauge").count(), 0, f"{aid} 실전 속성 막대가 없다")
+    c.expect(bool(_text(c, "#log").strip()), f"{aid} 시뮬레이션 기록 문장을 표시한다")
+    c.expect("시뮬레이션 1회" in _text(c, "#runs"), f"{aid} 시뮬레이션 실행을 기록한다")
     c.expect(c.page.locator("#go24").is_disabled(), f"{aid} 확정 전 이동 버튼은 비활성이다")
     if lock:
         c.page.locator("#lock").click()
@@ -246,6 +251,8 @@ def t_T0b_1_baseline(c: Ctx):
     for paper in ("red", "green", "black", "blue"):
         c.page.locator(f'[data-tab="{paper}"]').click()
         c.check(f"{aid} 2025 신문 {paper}")
+    # D-76 / AUDIT-2025 §5.1: 단서 삽입은 연습 모드에서, 마우스 배치 경로는 그대로.
+    c.page.evaluate("() => KCP.setSettings({timeMode:'ext'})")
     c.page.locator("[data-fact]").first.click()
     c.expect(c.page.locator("#overall25").input_value().startswith("["),
              f"{aid} 단서 카드가 종합 설명에 삽입된다")
@@ -272,8 +279,10 @@ def t_T0b_1_baseline(c: Ctx):
         c.page.locator(f'[data-tab="{tab}"]').click()
         c.check(f"{aid} 2026 자료 {tab}")
     _score2026(c)
-    c.eq(_text(c, "tr.best td.name"), "울버린 켄텍카솔", f"{aid} 최고 합계 행을 강조한다")
-    c.eq(_text(c, '[data-tot="wc"]'), "합계 25점", f"{aid} 추천 버튼에 합계를 표시한다")
+    # D-76 / AUDIT-2026 §5.2: 빈 기준표에 없는 자동 최고 강조 제거.
+    c.eq(c.page.locator("#score tr.best").count(), 0, f"{aid} 최고 합계 행 강조가 없다")
+    c.eq(c.page.locator("#score th").last.inner_text(), "연습실 합계", f"{aid} 합계의 출처를 표시한다")
+    c.eq(_text(c, '[data-tot="wc"]'), "연습실 합계 25점", f"{aid} 추천 버튼에 연습실 합계를 표시한다")
     c.page.locator("#reason26").fill("사회/윤리 기준을 가장 무겁게 봄.")
     c.page.locator("#note-bb").fill("그래프와 문구 불일치")
     _phase(c, "room")
@@ -459,8 +468,9 @@ def t_T0b_7_room_sources(c: Ctx):
     c.check(f"{aid} 2022 출처 표시")
     _prepare2024(c, aid)
     _phase(c, "room")
-    c.eq(c.page.locator(".qdeck .qcard .who .tag-official").count(), 6,
-         f"{aid} 2024 확정 뒤 보고서 문항 태그는 여섯 개다")
+    # AUDIT-2024 §3-1: 확정 뒤 개별 두 문항도 보고서 출처로 표시한다.
+    c.eq(c.page.locator(".qdeck .qcard .who .tag-official").count(), 8,
+         f"{aid} 2024 확정 뒤 보고서 문항 태그는 여덟 개다")
     c.check(f"{aid} 2024 출처 표시")
 
 
@@ -1167,8 +1177,8 @@ def _question_keys(c, aid, year, state):
     c.expect(all(isinstance(k, str) and re.fullmatch(year[2:] + r"-[a-z0-9-]+", k) for k in keys),
              f"{aid} T0a-13 {year} 질문 키가 고정 형식을 따른다")
     c.eq(len(set(keys)), len(keys), f"{aid} T0a-13 {year} 질문 키가 중복되지 않는다")
-    # 2023b spec §1.7·spec-v2 W1: T0b-2는 빈 상태 18개, 예시 계획 뒤 24개를 검사한다.
-    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 24 if state.get("game", {}).get("plan") else 18, "2024": 6, "2025": 1, "2026": 2}[year],
+    # 2023b spec §1.7·W1: 18→24개. AUDIT-2024 §3-1: 확정 전 6→확정 뒤 8개.
+    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 24 if state.get("game", {}).get("plan") else 18, "2024": 8 if state.get("game", {}).get("locked") else 6, "2025": 1, "2026": 2}[year],
          f"{aid} T0a-13 {year} 보고서 문항 수를 유지한다")
 
 
@@ -1214,7 +1224,8 @@ def t_T0b_2_question_contract(c: Ctx):
       const g={game:{scores,best:'ml'}},ml=KCP.games['2026'].questions(g);
       g.game.best='wc';const wc=KCP.games['2026'].questions(g);
       return [a.k===b.k&&a.q!==b.q,one.time==='약 2~4분'&&one.rec===undefined,
-        four.time===undefined&&four.rec===undefined,
+        // AUDIT-2024 §2 / A-2024 작업 3: 공통 4 문항카드 권장 시간 복원.
+        four.time==='약 2~4분'&&four.rec===undefined,
         q25.rec.startsWith('보고서의 면접 질문 기준')&&q25.time===undefined,
         q26.find(q=>q.k==='26-q2').q==='최우수 기술 하나를 추천하고 그 이유를 설명해 주세요.',
         !q26.some(q=>q.k==='26-runner'),ml.find(q=>q.k==='26-q2').q.includes('AI 마음렌즈'),
