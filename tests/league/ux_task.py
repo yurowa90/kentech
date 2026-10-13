@@ -215,7 +215,11 @@ def month_one(r):
 
     # S1 근거 하나: 첫 달 안내를 닫고 사건을 본다.
     r.scene("S1")
-    if r.visible("#lg-guide-close"):
+    r.coach = r.visible("#lg-coach")
+    if r.visible("#lg-coach-close"):
+        r.shot("coach")
+        r.act("#lg-coach-close", "첫 달 안내 닫기")
+    elif r.visible("#lg-guide-close"):
         r.act("#lg-guide-close", "첫 달 안내 닫기")
     r.act('#lg-bar [data-panel="deal"]', "사건 서랍 열기")
     page.wait_for_selector("#lg-panel", state="visible")
@@ -272,6 +276,10 @@ def month_one(r):
     # S4 약속
     r.scene("S4")
     r.act("#lg-ready", "준비")
+    if r.visible("#lg-issue-check"):
+        # 품질8 UX U3: 전선 미연결·돌 설비 없음이면 준비 전 확인이 한 번 뜬다. 학생도 겪는 단계라 행동으로 센다.
+        r.shot("issue-check")
+        r.act("#lg-issue-go", "그대로 진행")
     page.wait_for_selector("#lg-ready-confirm", state="visible", timeout=30000)
     ev = page.locator("[data-evidence]:visible").first.get_attribute("data-evidence")
     r.act(f'[data-evidence="{ev}"]', "근거 하나")
