@@ -1,5 +1,5 @@
 'use strict';
-// S7-fix3.md: 카드 집합/분해 순서·최대 아닌 선택·미미한 몫·재시험·실패 문구.
+// C-fix2.md 호출 수·옛 frozen 호환 + S7-fix3.md: 카드 집합/분해 순서·최대 아닌 선택·미미한 몫·재시험·실패 문구.
 // 실행: node tests/league/review/30-s7-attribution.js (브라우저 없음)
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -88,10 +88,10 @@ function cardOrder(html, ranked, label) {
 }
 function rendered(a, html, label) {
   const rows = [...html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"/g)];
-  const hasReplay = Math.abs(a.replay) >= .01;
+  const hasReplay = Math.abs(a.replay) >= .005;
   equal(rows.map(m => m[1]), ['trial', ...(hasReplay ? ['replay'] : []), ...causes, 'actual'],
     `${label}: 겹침 없이 시험 + 별도 재현 차이 + 네 원인 + 실제`);
-  equal(html.includes('id="lg-outage-replay"'), hasReplay, `${label}: 0.01%p 미만 재현 설명 생략`);
+  equal(html.includes('id="lg-outage-replay"'), hasReplay, `${label}: 0.005%p 미만 재현 설명 생략`);
   ok(Math.abs(rows.filter(m => m[1] !== 'actual').reduce((s, m) => s + Number(m[2]), 0) - a.actual) <= .02,
     `${label}: 생략된 재현 차이를 고려한 폭포 합계 ±0.02%p`);
   const candidateKeys = [...html.matchAll(/data-(?:missed|out-other)="([^"]+)"/g)].map(m => m[1]);
@@ -100,16 +100,17 @@ function rendered(a, html, label) {
   ok(/id="lg-outage-waterfall"[^>]*role="img"[^>]*aria-label="[^"]*시험 [\d.,]+%/.test(html),
     `${label}: 폭포 이미지 역할과 수치 요약`);
   const aria = html.match(/id="lg-outage-waterfall"[^>]*aria-label="([^"]+)"/)[1];
-  for (const name of ['내 선택', '날씨·운전 기간', '사건', '이웃 거래', '실제']) {
+  for (const name of ['내 선택', '날씨·운전 기간', '사건·대응', '이웃 거래', '실제']) {
     ok(aria.includes(name), `${label}: 접근성 요약에 ${name}`);
   }
   ok(/id="lg-outage-verdict"[^>]*tabindex="-1"/.test(html), `${label}: 판정 머리 초점 대상`);
   ok(html.includes('>2022 기출로 연습하기</a>'), `${label}: 2022 링크 문구`);
 }
 
-for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset: .009 },
+for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset: .0049 },
+  { sameWeather: true, replayOffset: .0051 }, { sameWeather: true, replayOffset: .009 },
   { sameWeather: true, replayOffset: -.011 }, { sameWeather: true, replayOffset: .125 },
-  { changed: true }, { changed: true, noEvents: true, month: 2 }, { changed: true, month: 2 }]) {
+  { changed: true }]) {
   const { S, V, res, trial } = fixture(options);
   const before = JSON.stringify({ S, V, trial });
   const a = attribution(V, res, id);
@@ -120,11 +121,12 @@ for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset:
   near(a.actual, res.team[id].unsPct, '실제 도착값');
   near(a.total, a.actual - a.trial, '정전율 차이 단위 %p');
   near(a.replay + a.parts.reduce((sum, p) => sum + p.value, 0), a.total, '재현 차이 + 네 원인 합계 항등식 1e-9');
-  ok(calls.length > 0 && calls.length <= 5, '추가 simulate 실제 호출 ≤5');
+  const waiting = a.grid.waitingMW > 0;
+  equal(calls.length, waiting ? 5 : 4, '시험 기준: 접속 대기 없으면 4회, 있으면 5회');
   equal(a.simulations, calls.length, '보고된 호출 수 = 실제 호출 수');
-  equal(calls.map(([plan]) => plan.seed), [trial.seed, trial.seed, res.seed, res.seed, res.seed],
+  equal(calls.map(([plan]) => plan.seed), [trial.seed, trial.seed, res.seed, res.seed, ...(waiting ? [res.seed] : [])],
     '13–15행: 재현·계획은 시험 씨앗, 이후 단계는 실제 씨앗');
-  equal(calls.map(([, days]) => days), [trial.days, trial.days, res.days, res.days, res.days],
+  equal(calls.map(([, days]) => days), [trial.days, trial.days, res.days, res.days, ...(waiting ? [res.days] : [])],
     '13–15행: 날씨 단계부터 실제 운영 일수');
   equal(calls[0][0].policies, trial.plan.policies || [], '재현 단계에 시험 정책');
   equal(calls[1][0].policies, V.teams[id].plan.policies || [], '선택 단계에 실제 정책');
@@ -179,16 +181,62 @@ for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset:
     near(part('event'), 0, '사건 없는 달의 사건 몫 0');
     ok(html.includes('우리 도시에 해당하는 사건 없음'), '무사건 단서');
   }
-  if (options.month === 2) {
-    equal(res.round, 2, '실제 엔진으로 2월까지 진행');
-    ok(/id="lg-outage-baseline"[^>]*>[^<]*약속[^<]*지난달 대비[^<]*나누기[^<]*시험 1주 대비/.test(html),
-      '2월 약속은 지난달 대비·나누기는 시험 대비 안내');
-  }
   console.log(JSON.stringify({ options, ms: a.ms, simulations: a.simulations, replay: a.replay, parts: a.parts }));
 }
 ok(orderDiffersFromRank > 0, '크기 순위와 표시 순서가 실제로 다른 사례 실행');
 ok(nonlargestCases > 0, '최대가 아닌 선택 사례 실행');
 ok(noCauseCases > 0, '모든 몫 < 0.05%p 사례 실행');
+
+// 접속 대기 있는 첫 달은 연결 반사실 1회를 추가한다. 대기 없는 위 사례는 4회다.
+{
+  const { V, res, trial } = fixture({ noEvents: true, sameWeather: true });
+  const a = attribution(V, res, id);
+  ok(a && a.grid.waitingMW > 0, '시험 기준 접속 대기 >0 픽스처');
+  equal(calls.length, 5, '접속 대기 있는 시험 기준 정확히 5회');
+  equal(a.simulations, calls.length, '접속 대기 있는 시험 보고 호출 수');
+  equal(calls.map(([p]) => p.seed), [trial.seed, trial.seed, res.seed, res.seed, res.seed],
+    '시험 기준 대기 반사실까지 실제 씨앗');
+  equal(calls.map(([, days]) => days), [trial.days, trial.days, res.days, res.days, res.days],
+    '시험 기준 대기 반사실까지 실제 운영 기간');
+  ok(a.grid.value < -.05, '접속 대기 연결 반사실이 실제 정전율을 줄임');
+  const count = calls.length;
+  ok(attribution(V, res, id) === a, '접속 대기 있는 시험 캐시 반환');
+  equal(calls.length, count, '접속 대기 있는 시험 캐시 추가 호출 0');
+}
+
+// 표시 문턱은 계산 경로와 분리해 정확한 양·음 경계값으로 검증한다.
+{
+  const { V, res } = fixture({ changed: true });
+  const base = attribution(V, res, id);
+  for (const replay of [.004999, .005, .005001, -.004999, -.005, -.005001]) {
+    const frozen = { ...clone(base), replay };
+    const html = league.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
+    equal(html.includes('data-out-step="replay"'), Math.abs(replay) >= .005, `${replay} 시험 재현 줄 경계`);
+    equal(html.includes('id="lg-outage-replay"'), Math.abs(replay) >= .005, `${replay} 시험 재현 설명 경계`);
+  }
+  // basis 없는 옛 기록은 2월 이후에도 시험 기준 이름·문구를 유지한다.
+  const old = clone(base); delete old.basis; old.round = 2;
+  const later = { ...clone(V), round: 2 }, result = { ...clone(res), round: 2 };
+  calls = [];
+  const html = league.uiMath.outageCardsHTML(later, result, id,
+    { outageOpened: true, missed: 'weather', outageFrozen: old });
+  ok(html.includes('날씨·운전 기간') && !html.includes('날씨·계절·운전 기간') &&
+    html.includes('약속 판정은 지난달 대비, 아래 나누기는 시험 대비예요.'),
+    'basis 없는 옛 2월 기록도 시험 이름·기준 차이 안내');
+  equal(calls.length, 0, '옛 고정 분해는 재계산 0');
+}
+
+// C-lastmonth.md §4: 첫 달 결과를 이 기기에서 받지 않은 2월에는 시험으로
+// 대신하지 않는다. 사본이 있는 월간 경로·여섯 단계 검산은 32번에서 다룬다.
+for (const noEvents of [false, true]) {
+  const { V, res } = fixture({ changed: true, month: 2, noEvents });
+  equal(res.round, 2, '실제 엔진으로 2월까지 진행');
+  equal(attribution(V, res, id), null, '2월 시험이 있어도 지난달 사본 없으면 분해 불가');
+  const html = league.uiMath.outageCardsHTML(V, res, id, {});
+  ok(html.includes('지난달 운영 조건이 이 기기에 없어 나누지 못해요'), '사본 없는 달 안내');
+  ok(!/data-missed=|data-out-other=|data-out-step=|id="lg-outage-(?:cards|waterfall|single|open)"/.test(html),
+    '사본 없는 2월은 시험 대비 분해·카드·폭포 없음');
+}
 
 // 17행: 운영 뒤 바뀐 인구를 사용하면 분해가 달라지는 회귀를 잡는다.
 {
@@ -240,7 +288,8 @@ for (const field of ['seed', 'days', 'plan']) {
   storage.set('kcp-build-trial-v1', JSON.stringify(bucket));
   calls = [];
   const after = attribution(V, res, id);
-  ok(after && after !== before && calls.length > 0 && calls.length <= 5, `${field} 변경 시 새 분해`);
+  ok(after && after !== before, `${field} 변경 시 새 분해`);
+  equal(calls.length, after.grid.waitingMW > 0 ? 5 : 4, `${field} 변경 시 대기에 따른 정확한 시험 호출 수`);
   if (field !== 'plan') equal(field === 'seed' ? calls[0][0].seed : calls[0][1], next[field], `${field} 새 시험 입력`);
   else equal(calls[0][0].policies, next.plan.policies, '새 시험 계획 입력');
 }

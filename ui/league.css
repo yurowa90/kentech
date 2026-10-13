@@ -348,6 +348,18 @@ section#lg-missed.lg-outage { display: block; }
   .lg-out-card { min-height: 44px; }
   .lg-out-row { grid-template-columns: 76px minmax(0, 1fr) 78px; gap: 4px; }
 }
+/* N1: 리그 서랍(폭 약 360px)에서는 카드를 세로로 쌓고 한 장을 낮게 만든다 — 열기 뒤 카드 앞면의 몫·꼬리표와
+   폭포 첫 줄이 한 화면에 들어오게. 단서는 두 줄로 줄이고 전체는 '단서 더 보기'(#lg-outage-more)에 둔다. */
+#lg-panel .lg-out-cards { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+#lg-panel .lg-out-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: start; padding: 8px 10px; }
+#lg-panel .lg-out-card > strong, #lg-panel .lg-out-clue { grid-column: 1; }
+#lg-panel .lg-out-size { grid-column: 2; grid-row: 1 / span 2; align-self: center; margin: 0; padding: 4px 6px; min-width: 4.5em; }
+#lg-panel .lg-out-tags { grid-column: 1 / -1; }
+.lg-out-clue { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+#lg-outage-more { margin: 4px 0 8px; }
+#lg-outage-more ul { margin: 4px 0 0; padding-left: 18px; }
+#lg-outage-more li { margin: 2px 0; }
+#lg-outage-single-grid { margin: 4px 0 8px; }
 
 /* U5: 팀 플레이와 이어지는 로비·자리 선택·진행자 남색 판. */
 @media screen {
@@ -490,6 +502,8 @@ section#lg-missed.lg-outage { display: block; }
   .lg-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
   #lg-host-risk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .lg-risk-chip { display: inline-flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--ui-danger); border-radius: var(--ui-radius); color: var(--ui-danger); font-size: 12px; }
+  /* A16: 접속 대기만 있는 도시는 '주의' — 위험(정전·남은 돈·지지율)과 색·기호·테두리를 나눈다. */
+  .lg-risk-chip[data-level="caution"] { border-style: dashed; border-color: var(--ui-gold); color: var(--ui-muted); }
   #lg-host-unready { color: var(--ui-muted); font-size: 12px; }
   html.v2-league-host #lg-host-summary { padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host #lg-host-summary h2 { font: 400 23px var(--display); margin: 0 0 8px; }
@@ -783,6 +797,7 @@ section#lg-missed.lg-outage { display: block; }
   .lg-regioncity span { overflow-wrap: anywhere; }
   .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
   .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
+  .lg-team-map .bd-cap .lg-debt-note { display: none; }
   .lg-team-map .bd-cap[data-cap="time"] .v2-cap-v { font-size: 10px; }
 }
 #lg-final-summary p,
@@ -940,4 +955,40 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 @media (max-width: 600px) {
   #lg-bar #lg-plan-co2 { display: none; }
   #lg-plan-co2-drawer { display: block; }
+}
+
+/* M5·M6: 태블릿 가로(761~1279px)에서 단계가 바뀌어도 머리 막대 첫 줄과 아래 도구 막대가 한 줄을 유지한다.
+   준비 단추 폭을 고정해 '준비'→'기준 확인'·'다음 달'로 바뀌어도 줄이 접히지 않게 하고, 넘치면 메뉴만 가로로 민다.
+   서랍(성적표)이 열리면 도구 막대를 좁히지 않고 서랍을 도구 막대 위로 올린다. 1280 이상·760 이하는 바꾸지 않는다. */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .lg-team-map .lg-bar:not(.lg-awaybar) .lg-bbtn { padding: 0 9px; }
+  .lg-team-map .lg-bar:not(.lg-awaybar) .lg-readybtn { min-width: 6.4em; }
+  .lg-team-map #lg-hud-chips button { max-width: 160px; }
+  /* flex-end로 넘치면 앞쪽 단추가 스크롤로도 닿지 않는다 — 첫 단추의 auto 여백으로 오른쪽에 붙인다(넘치면 0이 됨). */
+  .lg-team-map .lg-bar:not(.lg-awaybar) .lg-actions { flex: 1 1 320px; min-width: 0; justify-content: flex-start; overflow-x: auto; scrollbar-width: thin; }
+  .lg-team-map .lg-bar:not(.lg-awaybar) .lg-actions > :first-child { margin-left: auto; }
+  .lg-team-map .lg-actions .lg-readybtn { position: sticky; right: 0; z-index: 1; background: #152936; }
+  .lg-team-map .lg-actions .lg-readybtn[aria-pressed="true"] { background: var(--ui-cyan); }
+  html.bd-drawer-open .lg-team-map .bd-dock { right: 10px; }
+  .lg-team-map .bd-drawer { bottom: calc(var(--bd-dock, 90px) + 8px); }
+}
+
+/* S8 이유와 다음 달 계획 비교는 기기 안에서만 읽는다. */
+#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; bottom: calc(var(--bd-dock, 100px) + 10px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
+html.bd-drawer-open #lg-plan-reminder,
+#bd-root:has(#lg-panel:not([hidden])) #lg-plan-reminder { display: none; }
+#lg-plan-reminder span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#lg-plan-reminder-close { flex: none; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.lg-plan-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.lg-plan-comparison > * { min-width: 0; margin: 0; }
+.lg-plan-comparison p { margin: 0; }
+.lg-debt-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.lg-trend-scroll { overflow-x: auto; }
+#lg-timeline [data-change] text { font-size: 11px; }
+#lg-decisions li { margin: 8px 0; }
+.lg-host-details [data-host-card]:not([open]) { align-self: start; }
+@media (min-width: 761px) and (max-width: 1279px) {
+  .lg-team-map #lg-panel[data-stage="review"]:is([data-tab="result"], [data-tab="journal"]),
+  .lg-team-map #lg-panel[data-stage="end"]:is([data-tab="result"], [data-tab="journal"]) { width: calc(50vw - 12px); box-sizing: border-box; }
+  .lg-team-map[data-result-drawer="true"] #lg-map-result { max-width: calc(50vw - 28px); }
 }

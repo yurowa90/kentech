@@ -7,6 +7,7 @@
   const KCP = window.KCP;
   if (!KCP || typeof KCP.route !== "function" || !KCP.leagueCore || !KCP.leagueNet || !KCP.buildGame) return;
   const C = KCP.leagueCore, NET = KCP.leagueNet, BG = KCP.buildGame, esc = KCP.esc;
+  const POWER_CHIP_DEF = BG.powerChipDefinition;
   const REGION = "south";
   // K_TEAM: 이 기기에서 마지막으로 쓴 팀(이어서 하기). K_TAB(sessionStorage): 이 탭의 팀·서명 키·순번 — 한 PC에서 탭 여러 개로 시연해도 섞이지 않게.
   // 팀 자료(건설·일지)는 방·팀마다 따로: K_DATA + ":" + 방 + ":" + 팀
@@ -140,7 +141,10 @@
   const lowestGroup = groups => GROUP_KEYS.filter(k => Object.hasOwn(groups, k)).sort((a, b) => groups[a] - groups[b] || GROUP_KEYS.indexOf(a) - GROUP_KEYS.indexOf(b))[0];
   function reweightScore(score, weights) {
     const total = Object.values(weights).reduce((a, x) => a + Math.max(0, Number(x) || 0), 0);
-    const rows = (score?.rank || []).map((r, i) => ({ ...r, order: i, score: total ? SCORE_KEYS.reduce((a, k) => a + (r.parts[k] || 0) * Math.max(0, Number(weights[k]) || 0), 0) / total : r.score }));
+    // 공식 점수(econ.js score)와 같은 식: 부분 점수 하한을 둔 가중 기하평균 + 공동 보너스, 0~100.
+    const floor = Math.min(100, Math.max(1, Number(KCP.ECON_DATA.params.scorePartFloor?.v) || 1));
+    const geo = r => Math.exp(SCORE_KEYS.reduce((a, k) => a + Math.max(0, Number(weights[k]) || 0) * Math.log(Math.max(floor, r.parts[k] || 0)), 0) / total);
+    const rows = (score?.rank || []).map((r, i) => ({ ...r, order: i, score: total ? Math.round(Math.min(100, Math.max(0, geo(r) + (Number(r.coop) || 0))) * 10) / 10 : r.score }));
     return rows.sort((a, b) => b.score - a.score || a.order - b.order).map((r, i) => ({ ...r, rank: i + 1 }));
   }
   function causeBreakdown(before, after, weights, actual) {
@@ -178,7 +182,7 @@
   function monthNote() {
     const d = tdata(), rd = L.snap?.round || 0;
     d.interview = d.interview || {}; d.interview.months = d.interview.months || {};
-    d.interview.months[rd] = d.interview.months[rd] || {};
+    d.interview.months[rd] ||= { operatingPlan: null, followingPlanChanged: false, resultNumbers: [] };
     return { d, n: d.interview.months[rd] };
   }
   function curtailEvents(V, round, id) {
@@ -272,7 +276,9 @@
   function trendHTML(V, id, timeline = false) {
     const points = monthPoints(V, id), months = points.map(h => h.t), city = V.econ?.cities[id];
     const names = [["uns", "정전", "%"], ["pop", "주민", "명"], ["appr", "지지율", "%"], ["cash", "현금", "억"]];
-    const start = months[0] || 1, end = months.at(-1) || start, X = t => 40 + (t - start) / Math.max(1, end - start) * 240;
+    const start = months[0] || 1, end = months.at(-1) || start;
+    const graphWidth = timeline ? Math.max(380, (end - start) * 24 + 116) : 380;
+    const plotEnd = graphWidth - 100, X = t => 40 + (t - start) / Math.max(1, end - start) * (plotEnd - 40);
     const graphs = names.map(([k, name, unit], row) => {
       const vals = points.filter(h => Number.isFinite(h[k]));
       let lo = 0, hi = 100;
@@ -280,14 +286,14 @@
       if (k === "cash") { lo = Math.min(0, ...vals.map(h => h[k])); hi = Math.max(1, ...vals.map(h => h[k])); }
       const Y = v => row * 70 + 56 - (v - lo) / Math.max(1, hi - lo) * 35;
       const path = vals.map((h, i) => `${i ? "L" : "M"}${X(h.t).toFixed(1)},${Y(h[k]).toFixed(1)}`).join(" ");
-      return `<g data-trend="${k}"><text x="4" y="${row * 70 + 14}">${name} · ${esc(vals.length ? fmt(vals.at(-1)[k], 1) + unit : "자료 없음")}</text>${[lo, (lo + hi) / 2, hi].map(v => `<path d="M40,${Y(v)} H280" stroke="currentColor" opacity=".15"/><text x="285" y="${Y(v) + 4}">${esc(fmt(v))}</text>`).join("")}<path d="${path}" fill="none" stroke="currentColor" stroke-width="2"/>${vals.map(h => `<circle data-month="${h.t}" cx="${X(h.t)}" cy="${Y(h[k])}" r="3"><title>${esc(monthName(V, h.t))} ${name} ${esc(fmt(h[k], 1))}${unit}</title></circle>`).join("")}</g>`;
+      return `<g data-trend="${k}"><text x="4" y="${row * 70 + 14}">${name} · ${esc(vals.length ? fmt(vals.at(-1)[k], 1) + unit : "자료 없음")}</text>${[lo, (lo + hi) / 2, hi].map(v => `<path d="M40,${Y(v)} H${plotEnd}" stroke="currentColor" opacity=".15"/><text x="${plotEnd + 5}" y="${Y(v) + 4}">${esc(fmt(v))}</text>`).join("")}<path d="${path}" fill="none" stroke="currentColor" stroke-width="2"/>${vals.map(h => `<circle data-month="${h.t}" cx="${X(h.t)}" cy="${Y(h[k])}" r="3"><title>${esc(monthName(V, h.t))} ${name} ${esc(fmt(h[k], 1))}${unit}</title></circle>`).join("")}</g>`;
     }).join("");
     const changes = [], records = new Map();
     if (timeline) {
       (V.teams[id]?.hist || []).forEach(h => records.set(h.r, { n: h.n, l: h.l }));
       if (id === L?.team) Object.entries(tdata().interview?.months || {}).forEach(([t, n]) => {
         if (n.buildCount != null) records.set(+t, { n: n.buildCount, l: n.lineCount || 0 });
-        if ((n.outageOpened || n.outageSingleShown) && missedText(n)) changes.push({ t: +t, label: missedText(n), kind: "outage" });
+        if ((n.missed || n.outageOpened || n.outageSingleShown) && missedText(n)) changes.push({ t: +t, label: missedText(n), kind: "outage" });
         if (n.policy) changes.push({ t: +t, label: "정책 변경", kind: "policy" });
       });
       let previous = { n: 0, l: 0 };
@@ -297,8 +303,8 @@
       });
       changes.sort((a,b) => a.t - b.t || a.kind.localeCompare(b.kind));
     }
-    const displayedChanges = changes.filter(h => h.t >= start && h.t <= end);
-    return `<figure id="${timeline ? "lg-timeline" : "lg-trends"}" class="lg-trends"><figcaption>${timeline ? "결정과 결과 · 같은 달 눈금" : "도시 추이"}</figcaption><svg viewBox="0 0 380 ${timeline ? 346 : 310}" role="img" aria-label="정전·주민·지지율·현금 추이, 0을 포함한 숫자 눈금">${graphs}${displayedChanges.map(h => `<g data-change="${h.kind}"><path d="M${X(h.t)},18 V276" stroke="currentColor" stroke-dasharray="2 4" opacity=".4"/><text x="${X(h.t)}" y="${h.kind === "policy" ? 340 : h.kind === "outage" ? 310 : 325}">${h.kind === "policy" ? "정" : h.kind === "outage" ? "원" : "설"}<title>${esc(monthName(V, h.t))} ${esc(h.label)}</title></text></g>`).join("")}<text x="4" y="295">${esc(monthName(V, start))}</text><text x="375" text-anchor="end" y="295">${esc(monthName(V, end))}</text></svg><p class="lg-hint">숫자 눈금을 함께 읽어요. 정전·지지는 0~100%, 주민·현금은 0을 포함해요.${timeline ? ` 설 = 설비·전선 변경 · 정 = 정책 변경${displayedChanges.some(h => h.kind === "outage") ? " · 원 = 원인 나누기에서 놓친 것" : ""}` : ""}</p>${timeline ? `<ul>${changes.map(h => `<li>${esc(monthName(V, h.t))} · ${esc(h.label)}</li>`).join("") || "<li>남은 결정 기록 없음</li>"}</ul>` : ""}</figure>`;
+    const displayedChanges = [...new Map(changes.filter(h => h.t >= start && h.t <= end).map(h => [`${h.t}:${h.kind}`, h])).values()];
+    return `<figure id="${timeline ? "lg-timeline" : "lg-trends"}" class="lg-trends"><figcaption>${timeline ? "월별 추이 · 결정 표지" : "도시 추이"}</figcaption><div class="lg-trend-scroll"><svg style="min-width:${timeline && C.roundsOf(V).length > 12 ? graphWidth : 0}px" viewBox="0 0 ${graphWidth} ${timeline ? 346 : 310}" role="img" aria-label="정전·주민·지지율·현금 추이, 0을 포함한 숫자 눈금">${graphs}${displayedChanges.map(h => `<g data-change="${h.kind}"><path d="M${X(h.t)},18 V276" stroke="currentColor" stroke-dasharray="2 4" opacity=".4"/><text text-anchor="middle" x="${X(h.t)}" y="${h.kind === "policy" ? 340 : h.kind === "outage" ? 310 : 325}">${h.kind === "policy" ? "정" : h.kind === "outage" ? "원" : "설"}<title>${esc(monthName(V, h.t))} ${esc(h.label)}</title></text></g>`).join("")}<text x="4" y="295">${esc(monthName(V, start))}</text><text x="${graphWidth - 5}" text-anchor="end" y="295">${esc(monthName(V, end))}</text></svg></div><p class="lg-hint">숫자 눈금을 함께 읽어요. 정전·지지는 0~100%, 주민·현금은 0을 포함해요.${timeline ? ` 설 = 설비·전선 변경 · 정 = 정책 변경${displayedChanges.some(h => h.kind === "outage") ? " · 원 = 원인 나누기에서 놓친 것" : ""}` : ""}</p>${timeline ? `<ul>${changes.map(h => `<li>${esc(monthName(V, h.t))} · ${esc(h.label)}</li>`).join("") || "<li>남은 결정 기록 없음</li>"}</ul>` : ""}</figure>`;
   }
   function lossHTML(V) {
     const me = V.teams[L.team], loss = C.lossOf(me.base, BG.current());
@@ -343,7 +349,7 @@
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시</h3>${sourceHTML(L.team)}${lossHTML(V)}
       ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <p class="lg-left">남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b></p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 예약·지원금·연계선 정산을 반영해요. 억 = 게임 단위(실제 시 예산 아님) · ${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤 · 통과 ≥ ${esc(fmt(c.approval0 - params("approvalDrop"), 1))}%</small></div></dl>
-      ${recalHTML(rep, L.team)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team)}<p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · 2020 · 산업부(O*)</span></p></section>
+      <p id="lg-power-def" class="lg-hint">${esc(POWER_CHIP_DEF)}</p>${recalHTML(rep, L.team)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team)}<p class="lg-hint">재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. <span class="tag-mine">G · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · 2020 · 산업부(O*)</span></p></section>
       ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(g.whyGrade || "G")}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(g?.lowestGroupDissatisfaction?.whyGrade || "G")}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
       <p class="lg-hint lg-air-note">${airNoteHTML()}</p>
       <section id="lg-econpol"><h4>정책 <span class="tag-mine">G</span></h4>${[["taxRes", "주민 세율", "세입↑ / 주민 매력↓"], ["taxInd", "산업 세율", "세입↑ / 기업 매력↓"], ["service", "공공서비스", "생활 만족↑ / 지출↑"], ["incentive", "기업 유치 보조", "기업 매력↑ / 지출↑"]].map(([k, name, help]) => `<label class="lg-policy"><span>${name} <output>${esc(fmt(pol[k] || 0, 1))}${k === "incentive" ? "억/달" : "단계"}</output></span><input type="range" data-pol="${k}" min="${k === "incentive" ? 0 : -2}" max="${k === "incentive" ? 20 : 2}" step="1" value="${esc(pol[k] || 0)}" ${open ? "" : "disabled"}><small>얻는 것 / 잃는 것: ${help}</small></label>`).join("")}<label class="lg-policy lg-re100"><span><input type="checkbox" data-pol="re100" ${pol.re100 ? "checked" : ""} ${open && techResearch(V, L.team).adopted?.includes("re100") ? "" : "disabled"}>RE100 산단 지정</span><small>${techResearch(V, L.team).adopted?.includes("re100") ? "재생 전기 비중을 산업 평가에 더 반영해요(G)." : "🔒 RE100 산단 도입 후 선택"}</small></label></section>
@@ -550,7 +556,7 @@
     const leaders = Object.fromEntries(SCORE_KEYS.map(k => [k, Math.max(...rows.map(r => r.parts[k]))]));
     return `<section id="lg-rank" class="lg-sec"><h2>${L.snap?.phase === "end" ? "최종 순위" : "도시 순위"} <span class="tag-mine">모형 점수 · G</span></h2><div class="lg-rankrows">${rows.map((r, i) => {
       const shown = !nearby || Math.abs(i - own) <= 1, delta = prev[r.id] ? prev[r.id].rank - r.rank : 0;
-      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : ""} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `${techTitlesHTML(E.cities[r.id].research || {})}<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 전체의 성장을 빼고 본 변화: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${SCORE_KEYS.map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 1위(동점 포함)" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
+      return `<article class="lg-rankrow" data-team="${esc(r.id)}" data-rank="${esc(r.rank)}" data-me="${r.id === L.team}"><h3>${esc(r.rank)}위 ${shown ? esc(r.name) : `${esc(fmt(r.score, 1))}점(이름 가림)`} <small>${delta ? `${delta > 0 ? "▲" : "▼"}${esc(Math.abs(delta))}` : "–"}</small></h3>${shown ? `${techTitlesHTML(E.cities[r.id].research || {})}<b data-total>${esc(fmt(r.score, 1))}점</b><p>지역 전체의 성장을 빼고 본 변화: 주민 ${esc(signed((E.cities[r.id].pop / E.cities[r.id].pop0 / (E.totals.pop / E.totals.pop0) - 1) * 100, 2))}% · 산업 ${esc(signed((E.cities[r.id].ind / E.cities[r.id].ind0 / (E.totals.ind / E.totals.ind0) - 1) * 100, 2))}%</p><div class="lg-scoreparts">${SCORE_KEYS.map(k => `<div data-part="${k}" data-leader="${r.parts[k] === leaders[k]}"><span>${SCORE_NAMES[k]} ${esc(fmt(r.parts[k], 1))}점 ${r.parts[k] === leaders[k] ? "· 1위(동점 포함)" : ""}</span><meter min="0" max="100" value="${esc(r.parts[k])}" aria-label="${SCORE_NAMES[k]} 부분 점수"></meter></div>`).join("")}</div>` : ""}</article>`;
     }).join("")}</div>${nearby ? `<p class="lg-hint">내 도시와 바로 위·아래 도시의 이름을 보여 줍니다.</p>` : ""}</section>`;
   }
   function tickerHTML(V) {
@@ -558,7 +564,7 @@
     const I = E.intl || {}, exports = EXPORT_KEYS.filter(k => Object.hasOwn(I.export || {}, k)).map(k => I.export[k]), ex = exports.length ? exports.reduce((a, x) => a + x, 0) / exports.length : 1;
     const curtailDef = curtailEvents(V, V.round).map(x => x.E);
     const curtail = curtailDef.length ? `<p class="lg-curtail-news">출력제어: 남는 재생 전기를 버렸어요 — 저장·연계선이 있으면 덜 버립니다 <small>현상 <span class="tag-official">${esc([...new Set(curtailDef.map(e => e?.grade || "G"))].join("·"))}</span> · 크기·대응 <span class="tag-mine">G</span></small></p>` : "";
-    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">1 = 2026년 수준 · 가상 변동(G)</p>${curtail}${techNewsHTML(V)}${(E.intlActive || []).map(x => `<p>${esc((KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x).name || x.id)}</p>`).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
+    return `<section id="lg-ticker" class="lg-ticker" aria-label="국제 지수와 뉴스"><div class="lg-indices">${[["lng", "LNG", I.lng], ["fx", "환율", I.fx], ["export", "수출(부문 평균)", ex], ["ship", "해운", I.ship]].map(([k, name, v]) => `<span data-index="${k}" data-direction="${v >= 1 ? "up" : "down"}">${name} ${esc(fmt(v, 2))} ${v >= 1 ? "▲" : "▼"}</span>`).join("")}</div><p class="lg-hint">1 = 2026년 수준 · 가상 변동(G)</p>${curtail}${techNewsHTML(V)}${(E.intlActive || []).map(x => { const event = KCP.ECON_DATA.intl.events.find(e => e.id === x.id) || x; return x.id === "cbam" && !event.text ? "" : `<p>${esc(event.name || x.id)}${x.id === "cbam" ? `: ${esc(event.text)}` : ""}</p>`; }).join("")}${(E.report?.news || []).slice(0, IQ.quarter).map(x => `<p>${esc(x)}</p>`).join("")}</section>`;
   }
   function criterionDraft(V) {
     const { n } = monthNote(), firstYear = curRound().year === C.roundsOf(V)[0].year;
@@ -602,6 +608,8 @@
     return [
       { key: "evening", text: `${EVIDENCE_NAMES.evening}: ${fmt(evening, 2)} MW`, value: evening },
       { key: "wind", text: `${EVIDENCE_NAMES.wind}: ${fmt(wind, 2)} m/s`, value: wind },
+      // 공개 상태의 grid는 진행자가 refreshGrid(advance=false)로 만든 값: 이번 달 새 접속을 처리하기 전(지난달까지 접속된 몫).
+      // 지도 칩(build leagueGrid → trialGrid)은 gridStatus(…, true)로 이번 달 접속 처리까지 반영해 더 작을 수 있다. 달마다 같은 시점끼리 비교하려고 근거는 처리 전 값을 쓴다.
       { key: "grid", text: `${EVIDENCE_NAMES.grid}: ${fmt(grid?.headroomMW, 2)} MW`, value: grid?.headroomMW },
       { key: "fuel", text: `${EVIDENCE_NAMES.fuel}: ${fmt(lng, 2)}`, value: lng },
       { key: "neighbor", text: `${other ? teamName(other.id) + " · " : ""}${EVIDENCE_NAMES.neighbor}: ${fmt(V.results.at(-1)?.team[other?.id]?.unsPct, 2)}%`, value: V.results.at(-1)?.team[other?.id]?.unsPct }
@@ -610,18 +618,35 @@
   function firstStrategy(V) { return !(V.results || []).length; }
   function needsLoop(V) { return !!V.econ && V.phase === "plan"; }
   function needsExplanation(V) { return firstStrategy(V) || largeDecision(); }
-  function loopComplete(n) { return !n.skipped && !!n.evidence && !!(n.pred?.[n.topic || "uns"]) && !!n.compared && !!n.answer && !!n.askReason?.trim(); }
+  const LEARNING_WORDS = ["정전", "CO₂", "CO2", "현금", "사건", "날씨", "민원", "접속", "거래", "수요", "풍속", "LNG", "탄소", "배출", "지지", "주민", "폭염", "한파", "부족", "피크", "출력제어", "연계선", "연료", "성장", "공사", "기술"];
+  const LEARNING_RULE = `판정: 근거·예측·비교·이유를 마친 뒤, 다음 달 계획을 바꾸거나 지난달 결과 숫자(단위 %·t·억·시간·MW 필요) 또는 원인 단어(${LEARNING_WORDS.join("·")})를 인용해 유지하면 달성해요(기기에만).`;
+  const legacyLearningNote = n => !!n && ["operatingPlan", "followingPlanChanged", "resultNumbers"].every(k => !Object.hasOwn(n, k));
+  function loopComplete(n) {
+    if (legacyLearningNote(n)) return null;
+    const reason = n.askReason?.trim() || "";
+    const values = [...reason.replaceAll(",", "").replaceAll("\u2212", "-").matchAll(/(?:^|[^\d.\w+-])([+-]?\d+(?:\.\d+)?)\s*(?:%p|%|t|억|시간|MW)(?![A-Za-z])/g)];
+    const cited = LEARNING_WORDS.some(word => reason.toLowerCase().includes(word.toLowerCase())) ||
+      values.some(([, value]) => Number(value) !== 0 && n.resultNumbers?.some(result => Number(result) === Number(value)));
+    return !n.skipped && !!n.evidence && !!n.pred?.[n.topic || "uns"] && !!n.compared && !!reason &&
+      ["keep", "revise"].includes(n.answer) && (!!n.followingPlanChanged || n.answer === "keep" && cited);
+  }
+  function learningStatus(n, detail = false) {
+    const complete = loopComplete(n);
+    return complete === null ? "판정 기록 없음(옛 기준)" : complete ? "달성" : `미달성${detail ? " · 다음 달 변경 또는 결과를 인용한 유지 이유를 확인해요" : ""}`;
+  }
   const CONFIDENCE = { half: ["반반", .5], fairly: ["꽤", .7], sure: ["확실", .9] };
-  const MISS_NAMES = { weather: "날씨·운전 기간", trade: "이웃 거래", grid: "접속 대기", event: "사건", choice: "내 선택" };
-  const OUT_NAMES = { choice: MISS_NAMES.choice, weather: MISS_NAMES.weather, event: MISS_NAMES.event, trade: MISS_NAMES.trade };
+  const MISS_NAMES = { weather: "날씨·운전 기간", trade: "이웃 거래", grid: "접속 대기", event: "사건·대응", choice: "내 선택", progress: "접속·공사·기술 진행", growth: "도시 성장·연료 값" };
+  const OUT_NAMES = { choice: MISS_NAMES.choice, weather: MISS_NAMES.weather, event: MISS_NAMES.event, trade: MISS_NAMES.trade, progress: MISS_NAMES.progress, growth: MISS_NAMES.growth };
+  const outageNames = a => a?.basis === "monthly" ? { ...OUT_NAMES, weather: "날씨·계절·운전 기간" } : OUT_NAMES;
   function outageNoCause(n) {
     return !!(n.outageNoCause || n.outageFrozen?.parts?.every(p => Math.abs(p.value) < .05) ||
       (n.outageSingleShown && n.outageLargest && Math.abs(n.outageLargest.value) < .05));
   }
   function missedText(n) {
     if ((n.outageOpened || n.outageSingleShown) && outageNoCause(n)) return "뚜렷한 원인 없음";
-    return [n.outageSingleShown ? "고르기 생략" : n.missed ? `놓친 것: ${MISS_NAMES[n.missed] || n.missed}` : "",
-      (n.outageOpened || n.outageSingleShown) && Object.hasOwn(OUT_NAMES, n.outageLargest?.key || "") ? `가장 큰 몫: ${OUT_NAMES[n.outageLargest.key]} ${signed(n.outageLargest.value, 2)}%p` : ""].filter(Boolean).join(" · ");
+    const names = outageNames(n.outageFrozen || n.missedCarry || { basis: n.missedBasis });
+    return [n.outageSingleShown ? "고르기 생략" : n.missed ? `놓친 것: ${names[n.missed] || MISS_NAMES[n.missed] || n.missed}` : "",
+      (n.outageOpened || n.outageSingleShown) && Object.hasOwn(OUT_NAMES, n.outageLargest?.key || "") ? `가장 큰 몫: ${names[n.outageLargest.key]} ${signed(n.outageLargest.value, 2)}%p` : ""].filter(Boolean).join(" · ");
   }
   function y2022LinkHTML(id, newTab = false) {
     return `<p class="lg-y2022 lg-hint"><a id="${id}" href="#y2022"${newTab ? ' target="_blank" rel="noopener"' : ""}>2022 기출로 연습하기</a> — 데이터 → 배치 판단 → 근거 설명 → 반문 대응: 오늘 고른 근거·예측·원인 나누기를 말로 설명해 봐요.</p>`;
@@ -630,8 +655,9 @@
     const note = tdata().interview?.months?.[V.round - 1], carry = note?.missedCarry;
     if (!carry) return "";
     if ((note.outageOpened || note.outageSingleShown) && outageNoCause(note)) return '<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: 뚜렷한 원인 없음</p>';
+    const names = outageNames(carry.basis ? carry : note.outageFrozen);
     const largest = (note.outageOpened || note.outageSingleShown) && Object.hasOwn(OUT_NAMES, carry.largest?.key || "") ? carry.largest : null;
-    return `<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: ${esc(note.outageSingleShown ? "고르기 생략" : OUT_NAMES[carry.missed] || "고르기 생략")}${largest ? `(가장 큰 몫 ${esc(OUT_NAMES[largest.key])} ${esc(signed(largest.value, 2))} %p)` : ""}</p>`;
+    return `<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: ${esc(note.outageSingleShown ? "고르기 생략" : names[carry.missed] || "고르기 생략")}${largest ? `(가장 큰 몫 ${esc(names[largest.key])} ${esc(signed(largest.value, 2))} %p)` : ""}</p>`;
   }
   const promiseTopic = (V, n) => n.topic || (V.econ.cities[L.team].cash < 0 ? "cash" : "uns");
   const freeExperiment = () => L.role === "solo" && tdata().freeExperiment !== false;
@@ -654,18 +680,109 @@
     return { value: old?.unsPct ?? n.trial?.unsPct ?? matchingTrial(V, res, L.team)?.unsPct,
       label: old ? "지난달 대비" : "시험 1주 대비" };
   }
+  // '다음에 바꿀 것'의 저장 칸은 둘이다(일지 next, S8 유지·수정 이유 askReason). 약속 카드와 일지 머리가 같은 값을 읽게 한다.
+  function nextChangeOf(d, round) {
+    const old = d.interview?.months?.[round];
+    const text = (d.journal?.[round]?.next?.trim() || old?.askReason?.trim() || "").replace(/\s+/g, " ");
+    return { text, answer: text && old?.answer === "keep" ? "(유지)" : text && old?.answer === "revise" ? "(고치겠다)" : "" };
+  }
   function previousChangeHTML(V) {
     if (V.phase !== "plan") return "";
-    const d = tdata(), old = d.interview?.months?.[V.round - 1];
-    const text = d.journal?.[V.round - 1]?.next?.trim() || old?.askReason?.trim();
-    return text ? `<p id="lg-previous-change">지난달 다음에 바꿀 것${old?.answer === "keep" ? "(유지)" : ""}: ${esc(text.replace(/\s+/g, " "))}</p>` : "";
+    const change = nextChangeOf(tdata(), V.round - 1);
+    return change.text ? `<p id="lg-previous-change">지난달 다음에 바꿀 것${change.answer}: ${esc(change.text)}</p>` : "";
+  }
+  const PLAN_POL_NAMES = { tax: "탄소세", dr: "수요반응 계약", share: "주민 이익공유", save: "절전 캠페인" };
+  function localPlan(st, econPol) {
+    return { builds: (st?.builds || []).map(b => ({ t: b.t, i: b.i })),
+      lines: (st?.lines || []).map(l => ({ p: l.p.slice() })), policies: (st?.policies || []).slice(),
+      rq: (st?.rq || []).slice(),
+      shed: st?.shed || "home", fab2: !!st?.fab2, econPol: { ...(econPol || {}) } };
+  }
+  function planDifference(before, after) {
+    if (!before || !after) return { known: false, changed: false, text: "지난달 계획 기록 없음" };
+    const difference = (a, b, key) => {
+      const old = new Set(a.map(key)), now = new Set(b.map(key));
+      return { added: [...now].filter(k => !old.has(k)).length, removed: [...old].filter(k => !now.has(k)).length };
+    };
+    const builds = difference(before.builds, after.builds, b => C.itemKey("b", b));
+    // 방향만 뒤집은 같은 전선은 변경으로 세지 않는다.
+    const lineKey = l => [l.p.join("-"), l.p.slice().reverse().join("-")].sort()[0];
+    const lines = difference(before.lines, after.lines, lineKey), policies = [];
+    new Set([...before.policies, ...after.policies]).forEach(k => {
+      if (before.policies.includes(k) !== after.policies.includes(k)) policies.push(`${PLAN_POL_NAMES[k] || k} ${after.policies.includes(k) ? "켬" : "끔"}`);
+    });
+    const ecoNames = { taxRes: "주민세", taxInd: "산업세", service: "공공서비스", incentive: "기업 유치 보조", re100: "RE100 산단 지정" };
+    new Set([...Object.keys(before.econPol), ...Object.keys(after.econPol)]).forEach(k => {
+      const old = k === "re100" ? !!before.econPol[k] : before.econPol[k] ?? 0;
+      const now = k === "re100" ? !!after.econPol[k] : after.econPol[k] ?? 0;
+      if (old !== now) policies.push(k === "re100" ? `${ecoNames[k]} ${now ? "켬" : "끔"}` : `${ecoNames[k] || k} ${old} → ${now}`);
+    });
+    if (before.shed !== after.shed) policies.push("차단 순서 변경");
+    if (before.fab2 !== after.fab2) policies.push(`2라인 ${after.fab2 ? "켬" : "끔"}`);
+    const research = JSON.stringify(before.rq || []) !== JSON.stringify(after.rq || []);
+    const changed = !!(builds.added || builds.removed || lines.added || lines.removed || policies.length || research);
+    return { known: true, changed, builds, lines, research, text: `설비 ${builds.added}개 추가·${builds.removed}개 제거 · 전선 ${before.lines.length} → ${after.lines.length}개(${lines.added}개 추가·${lines.removed}개 제거) · 정책 ${policies.join(" · ") || "켬·끔 변경 없음"} · 연구 ${research ? "대기열 변경" : "변경 없음"}` };
+  }
+  function currentPlanDifference(V) {
+    const old = tdata().interview?.months?.[V.round - 1]?.operatingPlan;
+    return planDifference(old, localPlan(BG.current(), L.pendingPol || V.teams[L.team].econPol || V.econ?.cities[L.team]?.policy));
+  }
+  function rememberLocalPlan(V) {
+    if (!V.econ || L.away) return;
+    const d = tdata(), before = JSON.stringify(d.interview); d.interview ||= {}; d.interview.months ||= {};
+    const months = d.interview.months;
+    if (["review", "end"].includes(V.phase)) {
+      const res = V.results.at(-1), r = res?.team[L.team];
+      if (!r) return;
+      const n = months[res.round] ||= { operatingPlan: null, followingPlanChanged: false, resultNumbers: [] }, city = V.econ.cities[L.team], period = resultPeriod(V, res);
+      if (legacyLearningNote(n)) return;
+      n.operatingPlan = localPlan(V.teams[L.team].plan, V.teams[L.team].econPol || city.policy);
+      n.resultNumbers = [...new Set([r.unsPct, r.outH * period.mul, r.co2Prod * period.mul, city.cash, city.approval]
+        .filter(Number.isFinite).flatMap(v => [0, 1, 2].map(digits => String(Number(v.toFixed(digits))))))];
+      const old = months[res.round - 1];
+      if (old && !legacyLearningNote(old)) old.followingPlanChanged = planDifference(old.operatingPlan, n.operatingPlan).changed;
+    } else if (V.phase === "plan" && BG.current()) {
+      const old = months[V.round - 1];
+      if (!old || legacyLearningNote(old)) return;
+      old.followingPlanChanged = currentPlanDifference(V).changed;
+    } else return;
+    if (before !== JSON.stringify(d.interview)) putData(d);
+  }
+  function planFollowupHTML(V) {
+    if (V.phase !== "plan" || V.round < 2) return "";
+    const d = tdata(), old = d.interview?.months?.[V.round - 1], diff = currentPlanDifference(V);
+    const reason = old?.askReason?.trim().replace(/\s+/g, " ");
+    const extraReason = reason && reason !== nextChangeOf(d, V.round - 1).text ? `<p>지난달 ${old.answer === "keep" ? "유지" : "수정"} 이유: ${esc(reason)}</p>` : "";
+    return `<section id="lg-plan-followup" class="lg-sec"><div class="lg-plan-comparison"><div><h4>말한 변경</h4>${previousChangeHTML(V) || "<p>지난달 이유 기록 없음</p>"}${extraReason}</div><div><h4>이번 달 실제 변경</h4><p id="lg-actual-change">${esc(diff.text)}</p><p class="lg-hint">설비·전선·정책·연구만 셉니다. 연계선·사건 대응은 제외해요.</p></div></div>${old ? `<p id="lg-previous-mission">지난달 학습 미션: ${learningStatus(old)}</p>` : ""}<p class="lg-hint">${LEARNING_RULE}</p></section>`;
+  }
+  function updatePlanReminder(V) {
+    const root = document.getElementById("bd-root");
+    if (!root || L.away) return;
+    let strip = root.querySelector("#lg-plan-reminder");
+    const old = tdata().interview?.months?.[V.round - 1];
+    if (V.phase !== "plan" || !["keep", "revise"].includes(old?.answer) || !old.askReason?.trim() || old.reminderDismissed) {
+      if (strip) { strip.remove(); window.dispatchEvent(new Event("resize")); }
+      return;
+    }
+    const created = !strip;
+    if (!strip) {
+      strip = document.createElement("div"); strip.id = "lg-plan-reminder";
+      root.querySelector(".bd-stage").append(strip);
+      strip.addEventListener("click", e => {
+        if (!e.target.closest("#lg-plan-reminder-close")) return;
+        const d = tdata(); d.interview.months[V.round - 1].reminderDismissed = true; putData(d); strip.remove(); window.dispatchEvent(new Event("resize"));
+      });
+    }
+    strip.innerHTML = `<span>지난달 ${old.answer === "keep" ? "유지하겠다" : "고치겠다"}: ${esc(old.askReason.trim().replace(/\s+/g, " "))}</span><button type="button" id="lg-plan-reminder-close" aria-label="지난달 이유 띠 닫기">×</button>`;
+    if (created) window.dispatchEvent(new Event("resize"));
   }
   function predictionHTML(V) {
+    rememberLocalPlan(V);
     const { n } = monthNote();
     if (!needsLoop(V)) return "";
     const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
-    return `${missedCarryHTML(V)}<section id="lg-predict" class="lg-pred lg-sec">${previousChangeHTML(V)}<h3>기준 먼저 · 하루 전 약속</h3><p class="lg-hint">약속은 이 기기에만 남아요.</p><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(x.text)}</button>`).join("")}</div>
+    return `${missedCarryHTML(V)}<section id="lg-predict" class="lg-pred lg-sec">${planFollowupHTML(V)}<h3>기준 먼저 · 하루 전 약속</h3><p class="lg-hint">약속은 이 기기에만 남아요.</p><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(x.text)}</button>`).join("")}</div><p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p>
       <p id="lg-promise-baseline" class="lg-hint">비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${esc(comparison.label)} · 정전 ${Number.isFinite(comparison.value) ? `${esc(fmt(comparison.value, 2))}%` : "시험 기록 없음"}`}</p>
       <label class="lg-field">2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향<select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <h4>3. 얼마나 확신하나요?</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div>
@@ -677,7 +794,7 @@
     const topic = promiseTopic(V, n), comparison = outageBaseline(V, result, n);
     const delta = topic === "cash" ? c.cash - (V.econ.before?.[L.team]?.cash ?? c.cash) : Number.isFinite(comparison.value) ? r.unsPct - comparison.value : null;
     const actual = delta == null ? null : direction(delta), hit = actual == null ? null : n.pred[topic] === actual;
-    if (actual && n.confidence && (!n.outcome || n.outcome.actual !== actual || n.outcome.hit !== hit)) { const { d } = monthNote(); n.outcome = { actual, hit }; putData(d); }
+    if (actual && n.confidence && (!n.outcome || n.outcome.actual !== actual || n.outcome.hit !== hit)) { const { d, n: saved } = monthNote(); saved.outcome = n.outcome = { actual, hit }; putData(d); }
     // 기기에 남긴 전 달 같은 근거와의 변화만 읽는다. 처음에는 방향을 추정하지 않는다.
     const previousNote = tdata().interview?.months?.[V.round - 1], previous = previousNote?.evidence;
     const previousValue = previousNote?.evidenceValues?.[n.evidence.key] ?? (previous?.key === n.evidence.key ? previous.value : null);
@@ -730,7 +847,7 @@
     return (V.events || []).filter(ev => ev.round === V.round).map(ev => {
       const E = C.eventDef(R(), ev.id); if (!E || !C.hits(R(), E, L.team)) return "";
       const opt = E.opts?.find(o => o.id === (V.teams[L.team].resp || {})[`${V.round}:${ev.id}`]);
-      return `<p>${esc(E.name)} · 예보 ${esc(evSize(E, { id: ev.id, round: ev.round }, V.teams[L.team]?.fcx?.[ev.id]))} / 확정 ${esc(evSize(E, ev))} ${E.opts?.length ? `/ 우리 대응 ${esc(opt?.name || "대응 안 함")}` : "/ 저장·다른 발전원으로 대비하는 사건"}</p>`;
+      return `<p>${esc(E.name)} · 예보 ${esc(evSize(E, { id: ev.id, round: ev.round }, V.teams[L.team]?.fcx?.[ev.id]))} / 확정 ${esc(evSize(E, ev))} ${E.opts?.length ? `/ 우리 대응: ${esc(String(opt?.name || "안 함").replace(/^대응\s*/, ""))}` : "/ 저장·다른 발전원으로 대비하는 사건"}</p>`;
     }).join("");
   }
   function rebuttalMetricsHTML(V, key, nb) {
@@ -760,8 +877,8 @@
     const key = n.ask || n.quarterKey, revisable = /^lg-[rpf]-/.test(key || ""), reflection = revisable || needsReviewLoop(n);
     const controls = reflection ? `<div class="lg-acts">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
     // c/i/d/e/h형 질문에는 선택 버튼을 붙이지 않는다. 고리의 수정은 별도 영역이다.
-    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${loopComplete(n) ? "달성" : "근거 → 예측 → 비교 → 유지·수정을 마쳐요"}</p></section>` : "";
-    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}"><h3>질문 한 장 <span class="tag-mine">연습용</span></h3>${/^lg-r-/.test(n.ask) ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}${revisable ? controls : ""}<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${loopComplete(n) ? "달성" : "근거 → 예측 → 비교 → 유지·수정을 마쳐요"}</p>` : ""}</section>` : "";
+    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p><p class="lg-hint">${LEARNING_RULE}</p></section>` : "";
+    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}"><h3>질문 한 장 <span class="tag-mine">연습용</span></h3>${/^lg-r-/.test(n.ask) ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}${revisable ? controls : ""}<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p><p class="lg-hint">${LEARNING_RULE}</p>` : ""}</section>` : "";
     return `${pred}${loop}${ask}`;
   }
 
@@ -785,13 +902,27 @@
     const changedLeader = maxArrival > 0 && top && !arrivalIds.includes(top.id);
     const helped = (V?.results || []).some(res => Object.values(res.team || {}).some(r => r.imp > 0 && r.unsPct === 0));
     const cards = [changedLeader ? "이번 달 주민이 가장 많이 들어온 도시와 순위 1위 도시가 다릅니다. 무엇이 둘을 갈랐을까요?" : null, helped ? "이웃 전기를 받아 정전 없이 운영한 도시가 있어요. 그 대가(돈·배출·위험)는 누가 졌나요?" : null, "점수 가중치를 탄소 0.30으로 바꾸면 순위가 어떻게 바뀔까요?", "가장 늦게 효과가 나타난 결정은 무엇이었나요?", "이 게임이 현실과 가장 다른 점 하나를 꼽는다면?"];
-    return `<section id="lg-debrief" class="lg-sec"><h2>디브리핑</h2><p>종합 1위 ${esc(top?.name || "")} · ${esc(speedText(E))}</p><div class="lg-debriefcards">${cards.filter(Boolean).map((q, i) => `<article class="lg-card" data-debrief="${i + 1}"><h3>${i + 1}. ${esc(q)}</h3></article>`).join("")}</div><p>${esc((E.report?.news || []).slice(0, IQ.quarter).join(" → "))}</p><section id="lg-wsim"><h3>가중치를 바꾸면?</h3><p class="lg-hint">화면에서만 다시 계산해요. 원래 점수와 엔진 상태는 유지돼요. 모두 0이면 원래 점수를 써요.</p>${SCORE_KEYS.map(k => [k, SCORE_NAMES[k]]).map(([k, name]) => `<label class="lg-policy"><span>${name} <output data-weight-value="${k}">${esc(fmt(params("wScore")[k], 2))}</output></span><input type="range" data-weight="${k}" min="0" max="1" step="0.05" value="${esc(params("wScore")[k])}"></label>`).join("")}<ol id="lg-wrank">${reweightScore(E.score, params("wScore")).map(r => `<li>${esc(r.name)} ${esc(fmt(r.score, 1))}점</li>`).join("")}</ol></section></section>`;
+    return `<section id="lg-debrief" class="lg-sec"><h2>디브리핑</h2><p>종합 1위 ${esc(top?.name || "")} · ${esc(speedText(E))}</p><div class="lg-debriefcards">${cards.filter(Boolean).map((q, i) => `<article class="lg-card" data-debrief="${i + 1}"><h3>${i + 1}. ${esc(q)}</h3></article>`).join("")}</div>${L.role === "host" ? y2022LinkHTML("lg-y2022-host") : ""}<p>${esc((E.report?.news || []).slice(0, IQ.quarter).join(" → "))}</p><section id="lg-wsim"><h3>가중치를 바꾸면?</h3><p class="lg-hint">화면에서만 다시 계산해요. 원래 점수와 엔진 상태는 유지돼요. 모두 0이면 원래 점수를 써요.</p>${SCORE_KEYS.map(k => [k, SCORE_NAMES[k]]).map(([k, name]) => `<label class="lg-policy"><span>${name} <output data-weight-value="${k}">${esc(fmt(params("wScore")[k], 2))}</output></span><input type="range" data-weight="${k}" min="0" max="1" step="0.05" value="${esc(params("wScore")[k])}"></label>`).join("")}<ol id="lg-wrank">${reweightScore(E.score, params("wScore")).map(r => `<li>${esc(r.name)} ${esc(fmt(r.score, 1))}점</li>`).join("")}</ol></section></section>`;
+  }
+  function decisionsHTML(V) {
+    const d = tdata(), months = d.interview?.months || {}, journal = d.journal || {};
+    const rounds = [...new Set([...Object.keys(months), ...Object.keys(journal)])].map(Number).filter(t => t > 0 && t <= V.round).sort((a, b) => a - b);
+    return `<section id="lg-decisions" class="lg-sec"><h3>결정과 결과 · 기기에 남은 기록</h3><ul>${rounds.map(t => {
+      const n = months[t] || {}, topic = n.topic || "uns", parts = [];
+      if (n.evidence?.text) parts.push(`근거 ${n.evidence.text}`);
+      if (n.pred?.[topic]) parts.push(`예측 ${topic === "cash" ? "현금" : "정전"} ${DIRECTION_NAMES[n.pred[topic]] || n.pred[topic]}`);
+      if (n.outcome && typeof n.outcome.hit === "boolean") parts.push(`판정 ${n.outcome.hit ? "예상과 같음" : "예상과 다름"}`);
+      const cause = missedText(n); if (cause) parts.push(cause);
+      const reason = nextChangeOf(d, t);
+      if (reason.text) parts.push(`${n.answer === "keep" ? "유지할 이유" : "바꿀 이유"} ${reason.text}`);
+      return parts.length ? `<li data-decision-month="${t}">${esc(monthName(V, t))} · ${esc(parts.reduce((text, part) => text + (text ? part.startsWith("판정 ") ? " → " : " · " : "") + part, ""))}</li>` : "";
+    }).join("") || "<li>기기에 남은 결정 기록 없음</li>"}</ul></section>`;
   }
   function endHTML(V) {
     const { d } = monthNote(), inv = d.interview, end = inv.end || {};
     const crit = V.teams[L.team].crit, own = V.econ.score.by[L.team], top = V.econ.score.rank[0];
     const summary = `<section id="lg-final-summary" class="lg-sec"><h2>최종 순위</h2><p>${esc(teamName(L.team))} ${esc(own.rank)}위 · ${esc(fmt(own.score, 1))}점 / 종합 1위 ${esc(top.name)} ${esc(fmt(top.score, 1))}점</p></section>`;
-    return `${summary}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
+    return `${summary}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${decisionsHTML(V)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
   }
   function finalCausesHTML(V) {
     // 혼자 하기·진행자는 전체 보고서를 보관한다. 공개 스냅에는 마지막 보고서만 있어
@@ -810,12 +941,12 @@
     const reasons = visibleCauses([...sums.values()]).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, params("causeCount"));
     const runs = history.filter(res => res.team?.[L.team]), city = V.econ.cities[L.team];
     const totalHours = runs.reduce((sum, res) => sum + res.team[L.team].outH * resultPeriod(V, res).mul, 0);
-    return `<section id="lg-final-causes" class="lg-sec"><h2>무엇이 이 결과를 만들었나</h2><p>${esc(runs.length)}달 누적 정전 ${esc(fmt(totalHours, 1))}시간 · 시작 대비 지지율 ${esc(signed(city.approval - city.approval0, 1))}%p</p>${reasons.map(c => `<p>${esc(causeLabel(c))}: 보고된 달별 지지율 기여 합 ${esc(signed(c.delta, 1))}%p</p>`).join("")}<p class="lg-hint">${esc(months)}/${esc(runs.length)}달 보고서의 주요 원인을 합친 추정(G)입니다. 달마다 상위 ${esc(params("causeCount"))}개만 남으므로 전체 변화와 합이 다를 수 있어요.${months < runs.length ? " 받지 못한 달은 합산에서 빠졌어요." : ""}</p></section>`;
+    return `<section id="lg-final-causes" class="lg-sec"><h2>무엇이 이 결과를 만들었나</h2><p>${esc(runs.length)}달 누적 정전 ${esc(fmt(totalHours, 1))}시간(${esc(outageHoursDef(runs.reduce((days, res) => days + resultPeriod(V, res).days, 0), true))}) · 시작 대비 지지율 ${esc(signed(city.approval - city.approval0, 1))}%p</p>${reasons.map(c => `<p>${esc(causeLabel(c))}: 보고된 달별 지지율 기여 합 ${esc(signed(c.delta, 1))}%p</p>`).join("")}<p class="lg-hint">${esc(months)}/${esc(runs.length)}달 보고서의 주요 원인을 합친 추정(G)입니다. 달마다 상위 ${esc(params("causeCount"))}개만 남으므로 전체 변화와 합이 다를 수 있어요.${months < runs.length ? " 받지 못한 달은 합산에서 빠졌어요." : ""}</p></section>`;
   }
   function worksheet(V) {
     const d = tdata(), inv = d.interview || {}, c = V.econ?.cities[L.team], lines = [`[${R().name} 전력 리그] ${teamName(L.team)}`];
     if (c) lines.push(`최종 지표: 주민 ${fmt(c.pop)}명 · 종사자 ${fmt(c.ind)}명 · 현금 ${fmt(c.cash, 1)}억 · 지지율 ${fmt(c.approval, 1)}%`, ...SCORE_KEYS.map(k => `${SCORE_NAMES[k]} ${fmt(V.econ.score.by[L.team].parts[k], 1)}점`));
-    Object.entries(inv.months || {}).forEach(([rd, n]) => { lines.push(`■ ${(() => { const r = C.roundsOf(V)[Number(rd) - 1]; return r?.month ? `${r.year}년 ${r.month}월` : `${rd}라운드`; })()}`, n.crit ? `기준 ${n.crit.chips.map(k => SCORE_NAMES[k]).join(" · ")} / ${n.crit.line}점 / ${n.crit.choice === "keep" ? "유지" : "바꿈"}\n${n.critReason || ""}` : "", n.decision || "", n.evidence ? `근거: ${n.evidence.text}${n.confidence ? ` / 확신 ${CONFIDENCE[n.confidence]?.[0] || ""}` : ""}` : "", missedText(n), n.pred ? `예측: 정전 ${DIRECTION_NAMES[n.pred.uns] || "건너뜀"} / 현금 ${DIRECTION_NAMES[n.pred.cash] || "건너뜀"} / 비교 ${n.compared ? "완료" : "미완료"} / 학습 미션 ${loopComplete(n) ? "달성" : "미달성"}` : "", n.ask ? `${questionText(n.ask, { nb: n.nb, crit: n.crit })}\n${n.answer === "revise" ? "고침" : n.answer === "keep" ? "유지" : "미응답"}: ${n.askReason || ""}` : "", n.quarterKey ? `${questionText(n.quarterKey)}\n${n.quarterAnswer || (n.quarterSkip ? "건너뜀" : "")}` : "", ...JQ.map(q => `${journalQuestion(q.q, V)}\n${d.journal?.[rd]?.[q.k] || ""}`)); });
+    Object.entries(inv.months || {}).forEach(([rd, n]) => { lines.push(`■ ${(() => { const r = C.roundsOf(V)[Number(rd) - 1]; return r?.month ? `${r.year}년 ${r.month}월` : `${rd}라운드`; })()}`, n.crit ? `기준 ${n.crit.chips.map(k => SCORE_NAMES[k]).join(" · ")} / ${n.crit.line}점 / ${n.crit.choice === "keep" ? "유지" : "바꿈"}\n${n.critReason || ""}` : "", n.decision || "", n.evidence ? `근거: ${n.evidence.text}${n.confidence ? ` / 확신 ${CONFIDENCE[n.confidence]?.[0] || ""}` : ""}` : "", missedText(n), n.pred ? `예측: 정전 ${DIRECTION_NAMES[n.pred.uns] || "건너뜀"} / 현금 ${DIRECTION_NAMES[n.pred.cash] || "건너뜀"} / 비교 ${n.compared ? "완료" : "미완료"} / 학습 미션 ${learningStatus(n)}` : "", n.ask ? `${questionText(n.ask, { nb: n.nb, crit: n.crit })}\n${n.answer === "revise" ? "고침" : n.answer === "keep" ? "유지" : "미응답"}: ${n.askReason || ""}` : "", n.quarterKey ? `${questionText(n.quarterKey)}\n${n.quarterAnswer || (n.quarterSkip ? "건너뜀" : "")}` : "", ...JQ.map(q => `${journalQuestion(q.q, V)}\n${d.journal?.[rd]?.[q.k] || ""}`)); });
     Object.values(d.docs || {}).forEach(doc => (doc.journal || []).forEach(e => {
       lines.push(`■ 건설 일지 ${e.id}회 · ${e.days}일 · ${e.season || ""}`, `정전 ${fmt(e.m?.uns, 2)}% · CO₂ ${fmt(e.m?.co2)} t · 비용 ${fmt(e.m?.cost, 1)}억`, ...[["why", "무엇을 왜 지었나"], ["surprise", "예상 밖 결과"], ["trade", "얻는 것과 잃는 것"], ["next", "다음에 바꿀 것"], ["q", e.q || "오늘의 질문"]].map(([key, label]) => `${label}\n${e.a?.[key] || ""}`));
     }));
@@ -825,12 +956,14 @@
   }
   function updateMission() {
     const out = document.getElementById("lg-learning-mission");
-    if (out) out.textContent = `학습 미션: ${loopComplete(monthNote().n) ? "달성" : "근거 → 예측 → 비교 → 유지·수정을 마쳐요"}`;
+    if (out) out.textContent = `학습 미션: ${learningStatus(monthNote().n, true)}`;
   }
   function previousNoteHTML(V) {
-    const d = tdata(), old = d.interview?.months?.[V.round - 1], next = d.journal?.[V.round - 1]?.next;
-    if (!old && !next) return "";
-    return `<section id="lg-previous-note" class="lg-sec"><h3>지난달 답 · 다음에 바꿀 것</h3>${old?.ask || old?.quarterKey ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(old.questionReason || old.askReason || old.quarterAnswer || "미응답")}</p>` : ""}<p>다음에 바꿀 것: ${esc(next || "아직 쓰지 않음")}</p></section>`;
+    const d = tdata(), old = d.interview?.months?.[V.round - 1], change = nextChangeOf(d, V.round - 1);
+    if (!old && !change.text) return "";
+    const hasAnswer = !!(old?.ask || old?.quarterKey), reason = old?.questionReason || old?.askReason || old?.quarterAnswer || "";
+    const sameReason = hasAnswer && !!change.text && change.text === reason.trim().replace(/\s+/g, " ");
+    return `<section id="lg-previous-note" class="lg-sec"><h3>지난달 답 · 다음에 바꿀 것</h3>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}</section>`;
   }
   function weightSimulation(E, weights) {
     if (!E.scoreState || !KCP.econ) return reweightScore(E.score, weights);
@@ -1039,7 +1172,12 @@
     }
     const confidence = e.target.closest("[data-confidence]"), missed = e.target.closest("[data-missed]");
     if (confidence && V.phase === "plan") { n.confidence = confidence.dataset.confidence; n.topic = promiseTopic(V, n); n.confirmed = false; putData(d); renderPanel(); return true; }
-    if (missed && ["review", "end"].includes(V.phase) && !n.outageOpened && Object.hasOwn(MISS_NAMES, missed.dataset.missed)) { n.missed = missed.dataset.missed; putData(d); renderPanel(); return true; }
+    if (missed && ["review", "end"].includes(V.phase) && !n.outageOpened && Object.hasOwn(MISS_NAMES, missed.dataset.missed)) {
+      const a = outageAttribution(V, V.results.at(-1), L.team, n);
+      n.missed = missed.dataset.missed;
+      n.missedBasis = a ? a.basis || "trial" : V.econ && V.round > 1 ? "monthly" : "trial";
+      putData(d); renderPanel(); return true;
+    }
     if (e.target.closest("#lg-outage-open") || e.target.closest("#lg-outage-carry")) {
       if (!["review", "end"].includes(V.phase)) return true;
       const a = outageAttribution(V, V.results.at(-1), L.team, n);
@@ -1055,7 +1193,7 @@
           if (!shownOutageElement(document.getElementById("lg-panel"), "#lg-outage-single")) return true;
           n.outageSingleShown = true;
         } else if (!n.outageOpened) return true;
-        n.missedCarry = { missed: largest ? single ? "고르기 생략" : n.missed : "뚜렷한 원인 없음",
+        n.missedCarry = { basis: a.basis || "trial", missed: largest ? single ? "고르기 생략" : n.missed : "뚜렷한 원인 없음",
           ...(largest ? { largest: { ...largest } } : {}) };
       }
       n.outageFrozen ||= structuredClone(a);
@@ -1063,7 +1201,11 @@
       if (largest) n.outageLargest = { ...largest };
       else { delete n.outageLargest; if (n.missedCarry) delete n.missedCarry.largest; }
       putData(d); renderPanel();
-      if (e.target.closest("#lg-outage-open")) document.getElementById("lg-outage-verdict")?.focus();
+      if (e.target.closest("#lg-outage-open")) {
+        // 공개 순간(카드 앞면의 몫·꼬리표와 폭포 첫 줄)이 화면 위에 오게 한다. 초점은 판정 머리로 옮기되 스크롤은 하지 않는다.
+        document.getElementById("lg-outage-verdict")?.focus({ preventScroll: true });
+        scrollPanelTo(document.getElementById("lg-outage-cards") || document.getElementById("lg-missed"));
+      }
       return true;
     }
     const group = e.target.closest("[data-group]");
@@ -1518,6 +1660,13 @@
     const n = L.net && L.net.kind === "supabase" ? { kind: "supabase", url: L.net.url, key: L.net.key } : { kind: "local" };
     return `${location.origin}${location.pathname}#league/j=${b64e(JSON.stringify({ r: L.room, f: L.fingerprint, n }))}`;
   }
+  function renderHostMapCaption(V, res) {
+    const cap = L.app.querySelector("#lg-mapcap");
+    const moves = (V.econ?.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter);
+    // 설명은 보고된 흐름을 보존한다. 실제 그린 화살표 수는 canvas 메타에서만 읽는다.
+    cap.textContent = (res ? `${resLabel(res)} 도시 사이 전력 거래 · 선 굵기 = 용량` : "점선 = 제안된 연계선, 실선 = 연결된 연계선") + (R().board ? " · 도시를 누르면 그 도시 지도" : "")
+      + moves.map(f => ` · ${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join("");
+  }
   function renderHost(full) {
     if (!L || L.role !== "host" || !L.app || !L.app.isConnected || L.viewing) return;
     document.documentElement.classList.remove("v2-league-lobby", "v2-league-seat");
@@ -1584,6 +1733,7 @@
             const snapshot = C.publicView(L.S, Date.now()), result = L.S.results.at(-1);
             if ($("#lg-mapc")) renderBoard($("#lg-mapc"), snapshot, result, L.flash === L.S.round);
             else renderMap($("#lg-map"), snapshot, result, L.flash === L.S.round);
+            renderHostMapCaption(snapshot, result);
             $("#lg-teams").querySelectorAll("details[open] canvas[data-thumb]").forEach(cv => thumb(cv, cv.dataset.thumb, snapshot.teams[cv.dataset.thumb].plan));
           }
         });
@@ -1625,7 +1775,7 @@
     if (!V.econ || $("#lg-host-details").open) {
       if ($("#lg-mapc")) renderBoard($("#lg-mapc"), V, res, L.flash === S.round); else renderMap($("#lg-map"), V, res, L.flash === S.round);
     }
-    $("#lg-mapcap").textContent = (res ? `${resLabel(res)} 도시 사이 전력 거래 · 선 굵기 = 용량` : "점선 = 제안된 연계선, 실선 = 연결된 연계선") + (R().board ? " · 도시를 누르면 그 도시 지도" : "");
+    renderHostMapCaption(V, res);
     const cards = actT(S).map(t => {
       const card = teamCard(t, V.teams[t.id], res && res.team[t.id], S);
       return V.econ ? `<details id="lg-host-card-${esc(t.id)}" data-host-card="${esc(t.id)}" ${L.hostCards?.[t.id] ? "open" : ""}><summary>${esc(t.name)} 상세</summary>${card}</details>` : card;
@@ -1656,10 +1806,9 @@
         debrief.innerHTML = debriefHTML(V.econ);
         debrief.addEventListener("input", () => updateWeights(debrief, C.publicView(L.S, Date.now()).econ));
       }
-      const top = (V.econ.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter);
-      $("#lg-mapcap").textContent += top.map(f => ` · ${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join("");
     }
-    $("#lg-host-y2022").innerHTML = S.phase === "end" ? y2022LinkHTML("lg-y2022-host") : "";
+    $("#lg-host-y2022").hidden = !!V.econ;
+    $("#lg-host-y2022").innerHTML = !V.econ && S.phase === "end" ? y2022LinkHTML("lg-y2022-host") : "";
     $("#lg-log").innerHTML = S.log.slice(-8).reverse().map(x => `<li>${esc(logText(V, x.t))}</li>`).join("");
     hostWarning();
   }
@@ -1705,9 +1854,12 @@
     return `<div class="lg-host-board"><div class="lg-command-month"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div><div class="lg-command-time"><small>남은 시간</small><b id="lg-host-time"></b></div>${showReady ? `<div id="lg-host-ready"><small>준비</small><b>${teams.length - unready.length}<small>/${teams.length}팀</small></b><span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span></div>` : ""}<div class="lg-command-goals"><small>지역 공동목표 · 지난달 운영 / 지금</small>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) + bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}<p id="lg-host-goals">공동목표: ${goalText}${region ? ` / ${esc(res.month)}월 운영 ${esc(fmt(region.unsPct, 2))}% · ${esc(fmt(region.co2))} t (그 달 목표: 정전 ≤ ${esc(fmt(lastGoal.uns, 2))}% · CO₂ ≤ ${esc(fmt(lastGoal.co2))} t)` : " / 첫 운영 전"}</p></div></div>`;
   }
   function hostRiskHTML(V, res) {
-    const teams = actT(V), risks = teams.map(t => ({ t, why: hostRisk(V, res, t.id) })).filter(x => x.why.length);
+    // 등급: 정전 목표 초과·남은 돈 음수·지지율 평가선 미달 = 위험(▲), 접속 대기만 = 주의(●). 위험 도시를 먼저 보인다.
+    const teams = actT(V), CAUTION = new Set(["접속 대기"]);
+    const risks = teams.map(t => { const why = hostRisk(V, res, t.id); return { t, why, level: why.some(k => !CAUTION.has(k)) ? "risk" : "caution" }; })
+      .filter(x => x.why.length).sort((a, b) => (a.level === "risk" ? 0 : 1) - (b.level === "risk" ? 0 : 1));
     const short = { "정전 목표 초과": "정전", "남은 돈 음수": "남은 돈", "지지율 평가선 미달": "지지율", "접속 대기": "접속 대기" };
-    return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" title="${esc(x.why.join(" · "))}"><b>▲ ${esc(x.t.name)}</b> ${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
+    return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험·주의 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" data-level="${x.level}" title="${esc((x.level === "risk" ? "위험: " : "주의: ") + x.why.join(" · "))}"><b>${x.level === "risk" ? "▲" : "●"} ${esc(x.t.name)}</b> ${x.level === "caution" ? "주의 · " : ""}${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
@@ -1722,7 +1874,7 @@
     const cnt = {};
     plan.builds.forEach(b => { cnt[b.t] = (cnt[b.t] || 0) + 1; });
     const B = BG.BLD;
-    const items = Object.keys(cnt).map(k => `<span class="lg-chip">${esc((B[k] || { name: k }).name)} ${cnt[k]}</span>`).join("") || `<span class="lg-hint">아직 건설 없음</span>`;
+    const items = Object.keys(cnt).map(k => `<span class="lg-chip">${esc((B[k] || { name: k }).name)} ${cnt[k]}</span>`).join("") || `<span class="lg-hint">${plan.lines.length ? `설비 건설 없음(송전선 ${plan.lines.length})` : "아직 건설 없음"}</span>`;
     const st = !v.seated ? "빈 자리" : v.online ? "접속" : "끊김";
     const H = v.hist || [], last = H[H.length - 1];
     const mul = S.econ && r ? resultPeriod(S, S.results.at(-1)).mul : 1;
@@ -1741,10 +1893,10 @@
   function resultsTable(S, res) {
     const g = C.goalsOf(S), act = actT(S).filter(t => res.team[t.id]);
     if (S.econ) {
-      const V = C.publicView(S, Date.now()), rep = resultReport(V, res), mul = resultPeriod(V, res).mul;
-      return `<h2>${esc(resultHeading(V, res))}</h2><div class="lg-tablewrap"><table class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전 시간(h)</th><th scope="col">이번 달 총지출(억)</th><th scope="col">CO₂ 생산/소비(t)</th><th scope="col">판매/구매(MWh)</th><th scope="col">보너스(점)</th></tr></thead><tbody>${act.map(t => {
+      const V = C.publicView(S, Date.now()), rep = resultReport(V, res), { mul, days } = resultPeriod(V, res);
+      return `<h2>${esc(resultHeading(V, res))}</h2><div class="lg-tablewrap"><table class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col" title="${esc(outageHoursDef(days))}">정전 시간(h)*</th><th scope="col">이번 달 총지출(억)</th><th scope="col">CO₂ 생산/소비(t)</th><th scope="col">판매/구매(MWh)</th><th scope="col">보너스(점)</th></tr></thead><tbody>${act.map(t => {
         const r = res.team[t.id]; return `<tr style="--c:${esc(t.color)}"><th scope="row">${esc(t.name)}</th><td>${esc(fmt(r.outH * mul, 1))}</td><td>${esc(fmt(r.ledger ? r.ledger.invest + r.ledger.opex : undefined, 2))}</td><td>${esc(fmt(r.co2Prod * mul))}/${esc(fmt(r.co2Cons * mul))}</td><td>${esc(fmt(rep?.contrib?.[t.id]?.exportMWh, 1))}/${esc(fmt(rep?.contrib?.[t.id]?.importMWh, 1))}</td><td>+${esc(fmt(V.econ.score?.by[t.id]?.coop, 1))}</td></tr>`;
-      }).join("")}</tbody></table></div><p class="lg-hint">모두 월 기준. 공동 보너스는 도시 자체 부분 점수 6개와 별도로 더해요.</p>`;
+      }).join("")}</tbody></table></div><p class="lg-hint">모두 월 기준. 공동 보너스는 도시 자체 부분 점수 6개와 별도로 더해요.</p><p id="lg-host-outage-def" class="lg-hint">* ${esc(outageHoursDef(days))}</p>`;
     }
     const rows = act.map(t => {
       const r = res.team[t.id];
@@ -1761,6 +1913,10 @@
       <figure class="lg-co2"><figcaption>CO₂ — <b class="p">생산 기준</b>(발전소가 있는 곳) vs <b class="c">소비 기준</b>(전기를 쓴 곳)</figcaption><ul>${bars}</ul></figure>`;
   }
 
+  // 정전 시간 정의(league-core run의 outH): 거래 뒤 도시 부족량이 그 시각 도시 수요의 2%(최소 0.005 MW)를 넘은 시간.
+  function outageHoursDef(days, cumulative = false) {
+    return `정전 시간은 도시 안 부족량의 합이 그 시각 도시 수요의 2%를 넘은 시간${cumulative ? "의 합" : ""}이에요(최소 판정선 0.005 MW, ${cumulative ? "누적 최대" : "이번 달 최대"} ${fmt(days * 24)}시간). 정전율은 못 보낸 전력의 비율이라 따로 읽어요.`;
+  }
   // 월 결과는 대표 운전 일수를 월 일수로 환산한다. %는 비율이므로 환산하지 않는다.
   function resultPeriod(V, res) {
     const rd = C.roundsOf(V)[res.round - 1];
@@ -1793,9 +1949,13 @@
       `이웃 거래: 수입 ${fmt(r.imp * mul, 1)} / 수출 ${fmt(r.exp * mul, 1)} MWh`,
       `접속 대기: ${fmt(r.grid?.waitingMW, 1)} MW`,
       `날씨: ${trial.seed === res.seed && trial.days === res.days ? "같은 날씨 조건·운전 기간" : "날씨 조건 또는 운전 기간이 다름"}`];
+    const attribution = outageAttribution(V, res, id);
+    const attributionText = !attribution ? "후보별 영향 크기는 분리하지 않았어요." : attribution.basis === "monthly" ?
+      "원인 카드는 지난달 실제 → 이번 달 실제의 정전 변화를 나눠요. 위 시험 / 실제 차이와는 기준이 달라요." :
+      "시험 → 실제의 정전 변화를 단계별로 나눠 계산했어요. 약속이 예상과 다르면 원인 카드에서 몫을 열어 비교해요.";
     return `<section id="lg-trial-compare" class="lg-sec"><h4>시험 / 실제 / 차이 원인</h4><p class="lg-hint">${esc(`${trial.days}일 시험과 대표 ${res.days}일 실제를 ${days}일 월 기준으로 환산${approximate ? "(시험 추정)" : ""}`)} · CO₂는 생산 기준</p>
       <table class="lg-table lg-compare"><thead><tr><th scope="col">지표</th><th scope="col">시험</th><th scope="col">실제</th></tr></thead><tbody>${rows.map(([label, a, b, unit]) => `<tr><th scope="row">${esc(label)}</th><td>${esc(fmt(a, 2))}${unit}</td><td>${esc(fmt(b, 2))}${unit}</td></tr>`).join("")}</tbody></table>
-      <p id="lg-trial-reasons">차이 원인 후보: ${esc(candidates.join(" · "))}</p><p class="lg-hint">시험 뒤 계획을 바꿔도 차이가 나요. ${outageAttribution(V, res, id) ? "정전 변화는 단계별로 나눠 계산했어요. 약속이 예상과 다르면 원인 카드에서 몫을 열어 비교해요." : "후보별 영향 크기는 분리하지 않았어요."} 비용은 기존 설비 투자액을 빼고 전력 운영비만 비교해요. 실제 신규 투자 ${esc(fmt(r.ledger?.invest, 2))}억은 아래 장부에 따로 표시해요(거래·연구·대응·공공서비스는 이 비교에서 제외).</p></section>`;
+      <p id="lg-trial-reasons">차이 원인 후보: ${esc(candidates.join(" · "))}</p><p class="lg-hint">시험 뒤 계획을 바꿔도 차이가 나요. ${attributionText} 비용은 기존 설비 투자액을 빼고 전력 운영비만 비교해요. 실제 신규 투자 ${esc(fmt(r.ledger?.invest, 2))}억은 아래 장부에 따로 표시해요(거래·연구·대응·공공서비스는 이 비교에서 제외).</p></section>`;
   }
   function withCityPack(id, fn) {
     const prior = Object.entries(BG.PACKS).find(([, p]) => p._bL?.tiles === BG.TILES || p._b?.tiles === BG.TILES);
@@ -1840,6 +2000,7 @@
     const n = note || (id === L.team ? tdata().interview?.months?.[res.round] : null);
     // 실제로 연 분해는 기기 메모에 고정한다. 새 시험·캐시보다 먼저 읽는다(D-65).
     if ((n?.outageOpened || n?.outageSingleShown) && n.outageFrozen?.round === res.round && n.outageFrozen.id === id) return n.outageFrozen;
+    if (V.econ && res.round > 1) return outageAttributionMonthly(V, res, id, note);
     L.outCache ||= {};
     const trial = matchingTrial(V, res, id);
     // 같은 달 시험을 다시 돌리면 새 분해를 계산한다. 시험 계획 전체도 식별에 포함한다.
@@ -1895,7 +2056,8 @@
         const event = sim(plan, res.seed, res.days, eventMods);
         // 연결 대기 반사실은 거래 전 고립 운전끼리 비교한다. 분해 합계에는 더하지 않는다.
         const reCap = Object.fromEntries((grid?.entries || []).map(b => [b.key, b.mw]));
-        const connected = sim(plan, res.seed, res.days, { ...eventMods, reCap });
+        const waitingMW = res.team[id].grid?.waitingMW ?? grid.waitingMW;
+        const connected = waitingMW > 0 ? sim(plan, res.seed, res.days, { ...eventMods, reCap }) : event;
         const total = res.team[id].unsPct - trial.unsPct;
         const replay = base.unsPct - trial.unsPct;
         // 결과에는 반올림 전 정전율이 없다. trade에는 최대 ±0.005%p가 섞여 표시를 0.01%p로 맞춘다.
@@ -1910,19 +2072,17 @@
         const added = [...newBuilds].filter(k => !oldBuilds.has(k)).length;
         const removed = [...oldBuilds].filter(k => !newBuilds.has(k)).length;
         const changed = ["lines", "policies", "shed", "fab2", "rq"].filter(k => JSON.stringify(trial.plan[k]) !== JSON.stringify(plan[k]));
+        const eventClue = outageEventClue(events, input, res, id, plan);
         const clues = {
           choice: `시험 뒤 설비 ${added}개 추가 / ${removed}개 제거${changed.length ? ` · ${changed.map(k => ({ lines: "전선", policies: "정책", shed: "배분", fab2: "산업 증설", rq: "연구" }[k])).join("·")} 변경` : ""}`,
           weather: `같은 운영 계획·사건 없음: 하루 평균 재생 발전량 ${fmt(choice.renPerDay, 1)} → ${fmt(weather.renPerDay, 1)} MWh/일${choice.renPerDay > 0 ? `(${signed((weather.renPerDay / choice.renPerDay - 1) * 100, 1)}%)` : "(시험 날씨에서 발전량 0: 비율 비교 없음)"} · 시험 ${trial.days}일 / 실제 ${res.days}일`,
-          event: events.filter(ev => C.eventDef(R(), ev.id) && C.hits(R(), C.eventDef(R(), ev.id), id, input)).map(ev => {
-            const E = C.eventDef(R(), ev.id), opt = E.opts?.find(o => o.id === input.teams[id].resp?.[`${res.round}:${ev.id}`]);
-            return `${E.name}: 예보 ${evSize(E, { id: ev.id, round: ev.round }, input.teams[id]?.fcx?.[ev.id])} → 확정 ${evSize(E, ev)} · ${E.opts?.length ? `우리 대응 ${opt?.name || "대응 안 함"}` : "대응 선택 없음"}`;
-          }).join(" · ") || "우리 도시에 해당하는 사건 없음",
+          event: eventClue.short,
           trade: `구매 ${fmt(res.team[id].imp * resultPeriod(V, res).mul, 1)} / 판매 ${fmt(res.team[id].exp * resultPeriod(V, res).mul, 1)} MWh(월 환산)`
         };
         delete L.outFailures[key];
-        return L.outCache[key] = { round: res.round, id, trialIdentity: key,
-          trial: trial.unsPct, actual: res.team[id].unsPct, total, replay, parts, clues,
-          grid: { value: connected.unsPct - event.unsPct, waitingMW: res.team[id].grid?.waitingMW ?? grid.waitingMW },
+        return L.outCache[key] = { basis: "trial", round: res.round, id, trialIdentity: key,
+          trial: trial.unsPct, actual: res.team[id].unsPct, total, replay, parts, clues, clueMore: { event: eventClue.full },
+          grid: { value: connected.unsPct - event.unsPct, waitingMW },
           simulations, ms: performance.now() - started };
       });
     } catch (e) {
@@ -1930,36 +2090,302 @@
       return null;
     }
   }
+  // 월간 S7 사본은 방·팀별 tdata에만 둔다. 공개 상태·요청 본문에는 추가하지 않는다.
+  function outageRememberIntl(V) {
+    if (!V.econ || V.phase !== "plan" || !L.team) return;
+    const intl = V.econ.intl?.cur || V.econ.intl, d = tdata();
+    if (!Number.isFinite(intl?.fuelMul)) return;
+    const pending = { round: V.round, intl };
+    if (JSON.stringify(d.outageOperatingIntl) !== JSON.stringify(pending)) {
+      d.outageOperatingIntl = structuredClone(pending); putData(d);
+    }
+  }
+  function outageOperatingInput(V, res, id, intl) {
+    const input = structuredClone({ ...V, round: res.round,
+      teams: Object.fromEntries(Object.entries(V.teams).map(([tid, t]) =>
+        [tid, { ...t, construction: t.construction || t.research?.construction }])),
+      econ: { ...V.econ, intl: { cur: intl }, cities: Object.fromEntries(Object.entries(V.econ.cities).map(([tid, city]) =>
+        [tid, { ...city, ...(V.econ.before[tid] || {}) }])) },
+      grid: Object.fromEntries(actT(V).map(t => [t.id, V.grid?.[t.id]?.entries ? V.grid[t.id] : V.teams[t.id].trialGrid])) });
+    if (actT(V).every(t => !input.grid[t.id])) delete input.grid;
+    input.grid = { ...input.grid, [id]: C.gridStatus(input, R(), BG, id) };
+    BG.selectPack(C.teamDef(R(), id).pack, "league");
+    return input;
+  }
+  function outageSim(plan, seed, season, days, mods) {
+    const st = BG.sanitize(plan, 1e9);
+    st.seed = seed; st.season = season;
+    if (mods.tax && !st.policies.includes("tax")) st.policies.push("tax");
+    const s = BG.simulate(st, days, { league: true, mods });
+    if (![s.tot.dem, s.unsTotal].every(Number.isFinite)) throw new Error("outage simulation");
+    const pct = s.tot.dem > 0 ? 100 * s.unsTotal / s.tot.dem : 0;
+    if (!Number.isFinite(pct)) throw new Error("outage simulation");
+    return pct;
+  }
+  // 연계선의 반대쪽 연결 여부만 보관한다. 우리 쪽 전선은 다음 달 계획으로 다시 판단한다.
+  function outageTiePorts(id, plan) {
+    return withCityPack(id, () => {
+      const net = BG.network(BG.sanitize(plan || {}, 1e9));
+      return new Set(net.nodes.filter(n => n.kind === "import" && n.live && n.comp >= 0)
+        .flatMap(n => BG.SITES[n.si].to || []));
+    });
+  }
+  function validOutageSnapshot(s, round) {
+    const object = x => !!x && typeof x === "object" && !Array.isArray(x);
+    const finiteTree = x => typeof x === "number" ? Number.isFinite(x) :
+      x && typeof x === "object" ? Object.values(x).every(finiteTree) : x != null;
+    return object(s) && s.round === round && object(s.plan) && Array.isArray(s.plan.builds) && Array.isArray(s.plan.lines) &&
+      Array.isArray(s.plan.policies) && object(s.mods) && object(s.normalMods) && object(s.eventMods) &&
+      object(s.facts) && object(s.fullReCap) && Object.hasOwn(SEASON_NAME, s.season) &&
+      [s.seed, s.days, s.unsPct, s.isolatedUnsPct, s.waitingMW, s.facts.pop, s.facts.ind, s.facts.fuel].every(Number.isFinite) &&
+      s.days > 0 && typeof s.facts.event === "string" && finiteTree(s.mods) && finiteTree(s.normalMods) && finiteTree(s.eventMods) &&
+      finiteTree(s.fullReCap) && [s.mods.essCap, s.mods.hydroMonth, s.mods.curtailP].every(Number.isFinite) &&
+      object(s.mods.reCap) && s.plan.builds.every(b => object(b) && typeof b.t === "string" && Number.isInteger(b.i)) &&
+      s.plan.lines.every(l => object(l) && Array.isArray(l.p) && l.p.every(Number.isInteger)) &&
+      C.MUL.every(k => Number.isFinite(s.eventMods[k]));
+  }
+  const matchesOutageSnapshot = (s, res, id) => validOutageSnapshot(s, res.round) &&
+    s.unsPct === res.team[id].unsPct && s.seed === res.seed && s.days === res.days && s.season === res.season;
+  // 사본 실패도 기존처럼 같은 그리기에서 반복하지 않고 다음 그리기에 한 번만 재시도한다.
+  function outageSnapshot(V, res, id) {
+    if (id !== L.team || !V.econ || V.round !== res?.round || !["review", "end"].includes(V.phase)) return null;
+    const d = tdata();
+    const snapshots = d.outageSnapshots && typeof d.outageSnapshots === "object" && !Array.isArray(d.outageSnapshots) ? d.outageSnapshots : {};
+    const kept = Object.fromEntries(Object.entries(snapshots).filter(([r]) => +r >= res.round - 1 && +r <= res.round));
+    if (Object.keys(kept).length !== Object.keys(snapshots).length) { d.outageSnapshots = kept; putData(d); }
+    if (matchesOutageSnapshot(kept[res.round], res, id)) return kept[res.round];
+    const key = `snapshot:${id}:${res.round}`, render = L.outRender || 0;
+    L.outFailures ||= {};
+    const failed = L.outFailures[key];
+    if (failed && (failed.attempts >= 2 || failed.render === render)) return null;
+    try {
+      const before = V.econ.before?.[id], events = (V.events || []).filter(e => e.round === res.round);
+      // intl는 월말 갱신된다. 계획 때 기기에 보관한 값 또는 지난 사본의 다음 운영용 값을 사용한다.
+      // 첫 운영은 국제 지수 갱신 전이므로 자료의 시작 지수를 쓴다(첫 결과에서 처음 연 기기도 지원).
+      const initial = KCP.ECON_DATA.intl.base;
+      const hasOperatingIntl = d.outageOperatingIntl?.round === res.round;
+      const intlFallback = !hasOperatingIntl && !!kept[res.round - 1]?.nextIntl;
+      const intl = hasOperatingIntl ? d.outageOperatingIntl.intl :
+        kept[res.round - 1]?.nextIntl || (res.round === 1 ? { fuelMul: Math.round(initial.lng * initial.fx * 1000) / 1000 } : null);
+      if (!before || !V.teams[id]?.plan || !Number.isFinite(intl?.fuelMul) ||
+          ![before.pop, before.ind, res.seed, res.days, res.team[id]?.unsPct].every(Number.isFinite) || res.days <= 0 ||
+          events.some(e => !Number.isFinite(e.x))) {
+        L.outFailures[key] = { attempts: 2, render }; return null;
+      }
+      const snapshot = withCityPack(id, () => {
+        const input = outageOperatingInput(V, res, id, intl), plan = BG.sanitize(V.teams[id].plan, 1e9);
+        const mods = C.modsFor(input, R(), id), normalMods = C.modsFor({ ...input, events: [] }, R(), id);
+        // MUL 중 coalCapMul에는 기술도 곱해진다. 사건 없는 배수를 따로 보관해 0배 사건도 나눗셈 없이 제거한다.
+        const eventMods = Object.fromEntries(C.MUL.map(k => [k, (mods[k] ?? 1) / (normalMods[k] ?? 1)]));
+        for (const k of ["demandHours", "tax"]) if (Object.hasOwn(mods, k)) eventMods[k] = structuredClone(mods[k]);
+        const eventClue = outageEventClue(events, input, res, id, plan), grid = input.grid[id];
+        const hostTies = input.ties.filter(t => t.st === "built" && [t.a, t.b].includes(id) && input.teams[t.a] && input.teams[t.b])
+          .map(t => {
+            const other = t.a === id ? t.b : t.a;
+            return [other, outageTiePorts(other, input.teams[other].plan).has(id) ? C.effectiveTie(input, t).cap * params("hostTieMul") : 0];
+          });
+        const ports = outageTiePorts(id, plan);
+        const tieHostMW = hostTies.reduce((sum, [other, mw]) => sum + (ports.has(other) ? mw : 0), 0);
+        return { round: res.round, plan, seed: res.seed, days: res.days, season: res.season, mods,
+          unsPct: res.team[id].unsPct, isolatedUnsPct: outageSim(plan, res.seed, res.season, res.days, mods),
+          normalMods, eventMods, hostMW: grid.hostMW, tieHostMW, hostTies,
+          fullReCap: Object.fromEntries(grid.entries.map(b => [b.key, b.mw])),
+          waitingMW: res.team[id].grid?.waitingMW ?? grid.waitingMW,
+          facts: { pop: before.pop, ind: before.ind, fuel: intl.fuelMul, event: eventClue.full || eventClue.short,
+            eventNames: events.filter(e => C.eventDef(R(), e.id) && C.hits(R(), C.eventDef(R(), e.id), id, input)).map(e => C.eventDef(R(), e.id).name).join("·") || "해당 사건 없음" },
+          nextIntl: structuredClone(V.econ.intl?.cur || V.econ.intl), ...(intlFallback ? { intlFallback: true } : {}) };
+      });
+      if (!validOutageSnapshot(snapshot, res.round)) throw new Error("outage snapshot");
+      d.outageSnapshots = { ...kept, [res.round]: structuredClone(snapshot) };
+      delete d.outageOperatingIntl;
+      putData(d); delete L.outFailures[key];
+      return snapshot;
+    } catch (e) {
+      L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
+    }
+  }
+  const monthlyOutageKey = (res, id) => JSON.stringify(["monthly", id, res.round, res.team[id].unsPct, res.seed, res.days, res.season]);
+  function outageAttributionMonthly(V, res, id, note) {
+    if (!L || !res?.team?.[id] || res.round < 2) return null;
+    const n = note || (id === L.team ? tdata().interview?.months?.[res.round] : null);
+    if ((n?.outageOpened || n?.outageSingleShown) && n.outageFrozen &&
+        n.outageFrozen.round === res.round && n.outageFrozen.id === id) return n.outageFrozen;
+    const key = monthlyOutageKey(res, id);
+    L.outCache ||= {}; L.outFailures ||= {};
+    if (Object.hasOwn(L.outCache, key)) return L.outCache[key];
+    if (V.round !== res.round || !["review", "end"].includes(V.phase)) return null;
+    const started = performance.now(), hadCurrent = matchesOutageSnapshot(tdata().outageSnapshots?.[res.round], res, id);
+    const current = outageSnapshot(V, res, id), old = tdata().outageSnapshots?.[res.round - 1];
+    const previousResult = V.results.find(r => r.round === res.round - 1), previous = previousResult?.team[id];
+    if (!current || !validOutageSnapshot(old, res.round - 1) || !Number.isFinite(previous?.unsPct) || previous.unsPct !== old.unsPct) return null;
+    const failed = L.outFailures[key], render = L.outRender || 0;
+    if (failed && (failed.attempts >= 2 || failed.render === render)) return null;
+    try {
+      return withCityPack(id, () => {
+        let simulations = hadCurrent ? 0 : 1;
+        const sim = (plan, seed, season, days, mods) => { simulations++; return outageSim(plan, seed, season, days, mods); };
+        const base = sim(old.plan, old.seed, old.season, old.days, old.mods);
+        const oldBuilds = new Set(old.plan.builds.map(b => `${b.t}:${b.i}`)), newBuilds = new Set(current.plan.builds.map(b => `${b.t}:${b.i}`));
+        const input = outageOperatingInput(V, res, id, { fuelMul: old.facts.fuel }), grid = input.grid[id];
+        const ports = outageTiePorts(id, current.plan);
+        const priorTieMW = old.hostTies?.reduce((sum, [other, mw]) => sum + (ports.has(other) ? mw : 0), 0);
+        // 이번 계획의 ESS·우리 전선 + 지난달 이웃 연결·연계선 용량. 옛 사본에는 실제 상한을 쓴다.
+        const choiceHostMW = priorTieMW == null ? grid.hostMW : grid.hostMW - current.tieHostMW + priorTieMW;
+        const neighborHostMW = priorTieMW == null ? 0 : current.tieHostMW - priorTieMW;
+        let actualRoom = grid.hostMW, choiceRoom = choiceHostMW;
+        const choiceReCap = Object.fromEntries(grid.entries.map(b => {
+          const oldMW = old.mods.reCap[b.key] || 0;
+          // 실제 상한으로 잘린 기존 예약만 복원한다. 여유가 있는데 사라진 예약(같은 키 재건설)은 복원하지 않는다.
+          const clippedOldMW = Math.min(oldMW, actualRoom);
+          const reservedMW = neighborHostMW < 0 && b.allocatedMW + 1e-9 >= clippedOldMW ? Math.max(oldMW, b.allocatedMW) : b.allocatedMW;
+          actualRoom = Math.max(0, actualRoom - reservedMW);
+          const allocatedMW = Math.min(reservedMW, choiceRoom);
+          choiceRoom = Math.max(0, choiceRoom - allocatedMW);
+          return [b.key, allocatedMW >= b.mw ? b.mw : 0];
+        }));
+        // 새 설비와 우리 선택의 접속 감소·공사 재시작은 ①. 이웃 단절·접속 증가·공사 완료는 ④.
+        const choiceMods = structuredClone(old.mods);
+        const oldDisabled = new Set(old.mods.disabledBuilds || []), currentDisabled = new Set(current.mods.disabledBuilds || []);
+        let disconnectedMW = 0, restarted = 0;
+        for (const key of newBuilds) {
+          if (!oldBuilds.has(key)) {
+            if (Object.hasOwn(current.mods.reCap, key)) choiceMods.reCap[key] = current.mods.reCap[key];
+            else delete choiceMods.reCap[key];
+            choiceMods.disabledBuilds = (choiceMods.disabledBuilds || []).filter(k => k !== key);
+            if (currentDisabled.has(key)) choiceMods.disabledBuilds.push(key);
+          } else {
+            if (Object.hasOwn(current.mods.reCap, key) || Object.hasOwn(old.mods.reCap, key)) {
+              choiceMods.reCap[key] = Math.min(old.mods.reCap[key] || 0, choiceReCap[key] || 0);
+              disconnectedMW += (old.mods.reCap[key] || 0) - choiceMods.reCap[key];
+            }
+            if (!oldDisabled.has(key) && currentDisabled.has(key)) {
+              (choiceMods.disabledBuilds ||= []).push(key); restarted++;
+            }
+          }
+        }
+        // ① 계획·접속의 출력제어를 엔진으로 재계산한다. 기술은 지난달에 고정하고 ②에서는 계절만 바꾼다.
+        const curtailInput = { ...input, events: [],
+          teams: { ...input.teams, [id]: { ...input.teams[id], plan: current.plan, research: { adopted: old.mods.tech || [] } } },
+          grid: { ...input.grid, [id]: { ...grid, entries: grid.entries.map(b => ({ ...b, allocatedMW: choiceMods.reCap[b.key] || 0 })) } } };
+        const choiceCurtail = season => C.modsFor({ ...curtailInput,
+          rounds: C.roundsOf(input).map((rd, i) => i === res.round - 1 ? { ...rd, season } : rd) }, R(), id).curtailP;
+        choiceMods.curtailP = choiceCurtail(old.season);
+        const choice = sim(current.plan, old.seed, old.season, old.days, choiceMods);
+        const weatherMods = { ...choiceMods, hydroMonth: current.mods.hydroMonth,
+          curtailP: choiceCurtail(current.season) };
+        const weather = sim(current.plan, current.seed, current.season, current.days, weatherMods);
+        const eventMods = { ...weatherMods };
+        C.MUL.forEach(k => { eventMods[k] = (old.normalMods[k] ?? 1) * current.eventMods[k]; });
+        for (const k of ["demandHours", "tax"]) {
+          delete eventMods[k];
+          if (Object.hasOwn(current.eventMods, k)) eventMods[k] = current.eventMods[k];
+        }
+        const event = sim(current.plan, current.seed, current.season, current.days, eventMods);
+        // ④ 접속·공사·기술·출력제어를 현재 값으로. 주민·산업·국제 연료는 지난달 값 유지.
+        const progressMods = structuredClone(current.mods);
+        for (const k of ["demandRes", "demandInd", "fuelMul"]) {
+          delete progressMods[k];
+          if (Object.hasOwn(old.mods, k)) progressMods[k] = structuredClone(old.mods[k]);
+        }
+        // SMR 연료 계수는 국제 가격이 아니라 기술 채택에 종속된다.
+        if (progressMods.fuelMul) delete progressMods.fuelMul.smr;
+        if (current.mods.fuelMul?.smr != null) progressMods.fuelMul = { ...progressMods.fuelMul, smr: current.mods.fuelMul.smr };
+        const progress = sim(current.plan, current.seed, current.season, current.days, progressMods);
+        // ⑤는 주민·산업 수요와 국제 연료. 실제·seed·days·season을 확인한 사본의 고립값 재사용.
+        const growth = current.isolatedUnsPct;
+        const connected = current.waitingMW > 0 ? sim(current.plan, current.seed, current.season, current.days, { ...current.mods, reCap: current.fullReCap }) : growth;
+        const parts = [{ key: "choice", value: choice - base }, { key: "weather", value: weather - choice },
+          { key: "event", value: event - weather }, { key: "progress", value: progress - event }, { key: "growth", value: growth - progress },
+          // 양쪽 달의 고립 운전 기준을 단계의 끝/시작과 맞춘다. 재현 차이는 합계 밖 진단이다.
+          { key: "trade", value: (res.team[id].unsPct - growth) - (old.unsPct - base) }];
+        const connectedMW = [...oldBuilds].filter(k => newBuilds.has(k)).reduce((sum, k) => sum + Math.max(0, (current.mods.reCap[k] || 0) - (old.mods.reCap[k] || 0)), 0);
+        const completed = (old.mods.disabledBuilds || []).filter(k => oldBuilds.has(k) && newBuilds.has(k) && !(current.mods.disabledBuilds || []).includes(k)).length;
+        const adopted = (current.mods.tech || []).filter(k => !(old.mods.tech || []).includes(k)).length;
+        const eventNames = snapshot => snapshot.facts.eventNames || snapshot.facts.event.split(" / ").map(e => e.split(":")[0]).join("·");
+        const changed = ["lines", "policies", "shed", "fab2", "rq"].filter(k => JSON.stringify(old.plan[k]) !== JSON.stringify(current.plan[k]));
+        const change = k => old.facts[k] > 0 ? signed((current.facts[k] / old.facts[k] - 1) * 100, 2) + "%" : "이전 값 0: 비율 없음";
+        const clues = {
+          choice: `지난달 뒤 설비 ${[...newBuilds].filter(k => !oldBuilds.has(k)).length}개 추가 / ${[...oldBuilds].filter(k => !newBuilds.has(k)).length}개 제거${disconnectedMW > 0 ? ` · 접속 감소 ${fmt(disconnectedMW, 1)} MW` : ""}${restarted ? ` · 공사 재시작 ${restarted}기` : ""}${changed.length ? ` · ${changed.map(k => ({ lines: "전선", policies: "정책", shed: "배분", fab2: "산업 증설", rq: "연구" }[k])).join("·")} 변경` : ""}`,
+          weather: `날씨 씨앗 ${old.seed} → ${current.seed} · ${SEASON_NAME[old.season]} → ${SEASON_NAME[current.season]} · 대표 운전 ${old.days} → ${current.days}일`,
+          event: `지난달 ${eventNames(old)} → 이번 달 ${eventNames(current)}`,
+          progress: `접속 ${signed(connectedMW, 1)} MW${Math.abs(neighborHostMW) > 1e-9 ? ` · 연계선 변화(이웃 단절·새 연계선)로 접속 ${signed(neighborHostMW, 1)} MW` : ""} · 공사 완료 ${completed}기 · 새 기술 ${adopted}개 · 출력제어 ${fmt(weatherMods.curtailP * 100, 2)} → ${fmt(current.mods.curtailP * 100, 2)}%`,
+          growth: `운영 당시 주민 ${change("pop")} · 산업 ${change("ind")} · 연료 지수 ${fmt(old.facts.fuel, 3)} → ${fmt(current.facts.fuel, 3)}`,
+          trade: `구매 ${fmt(previous.imp * resultPeriod(V, previousResult).mul, 1)} → ${fmt(res.team[id].imp * resultPeriod(V, res).mul, 1)} / 판매 ${fmt(previous.exp * resultPeriod(V, previousResult).mul, 1)} → ${fmt(res.team[id].exp * resultPeriod(V, res).mul, 1)} MWh(월 환산)`
+        };
+        delete L.outFailures[key];
+        return L.outCache[key] = { basis: "monthly", round: res.round, id, trial: old.unsPct, actual: res.team[id].unsPct,
+          total: res.team[id].unsPct - old.unsPct,
+          replay: base - old.isolatedUnsPct, replayOutsideSum: true, parts, clues, clueMore: { event: `지난달: ${old.facts.event} / 이번 달: ${current.facts.event}` },
+          grid: { value: connected - growth, waitingMW: current.waitingMW }, simulations, ms: performance.now() - started };
+      });
+    } catch (e) {
+      L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
+    }
+  }
+  // 사건 단서: 카드에는 우리 도시 정전에 닿는 사건 하나를 두 줄 안으로, 나머지는 '단서 더 보기'에 둔다.
+  // 고립 운전의 사건 몫과 같은 modsFor 기준으로 대응 뒤 배수를 읽는다. 연계선 끊김은 거래 몫으로 안내한다.
+  const EVENT_KINDS = { solarMul: ["solar", "roof", "tandem", "tandem_roof"], windMul: ["wind"], offshoreMul: ["offshore"], tidalMul: ["tidal"], coalCapMul: ["coal"], lngCapMul: ["lng"] };
+  function outageEventClue(events, input, res, id, plan) {
+    const hit = events.filter(ev => C.eventDef(R(), ev.id) && C.hits(R(), C.eventDef(R(), ev.id), id, input));
+    if (!hit.length) return { short: "우리 도시에 해당하는 사건 없음", full: "" };
+    const kinds = new Set(BG.network(BG.sanitize(plan, 1e9)).nodes.map(n => n.kind));
+    const normalMods = C.modsFor({ ...input, events: [] }, R(), id);
+    const rows = hit.map(ev => {
+      const E = C.eventDef(R(), ev.id), f = E.effect || {}, opt = E.opts?.find(o => o.id === input.teams[id].resp?.[`${res.round}:${ev.id}`]);
+      const eventMods = C.modsFor({ ...input, events: [ev] }, R(), id);
+      const knobs = C.MUL.filter(k => (eventMods[k] ?? 1) !== (normalMods[k] ?? 1));
+      const cancelled = opt?.cancel === true || (opt?.dev === 0 && !knobs.length);
+      const affects = !cancelled && (knobs.includes("demandMul") || knobs.some(k => (EVENT_KINDS[k] || []).some(t => kinds.has(t))));
+      const resp = E.opts?.length ? ` · 대응: ${String(opt?.name || "안 함").replace(/^대응\s*/, "")}` : "";
+      const effect = cancelled ? " · 대응으로 효과 없음" : f.tieDown ? " · 연계선 끊김 — 거래 몫에서 봐요" : !affects ? " · 우리 도시 정전에 닿는 효과 없음(해당 설비·수요 효과 없음)" : "";
+      const size = (x, nx) => evSize(E, x, nx) || "크기 없음";
+      return { affects, text: `${E.name}: 예보 ${size({ id: ev.id, round: ev.round }, input.teams[id]?.fcx?.[ev.id])} → 확정 ${size(ev)}${resp}${effect}` };
+    });
+    const main = rows.filter(r => r.affects);
+    const full = rows.map(r => r.text).join(" / ");
+    const short = main.length ? `${main[0].text}${rows.length > 1 ? ` 외 ${rows.length - 1}건` : ""}` : `우리 도시 정전에 닿는 사건 없음(해당 ${rows.length}건)`;
+    return { short, full: rows.length > 1 || !main.length ? full : "" };
+  }
   function outageWaterfallHTML(a) {
+    const monthly = a.basis === "monthly", names = outageNames(a);
     let cursor = a.trial;
-    const rows = [{ key: "trial", label: "시험", value: a.trial, from: 0, to: a.trial }];
-    const replay = a.replay || 0;
-    if (Math.abs(replay) >= .01) rows.push({ key: "replay", label: "시험 재현 차이", value: replay, from: cursor, to: cursor + replay });
+    const rows = [{ key: monthly ? "previous" : "trial", label: monthly ? "지난달 실제" : "시험", value: a.trial, from: 0, to: a.trial }];
+    const replay = a.replayOutsideSum ? 0 : a.replay || 0;
+    if (Math.abs(replay) >= .005) rows.push({ key: "replay", label: monthly ? "재현 차이" : "시험 재현 차이", value: replay, from: cursor, to: cursor + replay });
     cursor += replay;
-    a.parts.forEach(p => { const from = cursor; cursor += p.value; rows.push({ ...p, label: OUT_NAMES[p.key], from, to: cursor }); });
-    rows.push({ key: "actual", label: "실제", value: a.actual, from: 0, to: a.actual });
+    a.parts.forEach(p => { const from = cursor; cursor += p.value; rows.push({ ...p, label: names[p.key], from, to: cursor }); });
+    rows.push({ key: "actual", label: monthly ? "이번 달 실제" : "실제", value: a.actual, from: 0, to: a.actual });
     const low = Math.min(0, ...rows.flatMap(p => [p.from, p.to])), high = Math.max(1e-9, ...rows.flatMap(p => [p.from, p.to]));
-    const summary = rows.map(p => `${p.label} ${["trial", "actual"].includes(p.key) ? fmt(p.value, 2) + "%" : signed(p.value, 2) + "%p"}`).join(", ");
-    return `<div id="lg-outage-waterfall" class="lg-out-wf" role="img" aria-label="${esc(summary)}">${rows.map(p => `<div class="lg-out-row" data-out-step="${p.key}" data-out-value="${p.value}"><span>${esc(p.label)}</span><span class="lg-out-track"><i class="lg-out-bar" data-negative="${p.value < 0}" style="left:${100 * (Math.min(p.from, p.to) - low) / (high - low)}%;width:${100 * Math.abs(p.to - p.from) / (high - low)}%"></i></span><b>${esc(["trial", "actual"].includes(p.key) ? fmt(p.value, 2) + "%" : signed(p.value, 2) + "%p")}</b></div>`).join("")}</div>`;
+    const summary = rows.map(p => `${p.label} ${["trial", "previous", "actual"].includes(p.key) ? fmt(p.value, 2) + "%" : signed(p.value, 2) + "%p"}`).join(", ");
+    return `<div id="lg-outage-waterfall" class="lg-out-wf" role="img" aria-label="${esc(summary)}">${rows.map(p => `<div class="lg-out-row" data-out-step="${p.key}" data-out-value="${p.value}"><span>${esc(p.label)}</span><span class="lg-out-track"><i class="lg-out-bar" data-negative="${p.value < 0}" style="left:${100 * (Math.min(p.from, p.to) - low) / (high - low)}%;width:${100 * Math.abs(p.to - p.from) / (high - low)}%"></i></span><b>${esc(["trial", "previous", "actual"].includes(p.key) ? fmt(p.value, 2) + "%" : signed(p.value, 2) + "%p")}</b></div>`).join("")}</div>`;
   }
   function outageEvidenceText(n, a, largest) {
     const part = key => a.parts.find(p => p.key === key).value;
-    const linked = { wind: "weather", neighbor: "trade" }[n.evidence?.key];
+    const monthly = a.basis === "monthly", names = outageNames(a);
+    const linked = { wind: "weather", neighbor: "trade", ...(monthly ? { fuel: "growth", evening: "growth" } : {}) }[n.evidence?.key];
     let text;
-    if (linked) text = `고른 근거 ‘${n.evidence.text}’와 관련된 ${OUT_NAMES[linked]} 몫은 ${signed(part(linked), 2)}%p${Math.abs(part(linked)) < .05 ? "로 이번 차이에 거의 기여하지 않았어요" : "예요"}. 근거 하나만의 인과 효과는 아니에요.`;
-    else if (n.evidence?.key === "grid") text = `고른 근거 ‘${n.evidence.text}’의 접속 대기는 시험과 실제 모두에 있는 몫으로 따로 봐요. 이번 차이를 이 근거 하나로 설명할 수는 없어요.`;
-    else text = `고른 근거 ‘${n.evidence?.text || "미선택"}’만의 정전 효과는 따로 계산하지 않았어요. 계획·날씨·사건·거래가 함께 작용해요.`;
-    const next = { choice: "시험 뒤 설비·전선·정책 변경", weather: "시험과 실제의 날씨·재생 발전량", event: "사건 예보 범위와 우리 대응", trade: "이웃 정전과 구매·판매" };
+    if (linked) text = `고른 근거 ‘${n.evidence.text}’와 관련된 ${names[linked]} 몫은 ${signed(part(linked), 2)}%p${Math.abs(part(linked)) < .05 ? "로 이번 차이에 거의 기여하지 않았어요" : "예요"}. 근거 하나만의 인과 효과는 아니에요.`;
+    else if (n.evidence?.key === "grid" && a.grid?.waitingMW > 0) text = `고른 근거 ‘${n.evidence.text}’와 접속 대기 반사실은 분해 합계와 따로 봐요. 이번 차이를 이 근거 하나로 설명할 수는 없어요.`;
+    else text = `고른 근거 ‘${n.evidence?.text || "미선택"}’만의 정전 효과는 따로 계산하지 않았어요. ${a.parts.map(p => names[p.key]).join(" / ")}가 함께 작용해요.`;
+    const next = { choice: "시험 뒤 설비·전선·정책 변경", weather: "시험과 실제의 날씨·재생 발전량", event: "사건 예보 범위와 우리 대응", trade: "이웃 정전과 구매·판매", progress: "접속 할당·공사 완료·새 기술", growth: "주민·산업 수요 변화와 운영 당시 연료 지수" };
+    if (monthly) { next.choice = "지난달과 이번 달의 설비·전선·정책 변경"; next.weather = "지난달과 이번 달의 날씨·계절·운전 기간"; }
     return largest ? `${text} 다음에는 ${next[largest.key]}도 근거로 살펴봐요.` : `${text} 이번 달은 뚜렷한 원인 없음으로 기록해요.`;
   }
   function outageCardsHTML(V, res, id, n) {
     const a = outageAttribution(V, res, id, n);
-    const baseline = outageBaseline(V, res, n);
-    const comparisonNote = baseline.label === "지난달 대비" ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정은 지난달 대비예요. 아래 나누기는 이번 달 시험 1주 대비 실제 차이예요.</p>' : "";
-    const trial = !a && matchingTrial(V, res, id);
-    const failed = trial && L.outFailures?.[outageCacheKey(res, id, trial)];
-    const unavailable = trial ? failed?.attempts === 1 ? "원인을 계산하지 못했어요. 다음 결과 그리기에서 한 번 더 시도해요." : "이번 달은 원인 나누기를 표시하지 않아요." : "같은 방·도시·월의 시험 기록이 없어요. 계산에 필요한 당시 자료가 있어야 원인 몫을 나눌 수 있어요.";
-    if (!a) return `<div id="lg-missed"><h4>무엇을 놓쳤나</h4>${comparisonNote}<p class="lg-hint">${unavailable}</p>${Object.entries(MISS_NAMES).map(([key, label]) => `<button type="button" class="v2-btn" data-missed="${key}" aria-pressed="${n.missed === key}">${label}</button>`).join("")}${n.missed ? y2022LinkHTML("lg-y2022-result", V.phase !== "end") : ""}</div>`;
+    const monthly = a ? a.basis === "monthly" : !!V.econ && res.round > 1, names = outageNames(a || { basis: monthly ? "monthly" : "trial" });
+    const comparisonNote = monthly ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.</p>' :
+      V.econ && res.round > 1 ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정은 지난달 대비, 아래 나누기는 시험 대비예요.</p>' : "";
+    const trial = !a && !monthly && matchingTrial(V, res, id);
+    const failed = L.outFailures?.[monthly ? monthlyOutageKey(res, id) : outageCacheKey(res, id, trial)] ||
+      (monthly && L.outFailures?.[`snapshot:${id}:${res.round}`]);
+    const old = monthly && tdata().outageSnapshots?.[res.round - 1];
+    const missing = monthly && (!validOutageSnapshot(old, res.round - 1) ||
+      V.results.find(r => r.round === res.round - 1)?.team[id]?.unsPct !== old.unsPct);
+    const unavailable = missing ? "지난달 운영 조건이 이 기기에 없어 나누지 못해요." :
+      (monthly || trial) ? failed?.attempts === 1 ? "원인을 계산하지 못했어요. 다음 결과 그리기에서 한 번 더 시도해요." : "이번 달은 원인 나누기를 표시하지 않아요." :
+      "같은 방·도시·월의 시험 기록이 없어요. 계산에 필요한 당시 자료가 있어야 원인 몫을 나눌 수 있어요.";
+    if (!a) return `<div id="lg-missed"><h4>무엇을 놓쳤나</h4>${missing ? "" : comparisonNote}<p class="lg-hint">${unavailable}</p>${monthly ? "" : Object.entries(MISS_NAMES).filter(([key]) => !["growth", "progress"].includes(key)).map(([key, label]) => `<button type="button" class="v2-btn" data-missed="${key}" aria-pressed="${n.missed === key}">${label}</button>`).join("")}${!monthly && n.missed ? y2022LinkHTML("lg-y2022-result", V.phase !== "end") : ""}</div>`;
     const ranked = [...a.parts].sort((x, y) => Math.abs(y.value) - Math.abs(x.value));
     const largest = Math.abs(ranked[0].value) < .05 ? null : ranked[0], single = ranked.slice(1).every(p => Math.abs(p.value) < .05);
     const opened = !!n.outageOpened || single;
@@ -1969,11 +2395,21 @@
     const selected = a.parts.find(p => p.key === n.missed);
     // HTML 생성만으로 기록하지 않고, DOM에 실제로 표시된 뒤 저장한다.
     if (opened) L.outShownPending = { round: res.round, single, largest: largest ? { ...largest } : null, frozen: a };
+    const gridSize = a.grid?.waitingMW > 0 && Math.abs(a.grid?.value || 0) >= .05;
+    const causeCount = a.parts.length === 4 ? "네" : a.parts.length === 6 ? "여섯" : `${a.parts.length}개`;
+    const singleText = !largest ? `${causeCount} 원인의 몫이 모두 0.05%p 미만이에요` : `이번 차이의 가장 큰 몫은 ${esc(names[largest.key])} ${esc(signed(largest.value, 2))}%p예요. ${causeCount} 원인 중 다른 몫은 모두 0.05%p 미만이라 고르기를 생략해요`;
+    // 접속 대기 반사실은 원인 후보가 아니지만, 크기가 0.05%p 이상이면 한 줄 요약 바로 옆에 나란히 둔다.
+    const singleGrid = gridSize ? `<p id="lg-outage-single-grid">접속 대기(분해 합계 밖): 대기 없었다면 ${esc(signed(a.grid.value, 2))}%p. 이번 실제 조건에서 따로 비교하므로 원인 후보에는 넣지 않아요.</p>` : "";
+    const gridTail = !(a.grid?.waitingMW > 0) || single && gridSize ? "" : ` · 접속 대기 ${esc(fmt(a.grid.waitingMW, 1))} MW${opened ? `: 대기 없었다면 <b data-out-grid="${a.grid.value}">${esc(signed(a.grid.value, 2))}%p</b>(고립 운전 비교)` : ""}`;
+    const othersHTML = `<p id="lg-outage-others" class="lg-hint">${single ? "원인 단서" : "카드에 없는 후보"}: ${others.map(p => `${esc(names[p.key])}(${esc(a.clues[p.key])})${opened ? ` <b data-out-other="${p.key}" data-out-value="${p.value}">${esc(signed(p.value, 2))}%p</b>` : ""}`).join(" · ")}${gridTail}</p>`;
+    // 좁은 서랍에서 카드 단서는 두 줄로 줄여 보이므로, 전체 단서는 접어 둔다(숫자 %p 없음).
+    const more = single ? (a.clueMore?.event ? [["event", a.clueMore.event]] : []) : cards.map(p => [p.key, p.key === "event" && a.clueMore?.event ? a.clueMore.event : a.clues[p.key]]);
+    if (a.clueMore?.event && !more.some(([key]) => key === "event")) more.push(["event", a.clueMore.event]);
+    const moreHTML = more.length ? `<details id="lg-outage-more" class="lg-hint"><summary>단서 더 보기</summary><ul>${more.map(([key, text]) => `<li><b>${esc(names[key])}</b>: ${esc(text)}</li>`).join("")}</ul></details>` : "";
     return `<section id="lg-missed" class="lg-outage" data-ms="${a.ms}" data-simulations="${a.simulations}" data-opened="${opened}" data-single="${single}"><h4>S7 · 정전 변화의 원인 하나</h4>${comparisonNote}
-      ${single ? `<p id="lg-outage-single">${!largest ? "모든 원인의 몫이 0.05%p 미만이에요" : `이번 차이의 가장 큰 몫은 ${esc(OUT_NAMES[largest.key])} ${esc(signed(largest.value, 2))}%p예요. 다른 몫은 모두 0.05%p 미만이라 고르기를 생략해요`}.</p>` : `<p class="lg-hint">시험 → 실제 ${esc(signed(a.total, 2))}%p. 큰 후보 세 개의 단서만 보고 하나를 골라요.</p><div id="lg-outage-cards" class="lg-out-cards" role="group" aria-label="원인 카드">${cards.map(p => `<button type="button" class="lg-out-card" data-missed="${p.key}" aria-pressed="${n.missed === p.key}" ${opened ? "disabled" : ""}${opened ? ` data-out-value="${p.value}"` : ""}><strong>${esc(OUT_NAMES[p.key])}</strong><span class="lg-out-clue">${esc(a.clues[p.key])}</span><b class="lg-out-size">${opened ? `${esc(signed(p.value, 2))} %p` : "?"}</b>${opened ? `<span class="lg-out-tags">${n.missed === p.key ? '<span data-out-tag="picked">내가 고름</span>' : ""}${largest?.key === p.key ? '<span data-out-tag="largest">가장 큼</span>' : ""}</span>` : ""}</button>`).join("")}</div>`}
-      <p id="lg-outage-others" class="lg-hint">${single ? "원인 단서" : "카드에 없는 후보"}: ${others.map(p => `${esc(OUT_NAMES[p.key])}(${esc(a.clues[p.key])})${opened ? ` <b data-out-other="${p.key}" data-out-value="${p.value}">${esc(signed(p.value, 2))}%p</b>` : ""}`).join(" · ")} · 접속 대기 ${esc(fmt(a.grid.waitingMW, 1))} MW${opened ? `: 대기 없었다면 <b data-out-grid="${a.grid.value}">${esc(signed(a.grid.value, 2))}%p</b>(고립 운전 비교)` : ""}</p>
-      ${!opened ? `<button type="button" class="v2-btn primary" id="lg-outage-open" ${cards.some(p => p.key === n.missed) ? "" : "disabled"}>이 카드로 정하고 열기</button>` : `${outageWaterfallHTML(a)}${Math.abs(a.replay) >= .01 ? '<p id="lg-outage-replay" class="lg-hint">시험 재현 차이는 저장된 시험과 재계산의 차이예요. 시험 뒤 뺀 설비의 접속 할당 등 당시 접속·기술 조건을 완전히 되살리지 못해 생길 수 있어요. 원인 후보에는 넣지 않아요.</p>' : ""}<p id="lg-outage-grid" class="lg-hint">접속 대기는 시험과 실제 모두에 있는 몫으로, 위 분해 합계와 따로 표시해요. 실제 조건의 고립 운전에서 대기 설비를 모두 연결한 반사실이에요.</p><div id="lg-outage-verdict" tabindex="-1" aria-live="polite"><p>내가 고른 것: ${single ? "고르기 생략" : `${esc(OUT_NAMES[n.missed] || "미선택")} ${selected ? esc(signed(selected.value, 2)) + "%p" : ""}${selected ? largest.key === selected.key ? " · 가장 큰 몫과 같아요" : Math.abs(selected.value) < .05 ? " · 이번 차이에 거의 기여하지 않았어요" : " · 몫은 있지만 가장 크지 않았어요" : ""}`}</p><p>${largest ? `가장 큰 것: ${esc(OUT_NAMES[largest.key])} ${esc(signed(largest.value, 2))}%p · ${esc(a.clues[largest.key])}` : "뚜렷한 원인 없음"}</p><p>내 예측이 놓친 것: ${esc(outageEvidenceText(n, a, largest))}</p></div><button type="button" class="v2-btn" id="lg-outage-carry" ${n.missedCarry ? "disabled" : ""}>${n.missedCarry ? "다음 달 약속 카드에 붙였어요" : "다음 달 약속 카드에 붙이기"}</button><small class="lg-hint">기기에만 저장</small>${y2022LinkHTML("lg-y2022-result", V.phase !== "end")}`}
-      <p id="lg-outage-order" class="lg-hint">바꾸는 순서(내 선택 → 날씨·운전 기간 → 사건 → 이웃 거래)에 따라 막대 크기가 달라질 수 있는 추정이에요. 앞 단계에서 바꾼 조건 위에서 다음 원인을 바꾸므로, 원인끼리 겹친 효과는 뒤 단계 몫에 들어가요(G).</p></section>`;
+      ${single ? `<p id="lg-outage-single">${singleText}.</p>${singleGrid}` : `<p class="lg-hint">${monthly ? "지난달 실제 → 이번 달 실제" : "시험 → 실제"} ${esc(signed(a.total, 2))}%p. 큰 후보 세 개의 단서만 보고 하나를 골라요.</p><div id="lg-outage-cards" class="lg-out-cards" role="group" aria-label="원인 카드">${cards.map(p => `<button type="button" class="lg-out-card" data-missed="${p.key}" aria-pressed="${n.missed === p.key}" ${opened ? "disabled" : ""}${opened ? ` data-out-value="${p.value}"` : ""}><strong>${esc(names[p.key])}</strong><span class="lg-out-clue">${esc(a.clues[p.key])}</span><b class="lg-out-size">${opened ? `${esc(signed(p.value, 2))} %p` : "?"}</b>${opened ? `<span class="lg-out-tags">${n.missed === p.key ? '<span data-out-tag="picked">내가 고름</span>' : ""}${largest?.key === p.key ? '<span data-out-tag="largest">가장 큼</span>' : ""}</span>` : ""}</button>`).join("")}</div>`}
+      ${!opened ? `${othersHTML}${moreHTML}<button type="button" class="v2-btn primary" id="lg-outage-open" ${cards.some(p => p.key === n.missed) ? "" : "disabled"}>이 카드로 정하고 열기</button>` : `${outageWaterfallHTML(a)}${othersHTML}${moreHTML}${(Math.abs(a.replay) >= .005) ? monthly ? `<p id="lg-outage-replay" class="lg-hint">재현 차이 ${esc(signed(a.replay, 2))}%p: 지난달 사본의 고립 정전율과 같은 조건 재계산의 차이예요. ${a.replayOutsideSum ? '분해 합계 밖 진단이며 원인 후보에는 넣지 않아요.' : '원인 후보에는 넣지 않아요.'}</p>` : '<p id="lg-outage-replay" class="lg-hint">시험 재현 차이는 저장된 시험과 재계산의 차이예요. 시험 뒤 뺀 설비의 접속 할당 등 당시 접속·기술 조건을 완전히 되살리지 못해 생길 수 있어요. 원인 후보에는 넣지 않아요.</p>' : ""}${a.grid?.waitingMW > 0 ? '<p id="lg-outage-grid" class="lg-hint">접속 대기는 분해 합계와 따로 표시해요. 이번 실제 조건의 고립 운전에서 대기 설비를 모두 연결한 반사실이에요.</p>' : ""}<div id="lg-outage-verdict" tabindex="-1" aria-live="polite"><p>내가 고른 것: ${single ? "고르기 생략" : `${esc(names[n.missed] || "미선택")} ${selected ? esc(signed(selected.value, 2)) + "%p" : ""}${selected ? largest.key === selected.key ? " · 가장 큰 몫과 같아요" : Math.abs(selected.value) < .05 ? " · 이번 차이에 거의 기여하지 않았어요" : " · 몫은 있지만 가장 크지 않았어요" : ""}`}</p><p>${largest ? `가장 큰 것: ${esc(names[largest.key])} ${esc(signed(largest.value, 2))}%p · ${esc(a.clues[largest.key])}` : "뚜렷한 원인 없음"}</p><p>내 예측이 놓친 것: ${esc(outageEvidenceText(n, a, largest))}</p></div><button type="button" class="v2-btn" id="lg-outage-carry" ${n.missedCarry ? "disabled" : ""}>${n.missedCarry ? "다음 달 약속 카드에 붙였어요" : "다음 달 약속 카드에 붙이기"}</button><small class="lg-hint">기기에만 저장</small>${y2022LinkHTML("lg-y2022-result", V.phase !== "end")}`}
+      <p id="lg-outage-order" class="lg-hint">바꾸는 순서(${esc(a.parts.map(p => names[p.key]).join(" → "))})에 따라 막대 크기가 달라질 수 있는 추정이에요. 앞 단계에서 바꾼 조건 위에서 다음 원인을 바꾸므로, 원인끼리 겹친 효과는 뒤 단계 몫에 들어가요(G).</p></section>`;
   }
   function co2AttributionHTML(V, res, id) {
     const a = co2Attribution(V, res, id);
@@ -2007,7 +2443,7 @@
       ["CO₂(이번 달 운영)", r.co2Prod * mul, p ? p.co2Prod * pm : undefined, "t", "t", "지난달 대비", 0]];
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
-    return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · 정전 시간은 도시 전체 부족 시간, CO₂는 생산 기준</p>
+    return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
       <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(rep?.groups?.[id]?.whyGrade || "G")}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
@@ -2119,7 +2555,7 @@
       locked: () => "진행자 보기 전용 — 짓기는 팀 기기에서",
       season: () => rd.season,
       ...(S.econ ? { leagueRound: () => C.roundsOf(L.S)[Math.max(0, L.S.round - 1)],
-        leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), trialScope: trialScope(id) } : {}),
+        leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), leagueOutageRisk: () => lastOutageRisk(L.snap || C.publicView(L.S, Date.now()), id), leagueTrialGoals: res => trialGoals(res, id), trialScope: trialScope(id) } : {}),
       onMount: root => { root.querySelector('[data-cap="budget"] .v2-cap-k').textContent = "남은 돈"; viewBar(root, id); window.dispatchEvent(new Event("resize")); }
     });
   }
@@ -2297,15 +2733,30 @@
     });
     if (V.econ) {
       const top = (V.econ.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter), max = Math.max(1, ...top.map(f => f.n));
+      const drawn = [];
       top.forEach(f => {
         const A = G.cen[f.from], B = G.cen[f.to]; if (!A || !B) return;
         const dx = B[0] - A[0], dy = B[1] - A[1], len = Math.hypot(dx, dy); if (!len) return;
-        const x = B[0] - dx / len * 4, y = B[1] - dy / len * 4;
+        // 광역 지도 이름·정전 줄의 실제 글자 폭 바깥부터 잇는다.
+        const labelEdge = (id, point, vx, vy) => {
+          const t = C.teamDef(reg, id), r = res?.team[id], v = V.teams[id];
+          const sub = r ? `정전 ${fmt(r.unsPct, 1)}%` : v && !v.seated ? "빈 자리" : "";
+          g.font = "800 2.6px sans-serif"; const nameWidth = g.measureText(t.name).width;
+          g.font = "700 1.5px sans-serif"; const subWidth = sub ? g.measureText(sub).width : 0;
+          const halfWidth = Math.max(nameWidth, subWidth) / 2 + 1.4;
+          const scale = Math.min(vx ? halfWidth / Math.abs(vx) : Infinity, vy ? (vy > 0 ? sub ? 5.2 : 1.8 : 4.2) / Math.abs(vy) : Infinity);
+          return [point[0] + vx * scale, point[1] + vy * scale];
+        };
+        const tail = labelEdge(f.from, A, dx / len, dy / len), head = labelEdge(f.to, B, -dx / len, -dy / len);
+        if ((head[0] - tail[0]) * dx + (head[1] - tail[1]) * dy <= 0) return;
+        const [x, y] = head;
         g.setLineDash([]); g.lineWidth = 0.4 + f.n / max; g.strokeStyle = "#8d2755";
-        g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(x, y); g.stroke();
+        g.beginPath(); g.moveTo(tail[0], tail[1]); g.lineTo(x, y); g.stroke();
         g.fillStyle = "#8d2755"; g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx / len * 2 + dy / len, y - dy / len * 2 - dx / len); g.lineTo(x - dx / len * 2 - dy / len, y - dy / len * 2 + dx / len); g.closePath(); g.fill();
+        drawn.push([f.from, f.to]);
       });
-      cv.dataset.moves = String(top.length);
+      cv.dataset.moves = String(drawn.length);
+      cv.dataset.movePairs = JSON.stringify(drawn);
     }
     cv.dataset.k = String(k); cv.dataset.flows = String(flows);
     if (preview) { cv.dataset.preview = "true"; cv.dataset.ox = String(ox); cv.dataset.kx = String(kx); cv.dataset.oy = String(oy); }
@@ -2612,8 +3063,11 @@
         }
         if (!L.claimAccepted) return;
       }
+      // S7 운영 연료는 월말 갱신 전의 계획 단계 값으로 기기에만 보관한다.
+      outageRememberIntl(V);
       // 결과를 받은 즉시, 다음 계획이 편집되기 전에 한 번만 계산한다.
       if (V.econ && ["review", "end"].includes(V.phase)) {
+        outageSnapshot(V, V.results.at(-1), L.team);
         outageAttribution(V, V.results.at(-1), L.team);
       }
       if (V.econ?.report?.cities?.[L.team]) {
@@ -2712,6 +3166,33 @@
     const input = trialInput(st, id);
     return input && C.trialMods ? C.trialMods(input, R(), id) : {};
   }
+  // 리그 시험 성적표의 목표 줄(build.js leagueTrialGoals 훅). 시험 입력은 trialInput·C.trialMods가
+  // events: []로 만들므로 이번 달 사건을 넣지 않는다 — 그 사실과 예보 범위를 밝힌다.
+  function trialGoals(res, id = L.team) {
+    const V = L.role === "host" || L.role === "solo" ? L.S : L.snap;
+    if (!V?.teams?.[id] || !res) return null;
+    const g = C.goalsOf ? C.goalsOf(V) : V.goals || R().goals;
+    const rd = C.roundsOf(V)[Math.max(0, (V.round || 1) - 1)] || {}, days = rd.mdays || rd.days;
+    const uns = res.tot?.dem > 0 ? 100 * res.unsTotal / res.tot.dem : 0;
+    const period = V.econ ? "이번 달" : "이번 라운드", actual = V.econ ? "실제 달은" : "실제 라운드는";
+    const rows = Number.isFinite(g?.unsPct) ? [{ name: `정전 · ${period} 목표`, ok: uns <= g.unsPct, val: `시험 ${fmt(uns, 2)}% / 목표 ≤ ${fmt(g.unsPct, 2)}%(지역 공동목표 선)` }] : [];
+    const notes = [];
+    if (V.econ && Number.isFinite(g?.co2Plan) && res.days > 0 && days > 0)
+      notes.push(`CO₂: 우리 도시 시험 ${fmt(res.co2)} t(${res.days}일) → ${days}일 환산 약 ${fmt(res.co2 * days / res.days)} t. 지역 공동목표 ≤ ${fmt(g.co2Plan)} t는 ${actT(V).length}개 도시의 이번 달 합이에요(계획 시작 때 확정).`);
+    const evs = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(x => x.E && C.hits(R(), x.E, id));
+    const names = evs.map(({ ev, E }) => { const size = evSize(E, { id: ev.id, round: ev.round }, V.teams[id]?.fcx?.[ev.id]); return size ? `${E.name} · 예보 ${size}` : E.name; });
+    notes.push(names.length ? `시험에는 ${period} 확정 사건(${names.join(", ")})과 우리 대응이 들어 있지 않아요 — ${actual} 달라질 수 있어요.` : `${period} 우리 도시에 해당하는 사건이 없어요. 시험과 실제는 날씨·운전 기간·이웃 거래로 달라질 수 있어요.`);
+    return { rows, notes };
+  }
+  function lastOutageRisk(V, id) {
+    if (V?.phase !== "plan") return null;
+    const result = V?.results?.at(-1)?.team[id];
+    if (!Number.isFinite(result?.unsPct)) return null;
+    const goal = (C.goalsOf(V) || V.goals).unsPct;
+    const rd = C.roundsOf(V)[Math.max(0, (V.round || 1) - 1)];
+    const trial = rd && matchingTrial(V, rd, id);
+    return result.unsPct > goal || !!trial && trial.unsPct > goal;
+  }
   function trialGrid(st, id = L.team) {
     const input = trialInput(st, id);
     return input?.econ ? withCityPack(id, () => C.gridStatus(input, R(), BG, id, true)) : null;
@@ -2746,6 +3227,8 @@
       leagueTurnLabel: n => { const rd = C.roundsOf(L.snap)[n - 1]; return rd?.month ? `${rd.year}년 ${rd.month}월` : `${n}라운드`; },
       leagueMods: trialConditions,
       leagueGrid: trialGrid,
+      leagueOutageRisk: () => lastOutageRisk(L.snap, L.team),
+      leagueTrialGoals: res => trialGoals(res),
       leagueLensStamp: () => L.snap?.rev,
       trialScope: trialScope(L.team),
       onChange: () => {
@@ -2832,7 +3315,7 @@
       load: () => ({ v: 2, map: t.pack, maps: { [t.pack]: st }, runs: 0, jAuto: true, journal: [] }),
       save: () => {}, locked: () => "관전 중 · 읽기 전용", season: () => curRound().season, leagueRound: curRound,
       budget: () => L.snap.teams[id].left + BG.capex(BG.current()),
-      ...(L.snap?.econ ? { leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), trialScope: trialScope(id) } : {}),
+      ...(L.snap?.econ ? { leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), leagueOutageRisk: () => lastOutageRisk(L.snap || C.publicView(L.S, Date.now()), id), leagueTrialGoals: res => trialGoals(res, id), trialScope: trialScope(id) } : {}),
       onMount: root => {
         root.classList.add("lg-peek");
         setupTeamMap(root, id);
@@ -2958,12 +3441,19 @@
     syncTool();
     L.hudObserver?.disconnect();
     const money = root.querySelector('[data-cap="budget"]');
+    if (L.snap?.econ && money && !money.querySelector(".lg-debt-note")) {
+      const note = document.createElement("small"); note.className = "lg-debt-note"; note.textContent = "(빚 한도 포함)"; money.querySelector(".v2-cap-txt").append(note);
+    }
     const syncMoney = () => {
       const value = money?.querySelector("[data-v]"), label = money?.querySelector(".v2-cap-k");
       if (label && label.textContent !== "남은 돈") label.textContent = "남은 돈";
       const text = `${fmt(L.snap?.teams[id]?.left, 1)}억`;
       if (value && value.textContent !== text) value.textContent = text;
       if (value) value.dataset.money = "left";
+      if (money && L.snap?.econ) {
+        const description = `남은 돈 ${text} (빚 한도 포함)`;
+        money.title = description; money.setAttribute("aria-label", description);
+      }
     };
     root.querySelectorAll('[data-cap]').forEach(cap => {
       cap.setAttribute("role", "button"); cap.tabIndex = 0;
@@ -3068,6 +3558,7 @@
     const V = L.snap, reg = R();
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     if (!V) { set("lg-bround", "진행자 연결 대기"); set("lg-bphase", ""); return; }
+    rememberLocalPlan(V); updatePlanReminder(V);
     const rd = curRound();
     const RS0 = C.roundsOf(V);
     set("lg-bround", V.round ? turnLabel(rd, V.round, RS0.length, true) : `준비 · ${turnLabel(RS0[0], 1, RS0.length, true)}`);
@@ -3088,7 +3579,8 @@
     }
     const inc = V.ties.filter(T => T.st === "prop" && T.by !== L.team && (T.a === L.team || T.b === L.team)).length;
     const city = V.econ?.cities[L.team], chips = document.getElementById("lg-hud-chips"), watch = document.getElementById("lg-watch");
-    if (chips && city) chips.innerHTML = `<button type="button" class="lg-bbtn" data-hud-panel="city">지지 ${esc(fmt(city.approval, 1))}%</button><button type="button" class="lg-bbtn" data-hud-panel="city">주민 변화 ${esc(signed(V.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</button>`;
+    // 태블릿에서는 칩 폭을 줄여 말줄임할 수 있어 전체 문구를 title에도 둔다.
+    if (chips && city) { const pop = `주민 변화 ${signed(V.econ.report?.cities?.[L.team]?.dPop || 0)}명(지난달 대비)`; chips.innerHTML = `<button type="button" class="lg-bbtn" data-hud-panel="city">지지 ${esc(fmt(city.approval, 1))}%</button><button type="button" class="lg-bbtn" data-hud-panel="city" title="${esc(pop)}">${esc(pop)}</button>`; }
     const grid = city?.grid || V.grid?.[L.team];
     const badges = [evCards(V, V.round, L.team) ? ["사건", "deal"] : null, grid?.waitingMW > 0 ? ["접속 대기", "city"] : null, me.left < 0 || city?.cash < 0 ? ["현금 위험", "city"] : null, inc ? ["이웃 제안", "deal"] : null].filter(Boolean).slice(0, 3);
     if (watch) watch.innerHTML = badges.length ? `<span>이번 달 볼 것</span>${badges.map(([text, tab]) => `<button type="button" class="lg-bbtn" data-hud-panel="${tab}">${text}</button>`).join("")}` : "";
@@ -3102,16 +3594,34 @@
     BG.closeDrawer?.(); document.getElementById("lg-first-guide")?.remove();
     L.panelFolded = false; L.panel = tab;
     const p = document.getElementById("lg-panel"); if (!p) return;
-    p.hidden = false; renderPanel();
+    p.hidden = false; renderPanel(); syncResultMapSpace();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.panel === tab)));
     if (previous !== tab) { p.scrollTop = 0; p.querySelector(".lg-pbody")?.scrollTo(0, 0); }
     if (tab === "journal" && L.awaitReady) {
       const card = p.querySelector("#lg-predict");
-      if (card) { p.scrollTop = card.offsetTop - p.querySelector(".lg-ptabs").offsetHeight; card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
+      // 지난달 S7에서 붙인 '지난달 놓친 것' 줄은 약속 카드 바로 위에 있다 — 그 줄부터 보이게 한다.
+      if (card) { scrollPanelTo(p.querySelector("#lg-missed-carry") || card); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
+  }
+  // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
+  function scrollPanelTo(el) {
+    const p = document.getElementById("lg-panel");
+    if (!p || !el || !p.contains(el)) return;
+    const tabs = p.querySelector(".lg-ptabs")?.offsetHeight || 0;
+    p.scrollTop += el.getBoundingClientRect().top - p.getBoundingClientRect().top - tabs - 8;
+  }
+  function syncResultMapSpace() {
+    const root = document.getElementById("bd-root"), p = document.getElementById("lg-panel");
+    if (!root || L.away) return;
+    const wide = !!p && !p.hidden && ["review", "end"].includes(p.dataset.stage) && ["result", "journal"].includes(p.dataset.tab);
+    const before = root.dataset.resultDrawer, drawerBefore = root.dataset.leagueDrawer;
+    root.dataset.resultDrawer = String(wide);
+    root.dataset.leagueDrawer = String(!!p && !p.hidden);
+    if (before !== root.dataset.resultDrawer || drawerBefore !== root.dataset.leagueDrawer) window.dispatchEvent(new Event("resize"));
   }
   function closePanel(restore = false) {
     L.panel = null; const p = document.getElementById("lg-panel"); if (p) p.hidden = true;
+    syncResultMapSpace();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", "false"));
     if (restore && L.panelTrigger?.isConnected) L.panelTrigger.focus({ preventScroll: true });
   }
@@ -3211,7 +3721,9 @@
     }
     if (tab === "result" && V?.phase === "end" && !V.econ) body = y2022LinkHTML("lg-y2022-end") + `<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])}</p>` + body;
     if (tab === "result" && V) body = V.phase === "end" ? body + techResultHTML(V) : techResultHTML(V) + body;
+    p.dataset.stage = V?.phase || ""; p.dataset.tab = tab;
     p.classList.toggle("lg-tech-drawer", tab === "tech");
+    syncResultMapSpace();
     p.dataset.folded = String(!!L.panelFolded);
     if (V?.econ && V.phase === "plan") body = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>` + body;
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
@@ -3318,7 +3830,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageCardsHTML },
+    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st); if (L.snap?.econ) { const { d, n } = monthNote(); n.buildCost = newBuildCost(L.snap); n.buildBudget = L.snap.teams[L.team].budget; n.confirmed = false; putData(d); } L.rev++; sendPlan(); BG.refresh(); return true; }
   };

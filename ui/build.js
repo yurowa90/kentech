@@ -2620,6 +2620,7 @@
     return root;
   }
 
+  const powerChipDefinition = "설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(7월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.";
   function refreshHUD() {
     const set = (k, v, tone) => {
       const el = S.root.querySelector(`[data-cap="${k}"]`);
@@ -2632,6 +2633,11 @@
     const left = budgetLeft();
     set("budget", `${fmt(left, Math.abs(left % 1) > 1e-9 ? 1 : 0)}억`, left < 6 ? "danger" : "");
     const R = S.run, res = S.result;
+    if (LG) {
+      const power = S.root.querySelector('[data-cap="power"]');
+      power.classList.remove("tone-mint");
+      power.title = R || res ? "" : powerChipDefinition;
+    }
     if (R) {
       const ch = curHour();
       set("time", `D${ch.d + 1} ${hh(ch.h)}`);
@@ -2647,10 +2653,23 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw), 0);
+      const grid = LG && S.opts.leagueGrid?.(S.st);
+      const disabled = LG ? leagueMods(S.st)?.disabledBuilds || [] : [];
+      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => {
+        if (LG && disabled.includes(`${n.kind}:${n.tile}`)) return a;
+        if (LG && n.kind !== "lng" && n.kind !== "coal" && n.kind !== "import") {
+          const b = BLD[n.kind];
+          if (b.cls === "bat") return a; // 저장은 발전 용량에 더하지 않는다.
+          if (b.hostLimited && grid && !grid.entries?.some(e => e.key === `${n.kind}:${n.tile}` && e.allocatedMW >= e.mw)) return a;
+        }
+        return a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw);
+      }, 0);
       const peak = previewPeak(S.st);
+      const outageRisk = LG ? S.opts.leagueOutageRisk?.() : null;
+      const powerRisk = capMW < peak || outageRisk === true;
       set("time", PK.climate ? (x => `${x.name} ${x.m + 1}월`)(SEASONS.find(q => q.id === S.st.season) || SEASONS[1]) : "건설 중");
-      set("power", `${fmt(capMW, 0)}/${fmt(peak, 1)}`, capMW < peak ? "danger" : "");
+      set("power", `${fmt(capMW, LG ? 1 : 0)}/${fmt(peak, 1)}`, powerRisk ? "danger" : "");
+      if (LG) S.root.querySelector('[data-cap="power"]').classList.toggle("tone-mint", !powerRisk && outageRisk === false);
       set("co2", "—");
       const cp = complaints(S.st, null);
       set("cp", `${cp.issues}건`, cp.issues > 1 ? "danger" : "");
@@ -2938,6 +2957,16 @@
     const tone = v >= 70 ? "ok" : v >= 40 ? "mid" : "bad";
     return `<span class="bd-sat" data-tone="${tone}"><span style="width:${v}%"></span></span><b class="num">${v}</b>`;
   }
+  // 리그 모드 성적표: 독립 시안 미션(하루 CO₂·비용 목표) 대신 리그가 넘긴 이번 달 목표·사건 안내를 보여 준다.
+  // opts.leagueTrialGoals(R) → { rows: [{ name, ok, val }], notes: [문자열] }. 훅이 없거나 실패하면 미션 줄을 숨긴다.
+  function leagueGoalsHTML(R) {
+    let info = null;
+    try { info = typeof S.opts.leagueTrialGoals === "function" ? S.opts.leagueTrialGoals(R) : null; } catch (_) { info = null; }
+    if (!info) return "";
+    const rows = (info.rows || []).map(m => `<p class="bd-mis-row" data-ok="${!!m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "목표 안" : "목표 넘음"}">${ico(m.ok ? "check" : "x")}</span><b>${esc(m.name)}</b><span class="num">${esc(m.val)}</span></p>`).join("");
+    const notes = (info.notes || []).map(t => `<p class="bd-trade">${esc(t)}</p>`).join("");
+    return rows || notes ? `<div class="bd-mis" id="bd-league-goals">${rows}${notes}</div>` : "";
+  }
   function renderResult() {
     const R = S.result;
     if (!R) return `<div class="bd-empty">${ico("play", "v2-ico bd-empty-ico")}<p><b>아직 운영 기록 없음</b></p><p>아래 ${uiVisible("longTrial") ? "1주·1달·3달" : "시험 1주"}를 누르면 결과가 여기 떠요.</p></div>`;
@@ -2952,10 +2981,10 @@
         <button type="button" class="v2-btn bd-reroll" id="bd-reroll">${ico("reroll")}<span>다른 날씨</span></button>
       </div>
       <ul class="bd-news">${R.news.map(t => `<li>${ico("news")}<span>${esc(t)}</span></li>`).join("")}</ul>
-      <div class="bd-mis">${chosen.map(m => `<p class="bd-mis-row" data-ok="${m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "성공" : "실패"}">${ico(m.ok ? "check" : "x")}</span><b>${m.name}</b><span class="num">${esc(m.val)}</span></p>`).join("")}
-        ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>
+      ${S.opts.league ? leagueGoalsHTML(R) : `<div class="bd-mis">${chosen.map(m => `<p class="bd-mis-row" data-ok="${m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "성공" : "실패"}">${ico(m.ok ? "check" : "x")}</span><b>${m.name}</b><span class="num">${esc(m.val)}</span></p>`).join("")}
+        ${lostElse.length ? `<p class="bd-trade"><b>대신 잃은 것</b> ${lostElse.map(m => esc(m.val)).join(" · ")}</p>` : `<p class="bd-trade"><b>대신 잃은 것</b> 없음 — 다른 목표도 지켰다</p>`}</div>`}
       <div class="bd-kpis">
-        <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>건설 ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
+        <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>${S.opts.league ? "건설(지도 전체 설비비)" : "건설"} ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
         ${R.research && (R.research.unis || R.research.labs) ? `<p><span>연구</span><b class="num">${Object.keys(R.research.adoptW).length ? Object.keys(R.research.adoptW).map(id => `${TECHS.find(T => T.id === id).name.split(/[·\s]/)[0]} ${R.research.adoptW[id] + 1}주차`).join(", ") : "도입 없음"}</b><small>${(R.st && R.st.rq || []).length || (R.research.log.length) ? `실증 ${R.research.log.filter(x => x.ev === "demo").length}건 · ` : ""}연구비 ${fmt(R.research.cost.total, 1)}억</small></p>` : ""}
         <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
@@ -3197,7 +3226,23 @@
     html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
-    V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b: (dock.height ? dock.top : H) - 6 };
+    if (S.opts.league && W >= 761 && W <= 1279 && S.root.dataset.resultDrawer === "true") {
+      const drawer = S.root.querySelector("#lg-panel");
+      if (drawer && !drawer.hidden) r = drawer.getBoundingClientRect().left - 8;
+    }
+    let b = (dock.height ? dock.top : H) - 6;
+    if (S.opts.league) {
+      const reminder = S.root.querySelector("#lg-plan-reminder");
+      if (reminder) {
+        const stage = S.root.querySelector(".bd-stage").getBoundingClientRect();
+        reminder.style.left = `${Math.max(10, 8 - stage.left)}px`;
+        reminder.style.right = `${Math.max(10, stage.right - r)}px`;
+        reminder.style.bottom = `${stage.bottom - (dock.height ? dock.top : H) + 10}px`;
+        const height = reminder.getBoundingClientRect().height;
+        if (height) b -= height + 10;
+      }
+    }
+    V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -3261,6 +3306,7 @@
   // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
   //   league 리그 모드(외부 연결점) · solo 혼자 하기(긴 시험 유지) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
   //   leagueMods(st) 사건을 뺀 이번 달 운영 보정값(trialMods 계약) · leagueGrid(st) 계획 기준 접속 상태(gridStatus, entries 포함 시 설비별 대기 계산)
+  //   leagueTrialGoals(R) 리그 성적표의 이번 달 목표 줄·사건 안내({rows, notes}). 리그 모드에서는 독립 시안 미션 줄을 대신한다.
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
   const K_LENSES = "kcp-league-lenses-v1";
   function rememberLenses() {
@@ -3383,6 +3429,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
+    powerChipDefinition,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
