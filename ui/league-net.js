@@ -11,6 +11,24 @@
   if (!KCP) return;
   const MAX_BYTES = 200000;
 
+  // 공개 키 입력 실수를 막는 검사다. JWT 서명을 검증하는 인증 절차는 아니다.
+  function publicKeyProblem(key) {
+    key = String(key || "").trim();
+    if (key.includes("sb_secret_")) return "secret";
+    if (!key.startsWith("eyJ")) return null;
+    try {
+      // JWT는 header.payload.signature 세 부분이어야 한다(서명 검증은 하지 않는다 — 실수 방지 목적).
+      const parts = key.split("."), part = parts[1];
+      if (parts.length !== 3 || !parts[2] || !part || !/^[A-Za-z0-9_-]+={0,2}$/.test(part)) return "malformed";
+      const encoded = part.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
+        Uint8Array.from(atob(encoded + "=".repeat((4 - encoded.length % 4) % 4)), c => c.charCodeAt(0))
+      ));
+      if (payload?.role === "service_role") return "service_role";
+      return payload?.role === "anon" ? null : "not_anon";
+    } catch (e) { return "malformed"; }
+  }
+
   const bytes = value => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value));
   const secure = () => !!globalThis.crypto?.subtle;
   const algorithm = { name: "ECDSA", namedCurve: "P-256" };
@@ -266,7 +284,7 @@
   }
 
   function supabase(room, url, key, canSend = () => true) {
-    const H = hub(), topic = "realtime:kcp-league-" + room, addr = wsUrl(url, key);
+    const H = hub(), topic = "realtime:kcp-league-" + room, addr = publicKeyProblem(key) ? null : wsUrl(url, key);
     let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
     const queue = [];
     if (!addr || !key) { H.set("error"); return { kind: "supabase", send() {}, on: H.on, onStatus: H.onStatus, status: () => H.status, close() {} }; }
@@ -337,6 +355,6 @@
   KCP.leagueNet = {
     open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend) : local(o.room); },
     replyGate, compactSnapshot, expandSnapshot, canonical, sessionId, hostBinding, signHost, hostReceiver,
-    wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
+    publicKeyProblem, wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
   };
 })();

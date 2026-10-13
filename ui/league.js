@@ -12,6 +12,8 @@
   // K_TEAM: 이 기기에서 마지막으로 쓴 팀(이어서 하기). K_TAB(sessionStorage): 이 탭의 팀·서명 키·순번 — 한 PC에서 탭 여러 개로 시연해도 섞이지 않게.
   // 팀 자료(건설·일지)는 방·팀마다 따로: K_DATA + ":" + 방 + ":" + 팀
   const K_NET = "kcp-league-net-v1", K_HOST = "kcp-league-host-v1", K_TEAM = "kcp-league-team-v1", K_TAB = "kcp-league-tab-v1", K_DATA = "kcp-league-data-v1";
+  const PUBLIC_KEY_NOTICE = "비밀 키(service_role)는 쓰면 안 돼요. 대시보드의 publishable 또는 anon 키를 넣어요.";
+  const JOIN_KEY_NOTICE = "이 참가 링크의 키는 쓸 수 없어요. 선생님께 새 링크를 받아요.";
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const SEASON_NAME = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
   const PHASE_NAME = { lobby: "준비", plan: "계획·협상", run: "운영 중", review: "결과·일지", end: "끝" };
@@ -1286,9 +1288,20 @@
     document.documentElement.classList.add("v2-league-lobby");
     let pre = null;
     if (joinArg) { try { pre = JSON.parse(b64d(joinArg)); } catch (e) { pre = null; } }
-    if (pre && pre.n && pre.n.kind === "supabase") store.set(K_NET, { kind: "supabase", url: String(pre.n.url || ""), key: String(pre.n.key || "") });
+    let keyNotice = "";
+    const savedNet = netCfg();
+    if (NET.publicKeyProblem(savedNet.key)) {
+      store.set(K_NET, { ...savedNet, key: "" });
+      keyNotice = PUBLIC_KEY_NOTICE;
+    }
+    if (pre && pre.n && pre.n.kind === "supabase") {
+      const cfg = { kind: "supabase", url: String(pre.n.url || ""), key: String(pre.n.key || "") };
+      if (NET.publicKeyProblem(cfg.key)) { keyNotice = JOIN_KEY_NOTICE; pre = null; initialMode = "join"; }
+      else store.set(K_NET, cfg);
+    }
     const soloSave = store.get(K_SOLO);
-    const net = netCfg(), hostSave = store.get(K_HOST), lastTeam = store.get(K_TEAM);
+    const net = { ...netCfg() }, hostSave = store.get(K_HOST), lastTeam = store.get(K_TEAM);
+    if (NET.publicKeyProblem(net.key)) net.key = ""; // 저장에 실패해도 거부 대상 키는 화면에 넣지 않는다.
     const reg = R();
     let syncLobby = null;
     const mustCity = id => (reg.must || []).includes(id);
@@ -1375,11 +1388,11 @@
           </fieldset>
           <div class="lg-sb" ${net.kind === "supabase" ? "" : "hidden"}>
             <label class="lg-field"><span>프로젝트 주소</span><input id="lg-url" autocomplete="off" placeholder="https://xxxx.supabase.co" value="${esc(net.url || "")}"></label>
-            <label class="lg-field"><span>공개 키(publishable / anon)</span><input id="lg-key" autocomplete="off" value="${esc(net.key || "")}"></label>
+            <label class="lg-field"><span>공개 키(publishable / anon)</span><input id="lg-key" type="password" autocomplete="off" value="${esc(net.key || "")}"></label>
             <p class="lg-hint">서버에 저장하지 않는 실시간 중계만 써요. 학생 이름·개인정보는 오가지 않아요. 비밀(service) 키는 넣지 않아요.</p>
           </div>
         </details>
-        <p class="lg-err" id="lg-err" role="alert"></p>
+        <p class="lg-err" id="lg-err" role="alert">${esc(keyNotice)}</p>
       </main>`;
     const $ = s => app.querySelector(s);
     const showClassSplit = () => {
@@ -1394,9 +1407,9 @@
     const readNet = () => {
       const kind = app.querySelector("input[name=lg-net]:checked").value;
       const cfg = { kind, url: $("#lg-url").value.trim(), key: $("#lg-key").value.trim() };
+      if (NET.publicKeyProblem(cfg.key)) { errEl.textContent = PUBLIC_KEY_NOTICE; return null; }
       if (kind === "supabase") {
         if (!NET.wsUrl(cfg.url, cfg.key) || !cfg.key) { errEl.textContent = "Supabase 프로젝트 주소와 공개 키를 확인해요."; return null; }
-        if (/service_role|sb_secret_/.test(cfg.key)) { errEl.textContent = "비밀 키는 쓰면 안 됩니다. 공개(publishable/anon) 키를 넣어요."; return null; }
       }
       store.set(K_NET, cfg);
       return cfg;
