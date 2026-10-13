@@ -31,6 +31,37 @@
   };
   const dataKey = () => `${K_DATA}:${L.room}:${L.team}`;
   const tdata = () => { const d = L?.role === "solo" ? L.interview || {} : store.get(dataKey()) || {}; d.docs = d.docs || {}; d.journal = d.journal || {}; return d; };
+  // S7 월간 사본(계획 때 국제 지수·운영 조건)은 팀 자료와 다른 키에 둔다. 같은 키에 두면 이 기기가 새 방의
+  // 같은 팀으로 승인된 적이 있을 때 사본만으로 '이미 자료 있음'이 되어 옛 방 → 새 방 이전(일지·답변 복사)이
+  // 건너뛰어진다(sec.js F3-9: 앞 단계의 승인된 세션이 같은 방:팀 키에 사본을 남긴 경우).
+  const K_S7 = "kcp-league-s7-v1", S7_FIELDS = ["outageSnapshots", "outageOperatingIntl"];
+  const s7Key = () => `${K_S7}:${L.room}:${L.team}`;
+  function s7data() {
+    if (L?.role === "solo") return tdata();
+    const saved = store.get(s7Key()), d = store.get(dataKey());
+    const stale = d && S7_FIELDS.some(k => Object.hasOwn(d, k));
+    if (saved && typeof saved === "object") {
+      // 분리 키가 이미 있으면 팀 자료 키의 옛 사본은 버린다(2달 보관 정리 밖에 남지 않게).
+      if (stale) { S7_FIELDS.forEach(k => delete d[k]); store.set(dataKey(), d); }
+      return saved;
+    }
+    // 분리 전 판(팀 자료 키에 사본이 있던 기기)은 한 번 옮긴다.
+    const moved = {};
+    if (stale) {
+      S7_FIELDS.forEach(k => { if (Object.hasOwn(d, k)) { moved[k] = d[k]; delete d[k]; } });
+      if (store.set(s7Key(), moved)) store.set(dataKey(), d);
+    }
+    return moved;
+  }
+  function putS7(d) {
+    if (L.role === "solo") { putData(d); return; }
+    store.set(s7Key(), Object.fromEntries(S7_FIELDS.filter(k => d[k] !== undefined).map(k => [k, d[k]])));
+  }
+  // 이전 판정용: S7 사본·안내 표시(guideSeen)·빈 묶음만 있으면 학생이 쓴 자료가 없는 것으로 본다.
+  // 그 밖의 값(자동 기록 interview.causes 등 포함)은 보수적으로 '자료 있음'으로 보아 덮어쓰지 않는다.
+  const TEAM_META = ["guideSeen", "rev"];
+  const hasTeamContent = d => !!d && typeof d === "object" && Object.entries(d).some(([k, v]) =>
+    !S7_FIELDS.includes(k) && !TEAM_META.includes(k) && v != null && v !== false && !(typeof v === "object" && !Object.keys(v).length));
   const R = () => C.regionOf(REGION);
   // 이 방에 참가한 도시(2~6곳). 상태 S나 공개 상태 V 둘 다 받는다.
   const actT = X => { const ids = X && Array.isArray(X.active) && X.active.length ? X.active : X && X.teams ? Object.keys(X.teams) : R().teams.map(t => t.id); return R().teams.filter(t => ids.includes(t.id)); };
@@ -2093,11 +2124,11 @@
   // 월간 S7 사본은 방·팀별 tdata에만 둔다. 공개 상태·요청 본문에는 추가하지 않는다.
   function outageRememberIntl(V) {
     if (!V.econ || V.phase !== "plan" || !L.team) return;
-    const intl = V.econ.intl?.cur || V.econ.intl, d = tdata();
+    const intl = V.econ.intl?.cur || V.econ.intl, d = s7data();
     if (!Number.isFinite(intl?.fuelMul)) return;
     const pending = { round: V.round, intl };
     if (JSON.stringify(d.outageOperatingIntl) !== JSON.stringify(pending)) {
-      d.outageOperatingIntl = structuredClone(pending); putData(d);
+      d.outageOperatingIntl = structuredClone(pending); putS7(d);
     }
   }
   function outageOperatingInput(V, res, id, intl) {
@@ -2149,10 +2180,10 @@
   // 사본 실패도 기존처럼 같은 그리기에서 반복하지 않고 다음 그리기에 한 번만 재시도한다.
   function outageSnapshot(V, res, id) {
     if (id !== L.team || !V.econ || V.round !== res?.round || !["review", "end"].includes(V.phase)) return null;
-    const d = tdata();
+    const d = s7data();
     const snapshots = d.outageSnapshots && typeof d.outageSnapshots === "object" && !Array.isArray(d.outageSnapshots) ? d.outageSnapshots : {};
     const kept = Object.fromEntries(Object.entries(snapshots).filter(([r]) => +r >= res.round - 1 && +r <= res.round));
-    if (Object.keys(kept).length !== Object.keys(snapshots).length) { d.outageSnapshots = kept; putData(d); }
+    if (Object.keys(kept).length !== Object.keys(snapshots).length) { d.outageSnapshots = kept; putS7(d); }
     if (matchesOutageSnapshot(kept[res.round], res, id)) return kept[res.round];
     const key = `snapshot:${id}:${res.round}`, render = L.outRender || 0;
     L.outFailures ||= {};
@@ -2198,7 +2229,7 @@
       if (!validOutageSnapshot(snapshot, res.round)) throw new Error("outage snapshot");
       d.outageSnapshots = { ...kept, [res.round]: structuredClone(snapshot) };
       delete d.outageOperatingIntl;
-      putData(d); delete L.outFailures[key];
+      putS7(d); delete L.outFailures[key];
       return snapshot;
     } catch (e) {
       L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
@@ -2214,8 +2245,8 @@
     L.outCache ||= {}; L.outFailures ||= {};
     if (Object.hasOwn(L.outCache, key)) return L.outCache[key];
     if (V.round !== res.round || !["review", "end"].includes(V.phase)) return null;
-    const started = performance.now(), hadCurrent = matchesOutageSnapshot(tdata().outageSnapshots?.[res.round], res, id);
-    const current = outageSnapshot(V, res, id), old = tdata().outageSnapshots?.[res.round - 1];
+    const started = performance.now(), hadCurrent = matchesOutageSnapshot(s7data().outageSnapshots?.[res.round], res, id);
+    const current = outageSnapshot(V, res, id), old = s7data().outageSnapshots?.[res.round - 1];
     const previousResult = V.results.find(r => r.round === res.round - 1), previous = previousResult?.team[id];
     if (!current || !validOutageSnapshot(old, res.round - 1) || !Number.isFinite(previous?.unsPct) || previous.unsPct !== old.unsPct) return null;
     const failed = L.outFailures[key], render = L.outRender || 0;
@@ -2379,7 +2410,7 @@
     const trial = !a && !monthly && matchingTrial(V, res, id);
     const failed = L.outFailures?.[monthly ? monthlyOutageKey(res, id) : outageCacheKey(res, id, trial)] ||
       (monthly && L.outFailures?.[`snapshot:${id}:${res.round}`]);
-    const old = monthly && tdata().outageSnapshots?.[res.round - 1];
+    const old = monthly && s7data().outageSnapshots?.[res.round - 1];
     const missing = monthly && (!validOutageSnapshot(old, res.round - 1) ||
       V.results.find(r => r.round === res.round - 1)?.team[id]?.unsPct !== old.unsPct);
     const unavailable = missing ? "지난달 운영 조건이 이 기기에 없어 나누지 못해요." :
@@ -3000,9 +3031,14 @@
       if (m.type === "claim" && m.n === L.claimN && m.seat === L.claimSeat) {
         L.claimAccepted = true; L.seat = m.seat;
         const old = L.migrationFrom;
-        if (old?.team === L.team && old.room !== L.room && !store.get(dataKey())) {
+        if (old?.team === L.team && old.room !== L.room && !hasTeamContent(store.get(dataKey()))) {
           const data = store.get(`${K_DATA}:${old.room}:${L.team}`);
+          s7data(); // 새 방 키에 남은 분리 전 사본을 덮어쓰기 전에 분리 키로 옮긴다.
           if (data) store.set(dataKey(), data);
+          // 옛 방에서 이어 온 판이면 분리 키 사본도 따라온다(새 방 사본이 없을 때만).
+          const oldS7 = store.get(`${K_S7}:${old.room}:${L.team}`);
+          if (oldS7 && !store.get(s7Key())) store.set(s7Key(), oldS7);
+          s7data(); // 옛 방 자료에 들어 있던 분리 전 사본도 정리한다.
         }
         if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap);
       }

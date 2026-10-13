@@ -482,10 +482,18 @@ def device_data(page):
     }""")
 
 
+def device_s7_data(page):
+    return page.evaluate("""() => {
+      const L=KCP.league.state();
+      return L.role==='solo' ? JSON.parse(localStorage.getItem('kcp-league-solo-v1')).interview :
+        JSON.parse(localStorage.getItem(`kcp-league-s7-v1:${L.room}:${L.team}`));
+    }""")
+
+
 def snapshot_contract(checks, page, label):
     state = page.evaluate(STATE)
     month = state["round"]
-    snapshots = device_data(page).get("outageSnapshots", {})
+    snapshots = device_s7_data(page).get("outageSnapshots", {})
     required(checks, sorted(map(int, snapshots)) == ([1] if month == 1 else [month-1, month]),
              f"{label} {month}월 기기 사본 최근 2달만(3월에 1월 삭제)")
     snap = snapshots[str(month)]
@@ -596,7 +604,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
               '지난달 대비' in compare and matches and
               abs(float(matches[0].replace('−','-').replace(',','')) - delta) <= .0051,
               f"{label} 약속 판정값과 분해 기준 수치 일치")
-    snapshots = device_data(page)['outageSnapshots']
+    snapshots = device_s7_data(page)['outageSnapshots']
     old_snap = snapshots[str(a['round'] - 1)]
     current_snap = snapshots[str(a['round'])]
     trade = next(p['value'] for p in a['parts'] if p['key'] == 'trade')
