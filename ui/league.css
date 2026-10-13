@@ -1065,3 +1065,22 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map[data-league-drawer="true"] .bd-dock > * { pointer-events: none; }
   .lg-team-map #lg-panel { bottom: 8px; max-height: none; }
 }
+
+/* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
+.lg-map-guidance { position: fixed; z-index: 47; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#lg-plan-issues { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; pointer-events: auto; }
+#lg-plan-issues button { flex: none; min-height: 44px; border: 1px solid var(--ui-border); background: var(--ui-panel); color: var(--ui-text); }
+#lg-coach { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; max-width: 680px; padding: 4px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); pointer-events: auto; }
+#lg-coach-task { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+#lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
+#lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#lg-issue-check { position: fixed; z-index: 48; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; max-width: 540px; max-height: calc(100dvh - var(--lg-mapbar-bottom, 210px) - 8px); overflow-y: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); }
+#lg-issue-check h3 { margin: 0; }
+#lg-issue-check button, #lg-coach-again { min-width: 44px; min-height: 44px; }
+#lg-issue-check button:focus-visible, #lg-coach button:focus-visible, #lg-plan-issues button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#bd-root:has(#lg-coach) #lg-plan-reminder { display: none; }
+
+/* 열린 서랍은 코치 아래부터 시작해 지도 안내가 조작을 가리지 않게 한다. */
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #lg-panel,
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #bd-drawer { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }

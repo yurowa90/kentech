@@ -3041,7 +3041,8 @@
     if (!info) return "";
     const rows = (info.rows || []).map(m => `<p class="bd-mis-row" data-ok="${!!m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "목표 안" : "목표 넘음"}">${ico(m.ok ? "check" : "x")}</span><b>${esc(m.name)}</b><span class="num">${esc(m.val)}</span></p>`).join("");
     const notes = (info.notes || []).map(t => `<p class="bd-trade">${esc(t)}</p>`).join("");
-    return rows || notes ? `<div class="bd-mis" id="bd-league-goals">${rows}${notes}</div>` : "";
+    const cause = info.cause ? `<p id="bd-no-supply-cause" class="bd-trade">${esc(info.cause)}</p>` : "";
+    return rows || notes || cause ? `<div class="bd-mis" id="bd-league-goals">${rows}${cause}${notes}</div>` : "";
   }
   function renderResult() {
     const R = S.result;

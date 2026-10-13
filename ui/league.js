@@ -7,6 +7,7 @@
   const KCP = window.KCP;
   if (!KCP || typeof KCP.route !== "function" || !KCP.leagueCore || !KCP.leagueNet || !KCP.buildGame) return;
   const C = KCP.leagueCore, NET = KCP.leagueNet, BG = KCP.buildGame, esc = KCP.esc;
+  const SUPPLY_ASSUMPTION = "이 게임에서는 바깥 전국 전력망에서 전기를 받지 않고, 내 도시 발전과 이웃 연계선만으로 전기를 대요(게임 가정).";
   const POWER_CHIP_DEF = BG.powerChipDefinition;
   const REGION = "south";
   // K_TEAM: 이 기기에서 마지막으로 쓴 팀(이어서 하기). K_TAB(sessionStorage): 이 탭의 팀·서명 키·순번 — 한 PC에서 탭 여러 개로 시연해도 섞이지 않게.
@@ -63,7 +64,7 @@
     if (!L) return;
     saveSolo();
     flushHost();
-    L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect();
+    L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
     if (L.conn) L.conn.close();
@@ -311,17 +312,161 @@
     return loss > 0 ? `<span class="lg-demolition">철거 손실 ${esc(fmt(loss, 1))}억</span>` : "";
   }
   function helpHTML() {
-    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>국가 재정지원금은 연초에 연액을 정하고 분기 초(1·4·7·10월)에 1/4씩 받아요. 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], ["이웃·거래", "사건 대응, 전기값과 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<button type="button" class="v2-btn" id="lg-sound" aria-pressed="${store.get(K_SOUND) === true}">소리</button><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
+    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><button type="button" class="v2-btn" id="lg-coach-again">첫 달 코치 다시 보기</button><p>${esc(SUPPLY_ASSUMPTION)}</p><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>국가 재정지원금은 연초에 연액을 정하고 분기 초(1·4·7·10월)에 1/4씩 받아요. 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], ["이웃·거래", "사건 대응, 전기값과 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<button type="button" class="v2-btn" id="lg-sound" aria-pressed="${store.get(K_SOUND) === true}">소리</button><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
   }
-  function showFirstGuide(root) {
+  function planIssueCounts() {
+    const issues = BG.planIssues();
+    return { unlinked: issues.unlinked.length, waiting: issues.waiting.length, supplyMW: issues.supplyMW };
+  }
+  function noSupplyCause(unsPct, issues) {
+    return unsPct >= 99 && issues?.supplyMW === 0 ?
+      `이번 달 돌아간 발전 설비가 없었어요: 전선 미연결 ${issues.unlinked}기 · 접속 대기 ${issues.waiting}기. ${SUPPLY_ASSUMPTION}` : "";
+  }
+  function choosePlanTool(type) {
+    closePanel(); BG.closeDrawer?.();
+    const root = document.getElementById("bd-root");
+    const tool = root?.querySelector(`[data-tool="${type}"]`);
+    if (!tool) {
+      const group = root?.querySelector(`[data-group="${type === "line" ? "grid" : "fire"}"]`);
+      if (group?.getAttribute("aria-expanded") !== "true") group?.click();
+    }
+    const button = root?.querySelector(`[data-tool="${type}"]`);
+    if (button?.getAttribute("aria-pressed") !== "true") button?.click();
+    button?.focus({ preventScroll: true });
+  }
+  function updatePlanIssues() {
+    const el = document.getElementById("lg-plan-issues");
+    if (!el || L.away) return;
+    const issues = planIssueCounts(), planning = L.snap?.phase === "plan";
+    if (planning) {
+      const { d, n } = monthNote();
+      if (JSON.stringify(n.planIssues) !== JSON.stringify(issues)) { n.planIssues = issues; putData(d); }
+    }
+    const text = planning ? [issues.unlinked ? `<button type="button" class="lg-bbtn" data-issue="line">전선에 안 닿은 설비 ${issues.unlinked}기</button>` : "",
+      issues.waiting ? `<button type="button" class="lg-bbtn" data-issue="wait">이번 달 접속 대기 ${issues.waiting}기</button>` : "",
+      issues.supplyMW === 0 ? '<button type="button" class="lg-bbtn" data-issue="supply">이번 달 돌 설비 없음</button>' : ""].join("") : "";
+    if (el.innerHTML !== text) el.innerHTML = text;
+    el.hidden = !text;
+  }
+  function showIssueCheck(skip) {
+    const root = document.getElementById("bd-root");
+    if (!root) return;
+    document.getElementById("lg-issue-check")?.remove();
+    closePanel(); BG.closeDrawer?.();
+    const issues = planIssueCounts(), card = document.createElement("section");
+    card.id = "lg-issue-check"; card.setAttribute("role", "region"); card.setAttribute("aria-label", "준비 전 확인");
+    card.innerHTML = `<h3>준비 전에 확인해요</h3><p>전선 미연결 ${issues.unlinked}기 · 이번 달 접속 대기 ${issues.waiting}기${issues.supplyMW === 0 ? " · 이번 달 돌 설비 없음" : ""}</p><p>${esc(SUPPLY_ASSUMPTION)}</p><button type="button" class="v2-btn" id="lg-issue-fix">고치러 가기</button><button type="button" class="v2-btn" id="lg-issue-go">그대로 진행</button>`;
+    root.append(card);
+    card.querySelector("#lg-issue-fix").onclick = () => {
+      card.remove();
+      const current = planIssueCounts();
+      if (current.unlinked) choosePlanTool("line");
+      else { closePanel(); const group = root.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); }
+    };
+    card.querySelector("#lg-issue-go").onclick = () => {
+      card.remove();
+      if (L.snap?.phase !== "plan") return;
+      const { d, n } = monthNote(); n.issueCheckPassed = true; putData(d); readyAction(skip);
+    };
+    card.querySelector("#lg-issue-fix").focus({ preventScroll: true });
+  }
+  function closeCoach(restore = false) {
+    const d = tdata(); d.guideSeen = true; putData(d);
+    L.coach = null;
+    document.getElementById("lg-coach")?.remove();
+    document.querySelectorAll(".lg-coach-target").forEach(el => el.classList.remove("lg-coach-target"));
+    if (restore) document.getElementById("bd-canvas")?.focus({ preventScroll: true });
+  }
+  function showFirstGuide(root, again = false) {
+    if (!root || L.away || !["team", "solo"].includes(L.role)) return;
     const d = tdata();
-    if (d.guideSeen || (L.snap?.results || []).length || L.snap?.round > 1) return;
-    const el = document.createElement("aside"); el.id = "lg-first-guide"; el.className = "lg-first-guide"; el.setAttribute("aria-label", "첫 달 안내");
-    el.innerHTML = `<b>배치 → 송전 → 시험 운전 → 준비</b><button type="button" class="v2-btn" id="lg-guide-close">닫기</button><button type="button" class="v2-btn" id="lg-guide-more">도움말 열기</button>`;
-    root.append(el);
-    el.querySelector("#lg-guide-close").focus({ preventScroll: true });
-    el.querySelector("#lg-guide-close").onclick = () => { d.guideSeen = true; putData(d); el.remove(); document.getElementById("bd-canvas")?.focus(); };
-    el.querySelector("#lg-guide-more").onclick = () => { d.guideSeen = true; putData(d); el.remove(); openPanel("help"); };
+    if (!again && (L.coach || d.guideSeen || L.previous || L.snap?.round !== 1 || curRound().month !== 1 || L.snap?.results?.length)) return;
+    document.getElementById("lg-coach")?.remove();
+    L.coach = { step: again && ["review", "end"].includes(L.snap?.phase) ? 5 : 0,
+      round: L.snap.round, builds: BG.current()?.builds.length || 0 };
+    const el = document.createElement("aside"); el.id = "lg-coach"; el.setAttribute("aria-label", "첫 달 코치");
+    el.innerHTML = '<span id="lg-coach-task" role="status" aria-live="polite"></span><button type="button" class="lg-bbtn" id="lg-coach-action"></button><button type="button" class="lg-bbtn" id="lg-coach-skip">건너뛰기</button><button type="button" class="lg-bbtn" id="lg-coach-close" aria-label="코치 닫기"><span id="lg-guide-close">닫기</span></button>';
+    root.querySelector(".lg-map-guidance").append(el);
+    el.querySelector("#lg-coach-close").onclick = () => closeCoach(true);
+    el.querySelector("#lg-coach-skip").onclick = () => { if (L.coach.step < 7) L.coach.step++; else closeCoach(true); updateCoach(false); };
+    el.querySelector("#lg-coach-action").onclick = coachAction;
+    updateCoach();
+  }
+  function coachSteps(issues, n) {
+    // 말풍선 gridWaitInfo도 hostLimited가 없는 설비에는 접속 대기를 적용하지 않는다.
+    const immediate = Object.entries(BG.BLD).find(([id, b]) => b.cls === "disp" && !b.hostLimited && document.querySelector(`[data-group="fire"]`) && id === "diesel");
+    const build = immediate ? `${immediate[1].name} 하나 놓기 · 접속 대기 없어요` : "설비 하나 놓기 · 말풍선의 '대기'를 확인해요";
+    return [
+      ["이번 달 사건을 열어 봐요", "사건 보기", '#lg-bar [data-panel="deal"]'],
+      [build, "화력", '[data-group="fire"]'],
+      [`마을까지 이어요 · 미연결 ${issues.unlinked}기 · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
+      ["시험 1주를 돌려 정전을 확인해요", "시험 1주", '[data-run="7"]'],
+      ["준비 → 근거·방향·확신 고르고 약속해요", "준비", L.awaitReady ? "#lg-ready-confirm" : "#lg-ready"],
+      ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
+      ["정전 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
+      [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
+    ];
+  }
+  function updateCoach(advance = true) {
+    const state = L.coach, el = document.getElementById("lg-coach");
+    if (!state || !el || L.away) return;
+    if (state.round !== L.snap?.round) { closeCoach(); return; }
+    const { n } = monthNote(), issues = planIssueCounts(), count = BG.current()?.builds.length || 0;
+    const review = ["review", "end"].includes(L.snap?.phase);
+    const done = [L.panel === "deal", count > state.builds, count >= 1 && issues.unlinked === 0,
+      !!document.querySelector("#bd-again")?.getClientRects().length, n.confirmed || review,
+      review && L.panel === "result", review && (document.querySelector('#lg-missed[data-opened="true"]') || n.outageSingleShown || !document.querySelector("#lg-missed[data-opened]"))];
+    // 한 확인 주기에 한 단계만 전진해 화면의 다음 행동을 읽을 시간을 준다.
+    if (advance && state.step < 7 && done[state.step]) state.step++;
+    const [task, action, selector] = coachSteps(issues, n)[state.step];
+    el.dataset.step = String(state.step + 1);
+    const taskEl = el.querySelector("#lg-coach-task"), text = `${state.step + 1}/8 ${task}`;
+    if (taskEl.textContent !== text) taskEl.textContent = text;
+    el.querySelector("#lg-coach-action").textContent = action;
+    document.querySelectorAll(".lg-coach-target").forEach(item => item.classList.remove("lg-coach-target"));
+    let target = document.querySelector(selector);
+    if (state.step === 2 && (!target || target.closest("[hidden]"))) target = document.querySelector('[data-group="grid"]');
+    if (state.step === 4 && !target) target = document.getElementById("lg-ready");
+    target?.classList.add("lg-coach-target");
+  }
+  function coachAction() {
+    const step = L.coach?.step;
+    if (step == null) return;
+    if (step === 1) { closePanel(); BG.closeDrawer?.(); const group = document.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); return; }
+    if (step === 2) { choosePlanTool("line"); return; }
+    if (step === 0 || step === 5) { openPanel(step === 0 ? "deal" : "result"); updateCoach(); return; }
+    if (step === 6) openPanel("result");
+    const { n } = monthNote(), [, , selector] = coachSteps(planIssueCounts(), n)[step];
+    const target = document.querySelector(selector);
+    if (!target) { openPanel(step >= 5 ? "result" : "journal"); return; }
+    if (step >= 6 && selector !== "#lg-ready") { scrollPanelTo(target); target.focus({ preventScroll: true }); if (target.matches("button") && !target.disabled) target.click(); }
+    else if (!target.disabled) target.click();
+  }
+  function setupMapGuidance(root) {
+    const stack = document.createElement("div"); stack.className = "lg-map-guidance";
+    stack.innerHTML = '<div id="lg-plan-issues" aria-label="이번 달 계획 확인" hidden></div>';
+    root.append(stack);
+    stack.addEventListener("click", e => {
+      const issue = e.target.closest("[data-issue]");
+      if (issue?.dataset.issue === "line") choosePlanTool("line");
+      if (issue?.dataset.issue === "wait") {
+        const text = BG.planIssues().waiting.map(b => `${b.name}: ${b.months == null ? "상한 확보까지 대기" : `${b.months}달 대기`}`).join(" · ");
+        BG.toast(`접속 대기 설비는 이번 달 발전하지 않아요. ${text}`);
+      }
+      if (issue?.dataset.issue === "supply") { const group = root.querySelector('[data-group="fire"]'); closePanel(); BG.closeDrawer?.(); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); }
+    });
+    L.guidanceObserver?.disconnect();
+    L.guidanceObserver = new ResizeObserver(() => {
+      if (stack.isConnected) root.style.setProperty("--lg-guidance-bottom", `${Math.ceil(stack.getBoundingClientRect().bottom + 8)}px`);
+    });
+    L.guidanceObserver.observe(stack);
+    const session = L;
+    L.timers.push(setInterval(() => {
+      if (L !== session || !root.isConnected || L.away) return;
+      updatePlanIssues(); updateCoach();
+      if (L.snap?.phase !== "plan") document.getElementById("lg-issue-check")?.remove();
+    }, 500));
+    updatePlanIssues();
   }
   function publicCSV(V) {
     // 열을 명시해 자유 서술·약속서·로그가 내려받기에 섞이지 않게 한다.
@@ -1099,6 +1244,10 @@
     if (skip && !freeExperiment()) return;
     unlockAudio();
     const { d, n } = monthNote();
+    if (V.phase === "plan" && !V.teams[L.team].ready && !n.issueCheckPassed) {
+      const issues = planIssueCounts();
+      if (issues.unlinked || issues.supplyMW === 0) { showIssueCheck(skip); return; }
+    }
     if (!skip && !L.awaitReady && needsLoop(V) && !n.confirmed) { L.awaitReady = true; openPanel("journal"); renderBar(); return; }
     if (V.econ && V.phase === "plan") {
       const crit = criterionDraft(V), el = document.getElementById("lg-crit-line");
@@ -1113,6 +1262,7 @@
     if (!skip && needsLoop(V) && (!n.evidence || !Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "") || !Object.hasOwn(CONFIDENCE, n.confidence || ""))) {
       BG.toast("근거 하나·결과 방향·확신을 먼저 정해요"); L.awaitReady = true; openPanel("journal"); return;
     }
+    if (V.phase === "plan") n.planIssues = planIssueCounts();
     n.skipped = !!skip; n.buildCost = newBuildCost(V); n.buildBudget = V.teams[L.team].budget; n.buildCount = BG.current()?.builds.length; n.lineCount = BG.current()?.lines.length;
     const trial = BG.lastTrial?.(), result = trial?.result || trial;
     if (trial && (!trial.round || trial.round === V.round)) {
@@ -3204,7 +3354,7 @@
     const evs = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(x => x.E && C.hits(R(), x.E, id));
     const names = evs.map(({ ev, E }) => { const size = evSize(E, { id: ev.id, round: ev.round }, V.teams[id]?.fcx?.[ev.id]); return size ? `${E.name} · 예보 ${size}` : E.name; });
     notes.push(names.length ? `시험에는 ${period} 확정 사건(${names.join(", ")})과 우리 대응이 들어 있지 않아요 — ${actual} 달라질 수 있어요.` : `${period} 우리 도시에 해당하는 사건이 없어요. 시험과 실제는 날씨·운전 기간·이웃 거래로 달라질 수 있어요.`);
-    return { rows, notes };
+    return { rows, notes, cause: noSupplyCause(uns, planIssueCounts()) };
   }
   function lastOutageRisk(V, id) {
     if (V?.phase !== "plan") return null;
@@ -3262,12 +3412,15 @@
       onTrial: () => { closePanel(); if (L.snap?.econ && curRound().month === 1 && !monthNote().n.baselineSeen) { const { d, n } = monthNote(); n.baselineSeen = true; putData(d); } },
       onHelp: () => openPanel("help"),
       onDrawer: closePanel,
-      onTool: () => { closePanel(); document.getElementById("lg-first-guide")?.remove(); },
+      onTool: closePanel,
       leagueResultDays: () => L.snap?.results.at(-1)?.days,
       leagueResult: () => { const res = L.snap?.results.at(-1); return res?.team[L.team] ? { ...res.team[L.team], faded: L.snap.phase === "plan", round: res.round, month: res.month || C.roundsOf(L.snap)[res.round - 1]?.month, days: res.days } : null; },
       onMount: root => { addBar(root); setupTeamMap(root); window.dispatchEvent(new Event("resize")); }
     });
-    if (resume) return;
+    if (resume) {
+      if (L.coach) { const coach = L.coach; showFirstGuide(document.getElementById("bd-root"), true); L.coach = coach; updateCoach(false); }
+      return;
+    }
     send("claim");
     sendPlan();
     showFirstGuide(document.getElementById("bd-root"));
@@ -3527,6 +3680,7 @@
       <p id="lg-plan-co2" hidden></p>
       <p class="lg-sr" id="lg-live" aria-live="polite"></p>`;
     root.append(bar);
+    setupMapGuidance(root);
     const panel = document.createElement("aside");
     panel.className = "lg-panel";
     panel.dataset.econ = String(!!L.snap?.econ);
@@ -3606,12 +3760,14 @@
     if (watch) watch.innerHTML = badges.length ? `<span>이번 달 볼 것</span>${badges.map(([text, tab]) => `<button type="button" class="lg-bbtn" data-hud-panel="${tab}">${text}</button>`).join("")}` : "";
     const bd = document.getElementById("lg-badge");
     if (bd) { bd.hidden = !inc; bd.textContent = String(inc); }
-    tickTimer();
+    tickTimer(); updatePlanIssues();
+    if (!L.coach) showFirstGuide(document.getElementById("bd-root"));
+    updateCoach();
   }
   function openPanel(tab) {
     const previous = L.panel, active = document.activeElement;
     if (active && !active.closest("#lg-panel") && active !== document.body) L.panelTrigger = active;
-    BG.closeDrawer?.(); document.getElementById("lg-first-guide")?.remove();
+    BG.closeDrawer?.();
     L.panelFolded = false; L.panel = tab;
     const p = document.getElementById("lg-panel"); if (!p) return;
     p.hidden = false; renderPanel(); syncResultMapSpace();
@@ -3753,6 +3909,14 @@
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
     const summary = p.querySelector("#lg-promise-summary");
     if (summary) panelBody.prepend(summary);
+    if (tab === "result" && V?.results?.length) {
+      const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
+      const cause = noSupplyCause(res.team[L.team]?.unsPct, note?.planIssues);
+      if (cause) {
+        const line = document.createElement("p"); line.id = "lg-no-supply-cause"; line.className = "lg-hint"; line.textContent = cause;
+        if (summary) summary.after(line); else panelBody.prepend(line);
+      }
+    }
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });
     panelBody.scrollTop = bodyScroll;
     recordOutageShown(p);
@@ -3795,6 +3959,7 @@
     if (target) { target.focus({ preventScroll: true }); if (cursor) target.setSelectionRange(...cursor); }
   }
   function onPanelClick(e) {
+    if (e.target.closest("#lg-coach-again")) { closePanel(); showFirstGuide(document.getElementById("bd-root"), true); return; }
     if (e.target.closest("#lg-solo-restart")) { restartSolo(); return; }
     if (e.target.closest("[data-promise-details]")) {
       const details = document.getElementById("lg-last-month"); if (details) details.open = true;
