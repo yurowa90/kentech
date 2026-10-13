@@ -1064,3 +1064,53 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map .lg-lenses { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; gap: 2px; }
   .lg-team-map #lg-panel { bottom: calc(var(--bd-dock, 100px) + 8px); max-height: none; }
 }
+/* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
+.fx-turn-layer { position: fixed; z-index: 35; pointer-events: none; overflow: hidden; color: var(--ui-text); font-family: var(--body); }
+.fx-turn-summary { width: max-content; max-width: calc(100% - 8px); box-sizing: border-box; margin: 4px auto; padding: 10px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow); animation: fx-toast-in .35s ease-out; }
+.fx-turn-summary-values { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px 12px; font-size: 14px; }
+.fx-turn-stat { display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; }
+.fx-turn-stat b { font-family: var(--mono); color: var(--ui-cyan); }
+.fx-turn-tag { color: var(--ui-gold); font: 600 11px var(--mono); letter-spacing: .08em; }
+.fx-turn-cards { position: absolute; inset: 4px; display: grid; grid-template-rows: 44px minmax(0, 1fr); justify-items: center; gap: 6px; min-width: 0; }
+.fx-turn-close { justify-self: end; }
+.fx-turn-cards button { pointer-events: auto; min-width: 44px; min-height: 44px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); font: inherit; cursor: pointer; }
+.fx-turn-cards button:disabled { opacity: .4; cursor: default; }
+.fx-turn-cards button:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: -3px; }
+.fx-turn-card-row { align-self: center; width: min(100%, 794px); height: min(100%, 330px); min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; perspective: 1200px; }
+.fx-turn-card-row:has(.fx-turn-card:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 520px; }
+.fx-turn-card-row:has(.fx-turn-card:only-child) { grid-template-columns: minmax(0, 1fr); max-width: 280px; }
+.fx-turn-card { pointer-events: auto; min-width: 0; min-height: 0; box-sizing: border-box; padding: 18px; border: 1px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow), inset 0 0 0 5px var(--ui-border); overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 10px; opacity: 0; transform: rotateY(180deg) translateY(30px); backface-visibility: hidden; transition: transform .7s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+.fx-turn-card.fx-revealed { opacity: 1; transform: none; }
+.fx-turn-card h3 { margin: 0; color: var(--ui-text); font: 400 24px var(--display); }
+.fx-turn-card p { margin: 0; color: var(--ui-muted); font-size: 13px; line-height: 1.55; }
+.fx-turn-big { margin-top: auto; color: var(--ui-gold); font: 600 19px var(--mono); }
+.fx-turn-card-nav { display: none; }
+.fx-turn-layer[data-compact="true"] .fx-turn-card-row { width: min(100%, 360px); max-width: 360px; grid-template-columns: minmax(0, 1fr); }
+.fx-turn-layer[data-compact="true"] .fx-turn-card { grid-area: 1 / 1; padding: 12px; gap: 6px; }
+.fx-turn-layer[data-compact="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
+.fx-turn-layer[data-compact="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; color: var(--ui-muted); font: 12px var(--mono); }
+.fx-flash-up { animation: fx-hud-up 1s ease-out; }
+.fx-flash-down { animation: fx-hud-down 1s ease-out; }
+@keyframes fx-toast-in { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+/* 정전·배출은 올라가면 위험, 내려가면 개선이다. */
+@keyframes fx-hud-up { 0%, 25% { background: var(--ui-danger); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-danger); } }
+@keyframes fx-hud-down { 0%, 25% { background: var(--ui-mint); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-mint); } }
+.bd-replaying #bd-run { box-sizing: border-box; pointer-events: none; bottom: calc(var(--bd-dock, 100px) + 8px); border-radius: 14px; }
+.bd-replaying #bd-skip { pointer-events: auto; border-color: var(--ui-gold); color: var(--ui-gold); }
+.bd-replaying #bd-run-tip { color: var(--ui-muted); }
+@media (max-width: 600px) {
+  .fx-turn-summary { padding: 8px; }
+  .fx-turn-summary-values { font-size: 12px; gap: 4px 8px; }
+  .bd-replaying #bd-run { width: calc(100vw - 16px); box-sizing: border-box; padding: 8px; }
+  .bd-replaying .bd-run-day { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down { animation: none; transition: none; transform: none; }
+  .fx-turn-card { opacity: 1; }
+  .fx-flash-up { outline: 2px solid var(--ui-danger); }
+  .fx-flash-down { outline: 2px solid var(--ui-mint); }
+}
+html.v2-still :is(.fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down) { animation: none; transition: none; transform: none; }
+html.v2-still .fx-turn-card { opacity: 1; }
+html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
+html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }

@@ -396,6 +396,12 @@ def u_plan_contract(checks, team, host, tid, label):
     checks.ok(team.locator('#bd-help-dlg').is_visible() and '자료와 가정' in team.locator('#bd-help-dlg').inner_text(), f'{label} U2 원래 자료·모형 도움말 경로 유지')
     team.locator('#bd-help-dlg').press('Escape')
     team.locator('[data-cap="budget"]').focus(); team.locator('[data-cap="budget"]').press('Enter')
+    # 서랍은 열리지만 진행자 재전송 렌더와 겹치면 Enter 직후 한 번의 판정보다 늦게 보일 수 있다
+    # (2026-10-13 재현: 390폭 24회 중 1회, 300ms 뒤 열림). 2초 안에 보이는지로 판정한다.
+    try:
+        team.locator('.lg-left').first.wait_for(state='visible', timeout=2000)
+    except Exception:
+        pass
     checks.ok(shown(team, '.lg-left'), f'{label} U5 HUD 남은 돈 키보드로 거래 서랍')
     team.locator('.lg-px').click()
     group = team.locator('#bd-root [data-group="ren"]')
@@ -1007,6 +1013,9 @@ def ui_fixes(checks, context, base, label, pages):
 def feature_hiding(checks, context, base, label, pages):
     """E: 화면 숨김이 모드·저장값·월 결과까지 침범하면 실패한다."""
     host, team, fixture = setup_pair(context, base, 12, pages)
+    # 아래 바이오 CO₂ 사례는 기기 스냅숏을 직접 고친다. 진행자는 4초마다 스냅숏을 다시 보내 고친 값을 덮으므로
+    # (2026-10-13 재현: 4.5초 대기 2/2 불일치) 그 구간만 실제 전달을 보류한다(H-U #27 장치, 다음 새로고침부터 적용).
+    team.add_init_script(HOLD_SNAP_JS)
     advance(host, team, 1, 'plan')
     team.locator('#lg-guide-close').click()
     team.locator('#bd-pm').click()
@@ -1055,6 +1064,8 @@ def feature_hiding(checks, context, base, label, pages):
     checks.ok(shown(team, '#lg-crit') and shown(team, '#lg-jcopy'),
               f'{label} E G12 월 일지·S8 활동지 경로 유지')
     advance(host, team, 1, 'review')
+    checks.ok(team.evaluate("() => typeof window.__huRelease === 'function'"), f'{label} E 바이오 사례 스냅숏 보류 장치 적용')
+    team.evaluate('() => {window.__huHold=true}')
     # 각 값은 기기 스냅샷에서만 바꾼다. 실제 결과 경로가 해당 월 report를 읽는지 검사한다.
     for value in (12.34, 0, None):
         team.evaluate('''value => {
@@ -1079,6 +1090,7 @@ def feature_hiding(checks, context, base, label, pages):
             open_panel(team, 'result')
             screenshot(checks, team, f'econui-{label}-hide-result.png')
         overflow(checks, team, label + f' E 바이오 {value}')
+    team.evaluate('() => window.__huRelease()')
 
     build, events = monitored_page(context); pages.append((build, events, 'E 자유 건설'))
     build.goto(base + '#home'); build.wait_for_function(BOOT_JS)
