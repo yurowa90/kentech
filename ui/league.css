@@ -992,3 +992,75 @@ html.bd-drawer-open #lg-plan-reminder,
   .lg-team-map #lg-panel[data-stage="end"]:is([data-tab="result"], [data-tab="journal"]) { width: calc(50vw - 12px); box-sizing: border-box; }
   .lg-team-map[data-result-drawer="true"] #lg-map-result { max-width: calc(50vw - 28px); }
 }
+
+/* 학생 흐름: 표지가 늘어도 상태·탐색·주 행동의 칸과 높이는 그대로 둔다. */
+.lg-team-map #lg-bar:not(.lg-awaybar) {
+  display: grid; grid-template-columns: minmax(0, 1fr) 112px; grid-template-rows: 44px 44px;
+  align-items: center; justify-content: stretch; gap: 4px; box-sizing: border-box;
+}
+.lg-team-map #lg-bar .lg-status {
+  grid-column: 1 / -1; grid-row: 1; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; overflow: hidden;
+}
+.lg-team-map #lg-bar .lg-status > * { flex-shrink: 0; white-space: nowrap; }
+.lg-team-map #lg-bar #lg-hud-chips { flex: 0 1 300px; overflow: hidden; }
+.lg-team-map #lg-bar #lg-watch {
+  position: static; flex: 1 1 240px; flex-direction: row; min-width: 0; max-width: none; overflow-x: auto; overflow-y: hidden;
+}
+.lg-team-map #lg-bar #lg-watch button { flex: 0 0 auto; }
+.lg-team-map #lg-bar .lg-actions {
+  grid-column: 1; grid-row: 2; flex-wrap: nowrap; justify-content: flex-start; min-width: 0; overflow-x: auto; overflow-y: hidden;
+}
+.lg-team-map #lg-bar .lg-actions > :first-child { margin-left: 0; }
+.lg-team-map #lg-bar #lg-ready {
+  grid-column: 2; grid-row: 2; position: static; width: 112px; min-width: 112px; height: 44px; margin: 0; box-shadow: none;
+  background: linear-gradient(135deg, var(--ui-cyan), var(--ui-blue)); border-color: transparent;
+}
+.lg-team-map #lg-bar #lg-plan-co2 { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 서랍 자체 대신 본문만 스크롤한다. 확정 줄은 언제나 서랍 아래에 남는다. */
+.lg-team-map #lg-panel {
+  display: flex; flex-direction: column; top: var(--bd-top, 180px); bottom: calc(var(--bd-dock, 100px) + 8px);
+  max-height: none; overflow: hidden; box-sizing: border-box;
+}
+.lg-team-map #lg-panel[data-folded="true"] { bottom: auto; }
+.lg-team-map #lg-panel .lg-ptabs { position: static; flex: none; align-items: center; }
+.lg-team-map #lg-panel .lg-pbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.lg-team-map #lg-panel .lg-promise-actions {
+  position: sticky; bottom: 0; flex: none; display: grid; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--sheet);
+}
+.lg-promise-actions button { min-height: 44px; }
+.lg-promise-actions #lg-promise-remaining { margin: 0; }
+.lg-promise-summary { margin: 0 0 10px; padding: 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--paper); }
+.lg-promise-summary button { min-height: 44px; margin-top: 4px; }
+.lg-team-map #lg-panel .lg-compared {
+  position: relative; display: flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 8px 52px 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); cursor: pointer;
+}
+.lg-compared input[data-compared] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.lg-compared::after { content: ""; position: absolute; right: 10px; width: 28px; height: 18px; border-radius: 999px; background: var(--ink-2); pointer-events: none; }
+.lg-compared::before { content: ""; position: absolute; z-index: 1; right: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--sheet); pointer-events: none; }
+.lg-compared:has(input:checked)::after { background: var(--accent); }
+.lg-compared:has(input:checked)::before { right: 12px; }
+.lg-compared:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lg-reason-starts { margin: 8px 0; }
+.lg-reason-starts button { min-height: 44px; text-align: left; }
+
+/* 시작 버튼은 도시·게임 설정보다 먼저 보인다. */
+html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* 다음 달 알림은 지도 아래 접속 칩과 떨어진 지도 위쪽에 둔다. */
+.lg-team-map .bd-toast { top: calc(var(--lg-mapbar-bottom, 210px) + 8px); bottom: auto; }
+
+@media (max-width: 760px) {
+  .lg-team-map #lg-bar .lg-status { gap: 4px; }
+  .lg-team-map #lg-bar #lg-hud-chips { display: none; }
+  .lg-team-map #lg-bar .lg-bteam { flex: 0 1 90px; min-width: 0; }
+  .lg-team-map #lg-bar #lg-watch { flex-basis: 44px; }
+  .lg-team-map #lg-bar .lg-timer { display: none; }
+  .lg-team-map .bd-mapbar { flex-wrap: wrap; }
+  .lg-team-map .bd-layers { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .lg-team-map .lg-lenses { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; gap: 2px; }
+  .lg-team-map[data-league-drawer="true"] .bd-dock { visibility: hidden; pointer-events: none; }
+  .lg-team-map[data-league-drawer="true"] .bd-dock > * { pointer-events: none; }
+  .lg-team-map #lg-panel { bottom: 8px; max-height: none; }
+}
