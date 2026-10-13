@@ -833,10 +833,7 @@ section#lg-missed.lg-outage { display: block; }
 .lg-lenses { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-panel); }
 .lg-lenses .bd-layer { min-width: 44px; min-height: 44px; color: var(--ui-text); }
 .lg-lenses .bd-layer[aria-pressed="true"] { color: #102b34; background: #71dceb; }
-.lg-map-result, .lg-first-guide { position: fixed; z-index: 29; left: 8px; top: calc(var(--bd-top, 160px) + 62px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; overflow-wrap: anywhere; }
-.lg-first-guide { z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.lg-first-guide b { flex: 1 1 100%; }
-.lg-first-guide .v2-btn { min-width: 44px; min-height: 44px; font-size: 13px; }
+.lg-map-result { position: fixed; z-index: 29; left: 8px; top: calc(var(--bd-top, 160px) + 62px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; overflow-wrap: anywhere; }
 .lg-map-result[data-faded="true"] { opacity: .65; }
 .lg-map-result[hidden], .lg-lens-grid[hidden] { display: none; }
 .lg-lens-grid { margin: 0; padding: 5px 8px; border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; max-width: 100%; }
@@ -850,7 +847,7 @@ section#lg-missed.lg-outage { display: block; }
 #lg-missed h4 { flex-basis: 100%; }
 #lg-result-reasons, #lg-result-details { border-top: 1px solid var(--line); margin-top: 8px; }
 .lg-team-map [data-cap][role="button"] { cursor: pointer; min-height: 44px; }
-.lg-team-map [data-cap]:focus-visible, .lg-lenses button:focus-visible, .lg-first-guide button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map [data-cap]:focus-visible, .lg-lenses button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
 .lg-team-map #bd-mapbar { max-width: calc(100vw - 16px); }
 .lg-team-map #bd-drawer { z-index: 31; }
 #lg-help ol { padding-left: 22px; }
@@ -870,12 +867,11 @@ section#lg-missed.lg-outage { display: block; }
   .lg-team-map .bd-tool { min-height: 44px; }
   .lg-team-map .bd-tool-c { display: none; }
   .lg-team-map .bd-runs button { min-height: 44px; font-size: 11px; }
-  .lg-team-map .lg-first-guide { top: calc(var(--bd-top, 180px) + 58px); padding: 6px 8px; }
   .lg-team-map .lg-map-result { top: calc(var(--bd-top, 180px) + 58px); pointer-events: none; }
   .lg-team-map #lg-panel { top: var(--bd-top, 180px); max-height: min(36dvh, calc(100dvh - var(--bd-top, 180px) - var(--bd-dock, 100px) - 12px)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lg-first-guide, .lg-map-result, .lg-trends { animation: none; transition: none; }
+  .lg-map-result, .lg-trends { animation: none; transition: none; }
 }
 /* 휴대폰에서는 반복 월 표시를 줄이고 경고는 지도 가장자리에 둔다. */
 @media (max-width: 760px) {
@@ -905,7 +901,6 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
 .lg-map-result { top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
 .lg-map-result[data-faded="true"] { opacity: 1; color: var(--ui-muted); }
-.lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
 .lg-trends text { font-size: 16px; }
 .lg-team-map .lg-lens-grid { position: fixed; left: 8px; top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
 .lg-team-map #lg-panel { z-index: 46; }
@@ -924,7 +919,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .lg-lenses .bd-layer { padding: 0 7px; }
   .lg-team-map .bd-mapbar { flex-wrap: nowrap; }
   .lg-team-map .bd-zoom { order: 0; }
-  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+  .lg-team-map .lg-map-result { top: var(--lg-mapbar-bottom, 210px); }
   .lg-team-map .lg-lens-grid { top: calc(var(--lg-mapbar-bottom, 210px) + 64px); }
   .lg-team-map #lg-sound { position: static; }
   .lg-team-map #lg-panel { top: var(--bd-top, 180px); }
@@ -1114,3 +1109,28 @@ html.v2-still :is(.fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down)
 html.v2-still .fx-turn-card { opacity: 1; }
 html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
+
+/* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
+.lg-map-guidance { position: fixed; z-index: 47; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.lg-map-guidance .lg-map-result { position: static; }
+#lg-plan-issues { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; pointer-events: auto; }
+#lg-plan-issues button { flex: none; min-height: 44px; border: 1px solid var(--ui-border); background: var(--ui-panel); color: var(--ui-text); }
+#lg-coach { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; max-width: 680px; padding: 4px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); pointer-events: auto; }
+#lg-coach-task { min-width: 0; overflow-wrap: anywhere; }
+#lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
+#lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#lg-issue-check { position: fixed; z-index: 48; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; max-width: 540px; max-height: calc(100dvh - var(--lg-mapbar-bottom, 210px) - 8px); overflow-y: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); }
+#lg-issue-check h3 { margin: 0; }
+#lg-issue-check button, #lg-coach-again { min-width: 44px; min-height: 44px; }
+#lg-issue-check button:focus-visible, #lg-coach button:focus-visible, #lg-plan-issues button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#bd-root:has(#lg-coach) #lg-plan-reminder { display: none; }
+
+@media (max-width: 760px) {
+  #lg-coach { grid-template-columns: repeat(3, minmax(44px, 1fr)); }
+  #lg-coach-task { grid-column: 1 / -1; }
+}
+
+/* 열린 서랍은 코치 아래부터 시작해 지도 안내가 조작을 가리지 않게 한다. */
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #lg-panel,
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #bd-drawer { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }

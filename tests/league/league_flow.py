@@ -42,3 +42,15 @@ def start_solo(page, months=12):
     page.locator("#lg-solo-start").click()
     expect(page).to_have_url(re.compile(r".*#league/solo$"))
     expect(page.locator("#lg-bar")).to_be_visible(timeout=15000)
+
+
+def pass_issue_check(page):
+    """품질8 UX U3(docs/QUALITY-ux.md 6절): 설비가 전선에 안 닿았거나 이번 달 돌 설비가 없으면
+    준비를 누를 때 확인 카드(#lg-issue-check)가 달마다 한 번 먼저 뜬다. 기존 검사의 준비 흐름은
+    '그대로 진행'(#lg-issue-go)으로 이어 간다. 카드는 클릭과 같은 틱에 그려지므로 기다리지 않는다."""
+    card = page.locator("#lg-issue-check")
+    if card.count() and card.first.is_visible():
+        page.locator("#lg-issue-go").click()
+        page.wait_for_timeout(150)
+        return True
+    return False

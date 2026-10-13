@@ -7,6 +7,7 @@
 AUTO 문자열을 평가하지 않는다. 계획 변경은 공개 검사 API를 사용한다.
 """
 
+from league_flow import pass_issue_check
 import re
 import sys
 
@@ -90,6 +91,7 @@ def trial(page):
 def ready(page, submit=True):
     close_drawer(page)
     page.locator('#lg-ready').click()
+    pass_issue_check(page)
     page.wait_for_selector('#lg-ready-confirm')
     if submit:
         page.locator('[data-evidence="grid"]').click()

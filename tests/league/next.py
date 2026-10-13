@@ -6,6 +6,7 @@ Public APIs/storage envelopes from existing harnesses are bootstrap conventions,
 not acceptance criteria. Unspecified UI ids are never used as selectors.
 """
 
+from league_flow import pass_issue_check
 import argparse
 import json
 import re
@@ -589,6 +590,7 @@ def event_gate_and_journal(host, team, checks, fixture):
                            arg=[fixture["team"], f"{seeded['round']}:{seeded['event']}", seeded["option"]])
     checks.ok(True, "v1.1 event response applies before 준비")
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     checks.ok(team.locator('#lg-predict').is_visible() and team.locator('#lg-ready-confirm').is_disabled(),
               "v1.1 response → 준비 → promise gate")
     no_overflow(team, checks, "event criterion gate")
@@ -629,6 +631,7 @@ def event_gate_and_journal(host, team, checks, fixture):
     advance(host, team, "plan")
     plan_co2(host, team, checks, fixture)
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     checks.ok(team.locator('#lg-previous-change').inner_text().endswith(next_change) and
               team.locator('#lg-previous-change').evaluate("""el => {
                 const p=document.querySelector('#lg-panel').getBoundingClientRect(), r=el.getBoundingClientRect();

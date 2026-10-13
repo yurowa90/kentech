@@ -98,7 +98,9 @@ with sync_playwright() as pw:
     dj.evaluate("() => { const r = document.getElementById('lg-price'); r.value = '0.010'; r.dispatchEvent(new Event('input', {bubbles: true})); r.dispatchEvent(new Event('change', {bubbles: true})); }")
     host.wait_for_timeout(1200)
     ok(abs(host.evaluate("() => KCP.league.state().S.teams.dangjin.price") - 0.01) < 1e-9, "price update reached host")
-    for t in TEAMS: tp[t].click("#lg-ready")
+    for t in TEAMS:
+        tp[t].click("#lg-ready")
+        pass_issue_check(tp[t])
     host.wait_for_timeout(1500)
     rd = host.evaluate("() => Object.values(KCP.league.state().S.teams).filter(T => T.ready).length")
     ok(rd == 6, f"6 teams ready ({rd})")

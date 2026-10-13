@@ -5,6 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
+from league_flow import pass_issue_check
 import ast
 import json
 import math
@@ -468,6 +469,7 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     checks.ok(team.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 근거 없는 약속 제출 금지')
     checks.ok(team.locator('#lg-predict').evaluate("el => {const r=el.getBoundingClientRect(),p=document.querySelector('#lg-panel').getBoundingClientRect();return r.top>=p.top && r.top<p.bottom;}"), f'{label} U2 준비 직후 약속 카드가 서랍 안에 보임')
     checks.ok(team.locator('#lg-predict [data-evidence]').first.evaluate("el => el === document.activeElement"),
