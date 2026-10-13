@@ -15,6 +15,7 @@ econui, solo의 선택자를 재사용한다. 결과/약속/분해값을 주입�
 복제 상태로 예측을 고르며 실제 판은 UI로 진행한다.
 """
 
+from league_flow import pass_issue_check
 import json
 import math
 import re
@@ -124,6 +125,7 @@ def promise(page, trial, actual, *, hit=False, topic="uns", baseline=None):
     page.evaluate(COUNT_SIM)
     close_drawer(page)
     page.locator("#lg-ready").click()
+    pass_issue_check(page)
     page.locator('[data-evidence="grid"]').click()
     page.locator(f'[data-pred="{topic}"]').select_option(prediction)
     page.locator('[data-confidence="fairly"]').click()

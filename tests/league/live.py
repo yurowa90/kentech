@@ -3,6 +3,7 @@
 키/프레임 원문/예외 원문은 출력·저장하지 않는다. 설정이 없으면
 Playwright를 import하기 전에 종료하여 의존성 없이 건너뛴다.
 """
+from league_flow import pass_issue_check
 import base64
 import json
 import os
@@ -426,6 +427,7 @@ def scenario(checks, host, teams, base, project, key, markers):
         for tid, (page, wire) in teams.items():
             def ready_action():
                 page.click("#lg-ready")
+                pass_issue_check(page)
                 page.wait_for_selector("#lg-predict")
                 checks.require(page.locator("#lg-ready-confirm").is_disabled(),
                                f"{month}달 {tid} 하루 전 약속 입력 전 준비 확인 비활성")
