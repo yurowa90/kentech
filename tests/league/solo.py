@@ -260,6 +260,10 @@ def play(checks, page, base, label):
     initial_fingerprint = fingerprint(state)
     initial_room = state["room"]
     close_drawer(page)
+    # 품질8 UX U2(docs/QUALITY-ux.md 6절): '처음부터'는 주 행동 옆 막대에서 도움말 서랍으로 옮겼다.
+    # 같은 id·같은 확인 창이므로 도움말을 연 뒤 누른다.
+    page.locator("#bd-help").click()
+    page.wait_for_selector("#lg-solo-restart", state="visible")
     page.once("dialog", lambda dialog: dialog.dismiss())
     with page.expect_event("dialog") as dialog_info:
         page.locator("#lg-solo-restart").click()
@@ -315,14 +319,17 @@ def play(checks, page, base, label):
                 checks.ok('시험 1주 대비' in top and '시험 1주 대비' in prediction and
                           shown_delta(top) == shown_delta(prediction) == expected,
                           f'{label} D-A1 첫 달 위·예측 Δ = 시험 1주 대비 같은 값')
+                # 품질8 UX U1(docs/QUALITY-ux.md 6절): 서랍 자체 대신 본문(.lg-pbody)만 스크롤하고
+                # 제목 줄은 본문 밖에 고정된다. D-A7의 뜻(스크롤해도 제목이 보임)을 새 구조로 확인한다.
                 checks.ok(page.evaluate('''() => {
                   const p=document.querySelector('#lg-panel'), h=p.querySelector('.lg-ptabs');
-                  const m=p.querySelector('#lg-calibration meter'), before=p.scrollTop;
-                  p.scrollTop += m.getBoundingClientRect().top-h.getBoundingClientRect().top-h.offsetHeight/2;
+                  const s=p.querySelector('.lg-pbody') || p;
+                  const m=p.querySelector('#lg-calibration meter'), before=s.scrollTop, top0=h.getBoundingClientRect().top;
+                  s.scrollTop += m.getBoundingClientRect().top-h.getBoundingClientRect().bottom;
                   const a=h.getBoundingClientRect(), b=m.getBoundingClientRect();
-                  const covered=b.top<a.bottom && b.bottom>a.top &&
-                    h.contains(document.elementFromPoint(a.left+a.width/2, Math.max(a.top,b.top)+1));
-                  p.scrollTop=before; return covered;
+                  const kept=Math.abs(a.top-top0)<1 && a.bottom<=b.top+1 &&
+                    h.contains(document.elementFromPoint(a.left+a.width/2, a.top+a.height/2));
+                  s.scrollTop=before; return kept;
                 }'''), f'{label} D-A7 스크롤한 확신 막대 위에 고정 제목 표시')
             overflow(checks, page, f"{label} {state['round']}달 결과")
             if not reloaded:

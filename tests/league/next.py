@@ -675,6 +675,10 @@ def solo(context, base, checks, pages):
         dialog.dismiss()
 
     page.on("dialog", cancel)
+    # 품질8 UX U2(docs/QUALITY-ux.md 6절): '처음부터'는 주 행동 옆 막대에서 도움말 서랍으로 옮겼다.
+    if not visible(page.get_by_role("button", name=re.compile(r"처음부터"))):
+        page.locator("#bd-help").click()
+        page.wait_for_timeout(300)
     button(page, r"처음부터").click()
     if dialogs:
         checks.ok(any(re.search(r"처음|다시|초기|지우|기록", message) for message in dialogs), "solo restart native confirmation has clear text")

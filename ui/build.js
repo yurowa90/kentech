@@ -2134,6 +2134,7 @@
   function undoShortcut(e) {
     if (!S || e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
     if (e.target.closest("input, textarea, select") || e.target.isContentEditable || document.querySelector("dialog[open]")) return;
+    if (S.lineStart != null || S.pending) { cancelLine(); e.preventDefault(); return; }
     if (undoPlacement()) e.preventDefault();
   }
   function removeBuild(b) {

@@ -1869,7 +1869,7 @@
       <div class="lg-command-month lg-proj-key"><small>${esc(rd.year || "")} · ${V.round || 1}/${C.roundsOf(V).length}${V.econ ? "달" : "라운드"}</small><b>${V.econ ? `${rd.month}월` : `${V.round || 1}라운드`}</b><span class="lg-phase-chip">${esc(PHASE_NAME[V.phase])}</span></div>
       <div class="lg-command-time lg-proj-key"><small>남은 시간</small><b id="lg-host-time"></b></div>
       <div class="lg-command-ready lg-proj-key"${showReady ? ' id="lg-host-ready"' : ""}><small>${showReady ? "준비" : "진행"}</small><b>${showReady ? `${teams.length - unready.length}<small>/${teams.length}팀</small>` : V.phase === "end" ? "리그 종료" : "운영 완료"}</b>${showReady ? `<span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span>` : ""}</div>
-    </div><div class="lg-command-goals"><div id="lg-host-goals">
+    </div><div class="lg-command-goals"><small>지역 공동목표</small><div id="lg-host-goals">
       <div class="lg-goal-chip"><span>정전 목표 ≤ ${esc(fmt(shownGoal.uns, 2))}%</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.unsPct, 2))}%` : " · 첫 운영 전"}</span>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) : ""}</div>
       <div class="lg-goal-chip" aria-label="CO₂ 목표와 지난달 실제"><span>${planning ? "이번 달 CO₂ 목표" : "목표 CO₂"} ≤ ${esc(fmt(shownGoal.co2))} t</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.co2))} t` : " · 첫 운영 전"}</span>${region ? bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}</div>
       ${planning ? `<small class="lg-goal-note">${V.phase === "lobby" ? "첫 달 목표 · " : ""}계획 시작 때 확정 · 기준: ${esc(V.goals.co2Basis)}</small>` : ""}
@@ -3289,7 +3289,7 @@
   function leaveTeamCity() {
     if (L.away) return;
     const panel = document.getElementById("lg-panel"), root = document.getElementById("bd-root");
-    L.home = { panel, scroll: panel?.scrollTop || 0, phase: L.snap?.phase, round: L.snap?.round,
+    L.home = { panel, scroll: panel?.querySelector(".lg-pbody")?.scrollTop || 0, phase: L.snap?.phase, round: L.snap?.round,
       view: BG.saveView(), group: root?.querySelector('[data-group][aria-expanded="true"]')?.dataset.group,
       layer: root?.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer,
       drawer: root?.querySelector('#bd-pm')?.getAttribute("aria-expanded") === "true",
@@ -3439,8 +3439,9 @@
     mountCity(L.app, true, home?.view);
     if (home?.panel) {
       document.getElementById("lg-panel")?.replaceWith(home.panel);
-      home.panel.scrollTop = home.scroll;
-      if (home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); home.panel.scrollTop = home.scroll; }
+      const restoreScroll = () => { const body = home.panel.querySelector(".lg-pbody"); if (body) body.scrollTop = home.scroll; };
+      restoreScroll();
+      if (home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); restoreScroll(); }
     }
     const root = document.getElementById("bd-root");
     if (home?.layer) root.querySelector(`[data-layer="${home.layer}"]`)?.click();
@@ -3737,7 +3738,7 @@
     if (V?.econ) {
       if (tab === "result") {
         const interview = resultInterviewHTML(V);
-        body = V.phase === "end" ? `${endHTML(V)}<details class="lg-last-month" id="lg-last-month"><summary>${esc(curRound().month)}월 결과 자세히</summary>${body}${interview}</details>` : interview + body;
+        body = V.phase === "end" ? `${endHTML(V)}<details class="lg-last-month" id="lg-last-month"><summary>${esc(curRound().month)}월 결과 자세히</summary>${body}${interview}</details>` : body + interview;
       }
       if (tab === "journal") body = previousNoteHTML(V) + critHTML(V) + predictionHTML(V) + body.replace('<button type="button" class="v2-btn" id="lg-jcopy">', quarterHTML(V) + '<button type="button" class="v2-btn" id="lg-jcopy">');
     }
@@ -3804,7 +3805,8 @@
     if (start) {
       const field = start.parentElement.parentElement.querySelector('[data-note="askReason"]');
       if (field) {
-        field.value = start.dataset.reasonStart;
+        const typed = field.value.trim();
+        field.value = typed ? `${typed} ${start.dataset.reasonStart}` : start.dataset.reasonStart;
         field.dispatchEvent(new Event("input", { bubbles: true }));
         field.focus({ preventScroll: true }); field.setSelectionRange(field.value.length, field.value.length);
       }

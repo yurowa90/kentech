@@ -429,9 +429,10 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#lg-sound').click()
     team.locator('#lg-panel [data-pclose]').click()
     open_panel(team, 'city')
-    team.locator('#lg-panel').evaluate('el => {el.scrollTop=500}')
+    # 품질8 UX U1(docs/QUALITY-ux.md 6절): 스크롤은 서랍 본문 .lg-pbody가 맡는다(없으면 서랍 자체).
+    team.locator('#lg-panel').evaluate("el => {(el.querySelector('.lg-pbody')||el).scrollTop=500}")
     open_panel(team, 'result')
-    checks.ok(team.locator('#lg-panel').evaluate('el => el.scrollTop===0'), f'{label} U2 새 결과 서랍은 위에서 시작')
+    checks.ok(team.locator('#lg-panel').evaluate("el => (el.querySelector('.lg-pbody')||el).scrollTop===0"), f'{label} U2 새 결과 서랍은 위에서 시작')
     open_panel(team, 'city')
     checks.ok(team.locator('#lg-trends [data-trend]').count() == 4, f'{label} U5 도시 추이 네 줄')
     checks.ok('주민·기업 이동 시간 ×' in team.locator('#lg-city').inner_text(), f'{label} U9 배속 대상·현실 달 문구')
