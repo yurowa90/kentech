@@ -32,7 +32,16 @@ TARGET_JS = r"""sel => {
   const r = el.getBoundingClientRect();
   const W = innerWidth, H = innerHeight;
   const shown = r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-  const inView = shown && r.top >= 0 && r.left >= 0 && r.bottom <= H && r.right <= W;
+  // 화면 안이어도 스크롤 상자(서랍 본문 등) 밖으로 잘렸으면 '스크롤 필요'로 본다(가림과 구분).
+  let clipped = false;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (/(auto|scroll|hidden)/.test(cs.overflowY + cs.overflowX)) {
+      const b = p.getBoundingClientRect();
+      if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left - 1 || r.right > b.right + 1) { clipped = true; break; }
+    }
+  }
+  const inView = shown && !clipped && r.top >= 0 && r.left >= 0 && r.bottom <= H && r.right <= W;
   let occluded = null;
   if (inView) {
     const cx = r.left + r.width/2, cy = r.top + r.height/2;
