@@ -1,7 +1,7 @@
 """리그 e2e: 진행자 1 + 팀 6 (같은 브라우저 컨텍스트, 탭끼리 연결). 2라운드 운영까지."""
 import json, sys, os, time
 from playwright.sync_api import sync_playwright
-from league_flow import confirm_seat, select_mode
+from league_flow import confirm_seat, pass_issue_check, select_mode
 D = os.path.dirname(os.path.abspath(__file__)); SH = os.path.join(D, "shots")
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9400/index.html"
 SCHEME = sys.argv[2] if len(sys.argv) > 2 else "light"
