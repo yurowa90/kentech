@@ -9,6 +9,11 @@
   const KCP = window.KCP;
   if (!KCP || typeof KCP.route !== "function") return;
   const esc = KCP.esc;
+  // D-72: 화면 문구를 만드는 곳에서만 변환한다. 자료의 등급과 출처 줄은 그대로 둔다.
+  // D-72: 학생 화면의 근거 등급 글자를 학생 말로. 모르는 값은 낮춰 보이지 않게 원래 글자를 그대로 둔다.
+  const GRADE_WORDS = { G: "게임 가정", M: "모형 계산", O: "공식 자료", "O*": "공식 자료(보도로 확인)", P: "논문·보고서" };
+  KCP.gradeWords = grade => [...new Set(String(grade || "G").split("·").map(g => g.trim().replace(/^추정$/, "G"))
+    .filter(Boolean).map(g => GRADE_WORDS[g] || g))].join(" · ");
   const html = document.documentElement;
   const KEY = "kcp-build-v1";
   const TRIAL_KEY = "kcp-build-trial-v1";
@@ -234,7 +239,7 @@
    * 연구소를 지었다고 효율이 저절로 오르지 않는다: 연구를 고르고, 인력·자리가 맞고, 실증을 거쳐야 한다. */
   const RS = { uniStaff: 2, uniPrepW: 4, labStaff: 1, labSeats: 3, labOpexW: 0.3, labOpexR: 3, roundSteps: 3, retroBat: 1 };
   const TECHS = [
-    { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, eff: "쓸 수 있는 범위 하한 10% → 5% · 변환 효율 95% → 95.5%", why: "잔량을 정확히 알면 안전 여유를 줄여 더 넓게 쓴다. 95%에 이미 변환 손실이 들어 있어 효율 상승은 작게 잡았다. 도입 때 배터리마다 개조비 1억", grade: "M·G" },
+    { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, get eff() { return bmsEffectText(); }, get why() { return `잔량을 정확히 읽어 안전 여유를 줄이고, 충전·방전 손실을 줄여요. ${bmsEffectText()}. 도입 때 배터리마다 개조비 ${fmt(RS.retroBat, 1)}억`; }, grade: "M·G" },
     { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, eff: "송전 손실 1.5%/칸 → 1.0%/칸", why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
     { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, eff: "배터리를 저녁 피크(17–22시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다", why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
   ];
@@ -268,15 +273,15 @@
   const lineUnit = () => PK.lineCost || 0.5;
   // 계산에 쓰는 기존 개선 비율(2/3)을 그대로 표시한다. 지도별 손실률을 고정 문구로 덮지 않는다.
   const gridLossPerHex = () => (PK.lossPerHex || M.lossPerHex) * (2 / 3);
-  const bmsEffectText = () => {
-    const text = TECHS.find(t => t.id === "bms").eff;
-    const floor = text.match(/하한\s*[\d.]+%\s*→\s*([\d.]+)%/);
-    const efficiency = text.match(/효율\s*[\d.]+%\s*→\s*([\d.]+)%/);
+  function bmsParams() {
     const p = KCP.TECH_DATA?.params;
-    const newFloor = p?.bmsFloor?.v ?? (floor ? Number(floor[1]) / 100 : null);
-    const newEff = p?.bmsEfficiency?.v ?? (efficiency ? Number(efficiency[1]) / 100 : null);
-    return `잔량 하한 ${fmt(M.socFloor * 100, 1)}% → ${newFloor == null ? "자료 없음" : fmt(newFloor * 100, 1) + "%"} · 변환 효율 ${fmt(M.batEff * 100, 2)}% → ${newEff == null ? "자료 없음" : fmt(newEff * 100, 2) + "%"}`;
-  };
+    // 자료 키가 아직 없는 판에서는 기존 계산값을 유지한다(REF 8.6).
+    return { floor: p?.bmsFloor?.v ?? 0.05, efficiency: p?.bmsEfficiency?.v ?? 0.933 };
+  }
+  function bmsEffectText() {
+    const p = bmsParams();
+    return `잔량 하한 ${fmt(M.socFloor * 100)}% → ${fmt(p.floor * 100)}% · 왕복 효율 ${fmt(M.batEff ** 2 * 100)}% → ${fmt(p.efficiency ** 2 * 100)}%(한 방향 약 ${fmt(p.efficiency * 100, 1)}%)`;
+  }
   const gridEffectText = () => `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 2)}%/칸 → ${fmt(100 * gridLossPerHex(), 2)}%/칸`;
   const cityName = (pack = PK) => KCP.ECON_DATA?.start?.[pack.id]?.name ||
     Object.values(KCP.LEAGUE_REGIONS || {}).flatMap(r => r.teams).find(t => t.pack === pack.id)?.name || pack.name;
@@ -714,7 +719,7 @@
     for (let d = 0; d < days; d++) {
       const wx = W[d];
       // G · 설계 선택: BMS 왕복 85→87%, 한 방향 0.933 [I13][I14] · REF 8.6
-      if (techDay.bms === d) { bEff = 0.933; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * 0.05; }); }
+      if (techDay.bms === d) { const bms = bmsParams(); bEff = bms.efficiency; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * bms.floor; }); }
       if (techDay.fcst === d) fcst = true;
       // 예측: 그날 아침에 오늘 저녁(17–22시) 부족분(수요 − 재생 − 화력 용량)을 미리 계산해 배터리마다 그만큼(여유 10%) 남길 몫을 정한다.
       // 이 모형의 날씨·수요는 정해진 값이라 예측이 맞는다 — 실제 예측에는 오차가 있다(한계).
@@ -3105,9 +3110,9 @@
         const k = q.indexOf(T.id), onR = k >= 0;
         return `<button type="button" class="bd-card" data-rq="${T.id}" aria-pressed="${onR}">
           <span class="bd-card-ico">${onR ? `<b class="num">${k + 1}</b>` : ico("flask")}</span>
-          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.id === "bms" ? bmsEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${T.grade}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
+          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.id === "bms" ? bmsEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${esc(KCP.gradeWords(T.grade))}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
       }).join("")}</div>
-      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1${leagueMonth() ? "달" : "턴"}, 그다음 ${leagueMonth() ? "달" : "턴"}부터 효과. 연구소 운영비 ${RS.labOpexR}억/${leagueMonth() ? "달" : "턴"}.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 게임 가정(G).</p>`;
+      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1${leagueMonth() ? "달" : "턴"}, 그다음 ${leagueMonth() ? "달" : "턴"}부터 효과. 연구소 운영비 ${RS.labOpexR}억/${leagueMonth() ? "달" : "턴"}.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 ${esc(KCP.gradeWords("G"))}이에요.</p>`;
   }
   function satBar(v) {
     const tone = v >= 70 ? "ok" : v >= 40 ? "mid" : "bad";

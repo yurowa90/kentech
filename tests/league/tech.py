@@ -312,7 +312,7 @@ def completion_element(team):
       const found = [...result.querySelectorAll('*')].find(el => {
         const text = el.textContent;
         return el.getBoundingClientRect().height > 0 && text.length < 1500 &&
-          text.includes(card.name) && text.includes(card.field) && text.includes('근거 ' + card.evidenceGrade.replaceAll('·', ' · ')) && text.includes('효과 크기 ' + card.effectGrade.replaceAll('·', ' · ')) &&
+          text.includes(card.name) && text.includes(card.field) && text.includes('근거 ' + KCP.gradeWords(card.evidenceGrade)) && text.includes('효과 크기 ' + KCP.gradeWords(card.effectGrade)) &&
           (typeof card.eff !== 'string' || text.includes(card.eff));
       });
       if (!found) return null;
@@ -385,8 +385,10 @@ def ui_block(checks, browser, base, scheme, width=390):
             panel = card_detail(team, "tandem")
             card = team.evaluate("() => KCPTechChecks.cardsOf().find(c=>c.id==='tandem')")
             body = panel.inner_text()
-            return (card["field"] in body and ("근거 " + card["evidenceGrade"].replace("·", " · ")) in body and
-                    ("효과 크기 " + card["effectGrade"].replace("·", " · ")) in body and
+            # D-72(품질8 UX U9): 연구 상세의 근거·효과 크기 등급은 학생 말로 보인다.
+            words = team.evaluate("g => [KCP.gradeWords(g[0]), KCP.gradeWords(g[1])]", [card["evidenceGrade"], card["effectGrade"]])
+            return (card["field"] in body and ("근거 " + words[0]) in body and
+                    ("효과 크기 " + words[1]) in body and
                     "유레카" in body and "출처" in body and "배속" in body)
 
         checks.test(f"{label} T4 상세 분야·등급·출처·유레카·배속", detail)

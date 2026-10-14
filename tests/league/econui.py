@@ -463,10 +463,13 @@ def u_plan_contract(checks, team, host, tid, label):
     }""")
     checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
-    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes('(G)')"),
-              f'{label} U2 이전 엔진 이주 이유 G 표시 유지')
+    # D-72(품질8 UX U9): 학생 기본 화면의 등급 글자는 학생 말(KCP.gradeWords)로 보인다.
+    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes(KCP.gradeWords('G'))"),
+              f'{label} U2 이전 엔진 이주 이유 게임 가정 표시 유지')
     checks.ok('정수 반올림' not in team.locator('#lg-city').inner_text(), f'{label} U2 내부 용어 숨김')
-    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('(M)') == 1 and '(추정·G)' not in ui['reason'],
+    # D-72: '(M)'·'(추정·G)' 대신 학생 말. 근거 표시가 한 번만 붙고 추정·게임 가정 겹침이 없는지 본다.
+    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('모형 계산') == 1 and '(추정' not in ui['reason']
+              and '(M)' not in ui['reason'] and '(G)' not in ui['speed'],
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
@@ -843,7 +846,8 @@ def ui_fixes(checks, context, base, label, pages):
     team.evaluate('() => {KCP.buildGame.M.batEff=.79}')
     try:
         team.locator('[data-tech-card="bms"]').click()
-        checks.ok(bool(re.search(r'79(?:\.0+)?%', team.locator('.lg-tech-effect').inner_text())), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
+        # 품질8 UX U7c: BMS 효율은 왕복 효율로 보인다(한 방향 0.79 → 왕복 0.79² ≈ 62.4%).
+        checks.ok(bool(re.search(r'왕복 효율 62(?:\.4\d*)?%', team.locator('.lg-tech-effect').inner_text())), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
     finally:
         team.evaluate('v => {KCP.buildGame.M.batEff=v}', before)
     contrast(checks, team, '.lg-tech-effect [class^="tag-"]', label + ' 기술')
