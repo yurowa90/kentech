@@ -297,6 +297,11 @@ def month_one(r):
 
     # S6 예측 대 실제
     r.scene("S6")
+    # 폰에서는 재생 동안 결과 서랍이 접혀 있다(U10). 학생처럼 재생이 끝나 펼쳐지기를 기다린다.
+    try:
+        page.wait_for_function("() => document.getElementById('lg-panel')?.dataset.folded !== 'true'", timeout=8000)
+    except Exception:
+        pass
     if not r.visible("#lg-promise-result"):
         r.act('#lg-bar [data-panel="result"]', "결과 서랍 열기")
     page.wait_for_selector("#lg-promise-result", timeout=30000)

@@ -3465,9 +3465,10 @@
     };
     session.resultReplayWait = stop;
     session.panelFolded = true; renderPanel();
-    // 관전·지역 지도로 나가거나 탭을 바꿔 멈출 때도 접힘을 풀어 둔다(돌아왔을 때 접힌 채 남지 않게).
-    poll = setInterval(() => { if (!active()) { session.panelFolded = false; stop(); } else if (finished()) reveal(); }, 100);
-    limit = setTimeout(reveal, 6000);
+    // 조건이 깨져 멈출 때(탭 전환·관전·다시 그리기)도 접힘을 풀고 다시 그려 결과가 접힌 채 남지 않게 한다.
+    const release = () => { stop(); if (L === session && session.panelFolded) { session.panelFolded = false; if (!session.away && session.panel) renderPanel(); } };
+    poll = setInterval(() => { if (!active()) release(); else if (finished()) reveal(); }, 100);
+    limit = setTimeout(() => { if (active()) reveal(); else release(); }, 6000);
   }
   function lockMsg() {
     if (L?.away) return "관전 중 · 읽기 전용 — 우리 도시로 돌아가 편집해요";
@@ -3746,7 +3747,9 @@
       document.getElementById("lg-panel")?.replaceWith(home.panel);
       const restoreScroll = () => { const body = home.panel.querySelector(".lg-pbody"); if (body) body.scrollTop = home.scroll; };
       restoreScroll();
-      if (home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); restoreScroll(); }
+      // 재생 중 접어 둔 서랍을 관전 동안 풀었으면 돌아올 때 다시 그린다.
+      const unfolded = home.panel.dataset.folded === "true" && !L.panelFolded;
+      if (unfolded || home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); restoreScroll(); }
       syncResultMapSpace();
     }
     const root = document.getElementById("bd-root");
@@ -3850,7 +3853,11 @@
       const hud = e.target.closest("[data-hud-panel]"); if (hud) { openPanel(hud.dataset.hudPanel); return; }
       const p = e.target.closest("[data-panel]");
       if (p?.dataset.panel === "region") { teamRegion(); return; }
-      if (p) { L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return; }
+      if (p) {
+        // 접힌 서랍(재생 중 자동 접힘 포함)의 같은 단추는 닫지 않고 펼친다.
+        if (L.panel === p.dataset.panel && L.panelFolded) { L.resultReplayWait?.(); L.panelFolded = false; renderPanel(); return; }
+        L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return;
+      }
       if (e.target.closest("#lg-ready")) {
         // 약속을 다 채웠으면 막대 단추도 확정이다. 덜 채운 자유 실험 달에만 다시 누르기 = 건너뛰기(ECON-UI v1.1).
         const confirm = document.getElementById("lg-ready-confirm"), complete = !!confirm && !confirm.disabled;

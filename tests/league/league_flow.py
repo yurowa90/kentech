@@ -54,3 +54,12 @@ def pass_issue_check(page):
         page.wait_for_timeout(150)
         return True
     return False
+
+
+def wait_unfolded(page, timeout=8000):
+    """품질8 UX U10(docs/QUALITY-ux.md 6절): 폭 760px 이하에서는 달 넘김 재생(2~4초) 동안 결과 서랍을
+    접어 두었다가 끝나면 펼친다(최대 6초). 서랍 안을 읽는 검사는 펼쳐질 때까지 기다린다."""
+    try:
+        page.wait_for_function("() => document.getElementById('lg-panel')?.dataset.folded !== 'true'", timeout=timeout)
+    except Exception:
+        pass

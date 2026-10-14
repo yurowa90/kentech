@@ -1160,3 +1160,10 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 /* 열린 서랍은 코치 아래부터 시작해 지도 안내가 조작을 가리지 않게 한다. */
 #bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #lg-panel,
 #bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #bd-drawer { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
+
+/* 좁은 화면: 지도 위 결과 한 줄(U2 계약상 늘 보임)이 서랍을 덮지 않게 서랍을 그 아래부터 시작하고,
+   잠깐 뜨는 토스트는 서랍 제목과 겹치지 않게 화면 맨 아래로 내린다. */
+@media (max-width: 760px) {
+  #bd-root.lg-team-map:has(.lg-map-guidance .lg-map-result:not([hidden])) #lg-panel { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
+  #bd-root.lg-team-map[data-league-drawer="true"] .bd-toast { top: auto; bottom: 8px; }
+}

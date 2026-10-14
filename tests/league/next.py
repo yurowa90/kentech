@@ -6,7 +6,7 @@ Public APIs/storage envelopes from existing harnesses are bootstrap conventions,
 not acceptance criteria. Unspecified UI ids are never used as selectors.
 """
 
-from league_flow import pass_issue_check
+from league_flow import pass_issue_check, wait_unfolded
 import argparse
 import json
 import re
@@ -121,6 +121,7 @@ def button(page, pattern):
 
 
 def panel(page, word):
+    wait_unfolded(page)
     # Prefer the league controls: the trial sheet also has a "결과" tab.
     controls = page.locator('#lg-bar [data-panel]').filter(has_text=re.compile(word))
     if controls.count() == 1:
@@ -390,14 +391,18 @@ def left_consistency(host, team, checks, fixture):
 def results(host, team, checks, fixture):
     state = advance(host, team, "review")
     evaluated_plan_co2(state, checks, fixture)
-    panel(team, r"결과")
+    # 품질8 UX U10(docs/QUALITY-ux.md 6절): 폭 760px 이하에서는 재생(2~4초) 동안 결과 서랍이 접혀 있고
+    # 결과 토스트(약 2초)는 그 사이에 뜬다. 토스트가 떠 있는 순간(결과 직후)에 서랍 제목 줄·결과 제목과
+    # 겹치지 않는지 본다. 접힌 서랍의 결과 제목은 그려지지 않으므로(크기 0) 그 항목은 건너뛴다.
     checks.ok(team.evaluate("""() => {
       const toast=document.querySelector('#bd-toast'), t=toast.getBoundingClientRect();
       return toast.dataset.show==='true' && ['.lg-ptabs','#lg-result-heading'].every(key => {
-        const h=document.querySelector(key).getBoundingClientRect();
+        const el=document.querySelector(key); if (!el) return true;
+        const h=el.getBoundingClientRect(); if (!h.width || !h.height) return true;
         return t.right<=h.left || t.left>=h.right || t.bottom<=h.top || t.top>=h.bottom;
       });
     }"""), 'D-A9 결과 토스트와 서랍·결과 제목의 겹침 없음')
+    panel(team, r"결과")
     annual = [line for line in host.locator('#lg-log li').all_inner_texts()
               if line.startswith('국가 재정지원금 연액:')]
     checks.ok(len(annual) == 1 and all(name in annual[0] for name in fixture['names']) and
@@ -736,6 +741,7 @@ def solo(context, base, checks, pages):
     checks.ok(compared_month_trial, 'E 혼자 1달 시험의 첫 달 비교 검사를 실제로 수행')
     checks.ok(ended["phase"] == "end", "solo fixture reaches completed game")
     # Match phrase literally; merely showing a generic 다시 button is insufficient.
+    wait_unfolded(page)  # 품질8 UX U10: 마지막 달 재생 동안 접힌 끝 서랍이 펼쳐지기를 기다린다.
     retry = button(page, r"같은\s*조건으로\s*다시")
     checks.ok(retry.is_visible(), "solo end screen offers 같은 조건으로 다시")
     settings = {key: ended.get(key) for key in ["region", "active", "rounds", "seed"]}

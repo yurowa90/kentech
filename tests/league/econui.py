@@ -5,7 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
-from league_flow import pass_issue_check
+from league_flow import pass_issue_check, wait_unfolded
 import ast
 import json
 import math
@@ -179,6 +179,7 @@ def absent_or_hidden(page, selector):
 
 
 def open_panel(page, name):
+    wait_unfolded(page)
     button = page.locator(f'#lg-bar [data-panel="{name}"]')
     if button.count() != 1:
         raise AssertionError(f"{name} 서랍 버튼 1개 필요")
