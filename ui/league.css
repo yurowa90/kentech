@@ -1035,7 +1035,7 @@ html.bd-drawer-open #lg-plan-reminder,
 
 /* 태블릿 이상에서는 서랍 아래까지 본문을 쓰고 도구·시험 막대는 왼쪽에서 조작한다. */
 @media (min-width: 768px) {
-  .lg-team-map { --lg-drawer-width: 420px; }
+  .lg-team-map { --lg-drawer-width: 360px; }
   #bd-root.lg-team-map[data-league-drawer="true"] .bd-dock {
     right: calc(var(--lg-drawer-width) + 16px); justify-content: flex-start;
   }

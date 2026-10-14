@@ -3441,7 +3441,7 @@
     else if (V.phase === "plan") { BG.clearTrialDisplay?.(); closePanel(); }
   }
   function foldResultDuringReplay(replayed) {
-    if (!replayed || !matchMedia("(max-width: 767px)").matches ||
+    if (!replayed || !matchMedia("(max-width: 760px)").matches ||
         matchMedia("(prefers-reduced-motion: reduce)").matches || KCP.v2?.reduced?.()) return;
     const session = L, panel = document.getElementById("lg-panel"), round = L.snap.round;
     if (!panel || L.panel !== "result") return;
@@ -3465,7 +3465,8 @@
     };
     session.resultReplayWait = stop;
     session.panelFolded = true; renderPanel();
-    poll = setInterval(() => { if (!active()) stop(); else if (finished()) reveal(); }, 100);
+    // 관전·지역 지도로 나가거나 탭을 바꿔 멈출 때도 접힘을 풀어 둔다(돌아왔을 때 접힌 채 남지 않게).
+    poll = setInterval(() => { if (!active()) { session.panelFolded = false; stop(); } else if (finished()) reveal(); }, 100);
     limit = setTimeout(reveal, 6000);
   }
   function lockMsg() {
@@ -3746,6 +3747,7 @@
       const restoreScroll = () => { const body = home.panel.querySelector(".lg-pbody"); if (body) body.scrollTop = home.scroll; };
       restoreScroll();
       if (home.phase !== L.snap?.phase || home.round !== L.snap?.round) { renderPanel(); restoreScroll(); }
+      syncResultMapSpace();
     }
     const root = document.getElementById("bd-root");
     if (home?.layer) root.querySelector(`[data-layer="${home.layer}"]`)?.click();
@@ -3849,7 +3851,11 @@
       const p = e.target.closest("[data-panel]");
       if (p?.dataset.panel === "region") { teamRegion(); return; }
       if (p) { L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return; }
-      if (e.target.closest("#lg-ready")) readyAction(!!L.awaitReady && L.panel === "journal" && !L.panelFolded && freeExperiment());
+      if (e.target.closest("#lg-ready")) {
+        // 약속을 다 채웠으면 막대 단추도 확정이다. 덜 채운 자유 실험 달에만 다시 누르기 = 건너뛰기(ECON-UI v1.1).
+        const confirm = document.getElementById("lg-ready-confirm"), complete = !!confirm && !confirm.disabled;
+        readyAction(!complete && !!L.awaitReady && L.panel === "journal" && !L.panelFolded && freeExperiment());
+      }
     });
     if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler, true);
     L.escapeHandler = e => {
