@@ -2096,6 +2096,7 @@
     S.st.builds.push({ t: type, i });
     floater(i, `−${fmt(chk.cost)}억`, "#ecd083");
     changed(`${BLD[type].name} 설치 · ${fmt(chk.cost)}억${chk.clear ? " (숲 정리 포함)" : ""}`);
+    S.opts.onFx?.("build");
   }
   // 철거 때 돌려받는 몫: 혼자 하기는 시험 운전이라 전액, 리그는 opts.salvage(이름표)가 정한다(지난 라운드 것 30%).
   const salvageOf = key => (S.opts && S.opts.salvage ? S.opts.salvage(key) : 1);
@@ -2106,6 +2107,7 @@
       S.st.builds.splice(bi, 1);
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
       changed(leagueWords(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`));
+      S.opts.onFx?.("remove");
       return;
     }
     const keep = S.st.lines.filter(L => !L.p.includes(i));
@@ -2115,6 +2117,7 @@
       S.st.lines = keep;
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
       changed(leagueWords(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`));
+      S.opts.onFx?.("remove");
       return;
     }
     toast("철거할 것이 없다");
@@ -2154,6 +2157,7 @@
     S.pending = null; S.lineStart = null; S.preview = null;
     showConfirm();
     changed(`송전선 연결 · ${P.p.length - 1}칸 · ${fmt(P.cost, 1)}억`);
+    S.opts.onFx?.("line");
   }
   function cancelLine() {
     S.pending = null; S.lineStart = null; S.preview = null;

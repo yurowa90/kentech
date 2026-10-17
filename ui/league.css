@@ -853,6 +853,9 @@ section#lg-missed.lg-outage { display: block; }
 .lg-team-map #bd-mapbar { max-width: calc(100vw - 16px); }
 .lg-team-map #bd-drawer { z-index: 31; }
 #lg-help ol { padding-left: 22px; }
+#lg-sound-controls { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
+#lg-sound-controls #lg-sound { position: static; flex: 0 0 auto; min-height: 44px; }
+#lg-sound-vol { box-sizing: border-box; width: 120px; max-width: 100%; min-width: 0; height: 44px; margin: 0; }
 #lg-class-time, #lg-solo-practice { min-height: 44px; max-width: 100%; color: var(--ink); background: var(--paper); font: inherit; }
 @media (max-width: 760px) {
   .lg-team-map .bd-title, .lg-team-map .bd-virtual { display: none; }

@@ -256,26 +256,9 @@
     }).join("")}</details>`;
   }
   // 화면 보조값은 기기 저장만 사용한다. 약속·확신·수업 설정을 요청 봉투에 넣지 않는다.
-  const K_SOUND = "kcp-league-sound-v1", K_CLASS = "kcp-league-class-v1";
-  let audioContext;
-  function unlockAudio() {
-    if (store.get(K_SOUND) !== true || audioContext) return;
-    try { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioContext = new AC(); } catch (_) {}
-  }
-  function signal(kind) {
-    if (store.get(K_SOUND) !== true) return;
-    const tones = { complete: [523, 659], outage: [220, 165], research: [659, 784, 1047], ready: [392, 523] };
-    try {
-      if (!audioContext) return;
-      audioContext.resume().catch(() => {});
-      (tones[kind] || tones.complete).forEach((hz, i) => {
-        const o = audioContext.createOscillator(), g = audioContext.createGain(), at = audioContext.currentTime + i * .14;
-        o.type = "sine"; o.frequency.value = hz; g.gain.setValueAtTime(0, at);
-        g.gain.linearRampToValueAtTime(.045, at + .015); g.gain.exponentialRampToValueAtTime(.001, at + .12);
-        o.connect(g); g.connect(audioContext.destination); o.start(at); o.stop(at + .13);
-      });
-    } catch (_) { /* 소리 지원이 없어도 조작은 계속된다. */ }
-  }
+  const K_CLASS = "kcp-league-class-v1";
+  function unlockAudio() { return KCP.fxAudio?.unlock(); }
+  function signal(kind) { KCP.fxAudio?.play(kind); }
   function speedText(E) {
     const n = E.speeds?.monthsPerTurn ?? E.eduSpeed;
     return Number.isFinite(n) ? `주민·기업 이동 시간 ×${fmt(n, 2)}(게임 1달 ≈ 현실 약 ${fmt(n, 2)}달) · 수업용 배속(G)` : "";
@@ -342,7 +325,7 @@
     return loss > 0 ? `<span class="lg-demolition">철거 손실 ${esc(fmt(loss, 1))}억</span>` : "";
   }
   function helpHTML() {
-    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>국가 재정지원금은 연초에 연액을 정하고 분기 초(1·4·7·10월)에 1/4씩 받아요. 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], ["처음부터", "혼자 하는 판을 다시 시작해요."], ["이웃·거래", "사건 대응, 전기값과 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].filter(([name]) => name !== "처음부터" || L.role === "solo").map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<button type="button" class="v2-btn" id="lg-sound" aria-pressed="${store.get(K_SOUND) === true}">소리</button><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
+    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>국가 재정지원금은 연초에 연액을 정하고 분기 초(1·4·7·10월)에 1/4씩 받아요. 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], ["처음부터", "혼자 하는 판을 다시 시작해요."], ["이웃·거래", "사건 대응, 전기값과 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].filter(([name]) => name !== "처음부터" || L.role === "solo").map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<span id="lg-sound-controls"><button type="button" class="v2-btn" id="lg-sound" aria-pressed="${KCP.fxAudio?.enabled() === true}">소리</button><input type="range" id="lg-sound-vol" min="0" max="100" step="10" aria-label="소리 크기" value="${Math.round((KCP.fxAudio?.volume() ?? .6) * 100)}"${KCP.fxAudio?.enabled() ? "" : " hidden"}></span><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
   }
   function showFirstGuide(root) {
     const d = tdata();
@@ -3238,10 +3221,10 @@
         }).filter(Boolean)] : [];
       const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
       const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
-        sound: kind => { if (kind === "outage") signal("outage"); else if (kind === "done") signal("complete"); } });
+        sound: kind => signal(kind === "done" ? "complete" : kind) });
       if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
     }
-    else if (V.phase === "plan") { BG.clearTrialDisplay?.(); closePanel(); }
+    else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); }
   }
   function lockMsg() {
     if (L?.away) return "관전 중 · 읽기 전용 — 우리 도시로 돌아가 편집해요";
@@ -3313,6 +3296,7 @@
     replaceTeamMap(app);
     BG.mount(app, {
       packs: [t.pack], league: true, solo: L.role === "solo", view,
+      onFx: kind => signal(kind),
       load: () => L.doc,
       save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
       // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
@@ -3532,6 +3516,8 @@
 
   function setupTeamMap(root, id = L.team) {
     root.classList.add("lg-team-map");
+    // 저장된 켜짐 설정으로 재진입해도 지도 조작 전에 잠금을 푼다(터치는 pointerup에서 활성화).
+    ["pointerup", "click", "keydown"].forEach(name => root.addEventListener(name, unlockAudio, true));
     root.dataset.lineTool = "false";
     const syncTool = () => { root.dataset.lineTool = String(!!root.querySelector('[data-tool="line"][aria-pressed="true"]')); };
     root.addEventListener("click", e => { if (e.target.closest("#bd-pm, [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
@@ -3629,6 +3615,7 @@
     panel.addEventListener("click", onPanelClick);
     panel.addEventListener("change", onPanelChange);
     panel.addEventListener("input", e => {
+      if (e.target.matches("#lg-sound-vol")) { KCP.fxAudio?.setVolume(+e.target.value / 100); return; }
       if (e.target.matches("#lg-crit-line, [data-note], [data-pred], [data-end], [data-weight]")) econChange(e);
       if (e.target.matches("[data-j]")) onPanelChange(e);
       const pol = e.target.closest("[data-pol]");
@@ -3867,7 +3854,13 @@
   }
   function onPanelClick(e) {
     const sound = e.target.closest("#lg-sound");
-    if (sound) { const enabled = store.get(K_SOUND) !== true; store.set(K_SOUND, enabled); sound.setAttribute("aria-pressed", String(enabled)); unlockAudio(); if (enabled) signal("ready"); return; }
+    if (sound) {
+      const enabled = !KCP.fxAudio?.enabled(); KCP.fxAudio?.setEnabled(enabled);
+      sound.setAttribute("aria-pressed", String(enabled));
+      const volume = document.getElementById("lg-sound-vol"); if (volume) volume.hidden = !enabled;
+      if (enabled) Promise.resolve(unlockAudio()).then(() => signal("ready"));
+      return;
+    }
     if (e.target.closest("#lg-build-help")) { closePanel(); BG.openHelp?.(document.getElementById("bd-help")); return; }
     if (e.target.closest("#lg-panel-fold")) { L.panelFolded = !L.panelFolded; document.getElementById("lg-panel").dataset.folded = String(L.panelFolded); renderPanel(); return; }
     if (techClick(e)) return;
@@ -3901,6 +3894,8 @@
     }
   }
   function onPanelChange(e) {
+    const volume = e.target.closest("#lg-sound-vol");
+    if (volume) { KCP.fxAudio?.setVolume(+volume.value / 100); Promise.resolve(unlockAudio()).then(() => signal("ready")); return; }
     if (econChange(e)) return;
     const pr = e.target.closest("#lg-price");
     if (pr) { send("price", { price: +pr.value }); return; }
