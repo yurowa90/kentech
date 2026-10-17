@@ -890,6 +890,7 @@
     const qs = game.questions(state);
     const recap = game.recap(state);
     const orphans = orphanKeys(state, qs);
+    const folded = qs.filter((q, i) => q.fold && !hasAnswer(state, i)).length;
     const c = KCP.findCriterion(year, /비판적 의견|한계점/);
     const f = KCP.findCriterion(year, /유연한 사고/);
     let advice = "반문을 받으면 답을 고치거나, 유지한다면 그 이유를 말합니다.";
@@ -904,16 +905,18 @@
             <p class="small muted" style="margin-bottom:10px">질문을 소리 내어 읽고 1~3분 안에 말로 답해 보세요. 짝이 있다면 짝이 면접위원이 되어 읽어 줍니다. 답한 뒤 핵심만 적어 둡니다.</p>
             <p class="small muted room-sources">${meta.original
               ? "이 게임의 질문은 모두 연습실이 준비실 결과에 맞춰 만든 연습용 질문입니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."
-              : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."}</p>
-            ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}
+              : "'보고서 문항'은 보고서에 실린 과제나 질문 예시를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다)." + (qs.some((q) => q.frame) ? " '내 계획으로 채움'이 붙은 질문은 보고서 질문의 틀에 내 계획을 넣어 만든 것입니다." : "") + " '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."}</p>
+            ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}${folded ? `<p class="small muted" id="room-folds">가벼운 질문 ${folded}개는 처음에 접혀 있습니다. '질문 보기'를 누르면 열립니다.</p>` : ""}
             <div id="room-tools" class="stack ext-slot"></div>
             ${qs.length ? "" : `<div class="caution room-empty" id="room-empty">아직 질문이 없습니다. 준비실에서 계획을 확정하면 내 선택에 맞춘 질문이 만들어집니다.
               <div class="row" style="margin-top:6px"><button class="btn small" type="button" id="room-to-prep">준비실로 돌아가기</button></div></div>`}
             <div class="qdeck">
               ${qs
                 .map(
-                  (q, i) => `<div class="qcard">
-                    <div class="who">질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""} ${KCP.srcTag(q)}</div>
+                  (q, i) => `<div class="qcard${q.fold ? " qfold" : ""}">
+                    <div class="who"${q.fold ? ` id="qwho-${esc(year)}-${i}"` : ""}>질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""} ${KCP.srcTag(q)}</div>${q.fold ? `
+                    <button type="button" class="btn small qfold-toggle" aria-expanded="${hasAnswer(state, i)}" aria-controls="qfold-${esc(year)}-${i}" aria-describedby="qwho-${esc(year)}-${i}" style="min-height:44px;min-width:44px">${hasAnswer(state, i) ? "질문 접기" : "질문 보기"}</button>
+                    <div class="qfold-body" id="qfold-${esc(year)}-${i}"${hasAnswer(state, i) ? "" : " hidden"}>` : ""}
                     <div class="q">${esc(q.q)}</div>
                     ${q.time ? `<div class="rec">권장 답변 시간: ${esc(q.time)}</div>` : ""}
                     ${q.rec ? `<div class="rec">${esc(q.rec)}</div>` : ""}
@@ -924,7 +927,8 @@
                     <textarea class="note" data-a="${i}" id="ans-${year}-${i}" aria-label="질문 ${i + 1} 답변 메모" placeholder="답변의 핵심 한두 문장">${esc(
                       state.answers[i] || ""
                     )}</textarea>
-                    <div class="qx ext-slot" data-qx="${i}"></div>
+                    <div class="qx ext-slot" data-qx="${i}"></div>${q.fold ? `
+                    </div>` : ""}
                   </div>`
                 )
                 .join("")}
@@ -955,6 +959,15 @@
         </div>
       </div>
       </div><div id="room-alt" hidden></div>`;
+    KCP.$$(".qfold-toggle", root).forEach((b) => {
+      b.onclick = () => {
+        const body = KCP.$(".qfold-body", b.parentElement);
+        body.hidden = !body.hidden;
+        b.setAttribute("aria-expanded", String(!body.hidden));
+        b.textContent = body.hidden ? "질문 보기" : "질문 접기";
+        b.focus();
+      };
+    });
     const refreshLegacy = () => {
       if (!legacyAnswers(state)) KCP.$("#room-legacy", root)?.remove();
     };
