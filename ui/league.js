@@ -31,6 +31,37 @@
   };
   const dataKey = () => `${K_DATA}:${L.room}:${L.team}`;
   const tdata = () => { const d = L?.role === "solo" ? L.interview || {} : store.get(dataKey()) || {}; d.docs = d.docs || {}; d.journal = d.journal || {}; return d; };
+  // S7 월간 사본(계획 때 국제 지수·운영 조건)은 팀 자료와 다른 키에 둔다. 같은 키에 두면 이 기기가 새 방의
+  // 같은 팀으로 승인된 적이 있을 때 사본만으로 '이미 자료 있음'이 되어 옛 방 → 새 방 이전(일지·답변 복사)이
+  // 건너뛰어진다(sec.js F3-9: 앞 단계의 승인된 세션이 같은 방:팀 키에 사본을 남긴 경우).
+  const K_S7 = "kcp-league-s7-v1", S7_FIELDS = ["outageSnapshots", "outageOperatingIntl"];
+  const s7Key = () => `${K_S7}:${L.room}:${L.team}`;
+  function s7data() {
+    if (L?.role === "solo") return tdata();
+    const saved = store.get(s7Key()), d = store.get(dataKey());
+    const stale = d && S7_FIELDS.some(k => Object.hasOwn(d, k));
+    if (saved && typeof saved === "object") {
+      // 분리 키가 이미 있으면 팀 자료 키의 옛 사본은 버린다(2달 보관 정리 밖에 남지 않게).
+      if (stale) { S7_FIELDS.forEach(k => delete d[k]); store.set(dataKey(), d); }
+      return saved;
+    }
+    // 분리 전 판(팀 자료 키에 사본이 있던 기기)은 한 번 옮긴다.
+    const moved = {};
+    if (stale) {
+      S7_FIELDS.forEach(k => { if (Object.hasOwn(d, k)) { moved[k] = d[k]; delete d[k]; } });
+      if (store.set(s7Key(), moved)) store.set(dataKey(), d);
+    }
+    return moved;
+  }
+  function putS7(d) {
+    if (L.role === "solo") { putData(d); return; }
+    store.set(s7Key(), Object.fromEntries(S7_FIELDS.filter(k => d[k] !== undefined).map(k => [k, d[k]])));
+  }
+  // 이전 판정용: S7 사본·안내 표시(guideSeen)·빈 묶음만 있으면 학생이 쓴 자료가 없는 것으로 본다.
+  // 그 밖의 값(자동 기록 interview.causes 등 포함)은 보수적으로 '자료 있음'으로 보아 덮어쓰지 않는다.
+  const TEAM_META = ["guideSeen", "rev"];
+  const hasTeamContent = d => !!d && typeof d === "object" && Object.entries(d).some(([k, v]) =>
+    !S7_FIELDS.includes(k) && !TEAM_META.includes(k) && v != null && v !== false && !(typeof v === "object" && !Object.keys(v).length));
   const R = () => C.regionOf(REGION);
   // 이 방에 참가한 도시(2~6곳). 상태 S나 공개 상태 V 둘 다 받는다.
   const actT = X => { const ids = X && Array.isArray(X.active) && X.active.length ? X.active : X && X.teams ? Object.keys(X.teams) : R().teams.map(t => t.id); return R().teams.filter(t => ids.includes(t.id)); };
@@ -2094,11 +2125,11 @@
   // 월간 S7 사본은 방·팀별 tdata에만 둔다. 공개 상태·요청 본문에는 추가하지 않는다.
   function outageRememberIntl(V) {
     if (!V.econ || V.phase !== "plan" || !L.team) return;
-    const intl = V.econ.intl?.cur || V.econ.intl, d = tdata();
+    const intl = V.econ.intl?.cur || V.econ.intl, d = s7data();
     if (!Number.isFinite(intl?.fuelMul)) return;
     const pending = { round: V.round, intl };
     if (JSON.stringify(d.outageOperatingIntl) !== JSON.stringify(pending)) {
-      d.outageOperatingIntl = structuredClone(pending); putData(d);
+      d.outageOperatingIntl = structuredClone(pending); putS7(d);
     }
   }
   function outageOperatingInput(V, res, id, intl) {
@@ -2122,6 +2153,40 @@
     const pct = s.tot.dem > 0 ? 100 * s.unsTotal / s.tot.dem : 0;
     if (!Number.isFinite(pct)) throw new Error("outage simulation");
     return pct;
+  }
+  // 태블릿 재생: S7 사본의 공개 재료(계획·씨앗·사건 배수)만 읽어 기기 안에서 다시 돌린다.
+  // S7 블록은 바꾸지 않는다(소유: 리그 완성 기준 2). simulate 옵션은 league-core simTeam과 같게 둔다.
+  // 원시 시간별 값은 메모리에만 둔다(D-65).
+  let replaySimulationCache = null;
+  function outageReplaySimulation(id, snapshot) {
+    const { plan, mods, seed, season, days, round } = snapshot;
+    const key = JSON.stringify([id, round, plan, mods, seed, season, days]);
+    if (replaySimulationCache?.session === L && replaySimulationCache.key === key) return replaySimulationCache.res;
+    const res = withCityPack(id, () => {
+      const st = BG.sanitize(plan, 1e9);
+      st.seed = seed; st.season = season;
+      if (mods?.tax && !st.policies.includes("tax")) st.policies.push("tax");
+      return BG.simulate(st, days, { league: true, mods: mods && Object.keys(mods).length ? mods : null });
+    });
+    replaySimulationCache = { session: L, key, res };
+    return res;
+  }
+  // S7 사본은 계획이 없는 도시(아무것도 짓지 않은 달)를 만들지 않는다. 재생만 같은 공개 재료로 빈 계획을 돌린다.
+  // 국제 지수 선택은 S7 사본(outageSnapshot)과 같은 순서를 따른다.
+  function emptyPlanReplayInput(V, res, id) {
+    if (V.teams[id]?.plan || !V.econ?.before?.[id]) return null;
+    const d = tdata(), kept = d.outageSnapshots && typeof d.outageSnapshots === "object" ? d.outageSnapshots : {}, initial = KCP.ECON_DATA.intl.base;
+    const intl = d.outageOperatingIntl?.round === res.round ? d.outageOperatingIntl.intl :
+      kept[res.round - 1]?.nextIntl || (res.round === 1 ? { fuelMul: Math.round(initial.lng * initial.fx * 1000) / 1000 } : null);
+    if (!Number.isFinite(intl?.fuelMul)) return null;
+    return withCityPack(id, () => ({ round: res.round, plan: {}, seed: res.seed, days: res.days, season: res.season,
+      mods: C.modsFor(outageOperatingInput(V, res, id, intl), R(), id) }));
+  }
+  function replaySimulation(V, res, id) {
+    if (!L || L.away || id !== L.team || !res?.team?.[id] || V.round !== res.round ||
+        !["review", "end"].includes(V.phase)) return null;
+    const snapshot = outageSnapshot(V, res, id) || emptyPlanReplayInput(V, res, id);
+    return snapshot ? outageReplaySimulation(id, snapshot) : null;
   }
   // 연계선의 반대쪽 연결 여부만 보관한다. 우리 쪽 전선은 다음 달 계획으로 다시 판단한다.
   function outageTiePorts(id, plan) {
@@ -2150,10 +2215,10 @@
   // 사본 실패도 기존처럼 같은 그리기에서 반복하지 않고 다음 그리기에 한 번만 재시도한다.
   function outageSnapshot(V, res, id) {
     if (id !== L.team || !V.econ || V.round !== res?.round || !["review", "end"].includes(V.phase)) return null;
-    const d = tdata();
+    const d = s7data();
     const snapshots = d.outageSnapshots && typeof d.outageSnapshots === "object" && !Array.isArray(d.outageSnapshots) ? d.outageSnapshots : {};
     const kept = Object.fromEntries(Object.entries(snapshots).filter(([r]) => +r >= res.round - 1 && +r <= res.round));
-    if (Object.keys(kept).length !== Object.keys(snapshots).length) { d.outageSnapshots = kept; putData(d); }
+    if (Object.keys(kept).length !== Object.keys(snapshots).length) { d.outageSnapshots = kept; putS7(d); }
     if (matchesOutageSnapshot(kept[res.round], res, id)) return kept[res.round];
     const key = `snapshot:${id}:${res.round}`, render = L.outRender || 0;
     L.outFailures ||= {};
@@ -2199,7 +2264,7 @@
       if (!validOutageSnapshot(snapshot, res.round)) throw new Error("outage snapshot");
       d.outageSnapshots = { ...kept, [res.round]: structuredClone(snapshot) };
       delete d.outageOperatingIntl;
-      putData(d); delete L.outFailures[key];
+      putS7(d); delete L.outFailures[key];
       return snapshot;
     } catch (e) {
       L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
@@ -2215,8 +2280,8 @@
     L.outCache ||= {}; L.outFailures ||= {};
     if (Object.hasOwn(L.outCache, key)) return L.outCache[key];
     if (V.round !== res.round || !["review", "end"].includes(V.phase)) return null;
-    const started = performance.now(), hadCurrent = matchesOutageSnapshot(tdata().outageSnapshots?.[res.round], res, id);
-    const current = outageSnapshot(V, res, id), old = tdata().outageSnapshots?.[res.round - 1];
+    const started = performance.now(), hadCurrent = matchesOutageSnapshot(s7data().outageSnapshots?.[res.round], res, id);
+    const current = outageSnapshot(V, res, id), old = s7data().outageSnapshots?.[res.round - 1];
     const previousResult = V.results.find(r => r.round === res.round - 1), previous = previousResult?.team[id];
     if (!current || !validOutageSnapshot(old, res.round - 1) || !Number.isFinite(previous?.unsPct) || previous.unsPct !== old.unsPct) return null;
     const failed = L.outFailures[key], render = L.outRender || 0;
@@ -2380,7 +2445,7 @@
     const trial = !a && !monthly && matchingTrial(V, res, id);
     const failed = L.outFailures?.[monthly ? monthlyOutageKey(res, id) : outageCacheKey(res, id, trial)] ||
       (monthly && L.outFailures?.[`snapshot:${id}:${res.round}`]);
-    const old = monthly && tdata().outageSnapshots?.[res.round - 1];
+    const old = monthly && s7data().outageSnapshots?.[res.round - 1];
     const missing = monthly && (!validOutageSnapshot(old, res.round - 1) ||
       V.results.find(r => r.round === res.round - 1)?.team[id]?.unsPct !== old.unsPct);
     const unavailable = missing ? "지난달 운영 조건이 이 기기에 없어 나누지 못해요." :
@@ -2472,6 +2537,10 @@
       const a = d * (1 - fc), b = d * (1 + fc);
       return `${KNOB[k]} ${pct(Math.min(a, b))}~${pct(Math.max(a, b)).replace("+", "")}%`;
     }).join(" · ");
+  }
+  function evReveal(E, ev, nx) {
+    const forecast = evSize(E, { id: ev.id, round: ev.round }, nx), confirmed = evSize(E, ev, nx);
+    return forecast && typeof ev.x === "number" ? `예보 ${forecast} → 확정 ${confirmed}` : confirmed;
   }
   // resp = {plan 단계의 내 대응}이 있으면 대응 버튼을 단다.
   function evCards(X, round, me, act) {
@@ -3001,9 +3070,14 @@
       if (m.type === "claim" && m.n === L.claimN && m.seat === L.claimSeat) {
         L.claimAccepted = true; L.seat = m.seat;
         const old = L.migrationFrom;
-        if (old?.team === L.team && old.room !== L.room && !store.get(dataKey())) {
+        if (old?.team === L.team && old.room !== L.room && !hasTeamContent(store.get(dataKey()))) {
           const data = store.get(`${K_DATA}:${old.room}:${L.team}`);
+          s7data(); // 새 방 키에 남은 분리 전 사본을 덮어쓰기 전에 분리 키로 옮긴다.
           if (data) store.set(dataKey(), data);
+          // 옛 방에서 이어 온 판이면 분리 키 사본도 따라온다(새 방 사본이 없을 때만).
+          const oldS7 = store.get(`${K_S7}:${old.room}:${L.team}`);
+          if (oldS7 && !store.get(s7Key())) store.set(s7Key(), oldS7);
+          s7data(); // 옛 방 자료에 들어 있던 분리 전 사본도 정리한다.
         }
         if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap);
       }
@@ -3143,7 +3217,31 @@
       const { d, n } = monthNote(); n.startPolicy = V.teams[L.team].econPol || V.econ.cities[L.team].policy; putData(d);
     }
     if (L.away) return; // 알림만 갱신하고 돌아갈 서랍은 유지한다.
-    if (V.phase === "review" || V.phase === "end") { BG.clearTrialDisplay?.(); signal(V.results.at(-1)?.team[L.team]?.unsPct > 0 ? "outage" : "complete"); warnUnsentPlan(); openPanel("result"); }
+    if (V.phase === "review" || V.phase === "end") {
+      BG.clearTrialDisplay?.(); warnUnsentPlan(); openPanel("result");
+      const result = V.results.at(-1), team = result?.team[L.team];
+      const previous = V.results.find(r => r.round === result?.round - 1), p = previous?.team[L.team];
+      // 결과 서랍의 월 환산과 fmt를 그대로 쓴다. 대표 운영일을 늘려 시뮬레이션하지 않는다.
+      const mul = result ? resultPeriod(V, result).mul : 1, pm = previous ? resultPeriod(V, previous).mul : 1;
+      const summary = team ? [["정전 시간", team.outH * mul, p && p.outH * pm, "시간", 1],
+        ["정전", team.unsPct, p?.unsPct, "%", 2], ["CO₂", team.co2Prod * mul, p && p.co2Prod * pm, "t", 0]]
+        .map(([label, value, before, unit, digits]) => ({ label, value, unit, format: v => fmt(v, digits),
+          direction: before == null || value === before ? "" : value > before ? "up" : "down" })) : [];
+      const monthLabel = result?.month ? `${result.month}월` : `${result?.round || V.round}라운드`;
+      const events = (V.events || []).filter(ev => ev.round === result?.round && result?.events?.includes(ev.id));
+      const cards = result?.events?.length ? [{ tag: "지난달 결산", title: monthLabel,
+        body: summary.map(s => `${s.label} ${s.format(s.value)}${s.unit}`).join(" · "), big: "운영 결과" },
+        ...events.map(ev => {
+          const E = C.eventDef(R(), ev.id);
+          if (!E) return null;
+          const nx = C.hits(R(), E, L.team) ? V.teams[L.team]?.fcx?.[ev.id] : null;
+          return { tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정" };
+        }).filter(Boolean)] : [];
+      const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
+      const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
+        sound: kind => { if (kind === "outage") signal("outage"); else if (kind === "done") signal("complete"); } });
+      if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
+    }
     else if (V.phase === "plan") { BG.clearTrialDisplay?.(); closePanel(); }
   }
   function lockMsg() {
@@ -3831,7 +3929,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML },
+    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st); if (L.snap?.econ) { const { d, n } = monthNote(); n.buildCost = newBuildCost(L.snap); n.buildBudget = L.snap.teams[L.team].budget; n.confirmed = false; putData(d); } L.rev++; sendPlan(); BG.refresh(); return true; }
   };
