@@ -452,7 +452,8 @@ def t_T0b_7_room_sources(c: Ctx):
          f"{aid} 2022 보고서 문항 태그는 두 개다")
     c.eq(c.page.locator(".qdeck .qcard .who .tag-mine").count(), n - 2,
          f"{aid} 나머지는 연습용 질문이다")
-    c.expect("'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다" in _text(c, "#room-main"),
+    # spec-v3 X2: 기출 출처 설명에 보고서의 '질문 예시'도 포함한다.
+    c.expect("'보고서 문항'은 보고서에 실린 과제나 질문 예시를 면접 질문 형태로 바꾼 것입니다" in _text(c, "#room-main"),
              f"{aid} 질문 출처를 설명한다")
     c.expect(c.page.eval_on_selector(".qdeck", "e => e.previousElementSibling.id === 'room-tools'"),
              f"{aid} 질문 덱 바로 앞의 슬롯을 유지한다")
