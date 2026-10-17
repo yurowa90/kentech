@@ -351,10 +351,6 @@ svg.chart .axis { stroke: var(--ink-3); stroke-width: 1; }
 [data-prep-year="2025"] .slot-button .n { color: var(--ink-2); }
 [data-prep-year="2025"] .slot-button .pp { max-width: 100%; overflow-wrap: anywhere; }
 [data-prep-year="2025"] .slot-button .pp > span { flex-shrink: 0; }
-/* 조작 단추의 기호는 본문색으로 읽히게 하고, 기사 안의 원래 색은 유지한다. */
-[data-prep-year="2025"] button .sym-blue,
-[data-prep-year="2025"] button .sym-red,
-[data-prep-year="2025"] button .sym-green { color: inherit; }
 .room-tip .tag-mine,
 .room-sources .tag-mine,
 [data-prep-year="2026"] .score-note26 .tag-mine,
