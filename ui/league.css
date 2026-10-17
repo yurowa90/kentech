@@ -1103,9 +1103,10 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 
 /* 약속: 지난달 두 줄 다음에 근거 두 줄·방향·확신을 연속 배치한다. */
 .lg-team-map #lg-panel .lg-promise-carry > p {
-  margin: 0 0 4px; padding: 0; border: 0; background: transparent;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 0 0 4px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
+/* 영상 판정 S4 근거 줄: 지난달 놓친 것은 강조선을 유지한다. */
+.lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 4px 8px; border-left: 3px solid var(--ui-gold); }
 .lg-team-map #lg-panel #lg-predict { margin: 0 0 4px; padding: 8px; }
 .lg-team-map #lg-panel #lg-predict h3 { margin: 0 0 4px; }
 .lg-team-map #lg-panel #lg-predict h4 { margin: 0 0 4px; }
@@ -1204,4 +1205,9 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 @media (max-width: 760px) {
   #bd-root.lg-team-map:has(.lg-map-guidance .lg-map-result:not([hidden])) #lg-panel { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
   #bd-root.lg-team-map[data-league-drawer="true"] .bd-toast { top: auto; bottom: 8px; }
+}
+
+/* 폰: 지도 레이어 단추는 원래 숨겼다. '지도 보기' 묶음도 같은 기준으로 숨긴다. */
+@media (max-width: 760px) {
+  .lg-team-map .lg-map-views { display: none; }
 }

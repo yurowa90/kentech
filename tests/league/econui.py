@@ -426,7 +426,8 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U2 도구 재선택에도 학생이 끈 렌즈 유지')
     checks.ok(all(team.locator('[data-run]').nth(i).inner_text().startswith('시험 ') for i in range(team.locator('[data-run]').count())),
               f'{label} U2 시험 단추 실제 글자')
-    checks.ok(team.locator('#lg-watch button').count() <= 3 and team.locator('#lg-hud-chips button').count() == 2,
+    # 품질8 UX ③(docs/QUALITY-ux.md 8.5): 지지·주민 변화 칩은 '도시' 서랍과 같은 곳을 여는 중복 단추라 글자 표시로 바꿨다.
+    checks.ok(team.locator('#lg-watch button').count() <= 3 and team.locator('#lg-hud-chips > span').count() == 2,
               f'{label} U4 이번 달 배지 최대 셋·지지·주민 칩')
     checks.ok(not shown(team, '.lg-bmoney') and not shown(team, '[data-tab="mission"]'),
               f'{label} U4·U7 남은 돈 중복·리그 미션 0/2 숨김')

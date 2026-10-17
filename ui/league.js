@@ -1175,7 +1175,7 @@
     if (!old && !change.text) return "";
     const hasAnswer = !!(old?.ask || old?.quarterKey), reason = old?.questionReason || old?.askReason || old?.quarterAnswer || "";
     const sameReason = hasAnswer && !!change.text && change.text === reason.trim().replace(/\s+/g, " ");
-    return `<details id="lg-previous-note" class="lg-sec"><summary>지난달 답 · 다음에 바꿀 것 자세히</summary>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}${old && missedText(old) ? `<p>지난달 ${esc(missedText(old))}</p>` : ""}</details>`;
+    return `<details id="lg-previous-note" class="lg-sec"><summary>지난달 답 · 다음에 바꿀 것 자세히</summary>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}</details>`;
   }
   function weightSimulation(E, weights) {
     if (!E.scoreState || !KCP.econ) return reweightScore(E.score, weights);
@@ -4108,7 +4108,8 @@
     p.dataset.folded = String(!!L.panelFolded);
     if (V?.econ && V.phase === "plan") {
       const goal = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>`;
-      body = tab === "journal" ? body + goal : goal + body;
+      // 계획 CO₂ 목표 줄은 모든 탭에서 맨 위(폰에서는 머리의 같은 줄이 숨으므로 유일한 표시).
+      body = goal + body;
     }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
