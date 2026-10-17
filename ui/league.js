@@ -703,8 +703,9 @@
     const completed = (rs.completed || []).map(techCard).filter(Boolean), eureka = (rs.eurekaNow || []).map(techCard).filter(Boolean);
     const key = `${res.round}:${completed.map(c => c.id).join(",")}`;
     // 같은 결과를 다시 그려도 시작 시각을 보존해 반복해서 뒤집지 않는다.
-    if (completed.length && L.techReveal?.key !== key) L.techReveal = { key, at: Date.now() };
-    const elapsed = Math.max(0, Date.now() - (L.techReveal?.at || 0));
+    // 재생 중 접힌 서랍(U10)에서는 시계를 시작하지 않는다 — 펼쳐 보일 때 뒤집기 연출이 시작되게.
+    if (completed.length && L.techReveal?.key !== key && !L.panelFolded) L.techReveal = { key, at: Date.now() };
+    const elapsed = L.techReveal?.key === key ? Math.max(0, Date.now() - L.techReveal.at) : 0;
     const animate = completed.length && elapsed < TECH_FLIP_MS;
     return `<section class="lg-tech-results" aria-label="이번 ${V.econ ? "달" : "턴"} 연구 소식">${completed.map(c => `<article class="lg-tech-complete ${animate ? "lg-tech-flip" : ""}" data-tech-completed="${esc(c.id)}"${animate ? ` style="animation-delay:-${esc(elapsed)}ms"` : ""}><p>연구 완료 · 다음 ${V.econ ? "달" : "턴"} 도입</p><h3>${esc(c.name)}</h3><p>${esc(techEffectText(c, V))} · 근거 ${gradeTags(c.evidenceGrade)} · 효과 크기 ${gradeTags(c.effectGrade)}</p><p>${c.fieldCategory === "concentration" ? "켄텍 융합전공" : "켄텍 12대 연구분야"}: ${esc(c.field)}</p></article>`).join("")}${eureka.map(c => `<p class="lg-tech-eureka" role="status">유레카! ${esc(c.name)} 연구가 빨라졌어요 · ${esc(techEurekaText(c.id, V))}</p>`).join("")}</section>`;
   }
@@ -3466,7 +3467,8 @@
       if (show) { session.panelFolded = false; renderPanel(); }
     };
     session.resultReplayWait = stop;
-    session.panelFolded = true; renderPanel();
+    // 접기 직전 그리기에서 시작된 연구 완료 연출 시계를 지워, 펼칠 때 연출이 보이게 한다.
+    session.techReveal = null; session.panelFolded = true; renderPanel();
     // 조건이 깨져 멈출 때(탭 전환·관전·다시 그리기)도 접힘을 풀고 다시 그려 결과가 접힌 채 남지 않게 한다.
     const release = () => { stop(); if (L === session && session.panelFolded) { session.panelFolded = false; if (!session.away && session.panel) renderPanel(); } };
     poll = setInterval(() => { if (!active()) release(); else if (finished()) reveal(); }, 100);
