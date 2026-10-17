@@ -2,6 +2,7 @@
 
 근거: /Users/yurosung/Projects/kentech-wt/_briefs/lanes/2023b/spec.md
 (2026-10-13 확정) §0~8 + 같은 폴더 spec-v2.md V1~V10·W4(우선).
+접기 후속은 spec-v3.md X1~X3 + spec-v4.md Y1~Y4(2026-10-17 우선).
 PLAN-2023보다 계약 명세를 우선한다.
 카드 값·경로·사건·질문 기대값은 명세를 전사하여 Python에서 독립 계산한다.
 옛 g2023.js는 선택자·저장 봉투 확인에만 사용했다. 런타임 구현값으로
@@ -1155,9 +1156,27 @@ def _fold_state_v3(c, i, opened):
     c.eq(body.get_attribute("id"), f"qfold-2023-{i}", f"X1 {i} 본문 id")
     c.eq(button.get_attribute("aria-controls"), body.get_attribute("id"), f"X1 {i} 단추·본문 연결")
     c.eq(c.page.locator(f'[id="qfold-2023-{i}"]').count(), 1, f"X1 {i} 본문 id 고유")
-    c.eq(body.evaluate("e => e.hidden"), not opened, f"X1 {i} hidden 속성")
-    c.eq(body.is_visible(), opened, f"X1 {i} 실제 본문 표시")
-    c.eq(body.evaluate("e => getComputedStyle(e).display === 'none'"), not opened, f"X1 {i} 숨김 display")
+    # spec-v4 Y3: until-found도 닫힘이다. 상자는 display:block인 채 내용만
+    # 숨으므로 Playwright is_visible()/display:none을 닫힘의 공통 기준으로 쓰지 않는다.
+    c.eq(body.evaluate("e => Boolean(e.hidden)"), not opened, f"X1/Y3 {i} hidden 참 여부")
+    if opened:
+        c.eq(body.get_attribute("hidden"), None, f"Y3 {i} 열린 본문 hidden 제거")
+        c.expect(body.is_visible(), f"X1 {i} 열린 본문 표시")
+        c.eq(body.evaluate("e => e.style.getPropertyValue('display')"), "", f"Y3 {i} 열린 본문 인라인 display 제거")
+        c.eq(body.evaluate("e => e.style.getPropertyPriority('display')"), "", f"Y3 {i} 열린 본문 display 중요도 제거")
+    elif c.page.evaluate("'onbeforematch' in document.body"):
+        c.eq(body.evaluate("e => e.hidden"), "until-found", f"Y3 {i} 지원 브라우저의 hidden 값")
+        c.eq(body.get_attribute("hidden"), "until-found", f"Y3 {i} until-found 속성")
+        c.eq(body.evaluate("e => e.style.getPropertyValue('display')"), "block", f"Y3 {i} 인라인 display block")
+        c.eq(body.evaluate("e => e.style.getPropertyPriority('display')"), "important", f"Y3 {i} 인라인 display 중요도")
+        c.eq(body.evaluate("e => getComputedStyle(e).display"), "block", f"Y3 {i} 전역 hidden 규칙보다 우선")
+        c.eq(body.evaluate("e => getComputedStyle(e).contentVisibility"), "hidden", f"Y3 {i} 닫힌 본문 내용 숨김")
+        # 검토 반영: 계산된 스타일만이 아니라 질문 문장이 실제로 그려지지 않는지도 본다.
+        c.expect(not body.locator(".q").is_visible(), f"Y3 {i} 닫힌 본문의 질문 문장은 보이지 않음")
+    else:
+        c.eq(body.evaluate("e => e.hidden"), True, f"Y3 {i} 미지원 브라우저 불리언 hidden")
+        c.eq(body.evaluate("e => e.style.getPropertyValue('display')"), "", f"Y3 {i} 미지원 브라우저 인라인 display 없음")
+        c.eq(body.evaluate("e => getComputedStyle(e).display"), "none", f"Y3 {i} 미지원 브라우저 숨김 display")
     return button, body
 
 
@@ -1374,6 +1393,9 @@ def t_16_X2_sources_and_X1_other_games(c: Ctx):
         c.expect(len(qs) > 0, f"X1 {year} 회귀 검사는 실제 질문이 있는 면접실")
         c.expect(all("fold" not in q for q in qs), f"X1 {year} 질문에 fold 없음")
         c.eq(c.page.locator(".qfold, #room-folds").count(), 0, f"X1 {year} 접기 카드·안내 없음")
+        # spec-v4 Y3/Y4: until-found와 display 우회는 2023 접기 본문에만 적용한다.
+        c.eq(c.page.locator(".qdeck .qfold-toggle, .qdeck .qfold-body, .qdeck [hidden='until-found']").count(), 0, f"Y4 {year} 접기 요소·until-found 없음")
+        c.eq(c.page.locator(".qdeck, .qdeck *").evaluate_all("xs => xs.filter(e => e.style.getPropertyValue('display')).length"), 0, f"Y4 {year} 면접 질문 영역 인라인 display 없음")
         _plain_cards_v3(c, year, qs)
         expected = SOURCE_V3 + " " + SOURCE_TAIL if year == "2022" else ORIGINAL_SOURCE
         c.eq(" ".join(c.page.locator(".room-sources").inner_text().split()), expected, f"X2 {year} 출처 문장·frame 설명 없음")
@@ -1403,7 +1425,257 @@ def t_17_X3_hint_contract(c: Ctx):
         timing = [p for p in hint["pts"] if "연차별로 고른 이유를 시점" in p]
         c.eq(len(timing), 1 if hint["key"] == "23-q2" else 0, f"X3 {hint['key']} 시점 요령은 q2에만")
     c.eq([h["key"] for h in got if h["type"] == "calc"], ["23-lost"], "X3 유실 질문만 계산형")
+    # AUDIT-2023 §11 안 A(총괄 승인 10-17): 키 항목의 el이 평가 요소 순서를 덮어쓴다.
+    # 23-q1-conflict만 인문적 통찰을 먼저 보고, 그 밖의 2023 질문과 다른 해는 유형의 el 그대로다.
+    els = c.page.evaluate("""() => {
+      const out = {};
+      for (const y of ['2022','2023','2024','2025','2026']) {
+        KCP.games[y].questions(KCP.load(y)).forEach(q => { out[y + '|' + KCP.qkey(q)] = KCP.hintFor(y, q, KCP.qkey(q)).el; });
+      }
+      return out;
+    }""")
+    c.eq(els.get("2023|23-q1-conflict"), ["인문적 통찰 역량", "발산적 사고력"], "§11 23-q1-conflict 평가 요소 순서")
+    expected_counter = ["발산적 사고력", "인문적 통찰 역량"]
+    c.eq(els.get("2023|23-flex"), expected_counter, "§11 다른 반문 대응형 키는 유형 순서 유지")
     c.check("X3 24개 질문 힌트")
+
+
+def _fold_notice_v4(c, closed):
+    """Y1/Y3: 안내 N은 현재 닫힌 수이며 0이면 문단 자체가 없다."""
+    c.eq(c.page.locator(".qfold-body").evaluate_all("xs => xs.filter(e => Boolean(e.hidden)).length"), closed, "Y1/Y3 현재 닫힌 카드 수")
+    notice = c.page.locator("#room-folds")
+    c.eq(notice.count(), int(closed > 0), "Y1/Y3 닫힌 카드가 있을 때만 안내")
+    if closed and notice.count() == 1:
+        # Y4에 따라 기존 X1의 안내 위치·문장 단언은 유지하고, 여기서는 동적인 N을 검사한다.
+        match = re.match(r"가벼운 질문 (\d+)개", notice.inner_text())
+        c.eq(int(match[1]) if match else None, closed, "Y1/Y3 안내 N 갱신")
+        c.expect(notice.is_visible(), "Y1/Y3 남은 접기 안내 표시")
+
+
+def _fold_fixture_v4(c, think=0):
+    _seed(c, _game(), phase="room")
+    c.page.evaluate("think => KCP.setSettings({think})", think)
+    qs = _questions(c)
+    indices = [i for i, q in enumerate(qs) if q["k"] in FOLD_KEYS]
+    c.eq([qs[i]["k"] for i in indices], list(FOLD_KEYS), "Y1~Y3 검사 대상 세 질문")
+    return qs, indices
+
+
+def _probe_saved_v4(c, key):
+    c.wait_saved(400)
+    return (c.ls(KEY) or {}).get("ext", {}).get("probe", {}).get(key, {})
+
+
+def _speak_idle_v4(c, body):
+    c.eq(body.locator(".speak-go").get_attribute("aria-pressed"), "false", "Y2 말하기 종료 상태")
+    # 닫힌 until-found 본문에서도 렌더링 여부와 무관하게 위젯 상태를 읽는다.
+    c.eq(body.locator(".speak-go").text_content(), "말해 보기", "Y2 말하기 시작 단추 복원")
+    c.eq(body.locator(".speak-t").text_content(), "", "Y2 말하기·생각 진행 표시 없음")
+
+
+def _talk_record_v4(c, i, key):
+    talk = _probe_saved_v4(c, key).get("talk", [])
+    c.eq(len(talk), 1, "Y2 한 번의 말하기는 한 번만 기록")
+    c.expect(bool(talk) and all(type(s) is int and 1 <= s <= 600 for s in talk), "Y2 유효한 말하기 초 기록")
+    text = c.page.locator(f"#pb-time-{i}").inner_text()
+    c.expect(re.fullmatch(r"방금 \d+:[0-5]\d", text) is not None, "Y2 반문 모듈에 방금 m:ss 표시")
+    c.expect(c.page.locator(f"#pb-time-{i}").is_visible(), "Y2 다시 연 카드에서 말하기 기록이 보임")
+    if talk:
+        c.eq(text, f"방금 {talk[0] // 60}:{talk[0] % 60:02d}", "Y2 화면 시간과 저장된 말하기 초 일치")
+    return talk, text
+
+
+def t_18_Y1_fold_probe_records(c: Ctx):
+    """메모 없이 실제 반문 조작으로 저장한 stance·why만으로 1→2→3개 자동 펼침."""
+    qs, indices = _fold_fixture_v4(c)
+    _fold_notice_v4(c, 3)
+    for done, i in enumerate(indices, 1):
+        button, body = _fold_state_v3(c, i, False)
+        button.click()
+        body.locator(f'[data-pb-open="{i}"]').click()
+        body.get_by_role("button", name="답을 유지한다", exact=True).click()
+        if done == 1:
+            # Y1(a)를 (b)와 분리: 값이 있는 입력 없이 aria-expanded만 있어도 열린다.
+            c.eq(_probe_saved_v4(c, qs[i]["k"]).get("stance"), "keep", "Y1 이유 입력 전 선택 저장")
+            c.page.reload()
+            c.page.wait_for_selector(".qdeck .qcard")
+            button, body = _fold_state_v3(c, i, True)
+            c.expect(body.locator("textarea, input").evaluate_all("xs => xs.every(e => !e.value.trim())"), "Y1 선택만 복원했을 때 입력값은 모두 비어 있음")
+            _fold_notice_v4(c, 2)
+        why = f'가상 반문 이유 {done}: <b>조건</b> & "근거"를 비교했다.'
+        body.locator(f'[data-pb-why="{i}"]').fill(why)
+        saved = _probe_saved_v4(c, qs[i]["k"])
+        c.eq(saved.get("stance"), "keep", "Y1 실제 조작으로 stance 저장")
+        c.eq(saved.get("why"), why, "Y1 실제 조작으로 why 저장")
+        c.eq(saved.get("own"), "", "Y1 짝의 반문 입력 없이 선택·이유만 저장")
+        c.eq(saved.get("talk"), [], "Y1 말하기 기록 없이 선택·이유만 저장")
+        c.expect(not any((c.ls(KEY) or {}).get("answers", {}).values()), "Y1 저장된 답변 메모 없음")
+        # 저장 기록이 있는 카드를 직접 닫아 둔다. 재로딩은 여닫기 상태를 복원하면 안 된다.
+        button.click()
+        _fold_state_v3(c, i, False)
+        c.page.reload()
+        c.page.wait_for_selector(".qdeck .qcard")
+        for n, other in enumerate(indices):
+            _, restored = _fold_state_v3(c, other, n < done)
+            c.eq(restored.locator("textarea[data-a]").input_value(), "", "Y1 자동 펼침의 근거는 답변 메모가 아님")
+            if n < done:
+                c.eq(restored.locator(f'[data-pb-open="{other}"]').get_attribute("aria-expanded"), "true", "Y1 반문 모듈이 펼친 상태 유지")
+                c.eq(restored.locator('[data-pb-stance="keep"]').get_attribute("aria-pressed"), "true", "Y1 유지 선택 복원")
+                c.eq(restored.locator(f'[data-pb-why="{other}"]').input_value(), f'가상 반문 이유 {n+1}: <b>조건</b> & "근거"를 비교했다.', "Y1 이유·특수문자 복원")
+                c.eq(restored.locator("textarea b").count(), 0, "Y1 이유를 HTML 요소로 해석하지 않음")
+        _fold_notice_v4(c, 3 - done)
+        c.check(f"Y1 반문 기록 {done}개 복원")
+
+
+def t_19_Y1_fold_extension_dom(c: Ctx):
+    """Y1(b): 모든 room:card 뒤의 DOM 검사, input/textarea 값과 공백 구별."""
+    _seed(c, _game(), phase="prep")
+    c.page.evaluate("""keys => {
+      const qs = KCP.games['2023'].questions(KCP.load('2023'));
+      KCP.on('room:card', ({year, i}) => {
+        if (String(year) !== '2023' || i !== qs.length - 1) return;
+        // 마지막 카드 이벤트에서 앞선 카드의 슬롯을 채워, 매 이벤트 직후 검사와 구별한다.
+        keys.forEach((key, n) => {
+          const index = qs.findIndex(q => KCP.qkey(q) === key);
+          const field = document.createElement(n === 1 ? 'textarea' : 'input');
+          field.value = n === 2 ? '   ' : '가상 확장 기록';
+          field.setAttribute('aria-label', '가상 확장 입력');
+          document.querySelector('.qx[data-qx="' + index + '"]').append(field);
+        });
+      });
+    }""", list(FOLD_KEYS))
+    c.phase("room")
+    qs = _questions(c)
+    indices = [i for i, q in enumerate(qs) if q["k"] in FOLD_KEYS]
+    for n, i in enumerate(indices):
+        _fold_state_v3(c, i, n < 2)
+    _fold_notice_v4(c, 1)
+    c.check("Y1 확장 DOM의 값·공백 판정")
+
+
+def t_20_Y2_fold_ends_talk_and_keeps_record(c: Ctx):
+    """말하는 카드를 접으면 기록하고 종료, 끝난 카드를 다시 접어도 기록 보존."""
+    qs, indices = _fold_fixture_v4(c)
+    i = indices[0]
+    button, body = _fold_state_v3(c, i, False)
+    button.click()
+    body.locator(".speak-go").click()
+    c.expect("말하는 중" in body.locator(".speak-t").inner_text(), "Y2 think=0에서 즉시 말하기")
+    c.page.wait_for_timeout(1500)  # 1초 이상 실제 말한 시간을 기록하도록 기다린다.
+    button.click()
+    _fold_state_v3(c, i, False)
+    _speak_idle_v4(c, body)
+    # 닫힌 동안에도 시간이 더 기록되거나 타이머가 재개되어서는 안 된다.
+    at_close = _probe_saved_v4(c, qs[i]["k"]).get("talk", [])
+    c.page.wait_for_timeout(2000)
+    button.click()
+    _fold_state_v3(c, i, True)
+    _speak_idle_v4(c, body)
+    talk, text = _talk_record_v4(c, i, qs[i]["k"])
+    c.eq(talk, at_close, "Y2 접힌 동안 말하기 시간 증가·추가 없음")
+    for _ in range(2):
+        button.click()
+        c.page.wait_for_timeout(1200)
+        button.click()
+        _speak_idle_v4(c, body)
+        c.eq(body.locator(f"#pb-time-{i}").inner_text(), text, "Y2 끝난 카드의 방금 표시 보존")
+        c.eq(_probe_saved_v4(c, qs[i]["k"]).get("talk", []), talk, "Y2 재접기로 중복 기록하지 않음")
+    # 평소 '끝' 단추로 종료한 경우도 같은 보존 규칙을 적용한다.
+    j = indices[1]
+    other_button, other_body = _fold_state_v3(c, j, False)
+    other_button.click()
+    other_body.locator(".speak-go").click()
+    c.page.wait_for_timeout(1500)
+    other_body.locator(".speak-go").click()
+    normal_talk, normal_text = _talk_record_v4(c, j, qs[j]["k"])
+    other_button.click()
+    other_button.click()
+    _speak_idle_v4(c, other_body)
+    c.eq(other_body.locator(f"#pb-time-{j}").inner_text(), normal_text, "Y2 평소 종료 뒤 접어도 방금 표시 보존")
+    c.eq(_probe_saved_v4(c, qs[j]["k"]).get("talk", []), normal_talk, "Y2 평소 종료 뒤 접어도 기록 보존")
+    c.check("Y2 말하기 종료·기록 보존")
+
+
+def t_21_Y2_fold_ends_thinking_without_record(c: Ctx):
+    qs, indices = _fold_fixture_v4(c, think=10)
+    i = indices[0]
+    button, body = _fold_state_v3(c, i, False)
+    button.click()
+    body.locator(".speak-go").click()
+    c.expect(body.locator(".speak-t").inner_text().startswith("생각 "), "Y2 생각 단계로 시작")
+    c.eq(body.locator(".speak-go").inner_text(), "바로 말하기", "Y2 생각 단계 단추 확인")
+    c.page.wait_for_timeout(1000)
+    button.click()
+    _fold_state_v3(c, i, False)
+    _speak_idle_v4(c, body)
+    c.page.wait_for_timeout(11000)  # 원래 생각 시간이 지나도 숨은 말하기로 넘어가지 않아야 한다.
+    button.click()
+    _fold_state_v3(c, i, True)
+    _speak_idle_v4(c, body)
+    c.eq(_probe_saved_v4(c, qs[i]["k"]).get("talk", []), [], "Y2 생각 중 접기는 말하기 기록을 만들지 않음")
+    c.eq(body.locator(f"#pb-time-{i}").inner_text(), "", "Y2 생각 중 접기는 방금 표시 없음")
+    c.check("Y2 생각 중 접기")
+
+
+def t_22_Y2_fold_preserves_other_timer(c: Ctx):
+    qs, indices = _fold_fixture_v4(c)
+    i, j = indices[:2]
+    button, body = _fold_state_v3(c, i, False)
+    other_button, other_body = _fold_state_v3(c, j, False)
+    button.click()
+    other_button.click()
+    other_body.locator(".speak-go").click()
+    c.page.wait_for_timeout(1200)
+    before = other_body.locator(".speak-t").inner_text()
+    button.click()
+    _fold_state_v3(c, i, False)
+    c.page.wait_for_timeout(2000)
+    after = other_body.locator(".speak-t").inner_text()
+    c.eq(other_body.locator(".speak-go").get_attribute("aria-pressed"), "true", "Y2 다른 카드 말하기 유지")
+    c.expect("말하는 중" in after and before != after, "Y2 다른 카드의 경과 시간은 계속 변함")
+    c.eq(_probe_saved_v4(c, qs[j]["k"]).get("talk", []), [], "Y2 다른 카드를 접는 동작은 종료 기록을 만들지 않음")
+    button.click()
+    c.eq(other_body.locator(".speak-go").get_attribute("aria-pressed"), "true", "Y2 카드를 다시 열어도 다른 타이머 유지")
+    other_body.locator(".speak-go").click()
+    _talk_record_v4(c, j, qs[j]["k"])
+    c.eq(_probe_saved_v4(c, qs[i]["k"]).get("talk", []), [], "Y2 말하지 않은 카드에는 기록 없음")
+    c.check("Y2 다른 카드 타이머 유지")
+
+
+def t_23_Y3_fold_beforematch(c: Ctx):
+    """Chromium: 실제 찾기 UI 대신 beforematch→hidden 제거 순서만 재현한다."""
+    _, indices = _fold_fixture_v4(c)
+    c.expect(c.page.evaluate("'onbeforematch' in document.body"), "Y3 Chromium beforematch 지원")
+    _fold_notice_v4(c, 3)
+    c.wait_saved(400)
+    before = c.ls(KEY)
+    for n, i in enumerate(indices, 1):
+        _, body = _fold_state_v3(c, i, False)
+        c.eq(body.get_attribute("hidden"), "until-found", "Y3 Chromium 닫힌 본문은 until-found 필수")
+        # find/키보드 검색은 사용하지 않는다. 이벤트 뒤 UA의 hidden 제거만 흉내 낸다.
+        # 단추·안내·style은 검사 코드가 바꾸지 않으므로 앱의 처리기가 맞춰야 한다.
+        body.evaluate("""el => {
+          el.dispatchEvent(new Event('beforematch'));
+          el.removeAttribute('hidden');
+        }""")
+        _fold_state_v3(c, i, True)
+        _fold_notice_v4(c, 3 - n)
+        c.check(f"Y3 beforematch로 {n}개 펼침")
+    # 안내가 사라진 뒤 다시 접으면 안내가 재생성되고 until-found도 돌아온다.
+    for n, i in enumerate(indices, 1):
+        button, _ = _fold_state_v3(c, i, True)
+        button.click()
+        _fold_state_v3(c, i, False)
+        _fold_notice_v4(c, n)
+    # 일반 열기 단추도 N=0까지 줄이고 인라인 display를 제거해야 한다.
+    for n, i in enumerate(indices, 1):
+        button, _ = _fold_state_v3(c, i, False)
+        button.click()
+        _fold_state_v3(c, i, True)
+        _fold_notice_v4(c, 3 - n)
+    c.wait_saved(400)
+    c.eq(c.ls(KEY), before, "Y3 beforematch·여닫기만으로 저장 봉투를 바꾸지 않음")
+    c.check("Y3 모든 본문 펼침·안내 제거")
 
 
 if __name__ == "__main__":
