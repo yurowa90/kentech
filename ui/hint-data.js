@@ -145,7 +145,7 @@
         "23-q1-like": { type: "task", sci: ["sd"] }, "23-q1-nation": { type: "task", sci: ["sd"] },
         "23-q1-policy": { type: "task", sci: ["sd"] }, "23-q1-sustain": { type: "human", sci: ["sd"] },
         "23-q1-oppose": { type: "human", sci: ["rel"] }, "23-q1-export": { type: "divergent", sci: ["rel"] },
-        "23-q1-conflict": { type: "counter", sci: ["rel"] }, "23-q1-whole": { type: "task", sci: ["rel"] },
+        "23-q1-conflict": { type: "counter", el: [HUM, DIV], sci: ["rel"] }, "23-q1-whole": { type: "task", sci: ["rel"] },
         "23-q1-live": { type: "human", sci: ["rel"] },
         "23-q2-top": { type: "task", sci: ["sd", "cum"] }, "23-q2-avoid": { type: "task", sci: ["rel"] },
         "23-q2-timing": { type: "task", sci: ["cum"] }, "23-q2-event": { type: "task", sci: ["epi"] },
@@ -267,7 +267,8 @@
     const ids = hit && hit.sci ? hit.sci : game ? game.fallback : [];
     return {
       type: type.id,
-      el: type.el,
+      // 키 항목이 평가 요소 순서를 덮어쓸 수 있다(기준 탭이 먼저 볼 요소). 지정하지 않으면 유형의 순서.
+      el: hit && Array.isArray(hit.el) && hit.el.length ? hit.el : type.el,
       pick: hit && hit.pick ? hit.pick : type.pick,
       pts: type.pts.concat(hit && hit.pts ? hit.pts : []),
       short: type.short,

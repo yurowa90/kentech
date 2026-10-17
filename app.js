@@ -299,7 +299,7 @@
         else paintTalk();
       }
     }
-    const widget = { end };
+    const widget = { end, container };
     speakers.set(container, widget);
     button.onclick = () => {
       if (phase === "talk") { end(); return; }
@@ -959,14 +959,42 @@
         </div>
       </div>
       </div><div id="room-alt" hidden></div>`;
+    const untilFound = "onbeforematch" in document.body;
+    const setFold = (b, body, closed) => {
+      if (closed) {
+        body.setAttribute("hidden", untilFound ? "until-found" : "");
+        if (untilFound) body.style.setProperty("display", "block", "important");
+      } else body.hidden = false;
+      if (!closed || !untilFound) body.style.removeProperty("display");
+      b.setAttribute("aria-expanded", String(!closed));
+      b.textContent = closed ? "질문 보기" : "질문 접기";
+    };
+    const refreshFolds = () => {
+      const count = KCP.$$(".qfold-body", root).filter((body) => body.hidden).length;
+      let notice = KCP.$("#room-folds", root);
+      if (!count) { notice?.remove(); return; }
+      if (!notice) {
+        notice = document.createElement("p");
+        notice.id = "room-folds";
+        notice.className = "small muted";
+        KCP.$("#room-tools", root).before(notice);
+      }
+      notice.textContent = `가벼운 질문 ${count}개는 처음에 접혀 있습니다. '질문 보기'를 누르면 열립니다.`;
+    };
     KCP.$$(".qfold-toggle", root).forEach((b) => {
+      const body = KCP.$(".qfold-body", b.parentElement);
+      setFold(b, body, !!body.hidden);
       b.onclick = () => {
-        const body = KCP.$(".qfold-body", b.parentElement);
-        body.hidden = !body.hidden;
-        b.setAttribute("aria-expanded", String(!body.hidden));
-        b.textContent = body.hidden ? "질문 보기" : "질문 접기";
+        const closed = !body.hidden;
+        if (closed && active && body.contains(active.container)) active.end();
+        setFold(b, body, closed);
+        refreshFolds();
         b.focus();
       };
+      if (untilFound) body.addEventListener("beforematch", () => {
+        setFold(b, body, false);
+        refreshFolds();
+      });
     });
     const refreshLegacy = () => {
       if (!legacyAnswers(state)) KCP.$("#room-legacy", root)?.remove();
@@ -1017,6 +1045,14 @@
       const q = qs[i], slot = KCP.$(`.qx[data-qx="${i}"]`, card);
       KCP.emit("room:card", { card, slot, q, i, key: KCP.qkey(q), year, meta, state, save });
     });
+    KCP.$$(".qfold-toggle", root).forEach((b) => {
+      const body = KCP.$(".qfold-body", b.parentElement);
+      if (body.hidden && (KCP.$('[aria-expanded="true"]', body) ||
+        KCP.$$("textarea, input", body).some((t) => t.value.trim() !== ""))) {
+        setFold(b, body, false);
+      }
+    });
+    refreshFolds();
     KCP.emit("room:render", { root, main: KCP.$("#room-main", root), alt: KCP.$("#room-alt", root),
       tools: KCP.$("#room-tools", root), side: KCP.$("#room-side", root), qs, year, meta, state, save });
   }
