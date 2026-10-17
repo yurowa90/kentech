@@ -6,6 +6,9 @@
 검사 목록: 빈 저장소·혼자 하기 12달, 1/2월 재생 자료의 시간별 부족 합과
 정전 시간 검산, 기기 재계산 합계·정전 시간·무거래 시간별 비교,
 진행자 1+팀 2의 엔진 없는 태블릿 재생·CPU rate 4 지연,
+설비·내부 전선·연계선을 지은 달의 거래 및 양쪽 태블릿/진행자 합계 비교,
+부분 거래의 imp·uns·outH 양수 및 고립 부족 감소, 평택 보정 재생 검산,
+혼자 하기 1월 fx:replay start/end 횟수·Esc skipped·reduce 이벤트 없음,
 결과 진입 직후 playing/ms/서랍, Esc 300ms 이내 건너뛰기,
 자연 발생 사건의 결산+사건 카드와 Esc 닫기, 사건 없는 달의 카드 금지,
 별도 reduce 컨텍스트의 재생 없음·즉시 최종 요약, 저장·상태·공개 스냅샷의
@@ -33,6 +36,15 @@
 - 멀티 정전 문턱의 dem은 replayOf가 null이므로 공개 S7 공유 도우미
   replaySimulation의 hrDem을 쓴다. 실제 재생의 source/fallback/recomputeMs는
   검사용 recomputeReplay 호출 전에 보존한다(그 호출은 진단 시간을 갱신한다).
+- 건설·거래는 별도 빈 방의 1월에 연계선을 먼저 수락하고 두 팀의 계획을
+  공개 plan API로 보낸다. 평택은 태양광 1기, 당진은 태양광 4기·배터리 2기와
+  기존 발전소를 연결한다. 실제 공개 imp가 0이면 진단을 출력하고 FAIL한다.
+- 부분 거래는 평택 무설비·2 MW 연계선·당진 소규모 태양광으로 시작한다.
+  공개 imp/uns/outH > 0, isolated.uns−uns > 0.01을 먼저 확인하고, 미충족이면
+  별도 빈 방에서 설비 구성을 바꿔 최대 3번 재시도한다. 진행자 정확값과
+  기기 r의 합계·정전 시간은 단언하되 시간별 최대 차이는 INFO로만 출력한다.
+- 이벤트는 준비 전에 구독한다. start 한 번·end 없음, Esc와 요약/카드 처리 뒤
+  start/end 각 한 번 및 skipped를 확인한다. reduce는 전체 이벤트가 없어야 한다.
 """
 
 import math
@@ -50,7 +62,8 @@ from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer
 
 
 # ui/league-core.js가 실제 내보내는 공개 객체는 KCP.leagueCore이다.
-# evaluate는 조회/로컬 검산만 하며 엔진 진행·상태·저장·DOM을 변경하지 않는다.
+# 관측 evaluate는 조회/로컬 검산만 한다. 건설 사례만 팀 기기의 공개
+# KCP.league.plan 시연 API로 계획을 보내고, 연계선·달 진행은 화면에서 조작한다.
 OBSERVE_JS = r"""() => {
   const L = window.KCP?.league?.state?.(), S = L?.S || L?.snap;
   if (!S) return null;
@@ -117,8 +130,88 @@ RESULT_JS = """round => {
     S.results?.at(-1)?.round === round ? (""" + OBSERVE_JS + """)() : false;
 }"""
 
+REPLAY_EVENTS_JS = r"""() => {
+  window.__q8ReplayEvents = [];
+  KCP.on('fx:replay', d => window.__q8ReplayEvents.push({...d}));
+}"""
+
+# 시간별 값은 보정 규칙 G로 달라질 수 있다. 부분 거래의 시간별 비교는
+# 진단용으로만 요청하고, 합계·정전 시간 일치만 단언한다.
+HOST_REPLAY_JS = r"""([round, id, includeHours = false]) => {
+  const data = KCP.leagueCore.replayOf(round, id);
+  if (!data) return null;
+  const H = data.days * 24;
+  const valid = Number.isInteger(H) && H > 0 && !!data.res &&
+    [data.uns, data.del, data.dem].every(a => a?.length === H &&
+      Array.from(a).every(v => typeof v === 'number' && Number.isFinite(v)));
+  let sum = 0, outH = 0;
+  const remaining = [];
+  if (valid) for (let k = 0; k < H; k++) {
+    const r = data.uns[k] - data.del[k];
+    if (includeHours) remaining.push(r);
+    sum += Math.max(0, r);
+    if (r > Math.max(0.005, 0.02 * data.dem[k])) outH++;
+  }
+  return {valid, sum, outH, ...(includeHours ? {remaining} : {})};
+}"""
+
+BUILD_TRADE_PLAN_JS = r"""options => {
+  const {supplier, types, connectPlants = true, demandIds = null} =
+    typeof options === 'boolean' ? {supplier:options} : options;
+  const BG = KCP.buildGame, L = KCP.league.state();
+  const other = supplier ? 'pyeongtaek' : 'dangjin';
+  const gate = BG.SITES.find(s => s.kind === 'gridpt' && s.to?.includes(other));
+  if (!gate) throw new Error('이웃 도시 연결점 없음: ' + other);
+  const targets = BG.SITES.filter(s =>
+    (s.dem && (!demandIds || demandIds.includes(s.id))) ||
+    (supplier && connectPlants && s.kind === 'plant'));
+  const connected = new Set([gate.tile]), lines = [];
+  // 기존 자동 건설 시연과 같은 최단 경로로 수요 시설과 이웃 연결점을 잇는다.
+  while (targets.length) {
+    let best = null;
+    for (const s of targets) for (const c of connected) {
+      const a = BG.TILES[c], b = BG.TILES[s.tile];
+      const distance = Math.hypot(a.X - b.X, a.Y - b.Y);
+      if (!best || distance < best.distance) best = {s, c, distance};
+    }
+    const p = BG.routePath(best.c, best.s.tile);
+    if (!p) throw new Error('수요 시설 연결 경로 없음: ' + best.s.id);
+    if (p.length > 1) lines.push({p});
+    p.forEach(i => connected.add(i));
+    targets.splice(targets.indexOf(best.s), 1);
+  }
+  const builds = [], used = new Set();
+  const equipment = types ?? (supplier ?
+    ['solar', 'solar', 'solar', 'solar', 'battery', 'battery'] : ['solar']);
+  for (const t of equipment) {
+    const candidates = BG.TILES.filter(x => !x.out && x.site < 0 && !used.has(x.i) && !BG.siteRule(t, x));
+    candidates.sort((a, b) => Number(connected.has(b.i)) - Number(connected.has(a.i)) ||
+      Math.min(...[...connected].map(i => Math.hypot(BG.TILES[i].X - a.X, BG.TILES[i].Y - a.Y))) -
+      Math.min(...[...connected].map(i => Math.hypot(BG.TILES[i].X - b.X, BG.TILES[i].Y - b.Y))));
+    const tile = candidates[0];
+    if (!tile) throw new Error('설비 건설 자리 없음: ' + t);
+    if (!connected.has(tile.i)) {
+      const nearest = [...connected].sort((a, b) =>
+        Math.hypot(BG.TILES[a].X - tile.X, BG.TILES[a].Y - tile.Y) -
+        Math.hypot(BG.TILES[b].X - tile.X, BG.TILES[b].Y - tile.Y))[0];
+      const p = BG.routePath(nearest, tile.i);
+      if (!p) throw new Error('설비 연결 경로 없음: ' + t);
+      lines.push({p}); p.forEach(i => connected.add(i));
+    }
+    builds.push({t, i:tile.i}); used.add(tile.i);
+  }
+  const accepted = KCP.league.plan(st => {
+    Object.assign(st, {builds, lines, policies:[], rq:[], fab2:false, shed:'home'});
+  });
+  const net = BG.network(BG.sanitize(BG.current(), 1e9));
+  const linked = net.nodes.some(n => n.kind === 'import' && n.live &&
+    n.comp >= 0 && BG.SITES[n.si].to?.includes(other));
+  return {accepted, linked, builds, lines, cost:BG.capex(BG.current()),
+    budget:L.snap.teams[L.team].budget};
+}"""
+
 # 재계산은 결과 직후 관측/지연 측정과 분리하여 명시적인 검산 때만 호출한다.
-RECOMPUTE_JS = r"""() => {
+RECOMPUTE_JS = r"""includeHours => {
   const L = KCP.league.state(), S = L?.snap || L?.S;
   const result = S?.results?.at(-1), team = result?.team?.[L.team];
   const fxBefore = KCP.fxTurn?.state?.() || null;
@@ -147,7 +240,8 @@ RECOMPUTE_JS = r"""() => {
       }
     }
     return {data:{valid, sum, reportedSum:data.sum, outH:data.outH, countedOutH,
-      exactOutH:data.outH === team.outH, source:data.source, maxHourDiff},
+      exactOutH:data.outH === team.outH, source:data.source, maxHourDiff,
+      ...(includeHours ? {r} : {})},
       fxBefore, fxAfter, engineNull:engine === null, error:null};
   } catch (error) {
     return {data:null, fxBefore, fxAfter:KCP.fxTurn?.state?.() || null,
@@ -230,6 +324,7 @@ def start(page, base):
     guide = page.locator('#lg-guide-close')
     if guide.count() and guide.is_visible():
         guide.click()
+    page.evaluate(REPLAY_EVENTS_JS)
     return observe(page)
 
 
@@ -297,8 +392,8 @@ def equality(checks, state, label):
               f'재생={replay["outH"] if valid else None}, 엔진={team.get("outH")}')
 
 
-def device_equality(checks, page, state, label, compare_engine=False):
-    probe = page.evaluate(RECOMPUTE_JS)
+def device_equality(checks, page, state, label, compare_engine=False, include_hours=False):
+    probe = page.evaluate(RECOMPUTE_JS, include_hours)
     data = probe.get('data') or {}
     fallback = (probe.get('fxAfter') or {}).get('fallback')
     valid = data.get('valid') is True
@@ -340,6 +435,30 @@ def storage(checks, page, label):
     for key, name in (('found', '리그 저장'), ('live', '상태 S'),
                       ('snapshot', '공개 스냅샷 JSON')):
         checks.ok(not data[key], f'{label} {name} _res/del/replay 키 0: {data[key][:3]}')
+
+
+def replay_events(checks, page, state, label, ended=False, reduced=False):
+    events = page.evaluate('() => window.__q8ReplayEvents')
+    starts = [event for event in events if event.get('state') == 'start']
+    ends = [event for event in events if event.get('state') == 'end']
+    checks.ok(len(starts) == (0 if reduced else 1),
+              f'{label} fx:replay start {len(starts)}번 (기대 {0 if reduced else 1})')
+    checks.ok(len(ends) == (1 if ended and not reduced else 0),
+              f'{label} fx:replay end {len(ends)}번 '
+              f'(기대 {1 if ended and not reduced else 0})')
+    if reduced:
+        checks.ok(not events, f'{label} fx:replay 이벤트 전체 0번')
+        return
+    checks.ok(all(event.get('state') in ('start', 'end') and
+                  event.get('round') == 1 and event.get('team') == state['player'] and
+                  event.get('ms') == 4000 and event.get('source') == 'engine' and
+                  event.get('cancelled') is False for event in events) and bool(starts) and
+              starts[0].get('skipped') is False,
+              f'{label} 이벤트 round/team/ms/source/cancelled 및 start skipped=false')
+    if ended:
+        checks.ok(len(ends) == 1 and ends[0].get('skipped') is True and
+                  [event.get('state') for event in events] == ['start', 'end'],
+                  f'{label} Esc 뒤 end skipped=true, start→end 각 한 번')
 
 
 def escape(checks, page, label, skipped=False):
@@ -402,6 +521,8 @@ def desktop(checks, page, base):
                       f'{label} 재생 길이 {4000 if month == 1 else 2000}ms')
             checks.ok(state['panelOpen'], f'{label} 재생 시작 때 결과 서랍 이미 열림')
         overflow(checks, page, label + ' 결과 진입')
+        if month == 1:
+            replay_events(checks, page, state, label)
         # 1월의 Esc 검사를 포함해 나머지 달도 화면 조작으로 재생을 끝낸다.
         if month <= 2 or (state['fx'] or {}).get('playing'):
             escape(checks, page, label, skipped=True)
@@ -410,6 +531,8 @@ def desktop(checks, page, base):
             device_equality(checks, page, state, label, compare_engine=True)
         storage(checks, page, label)
         saw_event = cards(checks, page, state, label) or saw_event
+        if month == 1:
+            replay_events(checks, page, state, label, ended=True)
         if month < 12:
             next_state = click_progress(page, observe(page))
             checks.ok(next_state['round'] == month + 1 and next_state['phase'] == 'plan',
@@ -445,6 +568,8 @@ def first_month(checks, page, base, label, reduced=False):
             escape(checks, page, label, skipped=True)
         cards(checks, page, state, label)
     storage(checks, page, label)
+    if reduced:
+        replay_events(checks, page, state, label, reduced=True)
 
 
 def prepare_team(page):
@@ -588,6 +713,224 @@ def multiplayer(checks, context, base, pages):
                 cdp.detach()
 
 
+def built_trade_multiplayer(checks, context, base, pages, partial=None):
+    """별도 빈 방에서 공개 계획·연계선 거래 뒤 재생 검산. 부분 거래는 후보 성공 여부 반환."""
+    case = '부분 거래' if partial is not None else '건설·거래'
+    cap = 2 if partial is not None else 4
+    host, events = monitored_page(context)
+    pages.append((host, events, f'{case} 진행자'))
+    host.goto(base + '#league')
+    checks.ok(host.evaluate('() => localStorage.length') == 0,
+              f'{case} 새 컨텍스트의 시작 저장소 비어 있음')
+    select_mode(host, 'host')
+    host.locator('[data-preset="2"]').click()
+    host.locator('#lg-mode-host [data-turns="12"]').click()
+    host.locator('#lg-host').click()
+    host.wait_for_selector('#lg-roomcode')
+    room = host.locator('#lg-roomcode').inner_text()
+    teams = {}
+    for city, name in (('pyeongtaek', '평택'), ('dangjin', '당진')):
+        page, events = monitored_page(context)
+        pages.append((page, events, f'{case} {name} 태블릿'))
+        page.set_viewport_size({'width': 1024, 'height': 768})
+        page.goto(base + '#league')
+        select_mode(page, 'join')
+        page.locator('#lg-code').fill(room)
+        page.locator('#lg-join').click()
+        confirm_seat(page, city, timeout=WAIT)
+        teams[city] = page
+    host.wait_for_function("""() => ['pyeongtaek', 'dangjin'].every(id =>
+      !!KCP.league.state()?.S?.teams[id]?.token)""")
+    host.locator('#lg-next').click()
+    for page in teams.values():
+        page.wait_for_function("() => KCP.league.state()?.snap?.phase === 'plan'")
+        guide = page.locator('#lg-guide-close')
+        if guide.count() and guide.is_visible():
+            guide.click()
+
+    # 연계선 몫을 먼저 확정해 계획 예산에 반영한다. 엔진 tie 요청은 직접 호출하지 않는다.
+    buyer, seller = teams['pyeongtaek'], teams['dangjin']
+    for page in (buyer, seller):
+        close_drawer(page)
+        page.locator('#lg-bar [data-panel="deal"]').click()
+    buyer.locator(f'[data-tie="propose"][data-other="dangjin"][data-cap="{cap}"]:not([data-kind])').click()
+    seller.locator('[data-tie="accept"][data-other="pyeongtaek"]').click()
+    host.wait_for_function("""cap => KCP.league.state()?.S?.ties.some(t =>
+      t.st === 'built' && t.round === 1 && t.cap === cap &&
+      [t.a, t.b].includes('pyeongtaek') && [t.a, t.b].includes('dangjin'))""", arg=cap)
+    checks.ok(True, f'{case} 화면 제안·수락 → 1월에 {cap} MW 연계선 건설')
+
+    for city, page in teams.items():
+        page.wait_for_function("""() => KCP.league.state()?.snap?.ties.some(t =>
+          t.st === 'built' && t.round === 1)""")
+        close_drawer(page)
+        supplier = city == 'dangjin'
+        options = ({'supplier':supplier, **partial[city]}
+                   if partial is not None else supplier)
+        plan = page.evaluate(BUILD_TRADE_PLAN_JS, options)
+        checks.ok(plan['accepted'] is True and plan['linked'] is True,
+                  f'{case} {city} 공개 plan API 성공·내부 전선 연결점 접속: '
+                  f'accepted={plan["accepted"]}, linked={plan["linked"]}, '
+                  f'계획 비용={plan["cost"]}, 예산={plan["budget"]}')
+        # API 호출 성공만으로 진행자가 계획을 받았다고 판단하지 않는다.
+        host.wait_for_function("""([id, expected]) => {
+          const p = KCP.league.state()?.S?.teams[id]?.plan;
+          return !!p && JSON.stringify(p.builds.map(b => ({t:b.t, i:b.i}))) ===
+            JSON.stringify(expected.builds) && JSON.stringify(p.lines) === JSON.stringify(expected.lines);
+        }""", arg=[city, plan], timeout=WAIT)
+        count = len(plan['builds'])
+        expected_types = (partial[city]['types'] if partial is not None else
+                          (['solar'] * 4 + ['battery'] * 2 if supplier else ['solar']))
+        checks.ok([b['t'] for b in plan['builds']] == expected_types,
+                  f'{case} {city} 진행자 수신 설비 {count}개: 기대={expected_types}')
+
+    for city, page in teams.items():
+        prepare_team(page).click()
+        host.wait_for_function("id => KCP.league.state()?.S?.teams[id]?.ready === true",
+                               arg=city)
+    host.locator('#lg-next').click()
+    host.wait_for_function("""() => {
+      const S = KCP.league.state()?.S;
+      return S?.phase === 'review' && S.results?.at(-1)?.round === 1;
+    }""")
+    public = host.evaluate("""() => {
+      const S = KCP.league.state().S, res = S.results.at(-1);
+      const team = Object.fromEntries(['pyeongtaek', 'dangjin'].map(id => {
+        const t = res.team[id];
+        return [id, Object.fromEntries(['uns', 'outH', 'imp', 'exp', 'dem', 'sub',
+          'isolated', 'unlinked', 'grid'].map(key => [key, t[key]]))];
+      }));
+      return {round:res.round, team, flow:res.flow,
+        ties:S.ties, grid:S.grid, events:res.events};
+    }""")
+    imports = public['team']['pyeongtaek'].get('imp')
+    traded = isinstance(imports, (int, float)) and math.isfinite(imports) and imports > 0
+    deficit = public['team']['pyeongtaek']
+    isolated = (deficit.get('isolated') or {}).get('uns')
+    if partial is not None:
+        uns, out_h = deficit.get('uns'), deficit.get('outH')
+        positive = lambda v: isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+        reduced = (positive(isolated) and positive(uns) and isolated - uns > 0.01)
+        reasons = [reason for ok, reason in (
+            (traded, 'imp > 0 미충족'), (positive(uns), 'uns > 0 미충족'),
+            (positive(out_h), 'outH > 0 미충족'),
+            (reduced, 'isolated.uns−uns > 0.01 미충족')) if not ok]
+        print(f'INFO {case} 후보 공개 결과: imp={imports}, uns={uns}, outH={out_h}, '
+              f'isolated.uns={isolated}, '
+              f'사유={" / ".join(reasons) if reasons else "네 조건 충족"}, '
+              f'설비={partial}, 당진={public["team"]["dangjin"]}, '
+              f'ties={public["ties"]}, flow={public.get("flow")}, '
+              f'events={public.get("events")}', flush=True)
+        if reasons:
+            return False
+        checks.ok(traded, f'{case} 공개 평택 imp > 0: {imports}')
+        checks.ok(positive(uns), f'{case} 공개 평택 uns > 0 (U > 0): {uns}')
+        checks.ok(positive(out_h), f'{case} 공개 평택 outH > 0 (N > 0): {out_h}')
+        checks.ok(reduced, f'{case} 공개 isolated.uns−uns > 0.01: '
+                  f'고립={isolated}, 거래 후={uns}')
+    else:
+        if not checks.ok(traded, f'건설·거래 지어진 달 공개 평택 imp > 0: {imports}'):
+            # 빈 계획/무거래 결과를 성공 사례로 세지 않는다. 실제 공개 진단을 남기고 실패한다.
+            print(f'INFO 건설·거래 재생 검산 중단: 1월 거래 미발생, '
+                  f'평택={public["team"]["pyeongtaek"]}, '
+                  f'당진={public["team"]["dangjin"]}, ties={public["ties"]}, '
+                  f'flow={public.get("flow")}, grid={public.get("grid")}, '
+                  f'events={public.get("events")}', flush=True)
+            return
+    export = public['team']['dangjin'].get('exp')
+    checks.ok(isinstance(export, (int, float)) and math.isfinite(export) and export > 0,
+              f'{case} 당진 판매 exp > 0: {export}')
+    checks.ok(isinstance(isolated, (int, float)) and isolated - deficit['uns'] > 0.01,
+              f'{case} 평택 부족 감소로 보정 규칙 G 사용: '
+              f'고립={isolated}, 거래 후={deficit["uns"]}')
+
+    replay_teams = (('pyeongtaek', '평택'),) if partial is not None else (
+        ('pyeongtaek', '평택'), ('dangjin', '당진'))
+    for city, name in replay_teams:
+        page = teams[city]
+        page.wait_for_function("""() => {
+          const L = KCP.league.state(), fx = KCP.fxTurn?.state?.();
+          return L.snap?.phase === 'review' && L.snap?.results?.at(-1)?.round === 1 &&
+            (fx?.replayed === true || !!fx?.fallback);
+        }""", polling=10)
+        state = observe(page)
+        label = f'{case} {name} 태블릿 1월'
+        fx = state['fx'] or {}
+        checks.ok(state['player'] == city and state['resultRound'] == 1 and
+                  state['team'] == {key: public['team'][city][key] for key in ('uns', 'outH', 'imp')},
+                  f'{label} 자기 도시·같은 달 공개 결과 수신')
+        checks.ok(state['replay'] is None and state['replayError'] is None,
+                  f'{label} replayOf == null (엔진 없음)')
+        checks.ok(fx.get('source') == 'device' and fx.get('fallback') is None and
+                  fx.get('replayed') is True,
+                  f'{label} 실제 자동 재생 source=device, fallback={fx.get("fallback")}')
+        probe = device_equality(checks, page, state, label, include_hours=partial is not None)
+        checks.ok(probe.get('engineNull') is True, f'{label} 검산 때도 엔진 없음')
+        exact = host.evaluate(HOST_REPLAY_JS, [public['round'], city, partial is not None])
+        data = probe.get('data') or {}
+        valid = bool(exact and exact.get('valid') and data.get('valid'))
+        checks.ok(valid, f'{label} 진행자 replayOf(1, {city}) 정확값 유효')
+        checks.ok(valid and abs(exact['sum'] - data['sum']) <= 0.01,
+                  f'{label} 진행자 정확값 합계 = 태블릿 Σr (≤ 0.01): '
+                  f'진행자={exact.get("sum") if exact else None}, 태블릿={data.get("sum")}')
+        checks.ok(valid and exact['outH'] == data.get('outH') == data.get('countedOutH'),
+                  f'{label} 진행자 정확값 정전 시간 = 태블릿 outH = r 검산 시간: '
+                  f'진행자={exact.get("outH") if exact else None}, '
+                  f'태블릿={data.get("outH")}, 검산={data.get("countedOutH")}')
+        if partial is not None:
+            hours = public['team'][city]
+            checks.ok(valid and abs(exact['sum'] - hours['uns']) <= 0.01 and
+                      exact['outH'] == hours['outH'],
+                      f'{label} 진행자 정확값 합계·정전 시간 = 공개 uns·outH: '
+                      f'합계={exact.get("sum") if exact else None}, 공개 uns={hours["uns"]}, '
+                      f'정전 시간={exact.get("outH") if exact else None}, 공개 outH={hours["outH"]}')
+            remaining, r = (exact or {}).get('remaining') or [], data.get('r') or []
+            comparable = valid and len(remaining) == len(r) and bool(r)
+            checks.ok(comparable, f'{label} 시간별 진단 배열 길이 일치: '
+                      f'정확값={len(remaining)}, r={len(r)}')
+            difference = max(abs(a - b) for a, b in zip(remaining, r)) if comparable else None
+            print(f'INFO {label} 시간별 |(uns−del)−r| 최댓값={difference} '
+                  '(보정 규칙 G: 시간별 차이는 단언하지 않음)', flush=True)
+        overflow(checks, page, label + ' 결과')
+    return True
+
+
+def partial_trade_multiplayer(checks, browser, base):
+    """첫 시도 + 최대 3번 재시도. 후보 조건 실패는 최종 소진 때만 FAIL한다."""
+    suppliers = (
+        # 작은 수요지 하나만 연결해 기존 석탄 발전 없이도 소규모 잉여를 만든다.
+        {'types':['solar'], 'connectPlants':False, 'demandIds':['HOSP1']},
+        {'types':['solar', 'battery'], 'connectPlants':False, 'demandIds':['HOSP1']},
+        {'types':['solar', 'solar'], 'connectPlants':False, 'demandIds':['HOSP1']},
+        # 재생 접속 대기·출력 부족이면 기존 발전소 연결로 공급 방법을 바꾼다.
+        {'types':[], 'connectPlants':True},
+    )
+    for attempt, supplier in enumerate(suppliers, 1):
+        partial = {'pyeongtaek':{'types':[]}, 'dangjin':supplier}
+        print(f'INFO 부분 거래 시도 {attempt}/{len(suppliers)}: '
+              f'2 MW 연계선, 설비·연결={partial}', flush=True)
+        context, external = context_for(MotionBrowser(browser, False),
+                                        base, 1280, 900, 'light')
+        pages = []
+        try:
+            matched = built_trade_multiplayer(checks, context, base, pages, partial=partial)
+        except Exception as exc:
+            checks.ok(False, f'부분 거래 시도 {attempt} 진행 예외 {type(exc).__name__}: '
+                      f'{str(exc).splitlines()[0][:200]}')
+            matched = False
+        finally:
+            for page, events, label in pages:
+                diagnostics(checks, events, label)
+                overflow(checks, page, label)
+            checks.ok(not external, f'부분 거래 시도 {attempt} 외부 연결 시도 0: {external}')
+            context.close()
+        if matched:
+            return
+    checks.ok(False, '부분 거래 최초 1회·재시도 3회 소진: '
+              'imp > 0, uns > 0, outH > 0, isolated.uns−uns > 0.01인 달 생성 실패 '
+              '(각 시도 사유·공개 값은 INFO/진행 예외 참조)')
+
+
 class MotionBrowser:
     """공통 컨텍스트의 네트워크 격리에 생성 시 움직임 설정만 더한다."""
 
@@ -637,6 +980,21 @@ def main():
                         diagnostics(checks, events, label)
                     checks.ok(not external, f'멀티 외부 연결 시도 0: {external}')
                     context.close()
+                context, external = context_for(MotionBrowser(browser, False),
+                                                base, 1280, 900, 'light')
+                pages = []
+                try:
+                    built_trade_multiplayer(checks, context, base, pages)
+                except Exception as exc:
+                    checks.ok(False, f'건설·거래 태블릿 진행 예외 {type(exc).__name__}: '
+                              f'{str(exc).splitlines()[0][:200]}')
+                finally:
+                    for page, events, label in pages:
+                        diagnostics(checks, events, label)
+                        overflow(checks, page, label)
+                    checks.ok(not external, f'건설·거래 외부 연결 시도 0: {external}')
+                    context.close()
+                partial_trade_multiplayer(checks, browser, base)
             finally:
                 browser.close()
     except Exception as exc:
