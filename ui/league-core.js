@@ -462,11 +462,9 @@
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
-      // D-75: 지금 결과 월의 boolean만 공개한다. 지난달 판정은 진행자 저장에만 남긴다.
-      const verdict = S.results.at(-1)?.round === S.round && ["review", "end"].includes(S.phase)
-        ? T.verdicts?.[S.round] : null;
+      // D-75: 판정은 진행자의 전체 상태에만 남기고 팀 기기에 공개하지 않는다.
       const left = KCP.buildGame ? preserveMap(KCP.buildGame, () => r2(budget(S, id) - spendOf(KCP.buildGame, S, regionOf(S.region), id, T.plan || {}))) : null;
-      teams[id] = { ...(typeof verdict === "boolean" ? { verdicts: { [S.round]: verdict } } : {}), ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
+      teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
         entries: S.grid[id].entries.map(({ key, allocatedMW }) => ({ key, allocatedMW }))
       } : null } : {}), left, seatVersion: T.seatVersion || 0, seated: !!T.token, online: !!T.token && now - T.online < 20000, ready: T.ready, crit: T.crit || null, econPol: T.econPol || null, plan: T.plan, rev: T.rev, price: T.price, budget: budget(S, id), fixed: fixedOf(S, regionOf(S.region), id), base: T.base || [], resp: T.resp || {}, rs: T.rs || null, research: researchView(S, id), fcx: fcxOf(S, id), hist: (T.hist || []).slice(-40) };

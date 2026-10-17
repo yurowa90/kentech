@@ -955,13 +955,28 @@
     if (L.role !== "team" || !L.claimAccepted || L.away || !V.econ || V.phase !== "review" ||
         V.round >= C.roundsOf(V).length || V.results.at(-1)?.round !== V.round) return;
     const n = tdata().interview?.months?.[V.round];
-    if (!n?.evidence || n.skipped || n.finalMonth || !Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "")) return;
+    if (!n?.evidence || n.skipped || n.finalMonth || n.verdictReport?.done || !Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "")) return;
     const { hit } = promiseComparison(V, n);
-    if (typeof hit !== "boolean" || typeof V.teams[L.team]?.verdicts?.[V.round] === "boolean") return;
+    if (typeof hit !== "boolean") return;
     const key = `${L.team}:${V.sid}:${V.teams[L.team]?.seatVersion || 0}:${V.round}`;
     if (L.verdictSent === key || [...L.pendingRequests.values()].some(p => p.type === "verdict" && p.extra.round === V.round)) return;
-    // D-75: 로컬 약속 객체를 펼치지 않는다. 화면과 같은 판정의 월·boolean만 전송한다.
-    if (send("verdict", { round: V.round, hit })) L.verdictSent = key;
+    // 새로고침 뒤에도 같은 요청 ID·최초 값·재시도 횟수를 이어 쓴다. 완료한 월은 기기 기록으로 막는다.
+    if (n.verdictReport?.pending) {
+      const pending = structuredClone(n.verdictReport.pending);
+      L.pendingRequests.set(pending.id, pending); L.verdictSent = key;
+      retryRequest(pending);
+    } else {
+      // 로컬 약속 객체를 펼치지 않는다. 화면과 같은 판정의 월·boolean만 전송한다.
+      if (send("verdict", { round: V.round, hit })) L.verdictSent = key;
+    }
+  }
+  function rememberVerdictRequest(pending, done = false) {
+    if (L.role !== "team" || pending?.type !== "verdict") return;
+    const d = tdata(), n = d.interview?.months?.[pending.extra.round];
+    if (!n) return;
+    const { id, type, extra, stamp, tries, born } = pending;
+    n.verdictReport = done ? { done: true } : { pending: { id, type, extra, stamp, tries, born } };
+    putData(d);
   }
   function promiseResultHTML(V, n) {
     if (!n.evidence || !n.pred || n.skipped) return "";
@@ -1959,7 +1974,7 @@
       const summary = hostSummaryHTML(V, res);
       if (L.hostSummaryHTML !== summary) { $("#lg-host-summary").innerHTML = summary; L.hostSummaryHTML = summary; }
     }
-    const verdicts = hostVerdictsHTML(V), verdictBox = $("#lg-host-verdicts");
+    const verdicts = hostVerdictsHTML(S), verdictBox = $("#lg-host-verdicts");
     verdictBox.hidden = !verdicts;
     if (verdictBox.innerHTML !== verdicts) verdictBox.innerHTML = verdicts;
     tickTimer();
@@ -2054,11 +2069,11 @@
     const short = { "정전 목표 초과": "정전", "남은 돈 음수": "남은 돈", "지지율 평가선 미달": "지지율", "접속 대기": "접속 대기" };
     return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험·주의 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" data-level="${x.level}" title="${esc((x.level === "risk" ? "위험: " : "주의: ") + x.why.join(" · "))}"><b>${x.level === "risk" ? "▲" : "●"} ${esc(x.t.name)}</b> ${x.level === "caution" ? "주의 · " : ""}${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
   }
-  function hostVerdictsHTML(V) {
-    if (!V.econ || !["review", "end"].includes(V.phase) || V.results.at(-1)?.round !== V.round) return "";
+  function hostVerdictsHTML(S) {
+    if (!S.econ || !["review", "end"].includes(S.phase) || S.results.at(-1)?.round !== S.round) return "";
     // 팀 기기는 마지막 달에 판정을 보내지 않는다(reportPromiseVerdict) — 모두 '미보고'로 보이지 않게 한다.
-    if (V.round >= C.roundsOf(V).length) return '<h2>약속 판정</h2><p class="lg-hint">마지막 달은 다음 달 약속이 없어 판정을 모으지 않아요.</p>';
-    const teams = actT(V), value = id => V.teams[id]?.verdicts?.[V.round];
+    if (S.round >= C.roundsOf(S).length) return '<h2>약속 판정</h2><p class="lg-hint">마지막 달은 다음 달 약속이 없어 판정을 모으지 않아요.</p>';
+    const teams = actT(S), value = id => S.teams[id]?.verdicts?.[S.round];
     const same = teams.filter(t => value(t.id) === true).length, different = teams.filter(t => value(t.id) === false).length;
     return `<h2>약속 판정: 같음 ${same}팀 · 다름 ${different}팀 · 미보고 ${teams.length - same - different}팀</h2><p class="lg-hint">점수에 들어가지 않아요. 미보고에는 아직 도착하지 않은 팀과 약속·비교 기준이 없어 판정하지 않은 팀이 함께 들어 있어요.</p><div class="lg-verdict-chips">${teams.map(t => {
       const hit = value(t.id), label = hit === true ? "같음" : hit === false ? "다름" : "미보고";
@@ -3154,7 +3169,7 @@
     if (oneShot && !retry && L.pendingRequests.size >= 32) { BG.toast("응답을 기다리는 요청이 많아요. 잠시 뒤 다시 요청해요."); return; }
     const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
     const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
-    if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); }
+    if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); rememberVerdictRequest(pending); }
     // 대기열에 넣을 때 최신 요청을 표시해 이전 ack가 새 편집을 지우지 못하게 한다.
     const stateRequest = ["hello", "plan", "econ", "crit", "ready"].includes(type)
       ? { team, sid: request.sid, seat: request.seat, sentAt: Date.now(), n: null,
@@ -3170,7 +3185,7 @@
       if (L !== session || L.team !== team) return;
       // 저장 실패 시 미등록 키로 자리를 잡지 않는다. 예전 토큰 방식으로 돌아가지 않는다.
       if (!teamSave()) throw new Error("seat-save");
-      if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; }
+      if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; rememberVerdictRequest(pending); }
       if (stateRequest) { stateRequest.n = NET.requestBody(envelope).n; stateRequest.sentAt = Date.now(); }
       if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = Date.now() + 5000; }
       session.conn.send("req", envelope);
@@ -3249,7 +3264,7 @@
   function retryRequest(pending) {
     if (pending.tries >= 3) {
       L.pendingRequests.delete(pending.id);
-      if (pending.type === "verdict") return; // 자동 전송 — 학생 알림 없음(D-75)
+      if (pending.type === "verdict") { rememberVerdictRequest(pending, true); return; } // 자동 전송 — 학생 알림 없음(D-75)
       if (["research", "license", "joint"].includes(pending.type)) { L.techPending = null; L.techError = "요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청해요."; renderPanel(); }
       BG.toast("요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청해요."); return;
     }
@@ -3266,7 +3281,7 @@
     if (m.type === "claim" && m.n !== L.claimN) return;
     if (pending && pending.n !== m.n) return;
     if (event === "ack") {
-      if (pending) L.pendingRequests.delete(m.id);
+      if (pending) { L.pendingRequests.delete(m.id); rememberVerdictRequest(pending, true); }
       const sent = L.stateRequests?.[m.type];
       if (sent && sent.n === m.n && sent.team === L.team && sent.sid === L.snap?.sid && sent.seat === L.snap?.teams[L.team]?.seatVersion) {
         sent.acked = true;
@@ -3292,7 +3307,7 @@
     }
     if (pending && m.err === "session") return; // 새 sid는 서명된 snap에서만 받는다.
     if (pending && m.err === "replay") { retryRequest(pending); return; }
-    if (pending) L.pendingRequests.delete(m.id);
+    if (pending) { L.pendingRequests.delete(m.id); rememberVerdictRequest(pending, true); }
     nack(m);
   }
   function nack(m) {
