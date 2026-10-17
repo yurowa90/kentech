@@ -1146,6 +1146,83 @@
   const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
   const lockedMsg = () => (S && S.opts.locked ? S.opts.locked() : "");
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
+  // 지도 효과는 화면 메모리에만 둔다. 시간·reduced를 인자로 받아 Node에서도 검사한다.
+  const MAP_FX_MS = 300;
+  const MAP_INK = { cyan: "#71dceb", danger: "#dc7890", dust: "#edf4fc" }; // v2.css 토큰
+  const mapMotion = {
+    needsFrame: (state, rm, hidden) => (!rm && !hidden) || !!(state.run || state.mapFx.length || state.floaters.length),
+    active: (items, now, rm, ms = MAP_FX_MS) => rm ? [] : items.filter(f => now - f.t0 < ms),
+    register(items, event, now, rm) {
+      if (rm) return [];
+      const key = event.p ? `l:${event.p.join("-")}` : `b:${event.i}`;
+      return [...mapMotion.active(items, now, false).filter(f => f.key !== key),
+        { ...event, ...(event.p ? { p: event.p.slice() } : {}), key, t0: now }];
+    },
+    pose(f, now) {
+      const p = clamp((now - f.t0) / MAP_FX_MS, 0, 1), q = p - 1;
+      return { p, scale: f.kind === "place" ? (p === 0 ? 0 : 1 + 2.70158 * q ** 3 + 1.70158 * q ** 2) : 1 - p * p,
+        alpha: f.kind === "place" ? 1 : 1 - p, drop: f.kind === "place" ? 0 : p * p * 0.45 };
+    },
+    flowRoutes(net, res, lines) {
+      const live = new Set(), towns = [], owners = [], index = new Map();
+      const edgeKey = (a, b) => a < b ? `${a}-${b}` : `${b}-${a}`;
+      res.edges.forEach(([a, b], e) => index.set(edgeKey(a, b), e));
+      lines.forEach((L, li) => { for (let j = 1; j < L.p.length; j++) {
+        const e = index.get(edgeKey(L.p[j - 1], L.p[j]));
+        if (e !== undefined) (owners[e] ||= []).push(li);
+      } });
+      // 기존 network의 발전·충방전 경로를 읽는다. 급전·조류 계산은 추가하지 않는다.
+      net.comps.forEach(C => [C.RL, C.RB, C.BL, C.DL].forEach(pairs => pairs.forEach(P => {
+        if (!P.g.live || !P.l.live) return;
+        P.path.forEach(([e0, dir]) => {
+          const [a, b] = net.edges[e0], e = index.get(edgeKey(a, b));
+          if (e === undefined) return;
+          live.add(e);
+          if (P.l.kind === "town") {
+            const list = towns[e] ||= [];
+            if (!list.some(n => n.ti === P.l.ti && n.dir === dir)) list.push({ ti: P.l.ti, dir });
+          }
+        });
+      })));
+      return { live, towns, owners };
+    },
+    townOutage: (res, k, ti, eps, outHour) =>
+      res.hrUns[k * res.NT + ti] > eps && (!outHour || !!outHour(k)),
+    flowMarks(res, k, routes, rm, eps, replay = false, outHour) {
+      if (!res.flow || !res.E) return [];
+      const marks = [];
+      res.edges.forEach(([a, b], e) => {
+        if (!routes.live.has(e)) return;
+        const f = res.flow[k * res.E + e], amount = Math.abs(f);
+        if (!Number.isFinite(amount)) return;
+        const outage = (routes.towns[e] || []).some(n =>
+          (!f || Math.sign(f) === n.dir) && mapMotion.townOutage(res, k, n.ti, eps, outHour));
+        if (amount < 0.03 && !outage) return;
+        // 재생 flow는 거래 전 값이다. 방향만 읽고 굵기·점 크기·밀도·속도는 고정한다.
+        const shownAmount = replay ? 1 : amount;
+        const desired = amount < 0.03 ? 0 : replay ? 2 : Math.min(6, 2 + Math.floor(amount / 2));
+        marks.push({ e, from: f < 0 ? b : a, to: f < 0 ? a : b, amount: shownAmount, outage,
+          desired: outage && !replay && desired ? Math.max(1, Math.floor(desired * 0.45)) : desired, count: 0,
+          speed: rm ? 0 : 0.65 + Math.min(2, shownAmount * 0.12) });
+      });
+      // 첫 순회에 통전 선분마다 1개씩 배분한다(전체 200개까지). 긴 선은 선분 수만큼 허용한다.
+      let budget = 200;
+      const lineCounts = new Map(), lineSegments = new Map();
+      (routes.owners || []).forEach(owners => owners.forEach(id =>
+        lineSegments.set(id, (lineSegments.get(id) || 0) + 1)));
+      for (let pass = 0; pass < 6 && budget; pass++) for (const m of marks) {
+        const owners = routes.owners?.[m.e] || [];
+        if (m.count >= m.desired || !budget || owners.some(id =>
+          (lineCounts.get(id) || 0) >= Math.max(6, lineSegments.get(id) || 0))) continue;
+        m.count++; budget--;
+        owners.forEach(id => lineCounts.set(id, (lineCounts.get(id) || 0) + 1));
+      }
+      return marks;
+    }
+  };
+  function mapEffect(event) {
+    S.mapFx = mapMotion.register(S.mapFx, event, performance.now(), reduced());
+  }
   const dprOf = () => Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   const $ = sel => (S ? S.root.querySelector(sel) : null);
   // 훅이 내부에서 다른 도시 지도를 조회해도 화면은 원래 지도를 유지한다.
@@ -1715,20 +1792,24 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.lineJoin = "round";
     const rec = { hubs: [], stacks: [], wins: [], pylons: new Map() };
+    const rising = new Set(S.mapFx.filter(f => f.kind === "place").map(f => f.i));
+    const growing = new Set(S.mapFx.filter(f => f.kind === "line").map(f => f.key));
     const bAt = new Map(st.builds.map((b, bi) => [b.i, bi]));
     const lineTiles = new Set();
     st.lines.forEach(L => L.p.forEach(i => lineTiles.add(i)));
     for (const T of ORDER) {
       drawTile(g, T, layer);
-      if (T.site >= 0) { drawTown(g, T, rec); if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); } }
-      else if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); }
-      else if (!T.out) drawDeco(g, T, layer);
+      if (T.site >= 0) drawTown(g, T, rec);
+      if (bAt.has(T.i)) {
+        const bi = bAt.get(T.i);
+        if (!rising.has(T.i)) drawBuilding(g, st.builds[bi].t, T, rec, bi);
+      } else if (T.site < 0 && !T.out) drawDeco(g, T, layer);
       if (lineTiles.has(T.i)) { drawPylon(g, T); rec.pylons.set(T.i, pylonTop(T)); }
     }
     // 전선(모든 타일 위)
     g.strokeStyle = "rgba(24,30,38,0.85)"; g.lineWidth = Math.max(1, V.S * 0.035);
     g.beginPath();
-    st.lines.forEach(L => { for (let k = 1; k < L.p.length; k++) wirePath(g, rec.pylons.get(L.p[k - 1]), rec.pylons.get(L.p[k]), V.S * 0.08); });
+    st.lines.forEach(L => { if (!growing.has(`l:${L.p.join("-")}`)) for (let k = 1; k < L.p.length; k++) wirePath(g, rec.pylons.get(L.p[k - 1]), rec.pylons.get(L.p[k]), V.S * 0.08); });
     g.stroke();
     // 데이터 층 숫자
     if (layer !== "map" && V.S >= 21) {
@@ -1799,11 +1880,91 @@
     const k = clamp(R.k, 0, R.res.H - 1);
     return { k, d: Math.floor(k / 24), h: k % 24 };
   }
-  function paintDynamic(g, t) {
-    const st = S.st, R = S.run, ch = curHour(), s = V.S, rm = reduced();
-    const anim = rm ? 0 : t;
-    // 풍력 날개
-    S.rec.hubs.forEach(hb => {
+  function paintMapEffects(g, now, t) {
+    const s = V.S;
+    S.mapFx.forEach(f => {
+      const { p, scale, alpha, drop } = mapMotion.pose(f, now);
+      if (f.p) {
+        const points = f.p.map(i => pylonTop(TILES[i]));
+        const lengths = points.slice(1).map((B, i) => Math.hypot(B[0] - points[i][0], B[1] - points[i][1]));
+        let left = lengths.reduce((a, b) => a + b, 0) * (f.kind === "line" ? Math.min(1, p / 0.75) : 1);
+        g.save();
+        if (f.kind === "unline") { g.globalAlpha = alpha; g.translate(0, drop * s); }
+        g.strokeStyle = "rgba(24,30,38,0.85)"; // 정적 선과 같아 캐시 복귀 때 색이 튀지 않는다.
+        g.lineWidth = Math.max(1, s * 0.035); g.beginPath();
+        for (let j = 0; j < lengths.length && left > 0; j++) {
+          const A = points[j], B = points[j + 1], u = Math.min(1, left / Math.max(0.001, lengths[j]));
+          const cx = (A[0] + B[0]) / 2, cy = (A[1] + B[1]) / 2 + s * 0.08;
+          const qx = lerp(A[0], cx, u), qy = lerp(A[1], cy, u);
+          g.moveTo(A[0], A[1]);
+          g.quadraticCurveTo(qx, qy, lerp(qx, lerp(cx, B[0], u), u), lerp(qy, lerp(cy, B[1], u), u));
+          left -= lengths[j];
+        }
+        g.stroke();
+        if (f.kind === "line" && p >= 0.75) {
+          const [x, y] = points[points.length - 1], flash = Math.sin((p - 0.75) * 4 * Math.PI);
+          g.globalAlpha = Math.max(0, flash); g.fillStyle = MAP_INK.cyan;
+          g.beginPath(); g.arc(x, y, 2 + s * 0.12 * flash, 0, Math.PI * 2); g.fill();
+        }
+        g.restore();
+        if (f.kind === "line") return;
+      } else {
+        const T = TILES[f.i], [x, y] = tileTop(T), rec = { hubs: [], stacks: [] };
+        g.save(); g.globalAlpha = alpha;
+        g.translate(x, y + drop * s); g.scale(1, scale); g.translate(-x, -y);
+        drawBuilding(g, f.t, T, rec, -1);
+        paintHubs(g, rec.hubs, t, S.run, curHour());
+        g.restore();
+      }
+      // 8개의 먼지 원: 타일 바닥에서 타원 고리로 퍼진다.
+      const [x, y] = tileTop(TILES[f.i]);
+      g.save(); g.globalAlpha = (1 - p) * 0.65; g.fillStyle = MAP_INK.dust;
+      for (let j = 0; j < 8; j++) {
+        const a = j * Math.PI / 4, r = s * (0.2 + p * 0.65);
+        g.beginPath(); g.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * SQ,
+          Math.max(0.5, s * (0.055 + p * 0.055)), 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    });
+  }
+  function paintPowerFlow(g, t, R, ch, rm) {
+    const res = R.res, s = V.S;
+    if (S.flowView?.net !== S.net || S.flowView?.res !== res) {
+      S.flowView = { net: S.net, res, routes: mapMotion.flowRoutes(S.net, res, S.st.lines), k: -1,
+        phase: new Float32Array(res.E), time: t };
+    }
+    const view = S.flowView;
+    if (view.k !== ch.k || view.rm !== rm) {
+      view.marks = mapMotion.flowMarks(res, ch.k, view.routes, rm, R.replay ? 0 : OUT_EPS(),
+        !!R.replay, R.replay ? R.opts.outHour : undefined);
+      view.k = ch.k; view.rm = rm;
+    }
+    const dt = rm ? 0 : clamp(t - view.time, 0, 0.1); view.time = t;
+    g.save(); g.lineCap = "round";
+    view.marks.forEach(m => {
+      const A = S.rec.pylons.get(m.from), B = S.rec.pylons.get(m.to);
+      if (!A || !B) return;
+      const w = 1.2 + Math.min(7, m.amount * 1.3);
+      g.globalAlpha = m.outage ? 0.45 : 0.4;
+      g.strokeStyle = m.outage ? MAP_INK.danger : MAP_INK.cyan; g.lineWidth = w + 3;
+      g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
+      g.globalAlpha = 1; g.strokeStyle = "rgba(200,250,255,0.9)"; g.lineWidth = Math.max(1, w * 0.4);
+      g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
+      view.phase[m.e] = (view.phase[m.e] + dt * m.speed) % 1;
+      g.globalAlpha = 1; g.fillStyle = "#f2feff";
+      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2 + s * 0.08;
+      for (let j = 0; j < m.count; j++) {
+        const u = rm ? (j + 0.5) / m.count : (view.phase[m.e] + j / m.count + m.e * 0.17) % 1;
+        const x = (1 - u) * (1 - u) * A[0] + 2 * (1 - u) * u * mx + u * u * B[0];
+        const y = (1 - u) * (1 - u) * A[1] + 2 * (1 - u) * u * my + u * u * B[1];
+        g.beginPath(); g.arc(x, y, 1.6 + Math.min(3, m.amount * 0.5), 0, Math.PI * 2); g.fill();
+      }
+    });
+    g.restore();
+  }
+  function paintHubs(g, hubs, anim, R, ch) {
+    const s = V.S;
+    hubs.forEach(hb => {
       let v = TILES[hb.tile].wind;
       if (ch) v *= R.res.hrWind[ch.k];
       const w = v > M.cutout ? 0 : 0.5 + v * 0.32;
@@ -1814,6 +1975,12 @@
       g.stroke();
       g.beginPath(); g.arc(hb.x, hb.y, Math.max(1.6, s * 0.06), 0, Math.PI * 2); g.fillStyle = "#c9d3dc"; g.fill();
     });
+  }
+  function paintDynamic(g, t) {
+    const st = S.st, R = S.run, ch = curHour(), s = V.S, rm = reduced();
+    const anim = rm ? 0 : t;
+    // 풍력 날개
+    paintHubs(g, S.rec.hubs, anim, R, ch);
     // 디젤 연기: 서풍이라 동쪽으로 흐른다(세로 화면에서는 아래쪽)
     const [ex, ey] = (() => { const A = scr(0, 0, 0), B = scr(1, 0, 0); const L = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1; return [(B[0] - A[0]) / L, (B[1] - A[1]) / L]; })();
     S.rec.stacks.forEach(sk => {
@@ -1862,34 +2029,12 @@
     if (e > -0.15 && e < 0.4) { g.fillStyle = `rgba(255,140,70,${(0.13 * (1 - Math.abs(e - 0.1) / 0.4)).toFixed(3)})`; g.fillRect(0, 0, V.W, V.H); }
     if (dark > 0.01) { g.fillStyle = `rgba(6,14,40,${dark.toFixed(3)})`; g.fillRect(0, 0, V.W, V.H); }
     // 전력 흐름
-    const res = R.res, E = res.E;
-    if (E) {
-      g.lineCap = "round";
-      res.edges.forEach(([a, b], e2) => {
-        const f = res.flow[ch.k * E + e2];
-        const af = Math.abs(f);
-        if (af < 0.03) return;
-        const A = S.rec.pylons.get(a), B = S.rec.pylons.get(b);
-        if (!A || !B) return;
-        const w = 1.2 + Math.min(7, af * 1.3);
-        g.strokeStyle = "rgba(113,220,235,0.4)"; g.lineWidth = w + 3;
-        g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
-        g.strokeStyle = "rgba(200,250,255,0.9)"; g.lineWidth = Math.max(1, w * 0.4);
-        g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
-        const [P0, P1] = f > 0 ? [A, B] : [B, A];
-        for (let j = 0; j < 2; j++) {
-          const u = rm ? (j + 0.5) / 2 : ((anim * (0.7 + af * 0.12) + j / 2 + e2 * 0.17) % 1);
-          const mx = (P0[0] + P1[0]) / 2, my = (P0[1] + P1[1]) / 2 + s * 0.08;
-          const x = (1 - u) * (1 - u) * P0[0] + 2 * (1 - u) * u * mx + u * u * P1[0];
-          const y = (1 - u) * (1 - u) * P0[1] + 2 * (1 - u) * u * my + u * u * P1[1];
-          g.beginPath(); g.arc(x, y, 1.6 + Math.min(3, af * 0.5), 0, Math.PI * 2); g.fillStyle = "#f2feff"; g.fill();
-        }
-      });
-    }
+    const res = R.res;
+    paintPowerFlow(g, t, R, ch, rm);
     // 창문·정전 표시
     const blink = rm ? 1 : (Math.sin(t * 9) > 0 ? 1 : 0.25);
     S.rec.wins.forEach(W => {
-      const uns = R.replay ? R.opts.outHour?.(ch.k) && res.hrUns[ch.k * res.NT + W.ti] > 0 : res.hrUns[ch.k * res.NT + W.ti] > OUT_EPS();
+      const uns = mapMotion.townOutage(res, ch.k, W.ti, R.replay ? 0 : OUT_EPS(), R.replay ? R.opts.outHour : undefined);
       if (dark > 0.12) {
         if (!uns) {
           const gl = g.createRadialGradient(W.x, W.y - s * 0.3, 2, W.x, W.y - s * 0.3, s * 1.3);
@@ -2024,7 +2169,6 @@
     g.restore();
   }
   function paintFloaters(g, now) {
-    S.floaters = S.floaters.filter(f => now - f.t0 < 1100);
     S.floaters.forEach(f => {
       const p = (now - f.t0) / 1100;
       g.globalAlpha = 1 - p;
@@ -2039,6 +2183,9 @@
     if (!S || !S.alive) return;
     S.raf = 0;
     if (S.dirtyLayout) layout();
+    const active = mapMotion.active(S.mapFx, now, reduced());
+    if (active.length !== S.mapFx.length) { S.mapFx = active; S.dirtyStatic = true; }
+    S.floaters = mapMotion.active(S.floaters, now, reduced(), 1100);
     if (S.dirtyStatic) { paintStatic(); S.dirtyStatic = false; }
     const g = S.g, t = (now - S.born) / 1000, dpr = dprOf();
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2046,13 +2193,14 @@
     const ch = curHour();
     paintSea(g, reduced() ? 0 : t, ch);
     g.drawImage(S.base, 0, 0, V.W, V.H);
+    if (S.mapFx.length) paintMapEffects(g, now, reduced() ? 0 : t);
     paintDynamic(g, t);
     paintCursor(g, t);
     if (S.opts.league) paintLeagueLayers(g);
     if (S.floaters.length) paintFloaters(g, now);
     placeBanners();
-    const keep = !reduced() && !document.hidden;
-    if (keep || S.floaters.length) S.raf = requestAnimationFrame(frame);
+    const keep = mapMotion.needsFrame(S, reduced(), document.hidden);
+    if (keep) S.raf = requestAnimationFrame(frame);
   }
   function request() { if (S && S.alive && !S.raf) S.raf = requestAnimationFrame(frame); }
 
@@ -2094,6 +2242,7 @@
     const chk = canPlace(type, i);
     if (!chk.ok) { toast(chk.why); return; }
     S.st.builds.push({ t: type, i });
+    mapEffect({ kind: "place", t: type, i });
     floater(i, `−${fmt(chk.cost)}억`, "#ecd083");
     changed(`${BLD[type].name} 설치 · ${fmt(chk.cost)}억${chk.clear ? " (숲 정리 포함)" : ""}`);
     S.opts.onFx?.("build");
@@ -2105,6 +2254,7 @@
     if (bi >= 0) {
       const b = S.st.builds[bi], c = buildCost(b.t, b.i), back = c * salvageOf(`b:${b.t}:${b.i}`);
       S.st.builds.splice(bi, 1);
+      mapEffect({ kind: "remove", t: b.t, i: b.i });
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
       changed(leagueWords(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`));
       S.opts.onFx?.("remove");
@@ -2115,6 +2265,7 @@
       const gone = S.st.lines.filter(L => L.p.includes(i)), full = gone.reduce((a, L) => a + lineCost(L.p), 0);
       const back = gone.reduce((a, L) => a + lineCost(L.p) * salvageOf(`l:${L.p.join("-")}`), 0);
       S.st.lines = keep;
+      gone.forEach(L => mapEffect({ kind: "unline", p: L.p, i }));
       floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
       changed(leagueWords(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`));
       S.opts.onFx?.("remove");
@@ -2153,6 +2304,7 @@
     if (!P) return;
     if (P.cost > budgetLeft() + 1e-9) { toast(`예산 부족(${fmt(P.cost, 1)}억)`); return; }
     S.st.lines.push({ p: P.p });
+    mapEffect({ kind: "line", p: P.p });
     floater(P.end, `−${fmt(P.cost, 1)}억`, "#ecd083");
     S.pending = null; S.lineStart = null; S.preview = null;
     showConfirm();
@@ -2269,6 +2421,7 @@
     S.doc.map = id;
     selectPack(id);
     S.st = S.doc.maps[id];
+    S.mapFx = []; S.flowView = null;
     S.tool = null; S.hover = null; S.sel = null; S.lineStart = null; S.pending = null; S.preview = null; S.result = null;
     S.openGroup = null; S.seasonOpen = false;
     S.root.dataset.mode = "";
@@ -2454,8 +2607,8 @@
     S.root.classList.add("bd-replaying");
     $("#bd-run").hidden = false;
     $("#bd-run-len").textContent = opts.label || "실제 운영 · 재생";
-    $("#bd-replay-note").textContent = opts.note || "";
-    $("#bd-replay-note").hidden = !opts.note;
+    $("#bd-replay-note").textContent = (opts.note ? `${opts.note} · ` : "") + "선 위 점은 전기가 통하는 길(양 아님)";
+    $("#bd-replay-note").hidden = false;
     $("#bd-skip span").textContent = "건너뛰기";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
     updateRunPanel(0);
@@ -3355,6 +3508,7 @@
     if (!S) return;
     const root = S.root, replayDone = S.run?.replay ? S.run.opts.onDone : null;
     S.run = null;
+    S.mapFx = []; S.flowView = null;
     S.alive = false;
     if (S.raf) cancelAnimationFrame(S.raf);
     S.timers.forEach(t => clearTimeout(t));
@@ -3417,7 +3571,7 @@
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
       lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
-      floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
+      floaters: [], mapFx: [], flowView: null, rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     if (opts.league) {
@@ -3516,7 +3670,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
