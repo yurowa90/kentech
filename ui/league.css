@@ -665,6 +665,11 @@ section#lg-missed.lg-outage { display: block; }
 .lg-contrib { display: grid; gap: 8px; margin: 8px 0; padding-left: 20px; font-size: 13px; }
 .lg-host-board { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); font-size: 14px; line-height: 1.6; }
 .lg-host-board span { min-width: 0; overflow-wrap: anywhere; }
+.lg-verdicts { margin-top: 14px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 12px; background: var(--sheet); }
+.lg-verdicts h2 { margin: 0 0 6px; font: inherit; font-weight: 600; }
+.lg-verdict-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lg-verdict-chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; }
+.lg-verdict-chip[data-verdict="pending"] { border-style: dashed; color: var(--ink-2); }
 #lg-host-summary h2 { margin: 14px 0 6px; font-size: 18px; }
 #lg-host-summary .lg-tablewrap { max-width: 100%; margin-top: 8px; }
 #lg-host-summary-table button { min-height: 44px; min-width: 44px; padding: 4px 8px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }
