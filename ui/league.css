@@ -1085,6 +1085,44 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map .lg-lenses { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; gap: 2px; }
   .lg-team-map #lg-panel { bottom: calc(var(--bd-dock, 100px) + 8px); max-height: none; }
 }
+
+/* 계획: 필수 렌즈는 바깥에, 자료 지도 네 개만 한 펼침 안에 둔다. */
+.lg-team-map .lg-map-views { position: relative; }
+.lg-team-map .lg-map-views > summary { min-width: 44px; min-height: 44px; box-sizing: border-box; }
+.lg-team-map .lg-map-views > summary::after { content: "▾"; }
+.lg-team-map .lg-map-views[open] > summary::after { content: "▴"; }
+.lg-team-map .lg-map-views > summary:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map .lg-map-choices {
+  position: absolute; z-index: 1; top: calc(100% + 4px); left: 0; display: grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr)); gap: 2px; padding: 4px;
+  width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box;
+  border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-panel);
+}
+.lg-team-map .lg-map-views:not([open]) .lg-map-choices { display: none; }
+.lg-team-map #lg-hud-chips > span { max-width: 290px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 약속: 지난달 두 줄 다음에 근거 두 줄·방향·확신을 연속 배치한다. */
+.lg-team-map #lg-panel .lg-promise-carry > p {
+  margin: 0 0 4px; padding: 0; border: 0; background: transparent;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lg-team-map #lg-panel #lg-predict { margin: 0 0 4px; padding: 8px; }
+.lg-team-map #lg-panel #lg-predict h3 { margin: 0 0 4px; }
+.lg-team-map #lg-panel #lg-predict h4 { margin: 0 0 4px; }
+.lg-team-map #lg-panel #lg-evidence { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.lg-team-map #lg-panel #lg-evidence button { min-width: 44px; min-height: 44px; padding: 2px 4px; white-space: normal; }
+.lg-team-map #lg-panel #lg-promise-baseline { margin: 4px 0; }
+.lg-team-map #lg-panel #lg-predict .lg-field {
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr); align-items: center; gap: 4px; margin: 4px 0;
+}
+.lg-team-map #lg-panel .lg-promise-confidence { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.lg-team-map #lg-panel .lg-promise-confidence h4 { flex: none; margin: 0; }
+.lg-team-map #lg-panel .lg-promise-confidence .lg-acts { flex-wrap: nowrap; gap: 4px; }
+.lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
+@media (min-width: 768px) {
+  .lg-team-map:has(#lg-panel[data-stage="plan"][data-tab="journal"]:not([hidden])) { --lg-drawer-width: 440px; }
+}
+
 /* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
 .fx-turn-layer { position: fixed; z-index: 35; pointer-events: none; overflow: hidden; color: var(--ui-text); font-family: var(--body); }
 .fx-turn-summary { width: max-content; max-width: calc(100% - 8px); box-sizing: border-box; margin: 4px auto; padding: 10px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow); animation: fx-toast-in .35s ease-out; }

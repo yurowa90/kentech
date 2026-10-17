@@ -889,7 +889,7 @@
   function previousChangeHTML(V) {
     if (V.phase !== "plan") return "";
     const change = nextChangeOf(tdata(), V.round - 1);
-    return change.text ? `<p id="lg-previous-change">지난달 다음에 바꿀 것${change.answer}: ${esc(change.text)}</p>` : "";
+    return change.text ? `<p id="lg-previous-change" title="${esc(change.text)}">지난달 다음에 바꿀 것${change.answer}: ${esc(change.text)}</p>` : "";
   }
   const PLAN_POL_NAMES = { tax: "탄소세", dr: "수요반응 계약", share: "주민 이익공유", save: "절전 캠페인" };
   function localPlan(st, econPol) {
@@ -953,7 +953,8 @@
     const d = tdata(), old = d.interview?.months?.[V.round - 1], diff = currentPlanDifference(V);
     const reason = old?.askReason?.trim().replace(/\s+/g, " ");
     const extraReason = reason && reason !== nextChangeOf(d, V.round - 1).text ? `<p>지난달 ${old.answer === "keep" ? "유지" : "수정"} 이유: ${esc(reason)}</p>` : "";
-    return `<section id="lg-plan-followup" class="lg-sec"><div class="lg-plan-comparison"><div><h4>말한 변경</h4>${previousChangeHTML(V) || "<p>지난달 이유 기록 없음</p>"}${extraReason}</div><div><h4>이번 달 실제 변경</h4><p id="lg-actual-change">${esc(diff.text)}</p><p class="lg-hint">설비·전선·정책·연구만 셉니다. 연계선·사건 대응은 제외해요.</p></div></div>${old ? `<p id="lg-previous-mission">지난달 학습 미션: ${learningStatus(old)}</p>` : ""}<p class="lg-hint">${LEARNING_RULE}</p></section>`;
+    const change = nextChangeOf(d, V.round - 1);
+    return `<details id="lg-plan-followup" class="lg-sec"><summary>지난달 말과 실제 변경${old ? ` · 학습 미션 ${learningStatus(old)}` : ""}</summary><div class="lg-plan-comparison"><div><h4>말한 변경</h4><p>${esc(change.text || "지난달 이유 기록 없음")}</p>${extraReason}</div><div><h4>이번 달 실제 변경</h4><p id="lg-actual-change">${esc(diff.text)}</p><p class="lg-hint">설비·전선·정책·연구만 셉니다. 연계선·사건 대응은 제외해요.</p></div></div>${old ? `<p id="lg-previous-mission">지난달 학습 미션: ${learningStatus(old)}</p>` : ""}<p class="lg-hint">${LEARNING_RULE}</p></details>`;
   }
   function updatePlanReminder(V) {
     const root = document.getElementById("bd-root");
@@ -982,11 +983,14 @@
     if (!needsLoop(V)) return "";
     const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
-    return `${missedCarryHTML(V)}<section id="lg-predict" class="lg-pred lg-sec">${planFollowupHTML(V)}<h3>기준 먼저 · 하루 전 약속</h3><p class="lg-hint">약속은 이 기기에만 남아요.</p><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(x.text)}</button>`).join("")}</div>
+    return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
+      const label = x.key === "wind" ? x.text.replace(EVIDENCE_NAMES.wind, "풍속") : x.key === "neighbor" ? x.text.slice(x.text.indexOf(EVIDENCE_NAMES.neighbor)) : x.text;
+      return `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text)}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}</button>`;
+    }).join("")}</div>
       <p id="lg-promise-baseline" class="lg-hint">비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${esc(comparison.label)} · 정전 ${Number.isFinite(comparison.value) ? `${esc(fmt(comparison.value, 2))}%` : "시험 기록 없음"}`}</p>
       <label class="lg-field">2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향<select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-      <h4>3. 얼마나 확신하나요?</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div>
-      <p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section>${promiseHistoryHTML(V)}${calibrationHTML()}`;
+      <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
+      ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section><details id="lg-promise-rules"><summary>약속 비교 기준 자세히</summary><p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p><p class="lg-hint">${PREDICTION_RULE}</p></details>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
   function promiseResultHTML(V, n, reviewOrder = false) {
     if (!n.evidence || !n.pred || n.skipped) return "";
@@ -1171,7 +1175,7 @@
     if (!old && !change.text) return "";
     const hasAnswer = !!(old?.ask || old?.quarterKey), reason = old?.questionReason || old?.askReason || old?.quarterAnswer || "";
     const sameReason = hasAnswer && !!change.text && change.text === reason.trim().replace(/\s+/g, " ");
-    return `<section id="lg-previous-note" class="lg-sec"><h3>지난달 답 · 다음에 바꿀 것</h3>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}</section>`;
+    return `<details id="lg-previous-note" class="lg-sec"><summary>지난달 답 · 다음에 바꿀 것 자세히</summary>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}${old && missedText(old) ? `<p>지난달 ${esc(missedText(old))}</p>` : ""}</details>`;
   }
   function weightSimulation(E, weights) {
     if (!E.scoreState || !KCP.econ) return reweightScore(E.score, weights);
@@ -3771,6 +3775,19 @@
 
   function setupTeamMap(root, id = L.team) {
     root.classList.add("lg-team-map");
+    // 자료 지도만 접는다. 녹화·검사에서 쓰는 세 렌즈는 항상 펼침 밖에 둔다.
+    const layers = root.querySelector(".bd-layers");
+    if (layers && !layers.querySelector(".lg-map-views")) {
+      const views = document.createElement("details"); views.className = "lg-map-views";
+      const summary = document.createElement("summary"); summary.className = "bd-layer"; summary.textContent = "지도 보기";
+      const choices = document.createElement("div"); choices.className = "lg-map-choices";
+      layers.querySelectorAll("[data-layer]").forEach(button => choices.append(button));
+      views.append(summary, choices); layers.prepend(views);
+      views.addEventListener("click", e => {
+        if (!e.target.closest("[data-layer]")) return;
+        views.open = false; summary.focus({ preventScroll: true });
+      });
+    }
     root.dataset.lineTool = "false";
     const syncTool = () => { root.dataset.lineTool = String(!!root.querySelector('[data-tool="line"][aria-pressed="true"]')); };
     root.addEventListener("click", e => { if (e.target.closest("#bd-pm, [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
@@ -3793,8 +3810,10 @@
       }
     };
     root.querySelectorAll('[data-cap]').forEach(cap => {
+      // 같은 서랍을 여는 중복 바로가기는 숫자 표시로 둔다(도움말·결과·도시는 막대에서 연다).
+      if (!["budget", "power"].includes(cap.dataset.cap)) return;
       cap.setAttribute("role", "button"); cap.tabIndex = 0;
-      const tab = { budget: "deal", time: "help", power: "city", co2: "result", cp: "city" }[cap.dataset.cap];
+      const tab = { budget: "deal", power: "city" }[cap.dataset.cap];
       cap.addEventListener("click", () => openPanel(tab));
       cap.addEventListener("keydown", e => { if (["Enter", " "].includes(e.key)) { e.preventDefault(); openPanel(tab); } });
     });
@@ -3935,7 +3954,7 @@
     const inc = V.ties.filter(T => T.st === "prop" && T.by !== L.team && (T.a === L.team || T.b === L.team)).length;
     const city = V.econ?.cities[L.team], chips = document.getElementById("lg-hud-chips"), watch = document.getElementById("lg-watch");
     // 태블릿에서는 칩 폭을 줄여 말줄임할 수 있어 전체 문구를 title에도 둔다.
-    if (chips && city) { const pop = `주민 변화 ${signed(V.econ.report?.cities?.[L.team]?.dPop || 0)}명(지난달 대비)`; chips.innerHTML = `<button type="button" class="lg-bbtn" data-hud-panel="city">지지 ${esc(fmt(city.approval, 1))}%</button><button type="button" class="lg-bbtn" data-hud-panel="city" title="${esc(pop)}">${esc(pop)}</button>`; }
+    if (chips && city) { const pop = `주민 변화 ${signed(V.econ.report?.cities?.[L.team]?.dPop || 0)}명(지난달 대비)`; chips.innerHTML = `<span>지지 ${esc(fmt(city.approval, 1))}%</span><span title="${esc(pop)}">${esc(pop)}</span>`; }
     const grid = city?.grid || V.grid?.[L.team];
     const badges = [evCards(V, V.round, L.team) ? ["사건", "deal"] : null, grid?.waitingMW > 0 ? ["접속 대기", "city"] : null, me.left < 0 || city?.cash < 0 ? ["현금 위험", "city"] : null, inc ? ["이웃 제안", "deal"] : null].filter(Boolean).slice(0, 3);
     if (watch) watch.innerHTML = badges.length ? `<span>이번 달 볼 것</span>${badges.map(([text, tab]) => `<button type="button" class="lg-bbtn" data-hud-panel="${tab}">${text}</button>`).join("")}` : "";
@@ -3957,8 +3976,8 @@
     if (previous !== tab) { p.scrollTop = 0; p.querySelector(".lg-pbody")?.scrollTo(0, 0); }
     if (tab === "journal" && L.awaitReady) {
       const card = p.querySelector("#lg-predict");
-      // 지난달 S7에서 붙인 '지난달 놓친 것' 줄은 약속 카드 바로 위에 있다 — 그 줄부터 보이게 한다.
-      if (card) { scrollPanelTo(p.querySelector("#lg-missed-carry") || card); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
+      // 지난달 변경·놓친 것 두 줄과 약속을 한 화면에 둔다.
+      if (card) { p.querySelector(".lg-pbody")?.scrollTo(0, 0); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
   }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
@@ -4080,14 +4099,17 @@
         const interview = resultInterviewHTML(V, reviewOrder);
         body = V.phase === "end" ? `${endHTML(V)}<details class="lg-last-month" id="lg-last-month"><summary>${esc(curRound().month)}월 결과 자세히</summary>${body}${interview}</details>` : body + interview;
       }
-      if (tab === "journal") body = previousNoteHTML(V) + critHTML(V) + predictionHTML(V) + body.replace('<button type="button" class="v2-btn" id="lg-jcopy">', quarterHTML(V) + '<button type="button" class="v2-btn" id="lg-jcopy">');
+      if (tab === "journal") body = predictionHTML(V) + critHTML(V) + previousNoteHTML(V) + body.replace('<button type="button" class="v2-btn" id="lg-jcopy">', quarterHTML(V) + '<button type="button" class="v2-btn" id="lg-jcopy">');
     }
     if (tab === "result" && V?.phase === "end" && !V.econ) body = y2022LinkHTML("lg-y2022-end") + `<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])}</p>` + body;
     if (tab === "result" && V) body = V.phase === "end" ? body + techResultHTML(V) : techResultHTML(V) + body;
     p.dataset.stage = V?.phase || ""; p.dataset.tab = tab;
     p.classList.toggle("lg-tech-drawer", tab === "tech");
     p.dataset.folded = String(!!L.panelFolded);
-    if (V?.econ && V.phase === "plan") body = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>` + body;
+    if (V?.econ && V.phase === "plan") {
+      const goal = `<p id="lg-plan-co2-drawer" class="lg-hint">${esc(planCo2Text(V))}</p>`;
+      body = tab === "journal" ? body + goal : goal + body;
+    }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
