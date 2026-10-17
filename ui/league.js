@@ -992,6 +992,7 @@
       if (Object.is(value, -0)) { this[key] = 0; return 0; }
       return value;
     })) soloSaveFailed = true;
+    else { soloSaveFailed = false; soloSaveWarned = false; }
     warnSoloSave();
   }
   function saveSolo() {
