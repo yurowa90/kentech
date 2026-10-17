@@ -317,7 +317,7 @@
 section#lg-missed.lg-outage { display: block; }
 .lg-outage { min-width: 0; margin-top: 14px; overflow-wrap: anywhere; }
 .lg-outage h4 { margin: 8px 0; }
-.lg-out-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lg-out-cards { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .lg-out-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid var(--ui-border); border-top: 3px solid var(--ui-cyan); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .lg-out-card[aria-pressed="true"] { outline: 2px solid var(--ui-cyan); outline-offset: -2px; }
 .lg-out-card:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
@@ -341,16 +341,18 @@ section#lg-missed.lg-outage { display: block; }
 #lg-outage-verdict p { margin: 6px 0; }
 #lg-outage-carry { max-width: 100%; margin: 8px 4px 0 0; }
 #lg-missed-carry { padding: 8px 10px; border-left: 3px solid var(--ui-gold); background: var(--ui-hud); }
+#lg-outage-grid-bottleneck { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--ui-gold); border-left-width: 4px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }
+#lg-outage-grid-bottleneck p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; }
 .lg-y2022 { overflow-wrap: anywhere; }
 .lg-y2022 a { display: inline-flex; align-items: center; color: var(--ui-cyan); }
 @media (max-width: 600px) {
-  .lg-out-cards { grid-template-columns: minmax(0, 1fr); }
+  .lg-out-cards { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; }
   .lg-out-card { min-height: 44px; }
   .lg-out-row { grid-template-columns: 76px minmax(0, 1fr) 78px; gap: 4px; }
 }
 /* N1: 리그 서랍(폭 약 360px)에서는 카드를 세로로 쌓고 한 장을 낮게 만든다 — 열기 뒤 카드 앞면의 몫·꼬리표와
    폭포 첫 줄이 한 화면에 들어오게. 단서는 두 줄로 줄이고 전체는 '단서 더 보기'(#lg-outage-more)에 둔다. */
-#lg-panel .lg-out-cards { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+#lg-panel .lg-out-cards { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; gap: 6px; }
 #lg-panel .lg-out-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: start; padding: 8px 10px; }
 #lg-panel .lg-out-card > strong, #lg-panel .lg-out-clue { grid-column: 1; }
 #lg-panel .lg-out-size { grid-column: 2; grid-row: 1 / span 2; align-self: center; margin: 0; padding: 4px 6px; min-width: 4.5em; }
@@ -359,7 +361,6 @@ section#lg-missed.lg-outage { display: block; }
 #lg-outage-more { margin: 4px 0 8px; }
 #lg-outage-more ul { margin: 4px 0 0; padding-left: 18px; }
 #lg-outage-more li { margin: 2px 0; }
-#lg-outage-single-grid { margin: 4px 0 8px; }
 
 /* U5: 팀 플레이와 이어지는 로비·자리 선택·진행자 남색 판. */
 @media screen {
