@@ -209,12 +209,13 @@
         T.lastN = Math.max(T.lastN || 0, m.n);
         // 같은 요청 id를 새 순번으로 재전송해도 거래·연구를 두 번 적용하지 않는다.
         const cached = typeof m.id === "string" && T.receipts?.find(x => x.id === m.id && x.kid === token);
-        if (cached) return { ...cached.result, quiet: true, request: m, verified: true };
-        if (m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
+        // D-75는 자체적으로 멱등이다. 같은 id의 재전송도 추가 필드·판정 변경을 규칙에서 검사한다.
+        if (cached && m.type !== "verdict") return { ...cached.result, quiet: true, request: m, verified: true };
+        if (!cached && m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
         const trusted = { ...m, token };
         if (claim) trusted.publicKey = publicJWK(key);
         const result = apply(trusted);
-        if (typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
+        if (!cached && typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
           T.receipts ||= [];
           T.receipts.push({ id: m.id, born: m.born, kid: token, result });
           if (T.receipts.length > 64) T.receiptFloor = Math.max(T.receiptFloor || 0, T.receipts.shift().born || 0);

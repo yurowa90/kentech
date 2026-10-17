@@ -942,12 +942,30 @@
       <h4>3. 얼마나 확신하나요?</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div>
       ${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${L.awaitReady ? `<button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip">자유 실험 · 건너뛰고 준비</button>' : ""}` : ""}</section>${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
-  function promiseResultHTML(V, n) {
-    if (!n.evidence || !n.pred || n.skipped) return "";
+  function promiseComparison(V, n) {
     const result = V.results.at(-1), r = result?.team[L.team], c = V.econ.cities[L.team];
     const topic = promiseTopic(V, n), comparison = outageBaseline(V, result, n);
-    const delta = topic === "cash" ? c.cash - (V.econ.before?.[L.team]?.cash ?? c.cash) : Number.isFinite(comparison.value) ? r.unsPct - comparison.value : null;
+    const beforeCash = V.econ.before?.[L.team]?.cash;
+    const delta = topic === "cash" ? Number.isFinite(c.cash) && Number.isFinite(beforeCash) ? c.cash - beforeCash : null
+      : Number.isFinite(comparison.value) && Number.isFinite(r?.unsPct) ? r.unsPct - comparison.value : null;
     const actual = delta == null ? null : direction(delta), hit = actual == null ? null : n.pred[topic] === actual;
+    return { result, r, topic, comparison, delta, actual, hit };
+  }
+  function reportPromiseVerdict(V) {
+    if (L.role !== "team" || !L.claimAccepted || L.away || !V.econ || V.phase !== "review" ||
+        V.round >= C.roundsOf(V).length || V.results.at(-1)?.round !== V.round) return;
+    const n = tdata().interview?.months?.[V.round];
+    if (!n?.evidence || n.skipped || n.finalMonth || !Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "")) return;
+    const { hit } = promiseComparison(V, n);
+    if (typeof hit !== "boolean" || typeof V.teams[L.team]?.verdicts?.[V.round] === "boolean") return;
+    const key = `${L.team}:${V.sid}:${V.teams[L.team]?.seatVersion || 0}:${V.round}`;
+    if (L.verdictSent === key || [...L.pendingRequests.values()].some(p => p.type === "verdict" && p.extra.round === V.round)) return;
+    // D-75: 로컬 약속 객체를 펼치지 않는다. 화면과 같은 판정의 월·boolean만 전송한다.
+    if (send("verdict", { round: V.round, hit })) L.verdictSent = key;
+  }
+  function promiseResultHTML(V, n) {
+    if (!n.evidence || !n.pred || n.skipped) return "";
+    const { result, r, topic, comparison, delta, actual, hit } = promiseComparison(V, n);
     if (actual && n.confidence && (!n.outcome || n.outcome.actual !== actual || n.outcome.hit !== hit)) { const { d, n: saved } = monthNote(); saved.outcome = n.outcome = { actual, hit }; putData(d); }
     // 기기에 남긴 전 달 같은 근거와의 변화만 읽는다. 처음에는 방향을 추정하지 않는다.
     const previousNote = tdata().interview?.months?.[V.round - 1], previous = previousNote?.evidence;
@@ -955,7 +973,7 @@
     const sign = topic === "uns" ? { evening: 1, grid: -1, wind: -1, neighbor: 1 } : { fuel: -1 };
     const change = n.evidence.value - previousValue, threshold = Math.max(Math.abs(previousValue) * EVIDENCE_STEP[n.evidence.key], n.evidence.key === "neighbor" ? .5 : .01);
     const evidenceDir = Number.isFinite(previousValue) && Number.isFinite(n.evidence.value) && sign[n.evidence.key] && Math.abs(change) >= threshold ? (change * sign[n.evidence.key] > 0 ? "up" : "down") : null;
-    return `<section id="lg-promise-result" class="lg-pred lg-sec"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${topic === "cash" ? "현금" : "정전"} 예측: ${esc(DIRECTION_NAMES[n.pred[topic]] || "미선택")} / 실제 결과: ${delta == null ? `${esc(fmt(r.unsPct, 2))}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : esc(comparison.label)} ${esc(signed(delta, 2))}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}</p><p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${topic === "uns" && (hit === false || n.outageOpened || n.outageSingleShown) ? outageCardsHTML(V, result, L.team, n) : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${needsReviewLoop(n) ? `<label class="lg-radio"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
+    return `<section id="lg-promise-result" class="lg-pred lg-sec"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${topic === "cash" ? "현금" : "정전"} 예측: ${esc(DIRECTION_NAMES[n.pred[topic]] || "미선택")} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${esc(fmt(r.unsPct, 2))}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : esc(comparison.label)} ${esc(signed(delta, 2))}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}</p><p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${topic === "uns" && (hit === false || n.outageOpened || n.outageSingleShown) ? outageCardsHTML(V, result, L.team, n) : ""}<p class="lg-hint">${PREDICTION_RULE}</p>${needsReviewLoop(n) ? `<label class="lg-radio"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
   }
   function newBuildCost(V, st = BG.current()) {
     const base = new Set((V.teams[L.team].base || []).map(b => b.k));
@@ -1873,6 +1891,7 @@
             </div>
           </section>
           ${V.econ ? '<section id="lg-host-alerts" aria-label="위험 도시"></section><section id="lg-host-summary" aria-label="도시 요약"></section>' : ""}
+          <section id="lg-host-verdicts" class="lg-verdicts" aria-label="약속 판정" hidden></section>
           ${V.econ ? `<div id="lg-host-ticker">${tickerHTML(V)}</div>` : ""}
           <section class="lg-evbox" id="lg-evbox" aria-live="polite"></section>
           ${V.econ ? `<details id="lg-host-details" class="lg-host-details" ${L.hostDetailsOpen ? "open" : ""}><summary>상세 지도·도시 카드</summary>` : ""}
@@ -1940,6 +1959,9 @@
       const summary = hostSummaryHTML(V, res);
       if (L.hostSummaryHTML !== summary) { $("#lg-host-summary").innerHTML = summary; L.hostSummaryHTML = summary; }
     }
+    const verdicts = hostVerdictsHTML(V), verdictBox = $("#lg-host-verdicts");
+    verdictBox.hidden = !verdicts;
+    if (verdictBox.innerHTML !== verdicts) verdictBox.innerHTML = verdicts;
     tickTimer();
     const ev = S.round ? evCards(V, S.round) : "";
     $("#lg-evbox").innerHTML = ev ? `<h2>${V.econ ? `${rd.month}월` : `${S.round}라운드`} 사건</h2>${ev}` : "";
@@ -2031,6 +2053,17 @@
       .filter(x => x.why.length).sort((a, b) => (a.level === "risk" ? 0 : 1) - (b.level === "risk" ? 0 : 1));
     const short = { "정전 목표 초과": "정전", "남은 돈 음수": "남은 돈", "지지율 평가선 미달": "지지율", "접속 대기": "접속 대기" };
     return `<div class="lg-alerts"><div id="lg-host-risk"><span class="lg-hint">위험·주의 도시</span>${risks.length ? risks.map(x => `<span class="lg-risk-chip" data-level="${x.level}" title="${esc((x.level === "risk" ? "위험: " : "주의: ") + x.why.join(" · "))}"><b>${x.level === "risk" ? "▲" : "●"} ${esc(x.t.name)}</b> ${x.level === "caution" ? "주의 · " : ""}${x.why.map(k => esc(short[k] || k)).join(" · ")}</span>`).join("") : '<span class="lg-hint">없음</span>'}</div>${["lobby", "plan"].includes(V.phase) ? `<span id="lg-host-unready">미준비: ${esc(teams.filter(t => !V.teams[t.id].ready).map(t => t.name).join(" · ") || "없음")}</span>` : ""}</div>`;
+  }
+  function hostVerdictsHTML(V) {
+    if (!V.econ || !["review", "end"].includes(V.phase) || V.results.at(-1)?.round !== V.round) return "";
+    // 팀 기기는 마지막 달에 판정을 보내지 않는다(reportPromiseVerdict) — 모두 '미보고'로 보이지 않게 한다.
+    if (V.round >= C.roundsOf(V).length) return '<h2>약속 판정</h2><p class="lg-hint">마지막 달은 다음 달 약속이 없어 판정을 모으지 않아요.</p>';
+    const teams = actT(V), value = id => V.teams[id]?.verdicts?.[V.round];
+    const same = teams.filter(t => value(t.id) === true).length, different = teams.filter(t => value(t.id) === false).length;
+    return `<h2>약속 판정: 같음 ${same}팀 · 다름 ${different}팀 · 미보고 ${teams.length - same - different}팀</h2><p class="lg-hint">점수에 들어가지 않아요. 미보고에는 아직 도착하지 않은 팀과 약속·비교 기준이 없어 판정하지 않은 팀이 함께 들어 있어요.</p><div class="lg-verdict-chips">${teams.map(t => {
+      const hit = value(t.id), label = hit === true ? "같음" : hit === false ? "다름" : "미보고";
+      return `<span class="lg-verdict-chip" data-verdict="${hit === true ? "same" : hit === false ? "different" : "pending"}">${esc(t.name)} · ${label}</span>`;
+    }).join("")}</div>`;
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
@@ -3080,6 +3113,7 @@
         };
         if (canRetry("hello")) send("hello");
         for (const pending of L.pendingRequests.values()) if (Date.now() - pending.sentAt >= 5000) retryRequest(pending);
+        reportPromiseVerdict(L.snap);
         const me = L.snap && L.snap.teams[L.team];
         if (!me) return;
         if (["lobby", "plan"].includes(L.snap.phase) && me.rev < L.rev && canRetry("plan")) sendPlan();
@@ -3100,6 +3134,7 @@
     }
   }
   function send(type, extra, retry) {
+    if (type === "verdict" && L.role !== "team") return;
     if (L.away && !["hello", "claim"].includes(type)) return;
     if (type === "crit") {
       if (!extra || !validCritLine(extra.line) || !extra.chips?.length || !extra.choice) return;
@@ -3115,7 +3150,7 @@
     if (!L.snap?.sid || !L.team) return;
     if (type === "claim" && Date.now() < (L.claimAfter || 0)) return;
     const session = L, team = L.team;
-    const oneShot = ["tie", "respond", "price", "research", "license", "joint"].includes(type);
+    const oneShot = ["tie", "respond", "price", "research", "license", "joint", "verdict"].includes(type);
     if (oneShot && !retry && L.pendingRequests.size >= 32) { BG.toast("응답을 기다리는 요청이 많아요. 잠시 뒤 다시 요청해요."); return; }
     const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
     const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
@@ -3142,6 +3177,7 @@
     }).catch(() => {
       if (L === session) BG.toast("안전한 연결을 만들지 못했어요. 다시 접속해 줘요.");
     });
+    return pending;
   }
   function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat, migrationFrom: L.migrationFrom }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
   function seatPicker(app) {
@@ -3213,6 +3249,7 @@
   function retryRequest(pending) {
     if (pending.tries >= 3) {
       L.pendingRequests.delete(pending.id);
+      if (pending.type === "verdict") return; // 자동 전송 — 학생 알림 없음(D-75)
       if (["research", "license", "joint"].includes(pending.type)) { L.techPending = null; L.techError = "요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청해요."; renderPanel(); }
       BG.toast("요청 응답을 확인하지 못했어요. 연결을 확인하고 다시 요청해요."); return;
     }
@@ -3225,7 +3262,7 @@
     // signature 거절의 kid/id는 아직 인증되지 않은 요청에서 왔다. 대기 요청도 취소하지 않는다.
     if (event === "nack" && m.err === "signature") return;
     const pending = L.pendingRequests.get(m.id);
-    if (["tie", "respond", "price", "research", "license", "joint"].includes(m.type) && !pending) return;
+    if (["tie", "respond", "price", "research", "license", "joint", "verdict"].includes(m.type) && !pending) return;
     if (m.type === "claim" && m.n !== L.claimN) return;
     if (pending && pending.n !== m.n) return;
     if (event === "ack") {
@@ -3260,6 +3297,8 @@
   }
   function nack(m) {
     if (["signature", "replay", "seat", "session"].includes(m.err)) return;
+    // 약속 판정은 화면이 스스로 보내는 값이다. 늦게 도착해 거절돼도 학생에게 알림을 띄우지 않는다(D-75).
+    if (m.type === "verdict") return;
     if (m.type === "claim") {
       const msg = m.err === "legacy" ? "진행자에게 이 팀 자리 비우기를 요청해요" : "다른 기기가 이미 그 팀을 맡았어요. 진행자에게 이 팀 자리 비우기를 요청해요";
       L.claimAfter = Date.now() + 30000;
@@ -3315,6 +3354,7 @@
         outageSnapshot(V, V.results.at(-1), L.team);
         outageAttribution(V, V.results.at(-1), L.team);
       }
+      reportPromiseVerdict(V);
       if (V.econ?.report?.cities?.[L.team]) {
         const d = tdata(); d.interview = d.interview || {}; d.interview.causes = d.interview.causes || {};
         const last = V.results.at(-1);
