@@ -457,7 +457,9 @@ def solo(checks, context, base, width, label, pages):
         checks.ok(bool(match) and abs(float(match[1].replace(',', '').replace('−', '-')) - largest['value']) <= .0051,
                   label + ' 공개한 가장 큰 몫 이름·수치=기기 기록 [12]')
     elif note.get('outageSingleShown'):
-        checks.ok('뚜렷한 원인 없음' in text and '가장 큰 몫' not in text,
+        # V3B 수정 4(V3B-fix4.md 1항): 시험·실제(또는 지난달·이번 달) 정전이 둘 다 높으면 기록은
+        # '차이 원인 없음(정전 자체는 큼)', 아니면 '뚜렷한 원인 없음'이다. 어느 쪽이든 최대 몫은 없다(Claude, 병합 정리).
+        checks.ok(('뚜렷한 원인 없음' in text or '차이 원인 없음(정전 자체는 큼)' in text) and '가장 큰 몫' not in text,
                   label + ' 미미한 원인은 요약 연결·없는 최대 몫 생략 [12]')
     page.reload()
     page.wait_for_function(SYNC, arg=[3, 'end'])
