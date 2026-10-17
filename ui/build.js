@@ -13,6 +13,9 @@
   const KEY = "kcp-build-v1";
   const TRIAL_KEY = "kcp-build-trial-v1";
   let trialMemory = {};
+  // 설비 대조 자료도 모듈 메모리에만 보관한다. 원본 결과·저장 문서에 필드를 붙이지 않는다.
+  const replayLayouts = new WeakMap();
+  const replayLayout = st => JSON.stringify({ builds: st.builds.map(b => [b.t, b.i]), lines: st.lines.map(l => l.p) });
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, t) => a + (b - a) * t;
   const fmt = (x, d = 0) => {
@@ -877,6 +880,7 @@
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);
     res.questions = questions(st, res, N);
+    replayLayouts.set(res, replayLayout(st));
     return res;
   }
 
@@ -1885,7 +1889,7 @@
     // 창문·정전 표시
     const blink = rm ? 1 : (Math.sin(t * 9) > 0 ? 1 : 0.25);
     S.rec.wins.forEach(W => {
-      const uns = res.hrUns[ch.k * res.NT + W.ti] > OUT_EPS();
+      const uns = R.replay ? R.opts.outHour?.(ch.k) && res.hrUns[ch.k * res.NT + W.ti] > 0 : res.hrUns[ch.k * res.NT + W.ti] > OUT_EPS();
       if (dark > 0.12) {
         if (!uns) {
           const gl = g.createRadialGradient(W.x, W.y - s * 0.3, 2, W.x, W.y - s * 0.3, s * 1.3);
@@ -1940,7 +1944,7 @@
   function paintLeagueLayers(g) {
     const actual = S.opts.leagueResult?.(), summary = $("#lg-map-result"), gridText = $("#lg-lens-grid");
     if (summary) {
-      summary.hidden = !actual || !S.lenses.result || !!S.run;
+      summary.hidden = !actual || !S.lenses.result || !!(S.run && !S.run.replay);
       summary.dataset.faded = String(!!actual?.faded);
       if (actual) {
         // MWh / representative operating hours is an actual average shortage, not a peak estimate.
@@ -2400,6 +2404,8 @@
     closeDrawer(true);
     const panel = $("#bd-run");
     panel.hidden = false;
+    $("#bd-replay-note").hidden = true;
+    $("#bd-skip span").textContent = "결과 보기";
     $("#bd-run-len").textContent = days === 7 ? "1주" : days === 30 ? "1달" : "3달";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
     if (reduced()) {
@@ -2419,16 +2425,68 @@
     $("#bd-skip").focus({ preventScroll: true });
     announce(`${days}일 운영 시작`);
   }
+  // opts.del은 엔진 정산값, opts.r은 기기에서 공개 합계로 보정한 남은 부족이다. 여기서는 재계산하지 않는다.
+  function replayMonth(res, opts = {}) {
+    if (!S?.alive || S.run || !res || res.map !== PK.id || res.NT !== TOWNS.length ||
+        replayLayouts.get(res) !== replayLayout(S.st)) return false;
+    if (reduced() || !(opts.ms > 0)) return false;
+    // 표시 규칙(G): 엔진 거래 또는 기기의 보정된 남은 부족을 마을 부족에 비례 배분
+    const hrUns = res.hrUns.slice(), hrSup = res.hrSup.slice();
+    for (let k = 0; k < res.H; k++) {
+      let u = 0;
+      for (let ti = 0; ti < res.NT; ti++) u += res.hrUns[k * res.NT + ti];
+      const del = opts.r ? u - opts.r[k] : opts.del?.[k] || 0;
+      const f = u > 0 ? (opts.r ? opts.r[k] : Math.max(0, u - del)) / u : 0;
+      for (let ti = 0; ti < res.NT; ti++) hrUns[k * res.NT + ti] *= f;
+      hrSup[k] += del;
+    }
+    const dk = {}; let n = 0;
+    S.st.builds.forEach((b, bi) => { if (SMOKY[b.t]) dk[bi] = n++; });
+    S.runNet = { dk };
+    S.run = { replay: true, res: { ...res, hrUns, hrSup }, days: res.days, ms: opts.ms,
+      t0: performance.now(), k: 0, done: false, tip: -1, tipBase: S.tipSeq++, opts,
+      seen: -1, day: -1, outH: 0, outageNotified: false };
+    S.lastTick = "";
+    S.root.classList.add("bd-replaying");
+    $("#bd-run").hidden = false;
+    $("#bd-run-len").textContent = opts.label || "실제 운영 · 재생";
+    $("#bd-replay-note").textContent = opts.note || "";
+    $("#bd-replay-note").hidden = !opts.note;
+    $("#bd-skip span").textContent = "건너뛰기";
+    S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
+    updateRunPanel(0);
+    request();
+    return true;
+  }
+  function skipReplay() {
+    if (!S?.run?.replay) return false;
+    S.run.k = S.run.res.H - 1;
+    updateRunPanel(1);
+    finishRun();
+    return true;
+  }
   function stepRun(now) {
-    const R = S.run, p = clamp((now - R.t0) / RUN_MS, 0, 1);
+    const R = S.run, p = clamp((now - R.t0) / (R.replay ? R.ms : RUN_MS), 0, 1);
     R.k = Math.min(R.res.H - 1, Math.floor(p * R.res.H));
     updateRunPanel(p);
     if (p >= 1) finishRun();
   }
   function updateRunPanel(p) {
     const R = S.run, ch = curHour();
+    if (R.replay) {
+      // 건너뛴 프레임 사이의 실제 시간도 모두 세어 정산의 outH와 일치시킨다.
+      for (let k = R.seen + 1; k <= ch.k; k++) {
+        if (R.opts.outHour?.(k)) {
+          R.outH++;
+          if (!R.outageNotified) { R.outageNotified = true; R.opts.onOutage?.(); }
+        }
+        const d = Math.floor(k / 24);
+        if (d !== R.day) { R.day = d; R.opts.onDay?.(d, R.outH); }
+      }
+      R.seen = ch.k;
+    }
     const wx = R.res.wx[ch.d];
-    const tick = `Day ${ch.d + 1} · ${hh(ch.h)}`;
+    const tick = `${R.replay ? "운영일" : "Day"} ${ch.d + 1} · ${hh(ch.h)}`;
     if (S.lastTick !== tick) {
       S.lastTick = tick;
       $("#bd-run-day").textContent = tick;
@@ -2444,6 +2502,7 @@
     if (tipK !== R.tip) {
       R.tip = tipK;
       const el = $("#bd-run-tip");
+      if (R.replay) { el.textContent = "지도 클릭 · Esc · 건너뛰기로 재생을 끝낼 수 있어요"; return; }
       const month = leagueMonth();
       const relevantTips = month ? tips().filter(t => { const namedMonth = /^(\d+)월/.exec(t);
         if (namedMonth && +namedMonth[1] !== month) return false;
@@ -2482,6 +2541,19 @@
     if (!S || !S.run) return;
     const R = S.run;
     R.done = true;
+    if (R.replay) {
+      S.run = null;
+      S.lastTick = "";
+      S.root.classList.remove("bd-replaying");
+      $("#bd-run").hidden = true;
+      $("#bd-replay-note").hidden = true;
+      ["left", "width", "bottom"].forEach(k => $("#bd-run").style.removeProperty(k));
+      $("#bd-skip span").textContent = "결과 보기";
+      S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+      refreshHUD(); placeBannerValues(); request();
+      R.opts.onDone?.();
+      return;
+    }
     S.result = R.res;
     S.run = null;
     S.lastTick = "";
@@ -2600,6 +2672,7 @@
           <p class="bd-spark-key"><span class="k-dem">수요</span><span class="k-sup">공급</span><span class="k-uns">부족</span></p>
         </div>
         <p class="bd-run-tip"><span class="bd-tip-b">TIP</span><span id="bd-run-tip"></span></p>
+        <p class="bd-run-tip" id="bd-replay-note" hidden></p>
       </section>
       <nav class="bd-dock" id="bd-dock" aria-label="건설 도구">
         <div class="bd-subtools" id="bd-subtools" role="group" hidden></div>
@@ -2642,10 +2715,11 @@
       const ch = curHour();
       set("time", `D${ch.d + 1} ${hh(ch.h)}`);
       set("power", `${fmt(R.res.hrSup[ch.k], 1)}/${fmt(R.res.hrDem[ch.k], 1)}`, R.res.hrSup[ch.k] + 0.05 < R.res.hrDem[ch.k] ? "danger" : "");
-      let co2 = 0;
-      // 누적 CO₂(디젤 가동 비트 수로 근사하지 않고 결과 비율로 보간)
-      co2 = R.res.co2 * (ch.k + 1) / R.res.H;
-      set("co2", `${fmt(co2)} t`);
+      if (!R.replay) {
+        // 시험 운전의 기존 누적 CO₂ 보간. 실제 달에는 시간별 CO₂ 자료가 없어 표시하지 않는다.
+        const co2 = R.res.co2 * (ch.k + 1) / R.res.H;
+        set("co2", `${fmt(co2)} t`);
+      } else set("co2", "–");
       set("cp", `${R.res.cp.issues}건`, R.res.cp.issues > 1 ? "danger" : "");
     } else if (res) {
       set("time", `${res.days}일 끝`);
@@ -2733,9 +2807,14 @@
       let txt = "", state = "";
       if (R && ti >= 0) {
         const uns = R.res.hrUns[ch.k * R.res.NT + ti];
-        const dm = demand(ti, ch.h, R.res.wx[ch.d], R.res.pol, R.res.fab2);
-        txt = `${fmt(dm, dm < 1 ? 2 : 1)} MW`;
-        state = uns > OUT_EPS() ? "out" : "ok";
+        if (R.replay) {
+          txt = `부족 ${fmt(uns, 2)} MW`;
+          state = R.opts.outHour?.(ch.k) && uns > 0 ? "out" : "ok";
+        } else {
+          const dm = demand(ti, ch.h, R.res.wx[ch.d], R.res.pol, R.res.fab2);
+          txt = `${fmt(dm, dm < 1 ? 2 : 1)} MW`;
+          state = uns > OUT_EPS() ? "out" : "ok";
+        }
       } else if (S.result && ti >= 0 && (!S.opts.league || S.lenses.result)) {
         const town = S.result.town[ti];
         S.result.uiPeak ||= S.result.town.map((_, ti) => { let peak = 0; for (let k = 0; k < S.result.H; k++) peak = Math.max(peak, S.result.hrUns[k * S.result.NT + ti]); return peak; });
@@ -3270,6 +3349,8 @@
    * ===================================================================== */
   function teardown() {
     if (!S) return;
+    const root = S.root, replayDone = S.run?.replay ? S.run.opts.onDone : null;
+    S.run = null;
     S.alive = false;
     if (S.raf) cancelAnimationFrame(S.raf);
     S.timers.forEach(t => clearTimeout(t));
@@ -3281,6 +3362,8 @@
     html.style.removeProperty("--bd-top");
     html.style.removeProperty("--bd-dock");
     S = null;
+    replayDone?.({ cancelled: true });
+    KCP.fxTurn?.clearForMap?.(root);
   }
   KCP.on("route:change", teardown);
   // 검사용 읽기 도구: 화면 위 타일 좌표, 살아 있는지
@@ -3382,7 +3465,7 @@
     on(root.querySelector("#bd-pm"), "click", () => (S.drawerOpen ? closeDrawer() : openDrawer()));
     on(root.querySelector("#bd-drawer-x"), "click", () => closeDrawer());
     on(root.querySelector("#bd-help"), "click", e => S.opts.onHelp ? S.opts.onHelp(e.currentTarget) : openHelp(e.currentTarget));
-    on(root.querySelector("#bd-skip"), "click", () => { if (S.run) finishRun(); });
+    on(root.querySelector("#bd-skip"), "click", () => { if (S.run?.replay) skipReplay(); else if (S.run) finishRun(); });
     on(root.querySelector("#bd-drawer-body"), "click", e => {
       const p = e.target.closest("[data-pol]"), m = e.target.closest("[data-mis]"), jo = e.target.closest("[data-jopen]");
       const sh = e.target.closest("[data-shed]"), fb = e.target.closest("[data-fab2]");
@@ -3429,7 +3512,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition,
+    powerChipDefinition, replayMonth, skipReplay,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null),
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },

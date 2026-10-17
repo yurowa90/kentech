@@ -2153,6 +2153,40 @@
     if (!Number.isFinite(pct)) throw new Error("outage simulation");
     return pct;
   }
+  // 태블릿 재생: S7 사본의 공개 재료(계획·씨앗·사건 배수)만 읽어 기기 안에서 다시 돌린다.
+  // S7 블록은 바꾸지 않는다(소유: 리그 완성 기준 2). simulate 옵션은 league-core simTeam과 같게 둔다.
+  // 원시 시간별 값은 메모리에만 둔다(D-65).
+  let replaySimulationCache = null;
+  function outageReplaySimulation(id, snapshot) {
+    const { plan, mods, seed, season, days, round } = snapshot;
+    const key = JSON.stringify([id, round, plan, mods, seed, season, days]);
+    if (replaySimulationCache?.session === L && replaySimulationCache.key === key) return replaySimulationCache.res;
+    const res = withCityPack(id, () => {
+      const st = BG.sanitize(plan, 1e9);
+      st.seed = seed; st.season = season;
+      if (mods?.tax && !st.policies.includes("tax")) st.policies.push("tax");
+      return BG.simulate(st, days, { league: true, mods: mods && Object.keys(mods).length ? mods : null });
+    });
+    replaySimulationCache = { session: L, key, res };
+    return res;
+  }
+  // S7 사본은 계획이 없는 도시(아무것도 짓지 않은 달)를 만들지 않는다. 재생만 같은 공개 재료로 빈 계획을 돌린다.
+  // 국제 지수 선택은 S7 사본(outageSnapshot)과 같은 순서를 따른다.
+  function emptyPlanReplayInput(V, res, id) {
+    if (V.teams[id]?.plan || !V.econ?.before?.[id]) return null;
+    const d = tdata(), kept = d.outageSnapshots && typeof d.outageSnapshots === "object" ? d.outageSnapshots : {}, initial = KCP.ECON_DATA.intl.base;
+    const intl = d.outageOperatingIntl?.round === res.round ? d.outageOperatingIntl.intl :
+      kept[res.round - 1]?.nextIntl || (res.round === 1 ? { fuelMul: Math.round(initial.lng * initial.fx * 1000) / 1000 } : null);
+    if (!Number.isFinite(intl?.fuelMul)) return null;
+    return withCityPack(id, () => ({ round: res.round, plan: {}, seed: res.seed, days: res.days, season: res.season,
+      mods: C.modsFor(outageOperatingInput(V, res, id, intl), R(), id) }));
+  }
+  function replaySimulation(V, res, id) {
+    if (!L || L.away || id !== L.team || !res?.team?.[id] || V.round !== res.round ||
+        !["review", "end"].includes(V.phase)) return null;
+    const snapshot = outageSnapshot(V, res, id) || emptyPlanReplayInput(V, res, id);
+    return snapshot ? outageReplaySimulation(id, snapshot) : null;
+  }
   // 연계선의 반대쪽 연결 여부만 보관한다. 우리 쪽 전선은 다음 달 계획으로 다시 판단한다.
   function outageTiePorts(id, plan) {
     return withCityPack(id, () => {
@@ -2502,6 +2536,10 @@
       const a = d * (1 - fc), b = d * (1 + fc);
       return `${KNOB[k]} ${pct(Math.min(a, b))}~${pct(Math.max(a, b)).replace("+", "")}%`;
     }).join(" · ");
+  }
+  function evReveal(E, ev, nx) {
+    const forecast = evSize(E, { id: ev.id, round: ev.round }, nx), confirmed = evSize(E, ev, nx);
+    return forecast && typeof ev.x === "number" ? `예보 ${forecast} → 확정 ${confirmed}` : confirmed;
   }
   // resp = {plan 단계의 내 대응}이 있으면 대응 버튼을 단다.
   function evCards(X, round, me, act) {
@@ -3178,7 +3216,31 @@
       const { d, n } = monthNote(); n.startPolicy = V.teams[L.team].econPol || V.econ.cities[L.team].policy; putData(d);
     }
     if (L.away) return; // 알림만 갱신하고 돌아갈 서랍은 유지한다.
-    if (V.phase === "review" || V.phase === "end") { BG.clearTrialDisplay?.(); signal(V.results.at(-1)?.team[L.team]?.unsPct > 0 ? "outage" : "complete"); warnUnsentPlan(); openPanel("result"); }
+    if (V.phase === "review" || V.phase === "end") {
+      BG.clearTrialDisplay?.(); warnUnsentPlan(); openPanel("result");
+      const result = V.results.at(-1), team = result?.team[L.team];
+      const previous = V.results.find(r => r.round === result?.round - 1), p = previous?.team[L.team];
+      // 결과 서랍의 월 환산과 fmt를 그대로 쓴다. 대표 운영일을 늘려 시뮬레이션하지 않는다.
+      const mul = result ? resultPeriod(V, result).mul : 1, pm = previous ? resultPeriod(V, previous).mul : 1;
+      const summary = team ? [["정전 시간", team.outH * mul, p && p.outH * pm, "시간", 1],
+        ["정전", team.unsPct, p?.unsPct, "%", 2], ["CO₂", team.co2Prod * mul, p && p.co2Prod * pm, "t", 0]]
+        .map(([label, value, before, unit, digits]) => ({ label, value, unit, format: v => fmt(v, digits),
+          direction: before == null || value === before ? "" : value > before ? "up" : "down" })) : [];
+      const monthLabel = result?.month ? `${result.month}월` : `${result?.round || V.round}라운드`;
+      const events = (V.events || []).filter(ev => ev.round === result?.round && result?.events?.includes(ev.id));
+      const cards = result?.events?.length ? [{ tag: "지난달 결산", title: monthLabel,
+        body: summary.map(s => `${s.label} ${s.format(s.value)}${s.unit}`).join(" · "), big: "운영 결과" },
+        ...events.map(ev => {
+          const E = C.eventDef(R(), ev.id);
+          if (!E) return null;
+          const nx = C.hits(R(), E, L.team) ? V.teams[L.team]?.fcx?.[ev.id] : null;
+          return { tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정" };
+        }).filter(Boolean)] : [];
+      const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
+      const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
+        sound: kind => { if (kind === "outage") signal("outage"); else if (kind === "done") signal("complete"); } });
+      if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
+    }
     else if (V.phase === "plan") { BG.clearTrialDisplay?.(); closePanel(); }
   }
   function lockMsg() {
@@ -3866,7 +3928,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML },
+    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st); if (L.snap?.econ) { const { d, n } = monthNote(); n.buildCost = newBuildCost(L.snap); n.buildBudget = L.snap.teams[L.team].budget; n.confirmed = false; putData(d); } L.rev++; sendPlan(); BG.refresh(); return true; }
   };
