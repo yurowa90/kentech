@@ -899,12 +899,13 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 #lg-watch button { max-width: 88px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg-team-map #bd-mapnote { display: none; }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
-.lg-lens-key { display: none; position: absolute; left: 0; top: 48px; width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
+.lg-team-map #bd-mapbar { z-index: 28; }
+.lg-lens-key { display: none; position: absolute; left: 0; top: var(--lg-lens-key-top, 48px); width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
 .lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
-.lg-map-result { top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
+.lg-map-result { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); pointer-events: none; }
 .lg-map-result[data-faded="true"] { opacity: 1; color: var(--ui-muted); }
-.lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+.lg-first-guide { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); }
 .lg-trends text { font-size: 16px; }
 .lg-team-map .lg-lens-grid { position: fixed; left: 8px; top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
 .lg-team-map #lg-panel { z-index: 46; }
@@ -923,7 +924,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .lg-lenses .bd-layer { padding: 0 7px; }
   .lg-team-map .bd-mapbar { flex-wrap: nowrap; }
   .lg-team-map .bd-zoom { order: 0; }
-  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); }
   .lg-team-map .lg-lens-grid { top: calc(var(--lg-mapbar-bottom, 210px) + 64px); }
   .lg-team-map #lg-sound { position: static; }
   .lg-team-map #lg-panel { top: var(--bd-top, 180px); }
@@ -974,7 +975,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 }
 
 /* S8 이유와 다음 달 계획 비교는 기기 안에서만 읽는다. */
-#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; bottom: calc(var(--bd-dock, 100px) + 10px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
+#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; top: var(--lg-mapbar-bottom, 210px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
 html.bd-drawer-open #lg-plan-reminder,
 #bd-root:has(#lg-panel:not([hidden])) #lg-plan-reminder { display: none; }
 #lg-plan-reminder span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -986,6 +987,8 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-trend-scroll { overflow-x: auto; }
 #lg-timeline [data-change] text { font-size: 11px; }
 #lg-decisions li { margin: 8px 0; }
+#lg-evidence-focus { border-left: 3px solid var(--ui-gold); padding-left: 10px; }
+#lg-watch [data-evidence-focus="true"] { border-color: var(--ui-gold); color: var(--ui-gold); }
 .lg-host-details [data-host-card]:not([open]) { align-self: start; }
 @media (min-width: 761px) and (max-width: 1279px) {
   .lg-team-map #lg-panel[data-stage="review"]:is([data-tab="result"], [data-tab="journal"]),

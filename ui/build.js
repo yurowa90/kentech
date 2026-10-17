@@ -2772,6 +2772,24 @@
   function placementAdvice(type, tile) {
     const T = TILES[tile], B = BLD[type], notes = [];
     if (!B || T.out) return notes;
+    if (S.opts.league) {
+      if (["diesel", "biomass"].includes(type) && !siteRule(type, T) && !S.st.builds.some(b => b.i === tile)) {
+        const before = complaints(S.st, null), bi = S.st.builds.length;
+        const after = complaints({ ...S.st, builds: [...S.st.builds, { t: type, i: tile }] }, null);
+        const affected = new Set(after.items.filter(x => x.bi === bi && x.kind !== "green" && x.pts > 0).map(x => `${x.ti}:${x.kind}`));
+        const villages = new Set(after.list.filter(x => x.kind !== "green" && affected.has(`${x.ti}:${x.kind}`)).map(x => x.ti)).size;
+        notes.push(`이 칸에 지으면 민원 +${after.issues - before.issues}건(예상 · 가동 60% 가정, 실제 가동 시간에 따라 달라짐) · 영향 주변 시설·마을 ${villages}곳`);
+      }
+      if (type === "smr") notes.push("모형에 SMR 민원 미반영");
+      if (["solar", "roof", "tandem", "tandem_roof"].includes(type) && !siteRule(type, T)) {
+        const distance = TOWNS.length ? Math.min(...TOWNS.map(w => hexDist(tile, w.tile))) : null;
+        const smartGrid = leagueMods(S.st)?.tech?.includes("grid");
+        const loss = smartGrid ? gridLossPerHex() : PK.lossPerHex || M.lossPerHex;
+        notes.push(`일사 배수 ×${T.sun.toFixed(2)}${T.t === "forest" ? ` · 숲 정리비 ${fmt(CLEAR_COST, 1)}억` : ""}`);
+        if (distance !== null) notes.push(`가장 가까운 수요지까지 ${distance}칸 · 예상 손실률 ${fmt(100 * Math.min(0.6, loss * distance), 2)}%${smartGrid ? "(스마트 송전 적용)" : ""}(헥스 최단거리 기준 · 실제 전선 경로에 따라 달라져요)`);
+        notes.push("도시 전체 접속 여유는 칸과 무관");
+      }
+    }
     if (S.opts.league && B.hostLimited && S.opts.leagueGrid) {
       const pack = PK.id;
       let grid;
@@ -2815,7 +2833,7 @@
     else if (W) siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `LNG ${fmt(W.cap || 9.5, 1)} MW` : `수입 ${fmt(PK.gridCap || 4, 1)} MW`}</span><span>CO₂ ${W.kind === "plant" ? "0.37" : "0.46"} t/MWh</span></p>`;
     el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${mulTxt ? `<span>${mulTxt}</span>` : ""}${T.tidal ? "<span>조력 후보</span>" : ""}</p>` + siteRow +
       (T.wind > 0 ? `<p class="bd-tip-row">${T.sun ? `<span>${ico("sun")}×${T.sun.toFixed(2)}</span>` : ""}<span>${ico("wind")}${T.wind.toFixed(1)} m/s</span>${T.land ? `<span>${ico("people")}${fmt(T.near)}</span>` : ""}</p>` : "") + verdict +
-      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(esc).join("<br>")}</p>` : "");
+      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "");
     el.hidden = false;
     const [x, y] = tileTop(T);
     const w = el.offsetWidth, h = el.offsetHeight;
@@ -3232,17 +3250,25 @@
     }
     let b = (dock.height ? dock.top : H) - 6;
     if (S.opts.league) {
+      const stripTop = Math.max(top, $("#bd-mapbar").getBoundingClientRect().bottom) + 8;
       const reminder = S.root.querySelector("#lg-plan-reminder");
+      let infoTop = stripTop;
       if (reminder) {
         const stage = S.root.querySelector(".bd-stage").getBoundingClientRect();
         reminder.style.left = `${Math.max(10, 8 - stage.left)}px`;
         reminder.style.right = `${Math.max(10, stage.right - r)}px`;
-        reminder.style.bottom = `${stage.bottom - (dock.height ? dock.top : H) + 10}px`;
+        reminder.style.top = `${stripTop - stage.top}px`;
         const height = reminder.getBoundingClientRect().height;
-        if (height) b -= height + 10;
+        if (height) infoTop += height + 8;
       }
+      html.style.setProperty("--lg-map-info-top", `${Math.ceil(infoTop)}px`);
+      const lenses = S.root.querySelector(".lg-lenses");
+      // 띠가 보이면 범례를 띠 아래로 내린다. 범례 top은 렌즈 부모 기준이다.
+      if (lenses) lenses.style.setProperty("--lg-lens-key-top", `${infoTop > stripTop ? Math.max(48, Math.ceil(infoTop - lenses.getBoundingClientRect().top)) : 48}px`);
+      S.leagueMapTop = infoTop;
     }
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
+    if (S.opts.league) V.area.t = S.leagueMapTop;
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -3280,6 +3306,7 @@
     html.classList.remove("bd-on", "bd-running", "bd-drawer-open");
     html.style.removeProperty("--bd-top");
     html.style.removeProperty("--bd-dock");
+    if (S.opts.league) html.style.removeProperty("--lg-map-info-top");
     S = null;
   }
   KCP.on("route:change", teardown);
