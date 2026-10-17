@@ -17,11 +17,11 @@ KENTECH 수시 창의성 면접을 연습하는 정적 웹앱(바닐라 JS, 빌�
 
 ## 일하는 방식
 - 사용자는 과학·생물 교사, 교육공학 박사, 교과서 편집자. 답은 한국어로, 근거와 수치로, 한계와 개선안을 함께. 돌리지 않은 검사를 통과라고 쓰지 않는다.
-- 분업: 이 세션이 총괄 → Codex Sol·Astra가 작업 → Opus 독립 검토(opus-reviewer 에이전트). 절차는 스킬 `/codex-orchestrate`.
+- 분업: 총괄 세션이 범위·병합·통합 검사·push를 맡고, 갈래 세션(브랜치 하나씩)이 Codex Sol·Astra 작업 → Opus 독립 검토(opus-reviewer 에이전트)를 돈다. 절차는 스킬 `/codex-orchestrate`, 운영 기록은 docs/ORCHESTRATION.md.
 - 끝난 작업은 변경 내용, 검사 결과, 데스크톱 1280×900·모바일 390×844 캡처로 보고한다.
 
 ## 저장소 규칙
-- 브랜치마다 초안 PR, 이어지는 작업은 앞 PR 브랜치 위에 쌓는다(stacked). 현황은 PROGRESS.md 표.
+- 모든 작업은 작업 줄기 `claude/kentech-league-econ-balance`에 모인다. 갈래는 자기 브랜치에서 커밋만 하고 PR을 열지 않는다. 합치기와 push는 총괄만 한다. 단계가 끝나면 전체 검사를 통과한 작업 줄기 커밋으로 main PR 하나를 열고 병합 커밋으로 합친다(squash·rebase 금지, D-78). 현황은 PROGRESS.md.
 - 커밋은 한국어 한 줄 요약 + 본문. 커밋·PR에 모델 이름을 쓰지 않는다. 스테이징은 파일을 명시한다.
 - push 외의 외부 동작(Supabase 재개, 외부 API, 저장소 설정)은 사용자 확인 뒤에 한다.
 - 세부 규칙은 경로별로 `.claude/rules/`에 있다(화면·게임, 검사, 리그·경제). 압축·인계 전에는 스킬 `kcp-handoff`.
