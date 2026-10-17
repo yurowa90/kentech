@@ -16,6 +16,15 @@
   const TIE_LOSS = 0.01, LOG_MAX = 40, GROW = 0.25;
   // 지난 라운드까지 운영한 설비·선을 철거하면 건설비의 30%만 돌려받는다(게임 가정 G). 이번 라운드에 놓은 것은 되돌리기라 전액.
   const SALV = 0.3;
+  // 실제 운영 재생은 이 기기의 메모리에만 둔다(D-65).
+  let lastRun = null, replayCache = null;
+  const isOutHour = (uns, del, dem, k) => uns[k] - del[k] > Math.max(0.005, 0.02 * dem[k]);
+  function replayOf(round, id, salt = KCP.league?.state?.()?.S?.salt ?? 0, room = KCP.league?.state?.()?.room) {
+    const data = replayCache?.round === round && replayCache.salt === salt && replayCache.room === room
+      ? replayCache.data : null, t = data?.teams[id];
+    return t ? { ...t, days: data.days, season: data.season, seed: data.seed, outHour: k => isOutHour(t.uns, t.del, t.dem, k) } : null;
+  }
+
   const PLAN_MS = 8 * 60 * 1000, REVIEW_MS = 5 * 60 * 1000;
 
   const regionOf = id => (KCP.LEAGUE_REGIONS || {})[id] || null;
@@ -51,6 +60,7 @@
   const activeOf = S => (Array.isArray(S.active) && S.active.length ? S.active : Object.keys(S.teams));
   // opt.turns(12·24·36)를 주면 1턴 = 1달(경제 모드). 없으면 지역 기본 라운드.
   function newState(room, regionId, now, list, opt) {
+    lastRun = null; replayCache = null;
     const R = regionOf(regionId);
     if (!R) throw new Error("region");
     const V = validTeams(R, list || ALL(R));
@@ -1004,7 +1014,7 @@
         const entry = complaints.get(key) || { kind, score: 0, near: item.ti, src };
         entry.score += base ? base.pts : item.pts; complaints.set(key, entry);
       });
-      return {
+      const ret = {
         residentDemandShare: res.tot.dem > 0 ? res.town.reduce((s, t, i) => s + (["factory_big", "industry", "port"].includes(bg.TOWNS[i].kind) ? 0 : t.dem), 0) / res.tot.dem : 0,
         loss: res.tot.loss, idle: res.tot.idle, cpList: [...complaints.values()],
         ...(mods && mods.curtailP != null ? { curtailMWh: res.tot.curtailMWh } : {}),
@@ -1014,6 +1024,8 @@
           co2: res.co2, bioCo2: res.bioCo2, sat: Math.min(...res.sat), curt: res.tot.curt, ren: res.tot.ren + res.tot.batOut, by: res.tot.by, cp: res.cp.issues
         }
       };
+      Object.defineProperty(ret, "_res", { value: res, enumerable: false });
+      return ret;
     });
   }
 
@@ -1115,14 +1127,15 @@
       }
     }
     const { out, flow } = settle(built, sims, price, H, rnd.days);
+    lastRun = { round: S.round, days: rnd.days, seed: rnd.seed, season: rnd.season,
+      teams: Object.fromEntries(act.map(({ id }) => [id, { res: sims[id]._res, del: out[id].del, uns: sims[id].uns, dem: sims[id].dem }])) };
     const team = {};
     let rDem = 0, rUns = 0, rCo2 = 0;
     act.forEach(t => {
       const s = sims[t.id], o = out[t.id], K = s.k;
       let outH = 0, hospH = 0;
       for (let k = 0; k < H; k++) {
-        const rem = s.uns[k] - o.del[k];
-        if (rem > Math.max(0.005, 0.02 * s.dem[k])) outH++;
+        if (isOutHour(s.uns, o.del, s.dem, k)) outH++;
         if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > Math.max(0.005, 0.02 * (s.hospDem?.[k] || 0))) hospH++;
       }
       const uns = Math.max(0, K.uns - (o.imp - o.sub));
@@ -1198,6 +1211,7 @@
     if (S.econ && !S.econCal) S.econCal = true;
     S.phase = "run"; S.ends = null;
     const res = runRound(S, bg);
+    replayCache = { round: S.round, salt: S.salt || 0, room: S.room, data: lastRun };
     if (S.econ) preserveMap(bg, () => recordCo2Attribution(S, bg, res));
     // 운영한 것은 이제 '지난 라운드 것' — 철거하면 손실. 누적 투자도 확정.
     const R = regionOf(S.region);
@@ -1357,7 +1371,7 @@
   }
 
   KCP.leagueCore = {
-    researchView, researchError, researchReserve, effectiveTie, royaltyLedger, techCards, connectedTie,
+    replayOf, researchView, researchError, researchReserve, effectiveTie, royaltyLedger, techCards, connectedTie,
     gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, trialMods, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf,
