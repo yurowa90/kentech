@@ -220,9 +220,9 @@ async function hostSecurity() {
   const trust = { room: S.room }, receive = N.hostReceiver(trust, (event, data) => { received = data; count++; });
   ok(await receive("snap", transformed), "정규 JSON: 재귀 키 섞기 + JSON 왕복 + 1.0→1/-0→0 검증");
   ok(N.canonical(wire) === N.canonical(transformed), "파싱한 값이 같으면 정규 JSON 바이트도 동일");
-  ok(trust.hostKey.x === host.publicKey.x && received.numericFixture.a === 1, "코드 결속·서명 확인 후 첫 진행자 키 고정");
+  ok(trust.hostKey.x === host.publicKey.x && received.body.numericFixture.a === 1, "코드 결속·서명 확인 후 첫 진행자 키 고정");
   ok(!await receive("snap", wire) && count === 1, "진행자 옛 순번 재방송 거절");
-  const tampered = structuredClone(wire); tampered.n++; tampered.data.phase = "end";
+  const tampered = structuredClone(wire); tampered.n++; tampered.data.body.phase = "end";
   ok(!await receive("snap", tampered) && count === 1, "진행자 서명 뒤 내용 변조 거절");
   ok(!await receive("nack", wire), "snap 봉투를 nack 이벤트로 전용 불가");
   ok(!await N.hostReceiver({ room: S.room }, () => {})("snap", await N.signHost(attacker, "snap", S.room, S.sid, V)), "첫 키도 방 코드와 다르면 거절");
@@ -235,7 +235,9 @@ async function hostSecurity() {
   // 인위적으로 오래된 팀 기록만 키운다. 현재 계획과 최근 두 기록은 그대로 남아야 한다.
   const large = structuredClone(V); large.teams[ids[0]].hist = Array.from({ length: 40 }, (_, i) => ({ round: i, detail: "x".repeat(6000) }));
   const shrunk = N.compactSnapshot(large);
-  ok(N.byteLength(shrunk) <= 178000 && shrunk.teams[ids[0]].hist.at(-1).round === 39 && shrunk.teams[ids[0]].hist.length < 40 && JSON.stringify(shrunk.teams[ids[0]].plan) === JSON.stringify(large.teams[ids[0]].plan), "크기 위험 시 오래된 팀 기록부터 단계 축약");
+  // D-77: 크기는 전송 봉투, 보존 계약은 검증 뒤 복원한 공개 상태로 검사한다.
+  const restoredShrunk = N.expandSnapshot(structuredClone(shrunk));
+  ok(N.byteLength(shrunk) <= 178000 && restoredShrunk.teams[ids[0]].hist.at(-1).round === 39 && restoredShrunk.teams[ids[0]].hist.length < 40 && JSON.stringify(restoredShrunk.teams[ids[0]].plan) === JSON.stringify(large.teams[ids[0]].plan), "크기 위험 시 오래된 팀 기록부터 단계 축약");
 }
 async function transport() {
   const identity = await N.createIdentity(), team = ids[0];
@@ -686,17 +688,17 @@ async function floor3Network() {
   } finally { subtle.verify = originalVerify; subtle.digest = originalDigest; }
   for (const value of [Infinity, undefined, new String("plan"), NaN]) {
     const valid = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: value === undefined ? 1 : null });
-    valid.data.probe = value;
+    valid.data.body.probe = value;
     ok(!await N.hostReceiver({ room: S.room }, () => {})("snap", valid), "F3-7 JSON 밖 값 거절 " + String(value));
   }
   let normalized;
-  const zero = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: 0 }); zero.data.probe = -0;
+  const zero = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: 0 }); zero.data.body.probe = -0;
   await N.hostReceiver({ room: S.room }, (_, data) => { normalized = data; })("snap", zero);
-  ok(normalized && !Object.is(normalized.probe, -0), "F3-7 검증한 정규 JSON 파싱 값을 반영");
+  ok(normalized && !Object.is(normalized.body.probe, -0), "F3-7 검증한 정규 JSON 파싱 값을 반영");
   const large = structuredClone(view);
   large.teams[team].hist = Array.from({ length: 400 }, (_, r) => ({ r, detail: "x".repeat(6000) }));
   const stringify = JSON.stringify; let serializations = 0;
-  JSON.stringify = function (v, ...args) { if (v?.teams) serializations++; return stringify.call(this, v, ...args); };
+  JSON.stringify = function (v, ...args) { if (v?.teams || v?._cp === 1) serializations++; return stringify.call(this, v, ...args); };
   const start = performance.now(); let compact;
   try { compact = N.compactSnapshot(large); } finally { JSON.stringify = stringify; }
   const elapsed = performance.now() - start;
@@ -704,7 +706,8 @@ async function floor3Network() {
   const planned = structuredClone(view);
   planned.teams[team].hist = Array.from({ length: 20 }, (_, r) => ({ r, t: r, cap: r * 2, n: r, l: 0, plan: { builds: [], detail: "x".repeat(10000) } }));
   const summarized = N.compactSnapshot(planned);
-  ok(N.byteLength(summarized) <= 178000 && summarized.teams[team].hist.length === 20 && !summarized.teams[team].hist[0].plan && summarized.teams[team].hist[0].cap === 0 && summarized.teams[team].hist.at(-1).plan, "F3-6 오래된 계획 전문은 해당 팀 건설 속도 요약으로 축약");
+  const restoredSummary = N.expandSnapshot(structuredClone(summarized));
+  ok(N.byteLength(summarized) <= 178000 && restoredSummary.teams[team].hist.length === 20 && !restoredSummary.teams[team].hist[0].plan && restoredSummary.teams[team].hist[0].cap === 0 && restoredSummary.teams[team].hist.at(-1).plan, "F3-6 오래된 계획 전문은 해당 팀 건설 속도 요약으로 축약");
   console.log("F3 compact", JSON.stringify({ input: N.byteLength(large), output: N.byteLength(compact), ms: +elapsed.toFixed(3), serializations }));
 }
 function floor3Restore() {
