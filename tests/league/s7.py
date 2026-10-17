@@ -1,7 +1,8 @@
 """S7 명세 수용 검사 — 브라우저 실행은 샌드박스 밖 총괄 담당.
 
 실행: tests/.venv/bin/python tests/league/s7.py http://127.0.0.1:9430/index.html
-근거: 2월 이후는 _briefs/lanes/league/C-fix2.md와 총괄 확정 여섯 단계 명세.
+근거: ../_briefs/lanes/league/V3B-fix5.md·V3B-fix4.md·V3B-fix3.md·V3B-fix2.md와 영상 3차 V3B-s7.md가 카드 문턱·단서·병목·근거 연결·숫자 문구에 우선한다.
+2월 이후는 _briefs/lanes/league/C-fix2.md와 총괄 확정 여섯 단계 명세.
 1월은 _briefs/lanes/league/S7-fix3.md가 우선. 아래 I 번호는 유지된 기존
 S7-impl.md 항목의 행 번호이며 '겹침=남는 값'·겹침 막대 명세는 폐기한다.
 _briefs/design/s7/notes.md 19–25, LEAGUE-CANON.md 12·14행(목표 4·6).
@@ -19,6 +20,7 @@ import json
 import math
 import re
 import sys
+from decimal import Decimal, ROUND_HALF_UP
 
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode, start_solo
@@ -27,6 +29,8 @@ from econui import (Checks, context_for, diagnostics, local_address, monitored_p
 from solo import click_next, close_drawer, read
 
 VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%(?:p)?")
+S7_SHARE = re.compile(r"[+−]?\d+\.\d{2}%p")
+S7_RATE = re.compile(r"\d+\.\d{2}%")
 NAMES = {"choice": "내 선택", "weather": "날씨·운전 기간", "event": "사건·대응",
          "trade": "이웃 거래"}
 MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기간",
@@ -59,7 +63,57 @@ def required(checks, condition, label):
         raise AssertionError(label)
 
 
+def student_words(checks, page, label):
+    # text_content는 접힌 상세도 포함한다. 서랍 전체의 다른 근거 등급 문구는 대상 밖이다.
+    text = page.locator("#lg-missed").text_content()
+    checks.ok("S7" not in text and "(G)" not in text,
+              f"{label} 학생 원인 영역 전체에 내부 표기 미노출")
+
+
+def no_cause_summary(checks, page, label, before, after, monthly=False):
+    """두 정전율은 UI 시험/독립 복제 운영과 비교하고, 재현 진단은 API와 대조한다."""
+    # 독립 십진 반올림으로 표시값 경계 계산. 브라우저 숫자 형식은 인용값으로 별도 검사.
+    shown_high = lambda value: math.isfinite(value) and Decimal(str(value)).quantize(Decimal(".01"), rounding=ROUND_HALF_UP) >= 5
+    high = shown_high(before) and shown_high(after)
+    actual_high = shown_high(after)
+    difference = after - before
+    small_difference = abs(difference) < .05
+    # API는 재현/합계 밖 진단 분기만 읽는다. 두 정전율은 UI 시험·독립 복제 운영과 비교한다.
+    a = current_attribution(page)
+    replay = a.get("replay", 0)
+    parts_sum = sum(p["value"] for p in a["parts"])
+    replay_dominates = (not a.get("replayOutsideSum", False) and not small_difference and
+                        replay * difference > 0 and abs(replay) > abs(difference) / 2 and
+                        abs(parts_sum) < abs(difference) / 2)
+    expected_label = "차이 원인 없음(정전 자체는 큼)" if high else "뚜렷한 원인 없음"
+    student_words(checks, page, label + " 한 줄 요약")
+    text = page.locator("#lg-missed").text_content()
+    summary = page.locator("#lg-outage-single").text_content()
+    pattern = r"지난달 ([\d.]+)% → 이번 달 ([\d.]+)%" if monthly else r"시험 ([\d.]+)% → 실제 ([\d.]+)%"
+    quoted = re.search(pattern, summary)
+    checks.ok(quoted is not None and abs(float(quoted[1]) - before) <= .0051 and
+              abs(float(quoted[2]) - after) <= .0051,
+              f"{label} 요약 두 숫자 = 독립 비교값(소수 둘째 자리)")
+    checks.ok(expected_label in text and ("정전 자체는 큼" in text) == high,
+              f"{label} 두 표시값 모두 ≥5.00%일 때만 높은 정전 기록")
+    checks.ok(("바뀐 조건 각각은 정전을 거의 바꾸지 않았어요" in summary) == (not replay_dominates) and
+              ("지금 설비·접속이 수요를 못 따라가는 상태" in summary) == actual_high and
+              ("1주 시험과 자리 판단(접속 여유)에서 다시 봐요" in summary) == actual_high,
+              f"{label} 차이 설명·높은 정전의 설비·접속 부족·재점검 안내")
+    saved_name = "지난달 사본" if monthly else "시험"
+    replay_detail = f"차이의 대부분은 재현 차이(저장된 {saved_name}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요"
+    checks.ok((replay_detail in summary) == replay_dominates, f"{label} 재현 차이가 대부분일 때 원인 분해 한계")
+    checks.ok(("이번 달 변화보다" in summary) == (actual_high and small_difference),
+              f"{label} 0.05%p 미만 차이에만 변화 비교")
+    baseline_name = "지난달" if monthly else "시험"
+    checks.ok((f"{baseline_name}에도 정전이 컸으니" in summary) == high,
+              f"{label} 기준 표시값도 높을 때만 높은 정전 전제")
+    return expected_label
+
+
 def capture(checks, page, label, stage):
+    if page.locator("#lg-missed").count():
+        student_words(checks, page, f"{label} {stage}")
     overflow(checks, page, f"{label} {stage}")
     screenshot(checks, page, f"s7-{label}-{stage}.png")
 
@@ -248,6 +302,141 @@ def hidden_answer(checks, root, label, card=False):
         checks.ok("?" in text and len(clue) >= 8, f"{label} 크기 ? + 실제 단서 문구 [I20]")
 
 
+def bottleneck(checks, page, a, label):
+    """DOM 배선 검사. 전량 연결−실제 고립의 독립 수치 검산은 Node 30·32에서 수행."""
+    grid = a["grid"]
+    show = grid["waitingMW"] > 0 and math.isfinite(grid["value"]) and abs(grid["value"]) >= .05
+    box = page.locator("#lg-outage-grid-bottleneck")
+    checks.ok(box.count() == int(show), f"{label} 대기>0·|반사실|≥0.05%p일 때만 병목 상자")
+    checks.ok(page.locator("#lg-outage-single-grid").count() == 0 and
+              page.locator("#lg-missed [data-out-grid]").count() == int(show),
+              f"{label} 옛 선택자 대체·병목 수치 중복 없음")
+    small = page.locator("#lg-outage-grid-small")
+    show_small = grid["waitingMW"] > 0 and math.isfinite(grid["value"]) and abs(grid["value"]) < .05
+    checks.ok(small.count() == int(show_small), f"{label} 작은 대기 줄은 효과 0.05%p 미만")
+    if small.count():
+        waiting_text = page.evaluate("mw => mw.toLocaleString('ko-KR', {maximumFractionDigits:1})", grid["waitingMW"])
+        checks.ok(small.is_visible() and small.inner_text() == f"접속 대기 {waiting_text} MW(효과 0.05%p 미만)",
+                  f"{label} 작은 대기 실제 표시·대기량·문턱 문구")
+    checks.ok(page.locator("#lg-outage-grid").count() == int(show) and
+              page.locator("#lg-outage-grid-bottleneck #lg-outage-grid").count() == int(show),
+              f"{label} grid 설명은 병목 상자 안에만")
+    if not show or box.count() != 1:
+        return small.evaluate("el => el.outerHTML") if small.count() else None
+    checks.ok(box.is_visible(), f"{label} 병목 상자 실제 표시(열기 여부와 무관)")
+    raw = float(box.locator("[data-out-grid]").get_attribute("data-out-grid"))
+    text = box.locator("[data-out-grid]").inner_text()
+    checks.ok(abs(raw - grid["value"]) <= 1e-9 and S7_SHARE.fullmatch(text) is not None and
+              abs(float(text[:-2].replace("−", "-")) - raw) <= .0051,
+              f"{label} 병목 반사실 원시값·숫자 형식")
+    surface = box.evaluate(SURFACE)
+    checks.ok("대기가 없었다면 정전" in surface["text"] and "분해 합계 밖" in surface["text"],
+              f"{label} 실제 조건 반사실·합계 밖 설명")
+    # 병목의 %p 한 개만 허용한다. 카드 몫/최대 답을 CSS·aria·data로 숨겨도 실패.
+    checks.ok(len(S7_SHARE.findall(surface["text"])) == 1 and
+              len(re.findall(r"[+−-]?\d[\d,]*(?:\.\d+)?", surface["text"])) == 2 and
+              not any(k in ("data-out-value", "data-missed", "data-out-tag") or
+                      (k != "data-out-grid" and re.search(r"\d", v)) or
+                      "가장 큰" in v for k, v in surface["attrs"]) and
+              "가장 큰" not in surface["text"], f"{label} 병목에는 카드 몫·정답 없음")
+    checks.ok(box.evaluate("el => {const next=document.querySelector('#lg-outage-cards, #lg-outage-single'); "
+                           "return !!next && !!(el.compareDocumentPosition(next)&Node.DOCUMENT_POSITION_FOLLOWING);}"),
+              f"{label} 카드/한 줄 요약 위 별도 병목 상자")
+    return box.evaluate("el => el.outerHTML")
+
+
+def number_format(checks, row, key, label):
+    text = row.locator("b").inner_text()
+    pattern = S7_RATE if key in ("trial", "previous", "actual") else S7_SHARE
+    raw = float(row.get_attribute("data-out-value"))
+    valid = pattern.fullmatch(text) is not None if math.isfinite(raw) else text == ("–%" if key in ("trial", "previous", "actual") else "–%p")
+    checks.ok(valid, f"{label} {key} 숫자 형식·비유한 숫자는 –")
+
+
+
+def clue_and_evidence(checks, page, a, label):
+    """DOM 배선·실제 기기 근거 방향 검사. 날씨 물리량/순서의 독립 모델 검산은 Node 30·32."""
+    short = (a.get("clues") or {}).get("weather")
+    full = (a.get("clueMore") or {}).get("weather")
+    required(checks, isinstance(short, str) and bool(short), f"{label} clues.weather 짧은 날씨 단서 누락")
+    required(checks, isinstance(full, str) and bool(full), f"{label} clueMore.weather 상세 날씨 단서 누락")
+    period = re.search(r"대표 운전 (\d+) → (\d+)일", full)
+    required(checks, period is not None, f"{label} 상세 날씨의 대표 운전 기간 누락")
+    hot_pattern = r"무더위 \d+ → \d+일" if period[1] == period[2] else r"무더위 \d+% → \d+% 날"
+    checks.ok(re.search(r"평균 수요 [\d,.]+ → [\d,.]+ MW", short) is not None and
+              re.search(hot_pattern, short) is not None and "육상 기준" not in short,
+              f"{label} 수요·기간별 무더위 단서와 새 풍속 기준 문구")
+    checks.ok(("하루 재생 공급량" in short or "재생 공급 없음" in short) and
+              "하루 재생 가능량" not in short, f"{label} 실제 재생 공급량 문구")
+    checks.ok("접속 할당·출력제어를 반영해 실제 공급한 양" in full and
+              "변화의 절댓값으로 정해요(게임 가정)" in full,
+              f"{label} 공급량 정의·부호 없는 단서 순서 안내")
+    weather_card = page.locator('[data-missed="weather"] .lg-out-clue')
+    if weather_card.count():
+        checks.ok(weather_card.inner_text() == short, f"{label} 날씨 카드 = 검산된 짧은 단서 API")
+    more = page.locator("#lg-outage-more")
+    required(checks, more.count() == 1, f"{label} #lg-outage-more 상세 단서 DOM 누락 또는 중복")
+    checks.ok(full in more.text_content(),
+              f"{label} 상세 날씨 DOM 배선")
+    if page.locator("#lg-outage-verdict").count() == 0:
+        return
+    names = MONTHLY_NAMES if a.get("basis") == "monthly" else NAMES
+    # 구현 표와 같음(회귀 고정). 모든 짝이 독립 명세에서 나왔다는 뜻은 아니다.
+    # 지시서의 grid→progress/fuel/풍력 없음/evening→choice는 Node 32에서 개별 단언한다.
+    links = {"evening": {"choice": "stage", "weather": "direct", "event": "direct", "growth": "direct"},
+             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "direct", "progress": "direct"},
+             "fuel": {"event": "indirect", "growth": "indirect"}, "neighbor": {"progress": "indirect", "trade": "direct"}}
+    notes = device_data(page).get("interview", {}).get("months", {})
+    note = current_note(page)
+    evidence = note.get("evidence", {})
+    key = evidence.get("key")
+    if not a.get("hasConnectedWind", False):
+        links["wind"] = {"weather": "indirect", "event": "indirect"}
+    previous = notes.get(str(a["round"] - 1), {})
+    old_value = previous.get("evidenceValues", {}).get(key)
+    if old_value is None and previous.get("evidence", {}).get("key") == key:
+        old_value = previous["evidence"].get("value")
+    value = evidence.get("value")
+    sign = {"evening": 1, "grid": 0, "wind": -1 if a.get("hasConnectedWind", False) else 0, "neighbor": 1}.get(key, 0)
+    step = {"evening": .01, "grid": .02, "wind": .02, "neighbor": .02}.get(key, .01)
+    evidence_sign = 0
+    if a.get("basis") == "monthly" and isinstance(old_value, (int, float)) and isinstance(value, (int, float)) and math.isfinite(old_value) and math.isfinite(value):
+        change = value - old_value
+        if sign and abs(change) >= max(abs(old_value) * step, .5 if key == "neighbor" else .01):
+            evidence_sign = 1 if change * sign > 0 else -1
+    largest = max(a["parts"], key=lambda p: abs(p["value"]))
+    largest = largest if abs(largest["value"]) >= .05 else None
+    expected_links = links.get(key, {})
+    text = page.locator("#lg-outage-verdict p").nth(2).inner_text()
+    for kind, prefix in (("direct", "직접 연결 — "), ("stage", "같은 단계와 연결 — "), ("indirect", "간접 연결 — ")):
+        linked = [p for p in a["parts"] if expected_links.get(p["key"]) == kind]
+        checks.ok((prefix in text) == bool(linked), f"{label} {kind} 근거 연결 구분")
+        checks.ok(all(names[p["key"]] in text for p in linked), f"{label} {kind} 연결된 몫 이름")
+    direct = bool(largest and expected_links.get(largest["key"]) == "direct")
+    largest_sign = (1 if largest["value"] > 0 else -1) if largest else 0
+    checks.ok(("고른 근거는 이번 차이의 가장 큰 몫과도 이어져요." in text) ==
+              (direct and bool(evidence_sign) and evidence_sign == largest_sign), f"{label} 칭찬은 직접 연결·방향 일치일 때만")
+    checks.ok(("고른 근거가 가리키는 방향과 가장 큰 몫의 부호는 반대예요." in text) ==
+              (direct and bool(evidence_sign) and evidence_sign != largest_sign), f"{label} 반대 방향 지정 문구")
+    opposite = bool(direct and evidence_sign and evidence_sign != largest_sign)
+    checks.ok(text.endswith("이 근거만으로 이번 차이의 방향을 설명하기는 어려워요.") == opposite,
+              f"{label} 반대 방향 마무리")
+    neutral = bool(direct and not evidence_sign)
+    ending = f"고른 근거가 가장 큰 몫({names[largest['key']]})과 같은 이야기예요." if largest else ""
+    checks.ok(bool(ending and text.endswith(ending)) == neutral, f"{label} 직접 연결·부호 0은 중립 마무리")
+    if neutral or opposite:
+        checks.ok("다음에는" not in text and "살펴봐요" not in text, f"{label} 이미 고른 직접 근거의 재검토 권유 없음")
+
+
+def selectable_cards(checks, page, label):
+    """표시된 모든 카드가 선택·열기 단계에서도 허용되는지 실제 클릭으로 확인."""
+    keys = page.locator("#lg-outage-cards [data-missed]").evaluate_all("nodes => nodes.map(n => n.dataset.missed)")
+    for key in keys:
+        page.locator(f'#lg-outage-cards [data-missed="{key}"]').click()
+        checks.ok(page.locator(f'#lg-outage-cards [data-missed="{key}"]').get_attribute("aria-pressed") == "true" and
+                  not page.locator("#lg-outage-open").is_disabled() and current_note(page).get("missed") == key,
+                  f"{label} 표시 카드 {key} 선택·열기 허용 집합 일치")
+
 def link(checks, page, selector, new_tab, label):
     a = page.locator(selector)
     required(checks, a.count() == 1 and a.is_visible(), f"{label} 연결 표시 [I38]")
@@ -271,12 +460,13 @@ def scene(checks, page, requests, label, width, trial, actual):
     root = page.locator("#lg-missed")
     required(checks, root.count() == 1 and root.get_attribute("data-single") == "false",
              f"{label} 두 원인이 있는 첫 달 카드 분기(생략으로 통과시키지 않음) [I24]")
+    student_words(checks, page, label + " 첫 달 열기 전")
     cards = page.locator("#lg-outage-cards [data-missed]")
-    required(checks, 1 <= cards.count() <= 3, f"{label} 원인 카드 1~3장 [I20]")
+    required(checks, 2 <= cards.count() <= 3, f"{label} 유의미한 원인 카드 2~3장 [I20]")
     closed_card_keys = [c.get_attribute("data-missed") for c in cards.all()]
     checks.ok(closed_card_keys == [key for key in NAMES if key in closed_card_keys],
               f"{label} 열기 전 카드도 분해 순서의 부분열")
-    checks.ok(cards.count() == 3, f"{label} 이 복수 원인 사례는 세 카드 [I22]")
+    closed_box = bottleneck(checks, page, current_attribution(page), label + " 열기 전")
     checks.ok(root.get_attribute("data-opened") == "false", f"{label} 고르기 전 닫힘")
     checks.ok(root.get_attribute("data-out-value") in (None, "") and
               all(n.get_attribute("data-out-value") == "" for n in root.locator('[data-out-value]').all()),
@@ -286,6 +476,7 @@ def scene(checks, page, requests, label, width, trial, actual):
     for i in range(cards.count()):
         hidden_answer(checks, cards.nth(i), f"{label} 카드{i+1}", card=True)
     hidden_answer(checks, page.locator("#lg-outage-others"), label + " 나머지 후보")
+    hidden_answer(checks, page.locator("#lg-outage-more"), label + " 상세 단서")
     checks.ok(all(c.get_attribute("data-missed") in NAMES for c in cards.all()),
               f"{label} 카드 후보는 네 원인만(내 선택이 상위 3개 밖이면 허용)")
     no_answer_records(checks, page, label)
@@ -300,6 +491,8 @@ def scene(checks, page, requests, label, width, trial, actual):
     cards.first.scroll_into_view_if_needed()
     capture(checks, page, label, "before")
     before_requests = len(requests)
+    selectable_cards(checks, page, label)
+    clue_and_evidence(checks, page, current_attribution(page), label + " 닫힘")
     # 1280 밝음 혼자 하기는 최대가 아닌 유의미한 몫을 반드시 고른다.
     # 계산 API는 사례 선택에만 쓰고, 실제 판정은 열린 막대·꼬리표와 다시 비교한다.
     nonlargest = label == "1280x900-light-solo"
@@ -315,7 +508,9 @@ def scene(checks, page, requests, label, width, trial, actual):
     page.locator(f'#lg-outage-cards [data-missed="{picked}"]').click()
     for c in cards.all():
         hidden_answer(checks, c, label + " 고른 뒤 열기 전", card=True)
+    student_words(checks, page, label + " 첫 달 선택 후 열기 전")
     page.locator("#lg-outage-open").click()
+    student_words(checks, page, label + " 첫 달 열기 후")
     checks.ok(page.locator("#lg-outage-verdict").get_attribute("tabindex") == "-1" and
               page.evaluate("document.activeElement?.id") == "lg-outage-verdict",
               f"{label} 열기 뒤 판정 머리로 초점 이동")
@@ -323,7 +518,7 @@ def scene(checks, page, requests, label, width, trial, actual):
     for c in cards.all():
         match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%p", c.inner_text())
         raw = c.get_attribute("data-out-value")
-        checks.ok(match is not None and raw not in (None, "") and
+        checks.ok(match is not None and S7_SHARE.fullmatch(c.locator('.lg-out-size').inner_text()) is not None and raw not in (None, "") and
                   abs(float(match[1].replace("−", "-").replace(",", "")) - float(raw)) <= .0051,
                   f"{label} 열린 카드 %p와 속성 크기 일치 [I22]")
     checks.ok(page.locator('[data-out-tag="picked"]').inner_text() == "내가 고름" and
@@ -331,7 +526,8 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 고른 카드 꼬리표 [I22]")
     checks.ok(page.locator('[data-out-tag="largest"]').inner_text() == "가장 큼", f"{label} 최대 몫 꼬리표 [I22]")
     order = page.locator("#lg-outage-order").inner_text()
-    checks.ok(all(s in order for s in ("순서", "내 선택", "날씨·운전 기간", "사건·대응", "이웃 거래", "달라", "추정", "겹친 효과", "뒤 단계 몫")),
+    checks.ok("이번 달 계산 순서: " + " → ".join(NAMES.values()) in order and
+              "순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요." in order,
               f"{label} 순서 의존 안내 [I23]")
     rows = page.locator("#lg-outage-waterfall [data-out-step]")
     values, visible = {}, {}
@@ -342,6 +538,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         required(checks, len(matches) == 1, f"{label} {key} 화면 수치 한 개")
         visible[key] = float(matches[0].replace("−", "-").replace(",", ""))
         checks.ok(abs(visible[key] - values[key]) <= .0051, f"{label} {key} 표시 반올림")
+        number_format(checks, row, key, label)
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
         track = row.locator('.lg-out-track').bounding_box()
@@ -374,10 +571,10 @@ def scene(checks, page, requests, label, width, trial, actual):
     checks.ok(abs(sum(v for k, v in visible.items() if k != "actual") - visible["actual"]) <= .0200001,
               f"{label} 배선 일치: 화면 합계 ±0.02%p [요청3]")
     largest = max(NAMES, key=lambda k: abs(values[k]))
-    top = sorted(NAMES, key=lambda k: abs(values[k]), reverse=True)[:3]
+    top = sorted((k for k in NAMES if abs(values[k]) >= .05), key=lambda k: abs(values[k]), reverse=True)[:3]
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
     checks.ok(set(card_keys) == set(top) and len(card_keys) == len(set(card_keys)),
-              f"{label} 카드는 네 원인 중 절댓값 상위 3개")
+              f"{label} 카드는 |몫|≥0.05%p인 상위 최대 3개(DOM 검산; 독립 계산은 Node30)")
     checks.ok(card_keys == [key for key in NAMES if key in card_keys],
               f"{label} 카드 표시 순서는 분해 순서의 부분열(크기 순위와 무관)")
     checks.ok(card_keys == closed_card_keys, f"{label} 열기 전후 카드 순서 동일")
@@ -386,16 +583,9 @@ def scene(checks, page, requests, label, width, trial, actual):
                   f"{label} 시험 카드 이름 = 순서·폭포 이름")
     checks.ok(page.locator(f'[data-missed="{largest}"] [data-out-tag="largest"]').count() == 1,
               f"{label} 가장 큼은 절댓값 최대 원인")
-    waiting_mw = current_attribution(page)["grid"]["waitingMW"]
-    if waiting_mw > 0:
-        checks.ok(page.locator("[data-out-grid]").count() == 1 and
-                  page.locator("#lg-outage-grid").count() == 1 and
-                  math.isfinite(float(page.locator("[data-out-grid]").get_attribute("data-out-grid"))) and
-                  "합계" in page.locator("#lg-outage-grid").inner_text() and
-                  "따로" in page.locator("#lg-outage-grid").inner_text(), f"{label} 접속 대기 별도 표시 [I15]")
-    else:
-        checks.ok(page.locator("[data-out-grid], #lg-outage-grid").count() == 0 and
-                  "접속 대기" not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략 [I15]")
+    checks.ok(bottleneck(checks, page, current_attribution(page), label + " 열기 뒤") == closed_box,
+              f"{label} 병목은 열기 전후 동일·카드 정답과 무관")
+    clue_and_evidence(checks, page, current_attribution(page), label + " 열림")
     verdict = page.locator("#lg-outage-verdict").inner_text()
     if nonlargest:
         checks.ok(.05 <= abs(values[picked]) < abs(values[largest]) and picked != largest and
@@ -543,6 +733,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     root = page.locator("#lg-missed")
     required(checks, root.get_attribute("data-single") in ("true", "false"),
              f"{label} 사본 있는 달 월간 분해")
+    student_words(checks, page, label + " 월간 열기 전")
     required(checks, page.locator("#lg-outage-baseline").inner_text() ==
              "약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.", f"{label} 같은 비교 기준 안내")
     checks.ok("시험 1주 대비" not in root.text_content(), f"{label} 시험 대비 분해 안내 폐기")
@@ -553,9 +744,11 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     cards = page.locator('#lg-outage-cards [data-missed]')
     keys = [c.get_attribute('data-missed') for c in cards.all()]
     multi = root.get_attribute("data-single") == "false"
+    closed_box = bottleneck(checks, page, current_attribution(page), label + " 월간 열기 전")
     before_requests = len(requests)
     if multi:
-        required(checks, cards.count() == 3, f"{label} 월간 원인 카드 3장")
+        clue_and_evidence(checks, page, current_attribution(page), label + " 월간 닫힘")
+        required(checks, 2 <= cards.count() <= 3, f"{label} 월간 유의미한 원인 카드 2~3장")
         for card in cards.all():
             checks.ok(card.locator("strong").inner_text() == MONTHLY_NAMES[card.get_attribute("data-missed")],
                       f"{label} 월간 카드 이름 = 순서·폭포 이름")
@@ -565,6 +758,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         for c in cards.all():
             hidden_answer(checks, c, label + ' 월간 닫힌 카드', card=True)
         hidden_answer(checks, page.locator('#lg-outage-others'), label + ' 월간 나머지 후보')
+        hidden_answer(checks, page.locator('#lg-outage-more'), label + ' 월간 상세 단서')
         # 루트는 공개된 총 차이·성능만 갖는다. 원인 크기/최대 속성은 전체 자손 검사.
         attrs = root.evaluate(SURFACE)['attrs']
         checks.ok(not any((k == 'data-out-value' and v.strip()) or
@@ -573,6 +767,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
                   f"{label} 전체 DOM aria/data 원인 답 비노출")
         no_answer_records(checks, page, label)
         checks.ok(page.locator('#lg-outage-open').is_disabled(), f"{label} 고르기 전 열기 불가")
+        selectable_cards(checks, page, label + " 월간")
         page.locator(f'[data-missed="{keys[0]}"]').click()
         checks.ok(current_note(page).get('missedBasis') == 'monthly',
                   f"{label} 열기 전 선택 저장도 월간 기준 보존")
@@ -583,6 +778,12 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         checks.ok(page.evaluate('document.activeElement?.id') == 'lg-outage-verdict', f"{label} 판정 초점")
     a = current_attribution(page)
     required(checks, a and a.get('basis') == 'monthly', f"{label} 월간 계산 API")
+    student_words(checks, page, label + " 월간 열기 후")
+    if all(abs(p['value']) < .05 for p in a['parts']):
+        no_cause_summary(checks, page, label, baseline, actual, monthly=True)
+    clue_and_evidence(checks, page, a, label + " 월간 열림")
+    checks.ok(bottleneck(checks, page, a, label + " 월간 열기 뒤") == closed_box,
+              f"{label} 월간 병목은 열기 전후 동일·합계 밖")
     checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")
     checks.ok(abs(a['trial'] - baseline) <= 1e-9 and abs(a['actual'] - actual) <= 1e-9,
               f"{label} 분해 출발/도착 = 지난달/이번 실제")
@@ -621,6 +822,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         visible[k] = float(matches[0].replace('−', '-').replace(',', ''))
         checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - raw[k]) <= .0051,
                   f"{label} {k} API/DOM 원시값·반올림")
+        number_format(checks, row, k, label)
         track = row.locator('.lg-out-track').bounding_box()
         checks.ok(track and track['width'] > 0, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
@@ -636,10 +838,16 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     candidates = page.locator('#lg-missed [data-missed], #lg-missed [data-out-other]').evaluate_all(
         "nodes => nodes.map(n=>n.dataset.missed || n.dataset.outOther)")
     checks.ok(candidates and all(k in MONTHLY_NAMES for k in candidates), f"{label} 되돌림·재현은 후보 밖")
+    top = sorted((k for k in MONTHLY_NAMES if abs(raw[k]) >= .05), key=lambda k: abs(raw[k]), reverse=True)[:3]
+    checks.ok(multi == (len(top) >= 2) and cards.count() == (len(top) if multi else 0),
+              f"{label} 유의미한 원인 2개 미만이면 카드 없이 한 줄 요약")
     if multi:
         ranked = sorted(a['parts'], key=lambda p: abs(p['value']), reverse=True)
-        top = {p['key'] for p in ranked[:3]}
-        checks.ok(keys == [k for k in MONTHLY_NAMES if k in top], f"{label} 크기 상위3 집합·분해순 배치")
+        checks.ok(keys == [k for k in MONTHLY_NAMES if k in top],
+                  f"{label} |몫|≥0.05%p 상위 최대3 집합·분해순(DOM 검산; 독립 계산은 Node32)")
+        for card in cards.all():
+            checks.ok(S7_SHARE.fullmatch(card.locator('.lg-out-size').inner_text()) is not None,
+                      f"{label} 월간 카드 숫자 형식")
         checks.ok([c.get_attribute('data-missed') for c in cards.all()] == keys, f"{label} 연 전후 카드 순서 고정")
         checks.ok(page.locator(f'[data-missed="{ranked[0]["key"]}"] [data-out-tag="largest"]').count() == 1,
                   f"{label} 공개 최대는 여섯 후보 중 최대")
@@ -648,8 +856,8 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
               page.locator('#lg-outage-replay').count() == int(abs(a['replay']) >= .005),
               f"{label} 되돌림 폐기·재현 설명 0.005%p 문턱")
     order = page.locator('#lg-outage-order').inner_text()
-    checks.ok('내 선택 → 날씨·계절·운전 기간 → 사건·대응 → 접속·공사·기술 진행 → 도시 성장·연료 값 → 이웃 거래' in order and
-              '뒤 단계 몫' in order, f"{label} 순서 의존 안내")
+    checks.ok('이번 달 계산 순서: ' + ' → '.join(MONTHLY_NAMES.values()) in order and
+              '순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.' in order, f"{label} 실제 순서·순서 의존 안내")
     if a['grid']['waitingMW'] == 0:
         checks.ok('접속 대기' not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략")
     simulations = int(root.get_attribute('data-simulations'))
@@ -691,6 +899,10 @@ def previous_carry_names(checks, page, label):
     open_panel(page, 'journal')
     text = page.locator('#lg-missed-carry').inner_text()
     selected = saved.get('missed')
+    if selected in ("차이 원인 없음(정전 자체는 큼)", "뚜렷한 원인 없음"):
+        checks.ok(text == f"지난달 놓친 것: {selected}", f"{label} 다음 달 원인 없음 기록 문자열 보존")
+        checks.ok(selected in copy_worksheet(page) and "가장 큰 몫" not in text,
+                  f"{label} 다음 달 일지에도 같은 기록·최대 몫 없음")
     if selected in names and not note.get('outageSingleShown'):
         checks.ok(f"지난달 놓친 것: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
     largest = saved.get('largest')
@@ -813,6 +1025,7 @@ def isolated_branch(checks, page, base, label, correct):
     required(checks, "예상과 다름" in page.locator('[data-compare="uns"]').inner_text() and
              page.locator("#lg-missed").get_attribute("data-single") == "true" and
              shown(page, "#lg-outage-single"), f"{label} 빈 배치 오예측의 한 줄 요약 실제 표시")
+    student_words(checks, page, label + " 첫 달 한 줄 요약")
     checks.ok(page.locator('#lg-outage-cards [data-missed], #lg-outage-open').count() == 0,
               f"{label} 요약 달 카드 고르기 생략")
     note = current_note(page)
@@ -822,26 +1035,27 @@ def isolated_branch(checks, page, base, label, correct):
                note.get("outageLargest", {}).get("key") in NAMES),
               f"{label} 표시 뒤 요약 기록·0.05%p 미만이면 최대 몫 저장 없음")
     if no_cause:
+        expected_label = no_cause_summary(checks, page, label, trial['unsPct'], actual)
         text = page.locator("#lg-missed").inner_text()
-        checks.ok("뚜렷한 원인 없음" in text and "가장 큰 것:" not in text and
+        checks.ok(expected_label in text and "가장 큰 것:" not in text and
                   "가장 큰 몫" not in text and page.locator('[data-out-tag="largest"]').count() == 0,
                   f"{label} 모든 몫 < 0.05%p: 최대 몫 표시 없음")
     page.locator("#lg-outage-carry").click()
     carry_choice = current_note(page).get("missedCarry", {}).get("missed")
-    checks.ok(carry_choice in (("뚜렷한 원인 없음", "고르기 생략") if no_cause else ("고르기 생략",)),
+    checks.ok(carry_choice == (expected_label if no_cause else "고르기 생략"),
               f"{label} 요약 달 다음 달 기록을 학생의 선택으로 꾸미지 않음")
     if no_cause:
         checks.ok(not current_note(page).get("missedCarry", {}).get("largest"),
-                  f"{label} 뚜렷한 원인 없는 달은 다음 달 최대 몫 저장 없음")
+                  f"{label} 차이 원인 없는 달은 다음 달 최대 몫 저장 없음")
         html = page.evaluate("""() => {
           const L=KCP.league.state(); return KCP.league.uiMath.trendHTML(L.snap || L.S,L.team,true);
         }""")
-        checks.ok("뚜렷한 원인 없음" in html and "가장 큰 몫" not in html,
-                  f"{label} 타임라인: 뚜렷한 원인 없음")
+        checks.ok(expected_label in html and "가장 큰 몫" not in html,
+                  f"{label} 타임라인: 정전 크기를 구분한 차이 원인 없음")
         open_panel(page, "journal")
         worksheet = copy_worksheet(page)
-        checks.ok("뚜렷한 원인 없음" in worksheet and "가장 큰 몫" not in worksheet,
-                  f"{label} 일지: 뚜렷한 원인 없음")
+        checks.ok(expected_label in worksheet and "가장 큰 몫" not in worksheet,
+                  f"{label} 일지: 정전 크기를 구분한 차이 원인 없음")
         open_panel(page, "result")
     if label == "1280x900-light-solo-single":
         frozen_after_retrial(checks, page, label)
@@ -852,13 +1066,14 @@ def isolated_branch(checks, page, base, label, correct):
             page.reload()
             page.wait_for_function(SYNC, arg=[2, "plan"])
         open_panel(page, "journal")
-        checks.ok(("뚜렷한 원인 없음" if no_cause else "지난달 놓친 것: 고르기 생략") in
+        checks.ok((expected_label if no_cause else "지난달 놓친 것: 고르기 생략") in
                   page.locator("#lg-missed-carry").inner_text(),
                   f"{label}{suffix} 다음 달 학생이 고른 것처럼 표시하지 않음")
         if no_cause:
             text = page.locator("#lg-missed-carry").inner_text()
-            checks.ok("뚜렷한 원인 없음" in text and "가장 큰 몫" not in text,
-                      f"{label}{suffix} 다음 달 줄: 뚜렷한 원인 없음")
+            checks.ok(text == f"지난달 놓친 것: {expected_label}" and "가장 큰 몫" not in text,
+                      f"{label}{suffix} 다음 달 줄: 정전 크기를 구분한 차이 원인 없음")
+            checks.ok(expected_label in copy_worksheet(page), f"{label}{suffix} 다음 달 일지 같은 기록")
         capture(checks, page, label + suffix, "single-carry")
 
 
