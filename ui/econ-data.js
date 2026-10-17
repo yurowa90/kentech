@@ -76,12 +76,12 @@
     // 도시 시작값 — 2025 공식 통계(주민등록 인구·재정자립도는 2026-10-13 원문 대조 O, 종사자는 검색 요약 O*)와 추정(G). 출처·등급은 docs/ECON-DATA.md. cash0 = 도시 지도 예산(게임 단위 억, 실제 시 예산이 아니라 에너지·산업 계정).
     start: {
       hwaseong: {
-        name: "화성·오산", est: false, pop0: 1239379, ind0: 655000, cash0: 365, fsr0: 0.485,
+        name: "화성·오산", est: false, pop0: 1239379, ind0: 655000, cash0: 365, fsr0: 0.4868, // M: 2025 당초 지방재정365 (화성 자체수입 16,224.59억 + 오산 2,624.14억) / (예산 31,187.53억 + 7,530.07억) = 0.4868
         groups: { worker: 0.408, youth: 0.21, senior: 0.117, business: 0.082, farm: 0.051, green: 0.133 },
         natShare: 0, landCapMul: 1.15,
         port: false, site: true, univ0: 2, lab0: 1, exportShare: 0.55,
         mix: { semi: 0.35, auto: 0.30, other: 0.35 },
-        note: "주민등록 2025-12 1,239,379명(O) · 종사자 655,000(G) · 재정자립도 48.5%(M: 두 시 원문 O의 예산 가중) · 노년 비중 11.7% · 청년 비중은 G"
+        note: "주민등록 2025-12 1,239,379명(O) · 종사자 655,000(G) · 재정자립도 48.7%(M: 두 시 원문 O의 예산 가중) · 노년 비중 11.7% · 청년 비중은 G"
       },
       pyeongtaek: {
         name: "평택", est: false, pop0: 610402, ind0: 283849, cash0: 320, fsr0: 0.416,
@@ -367,7 +367,7 @@
     city.src = {
       pop0: { year: "2025.12", source: "행정안전부 주민등록 인구통계(jumin.mois.go.kr, 2026-10-13 원문 대조)", grade: "O", unit: "명" },
       ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사" : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명" },
-      fsr0: { year: 2025, source: "지방재정365 재정자립도[당초] 2025(2026-10-13 원문 대조)" + (id === "hwaseong" ? " · 두 도시 예산 가중 계산(원문 자체수입·예산으로 0.4868, 자료값 0.485)" : ""), grade: id === "hwaseong" ? "M" : "O", unit: "%" }
+      fsr0: { year: 2025, source: "지방재정365 재정자립도[당초] 2025(2026-10-13 원문 대조)" + (id === "hwaseong" ? " · 두 도시 자체수입 합÷예산 합(M)" : ""), grade: id === "hwaseong" ? "M" : "O", unit: "%" }
     };
   });
   // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.
