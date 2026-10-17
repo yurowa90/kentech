@@ -1,0 +1,302 @@
+{
+  "months": 36,
+  "rotations": 9,
+  "planner": "leagueAI balanced",
+  "ids": [
+    "hwaseong",
+    "pyeongtaek",
+    "anseong",
+    "dangjin",
+    "asan",
+    "cheonan"
+  ],
+  "names": {
+    "hwaseong": "화성·오산",
+    "pyeongtaek": "평택",
+    "anseong": "안성",
+    "dangjin": "당진",
+    "asan": "아산",
+    "cheonan": "천안"
+  },
+  "strategies": [
+    "nothing",
+    "base",
+    "diesel",
+    "renew",
+    "ties",
+    "taxlow",
+    "taxhigh",
+    "dm",
+    "storage"
+  ],
+  "strategySummary": {
+    "firstCounts": {
+      "nothing": 0,
+      "base": 1,
+      "diesel": 0,
+      "renew": 1,
+      "ties": 1,
+      "taxlow": 0,
+      "taxhigh": 0,
+      "dm": 1,
+      "storage": 2
+    },
+    "completeCities": [
+      "hwaseong",
+      "pyeongtaek",
+      "anseong",
+      "dangjin",
+      "asan",
+      "cheonan"
+    ],
+    "meanScores": {
+      "nothing": 9.533333333333333,
+      "base": 69.23333333333333,
+      "diesel": 48.71666666666667,
+      "renew": 68.8,
+      "ties": 67.78333333333333,
+      "taxlow": 47.96666666666667,
+      "taxhigh": 66.53333333333333,
+      "dm": 71.51666666666667,
+      "storage": 73.08333333333333
+    },
+    "meanUnsPct": {
+      "nothing": 100.0,
+      "base": 0.0,
+      "diesel": 0.0,
+      "renew": 0.0,
+      "ties": 0.0,
+      "taxlow": 0.0,
+      "taxhigh": 0.0,
+      "dm": 0.0,
+      "storage": 0.0
+    },
+    "meanWaitingMW": {
+      "nothing": 0.0,
+      "base": 0.3333333333333333,
+      "diesel": 0.2810185185185185,
+      "renew": 0.35694444444444445,
+      "ties": 0.36620370370370375,
+      "taxlow": 0.23796296296296293,
+      "taxhigh": 0.38703703703703707,
+      "dm": 0.3277777777777778,
+      "storage": 1.0185185185185184
+    },
+    "meanCurtailMWh": {
+      "nothing": 0.0,
+      "base": 2.5676956763066864e-17,
+      "diesel": 0.016814777742691942,
+      "renew": 2.253436145066988e-17,
+      "ties": 4.2295147127974094e-17,
+      "taxlow": 2.797776714715788e-17,
+      "taxhigh": 2.1885959970374612e-17,
+      "dm": 2.588764836579871e-17,
+      "storage": 5.3245656294914776e-18
+    },
+    "best": "storage",
+    "worst": "taxlow",
+    "meanScoreGap": 25.11666666666666
+  },
+  "horizons": {
+    "12": {
+      "n": 54,
+      "overCities": 3,
+      "debtMedian": 0.0,
+      "overCityMonths": 7,
+      "cityMonths": 648,
+      "nothingCashRank": 1,
+      "nothingCashCityRanks": {
+        "hwaseong": 1,
+        "pyeongtaek": 5,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 1,
+        "cheonan": 1
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 9.666666666666666,
+        "base": 68.83333333333333,
+        "diesel": 49.21666666666667,
+        "renew": 68.68333333333334,
+        "ties": 70.35,
+        "taxlow": 56.583333333333336,
+        "taxhigh": 66.03333333333333,
+        "dm": 71.21666666666667,
+        "storage": 68.41666666666667
+      },
+      "meanCash": {
+        "nothing": 366.11899999999997,
+        "base": 79.03766666666667,
+        "diesel": -37.68199999999997,
+        "renew": 127.03850000000001,
+        "ties": 111.57250000000002,
+        "taxlow": -160.51666666666668,
+        "taxhigh": 362.37600000000003,
+        "dm": 148.26133333333337,
+        "storage": 132.10500000000002
+      },
+      "winners": {
+        "hwaseong": [
+          "storage"
+        ],
+        "pyeongtaek": [
+          "base"
+        ],
+        "anseong": [
+          "dm"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "ties"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "24": {
+      "n": 54,
+      "overCities": 6,
+      "debtMedian": 0.0,
+      "overCityMonths": 63,
+      "cityMonths": 1296,
+      "nothingCashRank": 2,
+      "nothingCashCityRanks": {
+        "hwaseong": 2,
+        "pyeongtaek": 7,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 2,
+        "cheonan": 1
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 9.533333333333333,
+        "base": 69.86666666666666,
+        "diesel": 49.05,
+        "renew": 69.13333333333333,
+        "ties": 70.41666666666666,
+        "taxlow": 47.96666666666667,
+        "taxhigh": 66.41666666666667,
+        "dm": 71.86666666666667,
+        "storage": 71.4
+      },
+      "meanCash": {
+        "nothing": 494.2409999999999,
+        "base": 195.09150000000005,
+        "diesel": -84.37383333333327,
+        "renew": 301.2751666666667,
+        "ties": 263.21983333333344,
+        "taxlow": -333.4701666666667,
+        "taxhigh": 728.0048333333335,
+        "dm": 311.05116666666675,
+        "storage": 323.8975000000001
+      },
+      "winners": {
+        "hwaseong": [
+          "storage"
+        ],
+        "pyeongtaek": [
+          "base"
+        ],
+        "anseong": [
+          "dm"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "ties"
+        ],
+        "cheonan": [
+          "storage"
+        ]
+      }
+    },
+    "36": {
+      "n": 54,
+      "overCities": 6,
+      "debtMedian": 0.0,
+      "overCityMonths": 134,
+      "cityMonths": 1944,
+      "nothingCashRank": 2,
+      "nothingCashCityRanks": {
+        "hwaseong": 2,
+        "pyeongtaek": 7,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 2,
+        "cheonan": 2
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 9.533333333333333,
+        "base": 69.23333333333333,
+        "diesel": 48.71666666666667,
+        "renew": 68.8,
+        "ties": 67.78333333333333,
+        "taxlow": 47.96666666666667,
+        "taxhigh": 66.53333333333333,
+        "dm": 71.51666666666667,
+        "storage": 73.08333333333333
+      },
+      "meanCash": {
+        "nothing": 633.3231666666665,
+        "base": 309.35466666666673,
+        "diesel": -97.67883333333339,
+        "renew": 470.05416666666673,
+        "ties": 387.8435000000001,
+        "taxlow": -520.6741666666668,
+        "taxhigh": 1095.2876666666668,
+        "dm": 452.2706666666666,
+        "storage": 531.0013333333334
+      },
+      "winners": {
+        "hwaseong": [
+          "storage"
+        ],
+        "pyeongtaek": [
+          "base"
+        ],
+        "anseong": [
+          "dm"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "ties"
+        ],
+        "cheonan": [
+          "storage"
+        ]
+      }
+    }
+  },
+  "checks": 18326,
+  "failures": []
+}

@@ -1,4 +1,10 @@
+// 검토 결함 8·15: 문구·태그 기대값은 요청 하나와 공통 습관 어휘로 갱신. 계산 허용 오차는 그대로 둔다.
 // 기대값: 사용자 제공 수정 명세 4.2, 5, 6, 8, 12절. 구현 계산을 복제하지 않는다.
+// N7: 직접 명령형까지 포함하고, 인용문 안의 물음은 요청에서 제외한다.
+const requestCount = q => (q.replace(/“[^”]*”|‘[^’]*’/g, '').match(/[?？]|(?:주세요|[가-힣]+세요)[.!]/g) || []).length;
+if (requestCount('말하세요. 적으세요! 설명하세요. 답은 무엇인가요?') !== 4 ||
+    requestCount('“어떻게 하나요?”라는 반문에 답을 말해 주세요.') !== 1)
+  throw new Error('N7 요청 수 검사 자체의 종결형·인용문 처리 실패');
 import fs from 'node:fs';
 import vm from 'node:vm';
 
@@ -71,7 +77,8 @@ const oracle = {
   A: [
     [8.421053,12,0,0,87.406200,65.554650,29.846947,3.368421,-4.631579,0,104.427253,20.892863,8.954084,18,5,[]],
     [8.421053,12,0,0,102.582174,76.936631,6.768547,3.368421,-4.631579,0,119.603227,4.737983,2.030564,18,5,[]],
-    [8.421053,12,0,0,89.801400,67.351050,20.582947,3.368421,-4.631579,.683453,106.822453,14.408063,6.174884,18,5,[]]
+    // dcharge: 옛 평균 배정 0.683453 → 한계 기준 0. b3은 디젤 최소 출력·출력제한 중이라 충전해도 디젤이 늘지 않음.
+    [8.421053,12,0,0,89.801400,67.351050,20.582947,3.368421,-4.631579,0,106.822453,14.408063,6.174884,18,5,[]]
   ],
   B: [
     [15.069252,18,0,0,69.406200,52.054650,11.198748,3.368421,-4.631579,0,87.059663,11.198748,0,15,5,[3,5]],
@@ -220,30 +227,33 @@ function questionState(p, crit, baseline = {scenario:'S2',limit:10}, predict = '
 test('8.3 A/B/Z 분기 예시', () => {
   const boundary = {...clone(plans.Z),n:[2,2,2,0,0,0,0,0]};
   const cases = [
-    ['A',plans.A,['outage','fair'],['ig-b-reserve','ig-b-tomorrow','ig-b-diesel-long']],
-    ['B',plans.B,['emission','fair'],['ig-b-outage','ig-b-correction','ig-b-diesel-long']],
-    ['Z 경계',boundary,['outage','fair'],['ig-b-outage','ig-b-curtail','ig-b-feeders']]
+    ['A',plans.A,['outage','fair'],['ig-b-reserve','ig-b-tomorrow']],
+    ['B',plans.B,['emission','fair'],['ig-b-outage','ig-b-correction']],
+    ['Z 경계',boundary,['outage','fair'],['ig-b-outage','ig-b-curtail']]
   ];
   for (const [name,p,crit,wanted] of cases) {
     const rs = scenarios.map(s=>model.simulate(p,s,()=>true));
     const state = questionState(p,crit);
-    check(`8.3 ${name}개별 세 칸`,model.individualKeys(p,crit,rs,state.game.locked.corrections.length),wanted);
+    check(`8.3 ${name}개별 두 칸`,model.individualKeys(p,crit,rs,state.game.locked.corrections.length),wanted);
     const keys = model.questionKeys(state);
-    check(`8 ${name}질문 여덟 개`,keys.length,8);
-    check(`8 ${name}중복 없음`,new Set(keys).size,8);
-    check(`8 ${name}개별 순서`,keys.slice(3,6),wanted);
+    // 답변 15분에 맞춰 공통 3 + 개별 2 + 반문 1 + 발산 1 = 일곱 문항.
+    check(`8 ${name}질문 일곱 개`,keys.length,7);
+    check(`8 ${name}중복 없음`,new Set(keys).size,7);
+    check(`8 ${name}개별 순서`,keys.slice(3,5),wanted);
   }
   const b = questionState(plans.B,['emission','fair']);
-  check('12.3 B 전체 순서',model.questionKeys(b),['ig-c1','ig-c2-in','ig-c3-hit','ig-b-outage','ig-b-correction','ig-b-diesel-long','ig-r-r2','ig-storage-alt']);
+  check('12.3 B 전체 순서',model.questionKeys(b),['ig-c1','ig-c2-in','ig-c3-hit','ig-b-outage','ig-b-correction','ig-r-r2','ig-storage-alt']);
   const questions = game.questions(b);
   check('8 질문 속성 k/tag/q만',questions.every(q=>Object.keys(q).sort().join(',')==='k,q,tag'),true);
   const outage = questions.find(q=>q.k==='ig-b-outage')?.q || '';
   for (const word of ['S2','9.48','F3','6.73','12–15시','11.90','디젤을 한 대도 켜 두지 않았습니다']) check(`8 B 정전 질문/${word}`,outage.includes(word),true);
   for (const [key,wanted] of [['S1','ig-c3-miss'],['S2','ig-c3-hit']]) check(`8 첫 예측${key}`,model.questionKeys(questionState(plans.B,['emission','fair'],undefined,key))[2],wanted);
   check('8 기준선 초과',model.questionKeys(questionState(plans.B,['emission','fair'],{scenario:'S2',limit:9}))[1],'ig-c2-over');
-  for (const shed of ['R1','R3']) check(`8 반문${shed}`,model.questionKeys(questionState({...clone(plans.B),shed},['emission','fair']))[6],`ig-r-${shed.toLowerCase()}`);
-  check('8 가중치 우선',model.questionKeys(questionState({...clone(plans.B),weights:[4,1.2]},['cost','fair']))[5],'ig-b-weights');
-  check('8 cost 기준',model.questionKeys(questionState(plans.B,['cost','fair']))[5],'ig-b-cost');
+  for (const shed of ['R1','R3']) check(`8 반문${shed}`,model.questionKeys(questionState({...clone(plans.B),shed},['emission','fair']))[5],`ig-r-${shed.toLowerCase()}`);
+  check('8 가중치 우선',model.questionKeys(questionState({...clone(plans.B),weights:[4,1.2]},['cost','fair']))[4],'ig-b-weights');
+  check('8 cost 기준',model.questionKeys(questionState(plans.B,['cost','fair']))[4],'ig-b-cost');
+  // 폭염 구간 차단이 없으면 가중치를 바꿔도 지수가 0으로 같으므로 가중치 질문을 내지 않는다.
+  check('8 가중치 질문은 폭염 차단이 있을 때만',model.questionKeys(questionState({...clone(plans.A),weights:[4,1.2]},['outage','fair'],{scenario:'S2',limit:0},'none'))[4],'ig-b-tomorrow');
   const first = clone(b.game.firstRun);
   b.game.firstPredict = 'S2';
   b.game.firstRun = questionState(plans.A,['outage','fair']).game.firstRun;
@@ -260,19 +270,112 @@ test('8.3 A/B/Z 분기 예시', () => {
 });
 test('8.3 전체 후보의 우선순위와 경계', () => {
   // 조건 선택만 확인하는 독립 입력이며 실제 시험 결과로 저장하지 않는다.
-  const base = {u:0,delta:0,dcharge:0,curt:0,h:9};
+  const base = {u:0,delta:0,dcharge:0,curt:0,h:9,heat:0};
   const choose = (patch={},p={},crit=['outage','fair'],count=0) => {
     const rs = [0,1,2].map(()=>({...base,...patch}));
     return model.individualKeys({...clone(plans.Z),...p},crit,rs,count);
   };
-  check('8.3 uncertainty/feeder 대체',choose(),['ig-b-reserve','ig-b-uncertainty','ig-b-feeders']);
-  check('8.3 correction 최우선',choose({delta:-3,dcharge:1,curt:5},{},undefined,1)[1],'ig-b-correction');
+  const all = {delta:-3,dcharge:1,curt:5,h:15,heat:1};
+  check('8.3 uncertainty 대체',choose(),['ig-b-reserve','ig-b-uncertainty']);
+  check('8.3 outage',choose({u:1})[0],'ig-b-outage');
+  check('8.3 weights 최우선',choose(all,{weights:[4,1.5]},['cost','fair'],1)[1],'ig-b-weights');
+  check('8.3 weights는 폭염 차단 없으면 제외',choose({...all,heat:0},{weights:[4,1.5]},['cost','fair'],1)[1],'ig-b-cost');
+  check('8.3 cost 다음',choose(all,{},['cost','fair'],1)[1],'ig-b-cost');
+  check('8.3 correction 다음',choose(all,{},undefined,1)[1],'ig-b-correction');
   check('8.3 tomorrow 경계',choose({delta:-2,dcharge:1,curt:5})[1],'ig-b-tomorrow');
   check('8.3 dcharge 우선',choose({dcharge:1,curt:5})[1],'ig-b-dcharge');
   check('8.3 curtail 경계',choose({curt:4})[1],'ig-b-curtail');
-  check('8.3 long 경계',choose({h:15})[2],'ig-b-diesel-long');
-  check('8.3 short 경계',choose({h:6})[2],'ig-b-diesel-short');
-  check('8.3 DR 대체',choose({h:9},{dr:[true,false,false,false,false,false,false,false]})[2],'ig-b-dr');
+  check('8.3 long 경계',choose({h:15})[1],'ig-b-diesel-long');
+  check('8.3 short 경계',choose({h:6})[1],'ig-b-diesel-short');
+  check('8.3 DR 대체',choose({h:9},{dr:[true,false,false,false,false,false,false,false]})[1],'ig-b-dr');
+});
+
+test('1 디젤 배정 충전량 재현(A/S3 09–12시)', () => {
+  const row = runs.A[2].rows[3];
+  check('A/S3 b3 충전',row.ch,2.807018,.0000005);
+  check('A/S3 b3 디젤 최소 출력',row.g,1,1e-9);
+  check('A/S3 b3 출력제한',row.curt,.772182,.0000005);
+  check('A/S3 b3 디젤 배정 0',row.dcharge,0,1e-12);
+  check('H/S1 b0 디젤 배정 = 충전 전량',runs.H[0].rows[0].dcharge,runs.H[0].rows[0].ch,1e-9);
+  check('A dcharge 질문 없음',model.individualKeys(plans.A,['emission','fair'],runs.A,0)[1],'ig-b-tomorrow');
+});
+test('3 배터리가 부족을 메우는 대안 계산(B/S2)', () => {
+  // 명세 밖 비교값: 같은 계획에서 남은 잔량을 부족에 먼저 쓰는 운영. 모형 weather만 빌리고 급전은 독립 계산.
+  let soc = 8, U = 0;
+  const p = plans.B;
+  for (let b = 0; b < 8; b++) {
+    const {r,d} = model.weather('S2',b), n = p.n[b], L = d - (p.dr[b] ? 1.5 : 0), v = p.bat[b];
+    let ch = v>0 ? Math.min(v,4,(16-soc)/(.95*3)) : 0, dis = v<0 ? Math.min(-v,4,(soc-1.6)*.95/3) : 0;
+    const x0 = L+ch-r-dis;
+    if (x0>3*n && ch>0) ch -= Math.min(ch,x0-3*n); else if (x0<n && dis>0) dis -= Math.min(dis,n-x0);
+    const g = n ? Math.max(n,Math.min(3*n,L+ch-r-dis)) : 0;
+    let u = Math.max(0,L+ch-r-dis-g);
+    const extra = Math.min(u,Math.min(4,(soc-1.6)*.95/3)-dis);
+    if (extra>0) { dis += extra; u -= extra; }
+    soc = Math.max(1.6,Math.min(16,soc+ch*.95*3-dis*3/.95));
+    U += u*3;
+  }
+  check('3 대안 S2 미공급',U,1.228,.0005);
+  const html = game.reflectExtra(questionState(plans.B,['emission','fair']));
+  for (const word of ['9.48','11.90','1.23','12–15시','15–18시']) check(`3 예시 B·한계에 ${word}`,html.includes(word),true);
+  check('3 예시 B 약점에 1.23',/id="ig-example-b"[\s\S]*약점[\s\S]*1\.23[\s\S]*<\/details>/.test(html.split('id="ig-example-c"')[0]),true);
+});
+test('4·저장·예시 표 공개', () => {
+  const html = game.reflectExtra(questionState(plans.B,['emission','fair']));
+  const limits = html.slice(html.indexOf('id="ig-limits"'), html.indexOf('id="ig-values"'));
+  for (const word of ['순환 정전','통째로','필수 부하','전날 밤 가동 대수를 0기']) check(`4 한계에 ${word}`,limits.includes(word),true);
+  // 16 MWh = 5.76×10¹⁰ J, 100 m 양수에 필요한 물 m = E/(gh)
+  check('저장 어림 산술',16000*3.6e6/(9.8*100)/1000,58775.5,.1);
+  for (const word of ['5.76×10¹⁰','5.9만 톤','0.2722 kWh']) check(`저장 해설에 ${word}`,html.includes(word),true);
+  for (const [k,p] of [['A',plans.A],['B',plans.B],['C',plans.C]]) {
+    const part = html.slice(html.indexOf(`id="ig-example-${k.toLowerCase()}"`));
+    const caption = `계획 ${k} · 구간별 요청`;
+    check(`예시 ${k} 계획 표`,part.includes(caption),true);
+    const tableHtml = part.slice(part.indexOf(caption), part.indexOf('</table>'));
+    check(`예시 ${k} 표 8구간`,(tableHtml.match(/<tr>/g)||[]).length,9);
+    // 표가 6.2 검산 계획과 같은 값을 보여 준다.
+    const rows = [...tableHtml.matchAll(/<tr><th scope="row">([^<]+)<\/th><td>([^<]+)<\/td><td>([^<]+)<\/td><td>([^<]+)<\/td><\/tr>/g)];
+    check(`예시 ${k} 디젤`,rows.map(m=>Number(m[3])),p.n);
+    check(`예시 ${k} 배터리`,rows.map(m=>m[2]),p.bat.map(v=>`${v>0?'충전':v<0?'방전':'정지'} ${Math.abs(v)} MW`));
+    check(`예시 ${k} 수요반응`,rows.map(m=>m[4]==='켬'),p.dr);
+  }
+});
+test('5·낮음 질문 문안', () => {
+  const qs = st => {const rows=game.questions(st);
+    for(const q of rows) check(`결함 8 ${q.k} 요청 하나`,requestCount(q.q),1);
+    return Object.fromEntries(rows.map(q=>[q.k,q.q]));};
+  const b = qs(questionState(plans.B,['emission','fair']));
+  check('5 c1 얻는 것·잃는 것 한 문장',b['ig-c1'].includes('얻는 것과 잃는 것을 한 문장으로'),true);
+  // N4·N6: 두 기준 중 무엇을 앞세웠는지 먼저 밝히는 문안.
+  check('5 c1 조사',b['ig-c1'].includes('‘배출·대기오염 최소’와 둘째 기준 ‘피해의 공정한 분배’ 가운데 어떤 기준을 앞세웠는지 먼저 밝히고'),true);
+  check('c3-hit 조사',b['ig-c3-hit'].includes('‘S2 오후 구름’은 처음'),true);
+  const s1 = qs(questionState(plans.B,['emission','fair'],undefined,'S1'))['ig-c3-miss'];
+  for (const word of ['‘S1 예보대로’를 골랐습니다','‘S2 오후 구름’입니다','어느 날씨에 몰릴지','첫 시험 계획과 같습니다']) check(`c3-miss 다른 날씨/${word}`,s1.includes(word),true);
+  check('c3-miss 과소평가 단정 없음',/과소평가/.test(s1),false);
+  const under = qs(questionState(plans.B,['emission','fair'],undefined,'none'))['ig-c3-miss'];
+  for (const word of ['‘세 날씨 모두 정전 없음’을','작게 본']) check(`c3-miss 과소/${word}`,under.includes(word),true);
+  const overState = questionState(plans.A,['outage','fair'],{scenario:'S2',limit:0},'S3');
+  const over = qs(overState)['ig-c3-miss'];
+  for (const word of ['‘S3 더 더움’을','세 날씨 모두 정전이 없었습니다','크게 본']) check(`c3-miss 과대/${word}`,over.includes(word),true);
+  const replanned = questionState(plans.B,['emission','fair'],undefined,'S2');
+  replanned.game.firstRun = questionState(plans.A,['outage','fair']).game.firstRun;
+  check('c3-miss 고친 계획',qs(replanned)['ig-c3-miss'].includes('첫 시험 뒤 고친 계획'),true);
+  const w = qs(questionState({...clone(plans.B),weights:[4,1.2]},['emission','fair']))['ig-b-weights'];
+  for (const word of ['S2 오후 구름','6.73','현재 가중치','기본값']) check(`가중치 질문/${word}`,w.includes(word),true);
+  check('가중치 질문 0.00 아님',/현재 가중치에서 0\.00/.test(w),false);
+  check('가중치 질문 같은 값 설명',w.includes('두 값이 같지만'),true);
+  const w1 = qs(questionState({...clone(plans.B),shed:'R1',weights:[4,1.2]},['emission','fair']))['ig-b-weights'];
+  check('가중치 질문 R1 값 다름(11.1650 대 11.1559)',w1.includes('11.16')&&!w1.includes('두 값이 같지만'),true);
+  // N4: 계산 보조 물음 대신 저장 대안 제안과 규모 근거를 한 요청으로 복원.
+  const alt = b['ig-storage-alt'];
+  // 명세 8절 발산 질문: 저장 방법 하나와 섬에서의 규모 어림을 한 요청으로 묻는다.
+  for (const word of ['16 MWh','100 m','저장 방법 하나를','그 규모가 섬에서 현실적인지 어림한 근거와 함께 제안해 주세요']) check(`발산/${word}`,alt.includes(word),true);
+  for (const word of ['9.8×10⁵','0.27 kWh','5.9']) check(`발산 답 미노출/${word}`,alt.includes(word),false);
+  check('발산 요청 하나',requestCount(alt),1);
+  check('반문 물음표',['R1','R2','R3'].every(shed=>/고치거나 유지할 이유를 말해 주세요\.$/.test(qs(questionState({...clone(plans.B),shed},['emission','fair']))[`ig-r-${shed.toLowerCase()}`])),true);
+  const dcs = questionState(plans.H,['emission','fair'],{scenario:'S2',limit:0},'S3');
+  const dq = game.questions(dcs).find(q=>q.k==='ig-b-dcharge');
+  check('dcharge 질문 문안',!!dq && dq.q.includes('충전하지 않았다면') && !dq.q.includes('재생 발전이 남지 않는'),true);
 });
 
 // 고정 시드 물리 검사. 식은 12.4의 불변 조건뿐이고 급전 계산은 구현에 맡긴다.
@@ -291,6 +394,11 @@ function conservation(p,s,r,label) {
     check(`${prefix} 전력 보존`,v.r-v.curt+v.dis+v.g,v.L-v.u+v.ch,1e-9);
     check(`${prefix} 효율 SOC`,v.soc,v.before+v.ch*.95*3-v.dis*3/.95,1e-9);
     check(`${prefix} SOC 연속`,v.before,b?r.rows[b-1].soc:8,1e-9);
+    // 디젤 배정 충전량: 충전하지 않았다면 줄었을 디젤 발전량(한계 기준).
+    const noCharge = v.n ? Math.max(v.n,Math.min(3*v.n,v.L-v.r-v.dis)) : 0;
+    check(`${prefix} 디젤 배정 충전 정의`,v.dcharge,Math.max(0,v.g-noCharge),1e-9);
+    check(`${prefix} 디젤 배정 충전 범위`,v.dcharge>=-1e-9&&v.dcharge<=v.ch+1e-9,true);
+    if (v.curt>1e-9) check(`${prefix} 출력제한 중 디젤 배정 충전 없음`,v.dcharge,0,1e-9);
   });
   for (const [total,row] of [['u','u'],['heat','heat'],['diesel','g'],['curt','curt'],['ext','ext'],['coop','coop'],['ch','ch'],['dis','dis'],['dcharge','dcharge']])
     check(`${label}/${s}/합계${total}`,r[total],sum(r.rows.map(v=>v[row]*3)),1e-9);

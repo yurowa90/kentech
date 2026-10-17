@@ -130,6 +130,13 @@ def _prepare2022(c, aid):
     c.page.locator('[data-tool="wind"]').click()
     for cell in ("A6", "A7", "B6"):
         c.page.locator(f'[data-cell="{cell}"]').click()
+    # PDF p13 배멧 예시 / p35 조건 3: 학생이 마을과 공유 전선을 직접 지정한다.
+    for i in range(3):
+        c.page.select_option(f"#to-{i}", "배멧")
+    c.page.click('[data-tool="wire"]')
+    for a, b in (("A6", "A7"), ("A6", "B6"), ("B6", "B9")):
+        c.page.click(f'[data-cell="{a}"]')
+        c.page.click(f'[data-cell="{b}"]')
     c.expect("충족" in _text(c, "table.supply"), f"{aid} 배멧 공급 충족을 표시한다")
     c.page.locator("#to-0").select_option("참살이")
     c.page.locator('[data-del="2"]').click()
@@ -1160,7 +1167,8 @@ def _question_keys(c, aid, year, state):
     c.expect(all(isinstance(k, str) and re.fullmatch(year[2:] + r"-[a-z0-9-]+", k) for k in keys),
              f"{aid} T0a-13 {year} 질문 키가 고정 형식을 따른다")
     c.eq(len(set(keys)), len(keys), f"{aid} T0a-13 {year} 질문 키가 중복되지 않는다")
-    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 2, "2024": 6, "2025": 1, "2026": 2}[year],
+    # 2023b spec §1.7·spec-v2 W1: T0b-2는 빈 상태 18개, 예시 계획 뒤 24개를 검사한다.
+    c.eq(sum(q.get("src") == "report" for q in qs), {"2022": 2, "2023": 24 if state.get("game", {}).get("plan") else 18, "2024": 6, "2025": 1, "2026": 2}[year],
          f"{aid} T0a-13 {year} 보고서 문항 수를 유지한다")
 
 

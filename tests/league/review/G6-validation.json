@@ -1,0 +1,238 @@
+{
+  "commands": [
+    {
+      "file": "tests/league/balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/sec.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/recal.js",
+      "code": 1
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0,
+      "passes": 10446,
+      "failures": 0
+    }
+  ],
+  "evidence": {
+    "before": "a6c4ca4a62429e2484de2c924f4047126739d58e6d5bb281fac56719de5623c4",
+    "after": "a6c4ca4a62429e2484de2c924f4047126739d58e6d5bb281fac56719de5623c4",
+    "equal": true,
+    "recalHash": "d3924c57987d86bff27cc7d76fd0213c5088e9006c9dba1d9db9aa56eb25d44a"
+  },
+  "trajectories": {
+    "scoreOnlyVariantsSameState": {
+      "a10": true,
+      "b": true,
+      "c": true
+    },
+    "selectedNonSmrSameState": true,
+    "botsSelectedSameEnergyFiscalCities": true,
+    "botFailuresSame": true
+  },
+  "syntax": [
+    {
+      "file": "tests/league/balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0
+    },
+    {
+      "file": "ui/build.js",
+      "code": 0
+    },
+    {
+      "file": "ui/econ-data.js",
+      "code": 0
+    },
+    {
+      "file": "ui/econ.js",
+      "code": 0
+    },
+    {
+      "file": "ui/league-ai.js",
+      "code": 0
+    },
+    {
+      "file": "ui/league-core.js",
+      "code": 0
+    },
+    {
+      "file": "ui/tech-data.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g6-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/bots36.py",
+      "code": 0,
+      "kind": "Python AST"
+    },
+    {
+      "file": "/tmp/g6-validation/embedded-JS.js",
+      "code": 0
+    },
+    {
+      "file": "/tmp/g6-validation/embedded-runner.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g6-report.py",
+      "code": 0,
+      "kind": "Python AST"
+    }
+  ],
+  "recal": {
+    "pass": 251,
+    "fail": 8,
+    "allowedH01": 8,
+    "modified": false
+  },
+  "bots36": {
+    "checks": 18072,
+    "failures": [
+      "B18 storage 실제 ESS 추가 0회·충전으로 버림 감소 0MWh"
+    ]
+  }
+}

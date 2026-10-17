@@ -1,0 +1,338 @@
+{
+  "commands": [
+    {
+      "file": "tests/league/balance.js",
+      "code": 0,
+      "seconds": 89.18,
+      "passes": 795,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0,
+      "seconds": 1.15,
+      "passes": 1286685,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/next.js",
+      "code": 0,
+      "seconds": 17.35,
+      "passes": 575,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/tech.js",
+      "code": 0,
+      "seconds": 1.37,
+      "passes": 167,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/sec.js",
+      "code": 0,
+      "seconds": 56.17,
+      "passes": 442,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/recal.js",
+      "code": 1,
+      "seconds": 10.13,
+      "passes": 251,
+      "failures": 8
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "code": 0,
+      "seconds": 3.65
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0,
+      "seconds": 2.53,
+      "passes": 375,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "code": 0,
+      "seconds": 5.72,
+      "passes": 242,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0,
+      "seconds": 2.9,
+      "passes": 170,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "code": 0,
+      "seconds": 5.12,
+      "passes": 163,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "code": 0,
+      "seconds": 12.5
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "code": 0,
+      "seconds": 6.19
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "code": 0,
+      "seconds": 14.05
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "code": 0,
+      "seconds": 0.03
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "code": 0,
+      "seconds": 15.72
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "code": 0,
+      "seconds": 0.18
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "code": 0,
+      "seconds": 0.13,
+      "passes": 864,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "code": 0,
+      "seconds": 51.62,
+      "passes": 27,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "code": 0,
+      "seconds": 12.14,
+      "passes": 67,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0,
+      "seconds": 0.41,
+      "passes": 96,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "code": 0,
+      "seconds": 93.82,
+      "passes": 2592,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0,
+      "seconds": 0.05,
+      "passes": 42,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "code": 0,
+      "seconds": 5.2
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "code": 0,
+      "seconds": 0.25
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "code": 0,
+      "seconds": 0.18
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "code": 0,
+      "seconds": 0.13
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "code": 0,
+      "seconds": 0.09
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "code": 0,
+      "seconds": 0.24
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "code": 0,
+      "seconds": 0.89,
+      "passes": 168,
+      "failures": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 1,
+      "passes": 10444,
+      "failures": 2,
+      "log": "/tmp/g7/final/tech.log"
+    }
+  ],
+  "syntax": [
+    {
+      "file": "ui/tech-data.js",
+      "code": 0
+    },
+    {
+      "file": "ui/econ-data.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g7-variants.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/review/g7-report.py",
+      "code": 0,
+      "kind": "Python AST"
+    },
+    {
+      "file": "ui/econ.js",
+      "code": 0
+    },
+    {
+      "file": "ui/build.js",
+      "code": 0
+    },
+    {
+      "file": "tests/league/test-econ.js",
+      "code": 0
+    }
+  ],
+  "evidence": {
+    "count": 64,
+    "changed": [
+      "KCP.TECH_DATA.params.smrCost"
+    ],
+    "before": {
+      "v": 22.173913043478258,
+      "grade": "M",
+      "note": "SMR 건설비 · IEA(2025) 2040 빠른 경로 낙관 단가 4,500$/kW [I10] · 기존 150억/20게임MW=7.5억/게임MW 유지 × (4×170/230) = 22.173913억 · 첫 호기와 다름 · 결정 v1.0.4 · REF 12.6",
+      "sources": [
+        "I10"
+      ],
+      "refs": [
+        "I10"
+      ]
+    },
+    "after": {
+      "v": 39.42028985507246,
+      "grade": "M",
+      "note": "SMR 첫 호기 건설비 · DOE(2023) FOAK overnight 6,000~10,000$/kW 중간값 8,000 [I34] · 기존 게임 가격지수 7.5×(8000/4500)=13.333333억/게임MW × (4×170/230)=39.420290억 · 금융비 제외, 미국 첨단원전 범위의 대리값이며 한국 i-SMR 견적 아님 · G7 REF 12.6",
+      "sources": [
+        "I34",
+        "https://www.energy.gov/ne/articles/commercializing-advanced-nuclear-reactors-explained-five-charts"
+      ],
+      "refs": [
+        "I34"
+      ]
+    }
+  },
+  "trajectories": {
+    "nonSmr18StateEqualsG5": true,
+    "botsAllMonthsEnergyFiscalCitiesEqualsG6": true,
+    "botsFailureIdentityUnchanged": [
+      "B18 storage 실제 ESS 추가 0회·충전으로 버림 감소 0MWh"
+    ]
+  },
+  "preserved": {
+    "ui/build.js": true,
+    "ui/league-ai.js": true,
+    "ui/econ.js": true,
+    "ui/league-core.js": true,
+    "tests/league/recal.js": true,
+    "tests/league/review/G6-sensitivity.json": true,
+    "tests/league/review/G6-validation.json": true,
+    "tests/league/review/G6-comparison.md": true,
+    "tests/league/review/G6-report.md": true,
+    "tests/league/review/G6-results.json": true,
+    "tests/league/bots36.py": true
+  },
+  "recal": {
+    "passes": 251,
+    "failures": 8,
+    "identicalFailureDetails": true,
+    "sha256": "d3924c57987d86bff27cc7d76fd0213c5088e9006c9dba1d9db9aa56eb25d44a"
+  },
+  "candidates": [
+    {
+      "variant": "need72",
+      "code": 0
+    },
+    {
+      "variant": "need144",
+      "code": 0
+    },
+    {
+      "variant": "fuel2",
+      "code": 0
+    },
+    {
+      "variant": "fuel4",
+      "code": 0
+    }
+  ],
+  "g6CompletionAudit": {
+    "recordedCommands": 31,
+    "allLogsPresent": true,
+    "explanation": "기존 종료코드 기록과 각 로그를 대조했고 G7에서 지정 검사를 직접 재실행했다. 이전 세션 종료 자체의 외부 원인은 추정하지 않는다."
+  },
+  "final": {
+    "technologyExit": 1,
+    "botsExit": 1,
+    "reviewFailureCount": 2,
+    "botsFailureCount": 1
+  },
+  "limitations": [
+    "브라우저 렌더링·교실 세션 미실행",
+    "review18은 입력 파일 안내 후 정상 종료하는 진단 도구이며 보정 입력 검사는 미실행"
+  ]
+}

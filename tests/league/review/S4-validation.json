@@ -1,0 +1,336 @@
+{
+  "base": "fd9f057",
+  "branch": "wip/r3",
+  "sourceHashes": {
+    "ui/econ.js": "b2e77bf533e5714c79e0dcf96d7b2c20bf07f59a0411a180d6f02ec7a3bd6b38",
+    "ui/econ-data.js": "ac646a9af381e4e92e51b00bf371f8daff44c77d427fc48e0dfc4bae2ed71a2d",
+    "ui/league-data.js": "3531e084dd7d7778d39b7062263fc7a3538c40c4db2f98ee71d640e68444145f",
+    "ui/league-core.js": "610844ac6222e4da60092c7e216b9f08db59b38a74a1648a2693b28592f9e983",
+    "ui/league.js": "785ca4fa271715d648fe5611bd99890a918315ff53e7909023df9d0915591514",
+    "ui/build.js": "e25e0583e747b6942d535e5c3c362938161d3c604f54a6280722b15e8c8f0e42",
+    "tests/league/recal.js": "d3924c57987d86bff27cc7d76fd0213c5088e9006c9dba1d9db9aa56eb25d44a",
+    "tests/league/balance.js": "89f4afd924d9d7fc6d2efe18953dd53b30c861f87065f0a632b93a3b996a7241"
+  },
+  "checks": [
+    {
+      "file": "tests/league/test-econ.js",
+      "exit": 0,
+      "seconds": 2.8,
+      "tail": "성 55억(분기별 1/4 지급) · 당진 55억(분기별 1/4 지급) · 아산 63억(분기별 1/4 지급) · 천안 78억(분기별 1/4 지급)\n  13턴 국제: 자동차 수출 둔화(6달) — 자동차 도시 산출이 줄어요\n  13턴 기업 이전 희망: 반도체 후공정 공장 3,900명 · 2.3 MW · 재생 55% 이상\n국제 지수 36턴: {\"lng\":0.685,\"fx\":1.016,\"ship\":1.02,\"semi\":0.957,\"active\":[\"EU 탄소국경조정(CBAM)\",\"자동차 수출 둔화\"]}\n\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/tech.js",
+      "exit": 0,
+      "seconds": 4.72,
+      "tail": "checks 167 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/1-invariants.js",
+      "exit": 0,
+      "seconds": 15.35,
+      "tail": "seed A vs B intl differ: true\nE0 immutable: true\nyearStart twice in same year: anseong cash 160 -> 173.81 -> 173.81 (guard ok)\nchecks 4493516, fails 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/10-tech.js",
+      "exit": 0,
+      "seconds": 6.94,
+      "tail": "027127303333,\"outputMWh\":20.25809494556166,\"storedMWh\":0,\"roundtrip\":0.34999999999999987}\n12달 획득 화성·오산 {\"adopted\":[\"bms\",\"fcst\",\"grid\",\"hvdc\",\"tandem\"],\"count\":5,\"stage\":{\"bms\":\"done\",\"fcst\":\"done\",\"grid\":\"done\",\"hvdc\":\"done\",\"tandem\":\"done\",\"sic\":\"done\"}}\nT1–T3/T5: 375 통과, 0 실패\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/next.js",
+      "exit": 0,
+      "seconds": 55.96,
+      "tail": "checks 575 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/12-next.js",
+      "exit": 0,
+      "seconds": 18.71,
+      "tail": "0001,\"complaints\":8},{\"nearby\":true,\"share\":true,\"tax\":0,\"approval\":29.339039514731663,\"score\":20.9,\"cash\":9652.4035,\"complaints\":8},{\"nearby\":true,\"share\":true,\"tax\":2,\"approval\":24.952757332927657,\"score\":20.4,\"cash\":9672.136499999997,\"complaints\":8}]}\nNEXT 독립 검사: 242 통과, 0 실패\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/13-confirmed.js",
+      "exit": 0,
+      "seconds": 9.72,
+      "tail": "확정 결함: 170 통과, 0 실패\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/14-he.js",
+      "exit": 0,
+      "seconds": 52.72,
+      "tail": "H-E checks 163 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/15-map.js",
+      "exit": 0,
+      "seconds": 0.95,
+      "tail": "지도 유지 checks 9 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/15-recal-r2.js",
+      "exit": 0,
+      "seconds": 24.84,
+      "tail": ":99,\"planned_maintenance\":223,\"datacenter_siting\":399,\"re100_buyer\":384,\"monsoon_cloud\":103,\"heavy_snow_solar\":83,\"heatwave_peak\":119,\"coldwave_heating\":145,\"evening_peak_tropical_night\":81,\"spring_dust_haze\":81,\"regional_tariff\":198,\"typhoon_coast\":102}}\nR2 checks 14738, fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/16-recal-audit.js",
+      "exit": 0,
+      "seconds": 15.95,
+      "tail": "0},\"unnormalized\":{\"pct\":0.15923959570052215,\"maxLast25MonthShareDrift\":0}},\"directLogitPct\":0.24957516103294441,\"weightSum\":0.7434500000000002,\"normalizedTaxWeight\":0.03362700921380052,\"migration\":[{\"speed\":1,\"error\":0.399520568549633},{\"speed\":4.4,\"error\":0.5736755728721619}]}\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/sec.js",
+      "exit": 0,
+      "seconds": 260.0,
+      "tail": "month\":35,\"phase\":\"review\"},\"wireChars\":{\"value\":175003,\"month\":35,\"phase\":\"review\"},\"wireBytes\":{\"value\":178289,\"month\":35,\"phase\":\"review\"}},\"builds\":205,\"research\":31,\"ties\":3,\"signMs\":{\"mean\":206.599,\"max\":715.04},\"verifyMs\":{\"mean\":261.926,\"max\":1587.586}}\nchecks 524 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "exit": 0,
+      "seconds": 2.44,
+      "tail": "F40 analysis: supply bots36.json to recalculate growth scales and debt distribution\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/17-ai-r2.js",
+      "exit": 0,
+      "seconds": 408.29,
+      "tail": "00000000001,\"asan\":6.083333333333334,\"cheonan\":6},\"newStaff\":12},{\"style\":\"bold\",\"ren\":{\"hwaseong\":1.0833333333333333,\"pyeongtaek\":1.0833333333333333,\"anseong\":2.4166666666666665,\"dangjin\":1.5000000000000002,\"asan\":1.0833333333333333,\"cheonan\":0.8333333333333334},\"newStaff\":12}]\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/balance.js",
+      "exit": 0,
+      "seconds": 593.26,
+      "tail": " 측정 asan cash0=220.000, 첫달=259.700, 13달째=256.700, 차이=1.155%, 목표=259.660/256.667\nB17 측정 cheonan cash0=205.000, 첫달=408.400, 13달째=404.900, 차이=0.857%, 목표=408.382/404.925\nB17 통과 19/19\nH01 측정 시작 ΔPM=0.07, 정전 air 상승=2.030000000000001, 상한=2.03\nH01 PM2.5 증분·정전 상한 통과 19/19\npass 826 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/2-extremes.js",
+      "exit": 0,
+      "seconds": 6.44,
+      "tail": "85.1\nD empty ids -> order: [] (falls back to all?)\n   monthStep empty ok, totals {\"pop0\":0,\"ind0\":0,\"pop\":0,\"ind\":0}\nE garbage ok, anseong policy {\"taxRes\":2,\"taxInd\":0,\"service\":0,\"incentive\":0} cash 178.11\nF months:12 game, after 40 steps t= 12 len= 12 (monthStep respects len)\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/20-fiscal-contract.js",
+      "exit": 0,
+      "seconds": 4.0,
+      "tail": "G3 fiscal contract pass 864 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/19-fiscal-grid.js",
+      "exit": 0,
+      "seconds": 393.87,
+      "tail": " \"ind\": 51.1,\n          \"fin\": 0,\n          \"co2\": 100,\n          \"appr\": 78.5,\n          \"rel\": 100\n        },\n        \"cash\": -257.91999999999985,\n        \"annual\": -149.437,\n        \"pop\": 689673,\n        \"ind\": 336225,\n        \"approval\": 78.4871157157656\n      }\n    }\n  }\n}\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/23-g5-contract.js",
+      "exit": 0,
+      "seconds": 24.68,
+      "tail": "1.0625807652790353,\"carbonPart\":0,\"co2\":1078.6608000000015,\"supplied\":1015.1329999999986},\"asan\":{\"intensity\":0.4567000000000007,\"carbonPart\":66.5,\"co2\":0,\"supplied\":0},\"cheonan\":{\"intensity\":0.4567000000000001,\"carbonPart\":66.5,\"co2\":0,\"supplied\":0}}\nG5 contract pass 102 fail 0\n",
+      "phase": "before-sigterm"
+    },
+    {
+      "file": "tests/league/review/3-policy-grid.js",
+      "exit": 0,
+      "seconds": 5.1,
+      "tail": "00,\"appr\":77.9,\"rel\":100}\nR0 I-2 S0 inc10      score 87.5 rank 1 dPop% 0.91 dInd% 2.87 cash -13 appr 74.0 {\"pop\":53.8,\"ind\":61,\"fin\":100,\"co2\":100,\"appr\":73.9,\"rel\":100}\nR2 I-2 S2 inc10      score 87.4 rank 1 dPop% 1.08 dInd% 2.87 cash -29 appr 72.7 {\"pop\":54.6,\"ind\":61,\"fin\":100,\"co2\":100,\"appr\":72.6,\"rel\":100}\nR0 I-2 S2 inc10      score 50.5 rank 6 dPop% 1.40 dInd% 2.88 cash -140 appr 76.6 {\"pop\":55.9,\"ind\":61,\"fin\":0,\"co2\":100,\"appr\":76.5,\"rel\":100}\nR-2 I-2 S0 inc10     score 50.4 rank 6 dPop% 1.22 dInd% 2.88 cash -124 appr 75.9 {\"pop\":55.2,\"ind\":61,\"fin\":0,\"co2\":100,\"appr\":75.8,\"rel\":100}\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/4-drift.js",
+      "exit": 0,
+      "seconds": 0.26,
+      "tail": " 화성·오산 443명 이주: 정전이 잦아서\n  t3 dPop -3875 dInd -2824 appr 59 out 0.8996 news: 평택 → 화성·오산 734명 이주: 정전이 잦아서\n  t6 dPop -8738 dInd -6398 appr 54.7 out 0.87882 news: 평택 → 화성·오산 755명 이주: 정전이 잦아서\n  t12 dPop -17406 dInd -13149 appr 54.3 out 0.9078999999999999 news: 평택 → 화성·오산 626명 이주: 정전이 잦아서\n  t18 dPop -15676 dInd -12866 appr 61.9 out 0.95928 news: \n  t24 dPop -12603 dInd -11357 appr 65.5 out 1.0034500000000002 news: \n  t36 dPop -8613 dInd -8811 appr 69.7 out 1.07701 news: \n\n-- cheonan taxRes +2: lagL.tax by month [ 43.33333333333333 ] eff L: -0.3,-0.5,-0.6,-0.6,-0.6,-0.6,-0.5,-0.5,-0.5,-0.4,-0.4,-0.4\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/5-exploits.js",
+      "exit": 0,
+      "seconds": 0.18,
+      "tail": "30.8,\"senior\":13.1,\"business\":17.2,\"farm\":30.9,\"green\":38.3}\n(f) cheonan spends cash0+200 in month 1: debtCap 340.2 cash t1 -175 interest/month 0.421 cash t12 -64 score.fin t1 64.6\n(g) hwaseong Jan rev: {\"subsidy\":24.853,\"resTax\":37.212,\"indTax\":12.83,\"tariff\":2.231,\"trade\":0,\"royalty\":0,\"bonus\":0,\"salvage\":0} exp: {\"capex\":0,\"opex\":0,\"service\":40.112,\"incentive\":0,\"interest\":0,\"trade\":0,\"policy\":0}\n    monthly net excl subsidy: normal 12.2 | opex halved 12.2 | demMWh omitted -101.6  (taxRes ±2 swing = 14.9 )\n(h) intl.cur.fuelMul exported but econ.js never multiplies opex by it; grep: 225,744\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/6-ind-jump.js",
+      "exit": 0,
+      "seconds": 0.14,
+      "tail": "3 others Aeff -1.6/-0.5/-6.4/-0.4/-0.4 price 74 re 100\nt10 ind 664494 dInd 909 net 249 Aeff 3.1 others Aeff -1/-0.5/-6/-0.4/-0.4 price 74 re 100\nt11 ind 665396 dInd 902 net 241 Aeff 3.2 others Aeff -0.7/-0.5/-5.8/-0.4/-0.4 price 74 re 100\nt12 ind 666213 dInd 817 net 155 Aeff 2.5 others Aeff -0.3/-0.4/-2.8/-0.2/-0.2 price 50 re 30\nt13 ind 666978 dInd 765 net 102 Aeff 2 others Aeff -0.1/-0.3/-1.4/-0.1/-0.1 price 50 re 30\ncheap power x0.6             asan 12m: pop 0.52% ind 0.14%\nren 60%                      asan 12m: pop 0.04% ind 0.32%\ncostPerMWh=0 (net exporter)  asan 12m: pop 0.78% ind 0.23%\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/7-fiscal-approval.js",
+      "exit": 0,
+      "seconds": 0.09,
+      "tail": " 단가: 주민·산업 1만 명당 연 세입, 정액 보정 지원금(억):\nhwaseong 3.6 2.16 4.762\npyeongtaek 3.6 2.16 0\nanseong 3.6 2.16 0\ndangjin 3.6 2.16 0\nasan 3.6 2.16 0\ncheonan 3.6 2.16 0\n시작 연 운영 수지 / cash0: hwaseong 0.46, pyeongtaek 0.25, anseong 0.25, dangjin 0.15, asan 0.25, cheonan 0.44\nuns5 tax+2 svc-2 ren0      approval t12: 52.9 50.5 52.2 49.5 53.3 53.7 pass: true,true,true,true,true,true\nuns2 hosp tax+2 svc-2      approval t12: 56 53.5 54.7 51.8 56.3 56.6 pass: true,true,true,true,true,true\npolicy only tax+2 svc-2    approval t12: 67 64.6 66.1 62.7 67.5 67.8 pass: true,true,true,true,true,true\nneutral news:  ||  || \n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/8-offers.js",
+      "exit": 0,
+      "seconds": 0.25,
+      "tail": ".6\no3 jobs won via offers (equal play): {\"hwaseong\":0,\"pyeongtaek\":1300,\"anseong\":0,\"dangjin\":0,\"asan\":0,\"cheonan\":0}  raw A: hwas 74.1, pyeo 72.4, anse 63.3, dang 60.3, asan 69.0, cheo 72.6\no1 all ren80 → jobs won: {\"hwaseong\":0,\"pyeongtaek\":0,\"anseong\":0,\"dangjin\":0,\"asan\":11300,\"cheonan\":0}\no2 all ren80 → jobs won: {\"hwaseong\":0,\"pyeongtaek\":0,\"anseong\":0,\"dangjin\":0,\"asan\":15100,\"cheonan\":0}\no3 all ren80 → jobs won: {\"hwaseong\":0,\"pyeongtaek\":0,\"anseong\":0,\"dangjin\":0,\"asan\":18000,\"cheonan\":0}\nanseong all-in (inc 20/mo, taxInd-2, ren100, cheap power) raw A after 12m: 73.5 vs hwaseong 76.5\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/9-grid.js",
+      "exit": 0,
+      "seconds": 0.92,
+      "tail": "B18 실측 화성·오산 {\"connectedMW\":3.8000000000000003,\"waitingMW\":36,\"headroomMW\":0,\"curtail7dayMWh\":0.6596490846525874,\"curtailMonthMWh\":2.9213030891757445}\nB18 연결 ESS 실측 화성·오산 {\"connectedMW\":28,\"waitingMW\":12,\"renPct\":36,\"curtail7dayMWh\":0,\"curtailMonthMWh\":0}\nB18: 168 통과, 0 실패\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/22-g4-contract.js",
+      "exit": 0,
+      "seconds": 17.0,
+      "tail": "G4 실제 호스트 첫달 {\"perResidentNetWon\":-269.0877623380183,\"residentDemandShares\":{\"hwaseong\":0.3673726280606671,\"pyeongtaek\":0.3380456097221434,\"anseong\":0.489432100173992,\"dangjin\":0.12865784293618962,\"asan\":0.33733661144376687,\"cheonan\":0.520537344106845},\"fuelShockCashEok\":3.1879999999998745,\"startCarbon\":{\"hwaseong\":0.45669999999999894,\"pyeongtaek\":0.39903029901561754,\"anseong\":0.45669999999999955,\"dangjin\":1.0625807652790353,\"asan\":0.4567,\"cheonan\":0.4567}}\nG4 contract pass 67 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/25-g6-score-contract.js",
+      "exit": 0,
+      "seconds": 0.05,
+      "tail": "G7 점수 계약: 42 통과, 0 실패\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/26-g9-start-contract.js",
+      "exit": 0,
+      "seconds": 0.36,
+      "tail": "tensity\":0.4566999999999995,\"cost\":0.007999999999999991,\"before\":66.5,\"after\":88.1,\"onePercentCut\":67.4},{\"id\":\"dangjin\",\"sources\":[\"coal\"],\"fallback\":false,\"supplied\":1015.1329999999986,\"intensity\":1.0625807652790353,\"cost\":0.0058312359070191,\"before\":0,\"after\":5.7,\"onePercentCut\":0},{\"id\":\"asan\",\"sources\":[],\"fallback\":true,\"supplied\":0,\"intensity\":0.4567,\"cost\":0.008,\"before\":66.5,\"after\":88.1,\"onePercentCut\":67.4},{\"id\":\"cheonan\",\"sources\":[],\"fallback\":true,\"supplied\":0,\"intensity\":0.45669999999999994,\"cost\":0.008,\"before\":66.5,\"after\":88.1,\"onePercentCut\":67.4}]\nG9 carbon pass 42 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/27-g9-preservation.js",
+      "exit": 0,
+      "seconds": 0.1,
+      "tail": "G9 preservation pass 132 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/28-g10-contract.js",
+      "exit": 0,
+      "seconds": 0.59,
+      "tail": "B12 세율 축별 1위 도시 수 {\"taxResDown\":0,\"taxResUp\":6,\"taxIndDown\":6,\"taxIndUp\":0}\nB12 세율 축별 1위 도시 수 {\"taxResDown\":3,\"taxResUp\":3,\"taxIndDown\":3,\"taxIndUp\":3}\nB12 세율 축별 1위 도시 수 {\"taxResDown\":6,\"taxResUp\":6,\"taxIndDown\":0,\"taxIndUp\":0}\nG10 contract pass 75 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/29-r3-air.js",
+      "exit": 0,
+      "seconds": 0.05,
+      "tail": "S4 H01/H03/H04 pass 17 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/21-host-policy-grid.js",
+      "exit": 0,
+      "seconds": 56.1,
+      "tail": "s\":-2,\"taxInd\":-2,\"service\":2,\"score\":47.6,\"cash\":-478.7109999999999}}\nB12 실제 호스트 cheonan {\"top\":[{\"key\":\"1,1,1\",\"taxRes\":1,\"taxInd\":1,\"service\":1,\"score\":78.8,\"cash\":-76.28400000000002},{\"key\":\"2,-2,1\",\"taxRes\":2,\"taxInd\":-2,\"service\":1,\"score\":78.8,\"cash\":-51.98900000000003}],\"base\":{\"key\":\"0,0,0\",\"taxRes\":0,\"taxInd\":0,\"service\":0,\"score\":77.8,\"cash\":-112.80899999999995},\"low\":{\"key\":\"-2,-2,2\",\"taxRes\":-2,\"taxInd\":-2,\"service\":2,\"score\":45.2,\"cash\":-1020.6450000000004}}\nB12 세율 축별 1위 도시 수 {\"taxResDown\":2,\"taxResUp\":4,\"taxIndDown\":5,\"taxIndUp\":3}\nB12 host grid 750 combinations; pass 38 fail 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/24-g5-ai-debt.js",
+      "exit": 0,
+      "seconds": 93.6,
+      "tail": "eong\":44.46,\"dangjin\":1437.973,\"asan\":356.45799999999997,\"cheonan\":161.77100000000007}}\nG5 AI {\"style\":\"balanced\",\"over\":[],\"maxUns\":0,\"cash\":{\"hwaseong\":173.01099999999994,\"pyeongtaek\":897.0049999999998,\"anseong\":46.97800000000001,\"dangjin\":1317.6150000000007,\"asan\":49.24000000000005,\"cheonan\":7.383999999999997}}\nG5 AI {\"style\":\"bold\",\"over\":[],\"maxUns\":0,\"cash\":{\"hwaseong\":-202.974,\"pyeongtaek\":874.7510000000003,\"anseong\":10.970999999999986,\"dangjin\":1814.557000000001,\"asan\":3.838000000000015,\"cheonan\":-12.130999999999972}}\nG5 AI pass 2592 fail 0; /private/tmp/s4-resumed-checks/ai-debt.json\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/11-tech-balance.js",
+      "exit": 0,
+      "seconds": 1521.88,
+      "tail": "\"strategy\":\"hybrid\",\"fitAttempt\":0,\"excess\":61.72428571428577,\"capitalLimit\":403.27571428571423}\n{\"city\":\"천안\",\"strategy\":\"동일예산 재생+저장·연계선\",\"score\":81.7,\"avgUns\":0,\"cards\":0}\nSMR 도시1위 2 /6; 목표 ≤3 true\n평균·도시별1위 {\"average\":{\"smr\":83.75,\"research\":72.7,\"none\":68.08333333333333,\"hydrogen\":61.43333333333334,\"renew\":74.86666666666666,\"ties\":68.28333333333333,\"hybrid\":74.3},\"gain\":4.616666666666674,\"winners\":{\"hwaseong\":[\"hybrid\"],\"pyeongtaek\":[\"smr\"],\"anseong\":[\"smr\"],\"dangjin\":[\"research\"],\"asan\":[\"hybrid\"],\"cheonan\":[\"renew\"]}}\nT5 전략: 22030 통과, 0 실패; /private/tmp/s4-resumed-checks/tech-balance.json\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/recal.js",
+      "exit": 0,
+      "seconds": 13.77,
+      "tail": "274/0.82, 감소차=0\n통과 15 CBAM / recal-2/시작 일정: t=0 일정 및 첫 운영 활성=1\n통과 원본 보존 / ECON_DATA 깊은 사본: 현실 모드·속도·장기 수렴·host 입력 실험 후 원본 동일\n\n행별 결과:\n계약 필드: 통과 35 / 실패 0\n01 일자리 고리: 통과 12 / 실패 0\n02 정전 교차 점검: 통과 6 / 실패 0\n03 정전 5%: 통과 3 / 실패 0\n04 회복: 통과 6 / 실패 0\n05 무변화 표류: 통과 6 / 실패 0\n06 세금 고리 순서: 통과 6 / 실패 0\n07 산업 세금: 통과 9 / 실패 0\n08 요금 업종 차: 통과 12 / 실패 0\n09 배속 정의: 통과 18 / 실패 0\n10 세율 범위: 통과 18 / 실패 0\n11 재정 점수 문턱: 통과 54 / 실패 0\n12 지원금 분기 지급: 통과 36 / 실패 0\n13 대학 자산: 통과 20 / 실패 0\n14 정전 시 대기 [미구현 허용: H01 뒤]: 통과 11 / 실패 0\n15 CBAM: 통과 9 / 실패 0\n원본 보존: 통과 1 / 실패 0\n\n미구현 키: 없음\n미구현 0 (실패에 포함), 그중 H01 뒤 미구현 허용 0\n통과 262 / 실패 0\n",
+      "phase": "resumed"
+    },
+    {
+      "file": "tests/league/review/18-growth-calibration.js",
+      "exit": 0,
+      "seconds": 0.19,
+      "tail": "447.64472222222213,\n      \"sd\": 21.157616175321408,\n      \"min\": 24.6,\n      \"max\": 84.5\n    },\n    \"storage\": {\n      \"n\": 6,\n      \"mean\": 73.08333333333333,\n      \"variance\": 498.9813888888889,\n      \"sd\": 22.337891325926197,\n      \"min\": 25.8,\n      \"max\": 88.8\n    }\n  },\n  \"winners\": {\n    \"hwaseong\": [\n      \"storage\"\n    ],\n    \"pyeongtaek\": [\n      \"base\"\n    ],\n    \"anseong\": [\n      \"dm\"\n    ],\n    \"dangjin\": [\n      \"renew\"\n    ],\n    \"asan\": [\n      \"ties\"\n    ],\n    \"cheonan\": [\n      \"storage\"\n    ]\n  },\n  \"unrest\": {\n    \"months\": 1944,\n    \"active\": 244\n  },\n  \"failures\": []\n}\n",
+      "phase": "resumed",
+      "argument": "/private/tmp/s4-resumed-bots/bots36.json"
+    }
+  ],
+  "syntax": {
+    "files": 8,
+    "bots36EmbeddedJs": true,
+    "exit": 0
+  },
+  "preserved": [
+    "ui/league-core.js",
+    "ui/league.js",
+    "ui/build.js",
+    "tests/league/recal.js"
+  ],
+  "status": "complete",
+  "commands": {
+    "bots36": "python3 tests/league/bots36.py --node --months 36 --output-dir /private/tmp/s4-resumed-bots",
+    "review": "node tests/league/review/<file>.js (순차 실행)"
+  },
+  "techSummary": {
+    "average": {
+      "smr": 83.75,
+      "research": 72.7,
+      "none": 68.08333333333333,
+      "hydrogen": 61.43333333333334,
+      "renew": 74.86666666666666,
+      "ties": 68.28333333333333,
+      "hybrid": 74.3
+    },
+    "researchGain": 4.616666666666674,
+    "winners": {
+      "hwaseong": [
+        "hybrid"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "hybrid"
+      ],
+      "cheonan": [
+        "renew"
+      ]
+    },
+    "smrFirstCities": 2,
+    "smrTargetMet": true,
+    "failures": [],
+    "checks": 22030,
+    "runs": 42
+  },
+  "reviewScripts": 30,
+  "finalSourceHashesUnchanged": true,
+  "bots36": {
+    "checks": 18326,
+    "failures": 0,
+    "summary": "S4-bots-summary.json"
+  }
+}

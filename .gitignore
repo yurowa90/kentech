@@ -4,3 +4,4 @@ tests/results/
 tests/shots/
 __pycache__/
 .DS_Store
+tests/league/shots/

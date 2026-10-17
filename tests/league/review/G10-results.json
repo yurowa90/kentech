@@ -1,0 +1,2787 @@
+{
+  "budgetExcessDefinition": "fitHistory.excess는 월별 누계−같은 달 SMR 누계의 최댓값; spent−target은 최종월 차이",
+  "keys": {
+    "aiDebtRepair": {
+      "before": {
+        "v": 0.6,
+        "grade": "G",
+        "note": "현금 음수·전월 운영 적자이면 연 투자 몫×0.6 안에서 신중·균형은 신중 성향의 재생 목표까지 보완, 공격은 기존 목표 유지(평시 보완×0.15), 지방채 한도 유지·위기 중단",
+        "refs": []
+      },
+      "after": null
+    },
+    "aiLocalFuelWeight": {
+      "before": {
+        "v": 4,
+        "grade": "G",
+        "note": "AI 축산 인접 바이오매스 입지 선호 배수: 낮은 운송·연료비를 기본 공급 선택에 반영; 실제 단가 불변",
+        "refs": []
+      },
+      "after": {
+        "v": 4,
+        "grade": "G",
+        "note": "같은 바이오매스 종류 안에서만 축산 인접 입지의 건설·민원 비교비용을 나누는 배수. 종류 간 비용 비교에는 미적용; 실제 단가 불변",
+        "refs": []
+      }
+    },
+    "aiDebtPolicy": {
+      "before": {
+        "v": {
+          "careful": {
+            "warn": -1,
+            "crisis": -2
+          },
+          "balanced": {
+            "warn": -1,
+            "crisis": -1
+          },
+          "bold": {
+            "warn": 0,
+            "crisis": -1
+          }
+        },
+        "grade": "G",
+        "note": "부채 주의·위기의 서비스 목표. 세율은 매달 +1(최소 +1, 최대 +2), 새 연구·연계선 보류. 주의 단계의 필수 공급과 aiDebtRepair 선제 운영 적자 보완은 허용, 위기 건설 중단"
+      },
+      "after": {
+        "v": {
+          "careful": {
+            "warn": -1,
+            "crisis": -2
+          },
+          "balanced": {
+            "warn": -1,
+            "crisis": -1
+          },
+          "bold": {
+            "warn": 0,
+            "crisis": -1
+          }
+        },
+        "grade": "G",
+        "note": "부채 주의·위기의 서비스 목표. 세율은 매달 +1(최소 +1, 최대 +2), 새 연구·연계선 보류. 주의 단계의 필수 공급 보완만 허용, 위기 건설 중단"
+      }
+    },
+    "aiBoldExpansion": {
+      "before": {
+        "v": 0,
+        "grade": "G",
+        "note": "선택 투자 때 공격 성향의 추가 확정 공급 목표 × risk"
+      },
+      "after": {
+        "v": 0,
+        "grade": "G",
+        "note": "선택 투자 때 피크×이 값×risk만큼 확정 공급 목표 추가. 현재 0으로 추가 확장 비활성; 안전 공급은 유지"
+      }
+    },
+    "aiResearchDebtShare": {
+      "before": null,
+      "after": {
+        "v": 0,
+        "grade": "G",
+        "note": "AI 새 연구 인력 건설 예산에 허용하는 지방채 한도의 몫(0~1). 0은 현금·해당 월 지원금 한도 안에서만 건설, 연구·실증·운영 예약비를 먼저 남김; 기존 연구는 유지",
+        "refs": []
+      }
+    },
+    "aiFuelMonths": {
+      "before": null,
+      "after": {
+        "v": 36,
+        "grade": "G",
+        "note": "AI 종류 간 비교의 연료비 예상 기간(최대 36달, 남은 게임 기간 이내). 공개 대표 주 급전의 실제 단가×예상 발전량 차이를 일수 환산해 건설비에 합산; 미래 가격·사건은 예측하지 않음",
+        "refs": []
+      }
+    }
+  },
+  "axes": {
+    "taxResDown": 2,
+    "taxResUp": 4,
+    "taxIndDown": 5,
+    "taxIndUp": 3
+  },
+  "families": {
+    "cut": 3,
+    "raise": 3
+  },
+  "host": [
+    {
+      "id": "hwaseong",
+      "cash": -567.8320000000002,
+      "debtCap": 641.1,
+      "overMonths": 0,
+      "minHeadroom": 73.2679999999998
+    },
+    {
+      "id": "pyeongtaek",
+      "cash": 1228.4669999999996,
+      "debtCap": 380.8,
+      "overMonths": 0,
+      "minHeadroom": 560.20675
+    },
+    {
+      "id": "anseong",
+      "cash": 0.3260000000000396,
+      "debtCap": 133.6,
+      "overMonths": 0,
+      "minHeadroom": 129.30425000000002
+    },
+    {
+      "id": "dangjin",
+      "cash": 1170.725,
+      "debtCap": 120,
+      "overMonths": 0,
+      "minHeadroom": 232.5985
+    },
+    {
+      "id": "asan",
+      "cash": 18.037999999999958,
+      "debtCap": 208.9,
+      "overMonths": 0,
+      "minHeadroom": 220.295
+    },
+    {
+      "id": "cheonan",
+      "cash": -111.97999999999996,
+      "debtCap": 341.7,
+      "overMonths": 0,
+      "minHeadroom": 227.243
+    }
+  ],
+  "carbon": [
+    {
+      "id": "hwaseong",
+      "sources": [],
+      "fallback": true,
+      "supplied": 4.547473508864641e-12,
+      "intensity": 0.45669999999999894,
+      "cost": 0.007999999999999981,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "pyeongtaek",
+      "sources": [
+        "lng"
+      ],
+      "fallback": false,
+      "supplied": 1521.6375272120376,
+      "intensity": 0.3990302990156175,
+      "cost": 0.008328580421760502,
+      "before": 77.1,
+      "after": 95.9,
+      "onePercentCut": 77.8
+    },
+    {
+      "id": "anseong",
+      "sources": [],
+      "fallback": true,
+      "supplied": 2.5579538487363607e-13,
+      "intensity": 0.4566999999999995,
+      "cost": 0.007999999999999991,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "dangjin",
+      "sources": [
+        "coal"
+      ],
+      "fallback": false,
+      "supplied": 1015.1329999999986,
+      "intensity": 1.0625807652790353,
+      "cost": 0.0058312359070191,
+      "before": 0,
+      "after": 5.7,
+      "onePercentCut": 0
+    },
+    {
+      "id": "asan",
+      "sources": [],
+      "fallback": true,
+      "supplied": 0,
+      "intensity": 0.4567,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    },
+    {
+      "id": "cheonan",
+      "sources": [],
+      "fallback": true,
+      "supplied": 0,
+      "intensity": 0.45669999999999994,
+      "cost": 0.008,
+      "before": 66.5,
+      "after": 88.1,
+      "onePercentCut": 67.4
+    }
+  ],
+  "grid": {
+    "hwaseong": {
+      "top": [
+        {
+          "key": "2,1,1",
+          "taxRes": 2,
+          "taxInd": 1,
+          "service": 1,
+          "score": 80.9,
+          "cash": -125.94000000000004
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 64.3,
+        "cash": -567.8320000000002
+      }
+    },
+    "pyeongtaek": {
+      "top": [
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 85.2,
+          "cash": 419.68100000000004
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 83.8,
+        "cash": 1228.4669999999996
+      }
+    },
+    "anseong": {
+      "top": [
+        {
+          "key": "0,2,1",
+          "taxRes": 0,
+          "taxInd": 2,
+          "service": 1,
+          "score": 58,
+          "cash": -22.429000000000038
+        },
+        {
+          "key": "1,-1,1",
+          "taxRes": 1,
+          "taxInd": -1,
+          "service": 1,
+          "score": 58,
+          "cash": -27.240000000000002
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 57.8,
+        "cash": 0.3260000000000396
+      }
+    },
+    "dangjin": {
+      "top": [
+        {
+          "key": "-2,-2,1",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 24.4,
+          "cash": 992.2809999999998
+        },
+        {
+          "key": "-2,-2,2",
+          "taxRes": -2,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.4,
+          "cash": 937.017
+        },
+        {
+          "key": "-2,-1,1",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 1,
+          "score": 24.4,
+          "cash": 1005.9360000000003
+        },
+        {
+          "key": "-2,-1,2",
+          "taxRes": -2,
+          "taxInd": -1,
+          "service": 2,
+          "score": 24.4,
+          "cash": 950.6759999999998
+        },
+        {
+          "key": "-2,0,2",
+          "taxRes": -2,
+          "taxInd": 0,
+          "service": 2,
+          "score": 24.4,
+          "cash": 964.317
+        },
+        {
+          "key": "-1,-2,2",
+          "taxRes": -1,
+          "taxInd": -2,
+          "service": 2,
+          "score": 24.4,
+          "cash": 985.3039999999997
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 24,
+        "cash": 1170.725
+      }
+    },
+    "asan": {
+      "top": [
+        {
+          "key": "0,-2,0",
+          "taxRes": 0,
+          "taxInd": -2,
+          "service": 0,
+          "score": 84.2,
+          "cash": -45.577
+        },
+        {
+          "key": "1,-2,1",
+          "taxRes": 1,
+          "taxInd": -2,
+          "service": 1,
+          "score": 84.2,
+          "cash": -56.01500000000003
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 83.9,
+        "cash": 18.037999999999958
+      }
+    },
+    "cheonan": {
+      "top": [
+        {
+          "key": "1,1,1",
+          "taxRes": 1,
+          "taxInd": 1,
+          "service": 1,
+          "score": 78.5,
+          "cash": -75.43399999999997
+        },
+        {
+          "key": "2,-2,1",
+          "taxRes": 2,
+          "taxInd": -2,
+          "service": 1,
+          "score": 78.5,
+          "cash": -51.38199999999996
+        }
+      ],
+      "base": {
+        "key": "0,0,0",
+        "taxRes": 0,
+        "taxInd": 0,
+        "service": 0,
+        "score": 77.4,
+        "cash": -111.97999999999996
+      }
+    }
+  },
+  "tech": {
+    "average": {
+      "smr": 83.71666666666667,
+      "research": 72.35000000000001,
+      "none": 67.86666666666667,
+      "hydrogen": 61.25,
+      "renew": 74.56666666666666,
+      "ties": 68.08333333333333,
+      "hybrid": 74.06666666666666
+    },
+    "researchGain": 4.483333333333334,
+    "winners": {
+      "hwaseong": [
+        "hybrid"
+      ],
+      "pyeongtaek": [
+        "smr"
+      ],
+      "anseong": [
+        "smr"
+      ],
+      "dangjin": [
+        "research"
+      ],
+      "asan": [
+        "hybrid"
+      ],
+      "cheonan": [
+        "renew"
+      ]
+    },
+    "smrFirstCities": 2,
+    "smrTargetMet": true,
+    "passes": 22030,
+    "failures": []
+  },
+  "techRuns": [
+    {
+      "id": "hwaseong",
+      "strategy": "smr",
+      "score": 81.9,
+      "parts": {
+        "pop": 51.1,
+        "ind": 49.1,
+        "fin": 100,
+        "co2": 100,
+        "appr": 66.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -387.65500000000014,
+        "tariffGross": 3230.068,
+        "service": 1515.549,
+        "interest": 9.682000000000002,
+        "construction": 614.4200000000001,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 3833.7214285714294,
+        "investment": 830.4200000000001,
+        "matchedSpend": 4448.141428571429
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.06185852580365513
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "research",
+      "score": 80,
+      "parts": {
+        "pop": 47.6,
+        "ind": 48,
+        "fin": 93.2,
+        "co2": 100,
+        "appr": 64.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -1072.474,
+        "tariffGross": 3224.4140000000007,
+        "service": 1460.4009999999998,
+        "interest": 13.492999999999999,
+        "construction": 562,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 4512.887142857142,
+        "investment": 778,
+        "matchedSpend": 5074.887142857142
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.21610241981741948
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "none",
+      "score": 80.3,
+      "parts": {
+        "pop": 46.8,
+        "ind": 46.6,
+        "fin": 100,
+        "co2": 100,
+        "appr": 63.7,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -1032.4450000000002,
+        "tariffGross": 3093.771999999999,
+        "service": 1459.125,
+        "interest": 0,
+        "construction": 414,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 4126.2185714285715,
+        "investment": 414,
+        "matchedSpend": 4540.2185714285715
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.20755307721557245
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "hydrogen",
+      "score": 79.5,
+      "parts": {
+        "pop": 47.4,
+        "ind": 47.9,
+        "fin": 89.8,
+        "co2": 100,
+        "appr": 63.8,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -1170.545,
+        "tariffGross": 3226.3199999999993,
+        "service": 1459.6209999999999,
+        "interest": 14.997000000000002,
+        "construction": 482,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 4612.862857142858,
+        "investment": 698,
+        "matchedSpend": 5094.862857142858
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.22064116075094967
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "renew",
+      "score": 81.9,
+      "parts": {
+        "pop": 52,
+        "ind": 51.8,
+        "fin": 100,
+        "co2": 100,
+        "appr": 63.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -257.436,
+        "tariffGross": 3103.904,
+        "service": 1536.9379999999996,
+        "interest": 4.3870000000000005,
+        "construction": 828,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 3361.335714285714,
+        "investment": 828,
+        "matchedSpend": 4189.335714285714
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 828,
+            "operation": 3361.335714285714,
+            "purchase": 0,
+            "spent": 4189.335714285714,
+            "target": 4448.141428571429,
+            "excess": -18.6357142857143
+          }
+        ],
+        "capitalLimit": null,
+        "target": 4448.141428571429,
+        "spent": 4189.335714285714,
+        "unspent": 258.8057142857151,
+        "execution": 0.9418171120586799,
+        "maxPrefixOverspend": -18.6357142857143
+      },
+      "co2Intensity": 0.14550708241169164
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "ties",
+      "score": 80.4,
+      "parts": {
+        "pop": 47.8,
+        "ind": 46.4,
+        "fin": 100,
+        "co2": 99.3,
+        "appr": 64.6,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -869.9409999999999,
+        "tariffGross": 3082.309000000001,
+        "service": 1531.6569999999997,
+        "interest": 0,
+        "construction": 382,
+        "researchOperation": 0,
+        "purchase": 604.8685714285714,
+        "operation": 3347.3814285714284,
+        "investment": 382,
+        "matchedSpend": 4334.25
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 382,
+            "operation": 3347.3814285714284,
+            "purchase": 604.8685714285714,
+            "spent": 4334.25,
+            "target": 4448.141428571429,
+            "excess": -95.43714285714287
+          }
+        ],
+        "capitalLimit": null,
+        "target": 4448.141428571429,
+        "spent": 4334.25,
+        "unspent": 113.89142857142906,
+        "execution": 0.974395726754577,
+        "maxPrefixOverspend": -95.43714285714287
+      },
+      "co2Intensity": 0.2778773459802715
+    },
+    {
+      "id": "hwaseong",
+      "strategy": "hybrid",
+      "score": 82.3,
+      "parts": {
+        "pop": 52.8,
+        "ind": 51.8,
+        "fin": 100,
+        "co2": 100,
+        "appr": 64.6,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -56.39599999999987,
+        "tariffGross": 3092.909999999999,
+        "service": 1569.5009999999995,
+        "interest": 1.7840000000000003,
+        "construction": 830,
+        "researchOperation": 0,
+        "purchase": 502.79857142857145,
+        "operation": 2646.5100000000007,
+        "investment": 830,
+        "matchedSpend": 3979.308571428572
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 830,
+            "operation": 2646.5100000000007,
+            "purchase": 502.79857142857145,
+            "spent": 3979.308571428572,
+            "target": 4448.141428571429,
+            "excess": -22.01285714285717
+          }
+        ],
+        "capitalLimit": null,
+        "target": 4448.141428571429,
+        "spent": 3979.308571428572,
+        "unspent": 468.83285714285694,
+        "execution": 0.8946002808877802,
+        "maxPrefixOverspend": -22.01285714285717
+      },
+      "co2Intensity": 0.21292215129526687
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "smr",
+      "score": 86,
+      "parts": {
+        "pop": 59.7,
+        "ind": 58.2,
+        "fin": 100,
+        "co2": 100,
+        "appr": 73.9,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 1155.99,
+        "tariffGross": 3573.975,
+        "service": 928.8440000000002,
+        "interest": 0,
+        "construction": 520.4200000000001,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2633.9885714285715,
+        "investment": 736.4200000000001,
+        "matchedSpend": 3154.4085714285716
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.22754075170934543
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "research",
+      "score": 85.2,
+      "parts": {
+        "pop": 57.8,
+        "ind": 57.7,
+        "fin": 100,
+        "co2": 98.6,
+        "appr": 73.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 818.6999999999999,
+        "tariffGross": 3591.0789999999997,
+        "service": 927.573,
+        "interest": 0,
+        "construction": 438.42,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2988.3814285714293,
+        "investment": 654.42,
+        "matchedSpend": 3426.8014285714294
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.2815581185404722
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "none",
+      "score": 81.8,
+      "parts": {
+        "pop": 51.9,
+        "ind": 47.8,
+        "fin": 100,
+        "co2": 97.1,
+        "appr": 70.2,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 801.301,
+        "tariffGross": 3406.0910000000003,
+        "service": 921.9230000000001,
+        "interest": 0,
+        "construction": 284,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 2604.7914285714282,
+        "investment": 284,
+        "matchedSpend": 2888.7914285714282
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.2897121183695745
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "hydrogen",
+      "score": 85.2,
+      "parts": {
+        "pop": 57.6,
+        "ind": 57.4,
+        "fin": 100,
+        "co2": 98.8,
+        "appr": 73.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 757.1209999999999,
+        "tariffGross": 3572.6260000000007,
+        "service": 927.2570000000001,
+        "interest": 0,
+        "construction": 443,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 3031.5014285714287,
+        "investment": 659,
+        "matchedSpend": 3474.5014285714287
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.2804373573259072
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "renew",
+      "score": 85.1,
+      "parts": {
+        "pop": 59.7,
+        "ind": 59.6,
+        "fin": 100,
+        "co2": 100,
+        "appr": 67.8,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 1207.2419999999997,
+        "tariffGross": 3430.6059999999993,
+        "service": 926.8579999999998,
+        "interest": 0,
+        "construction": 724,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 2223.365714285714,
+        "investment": 724,
+        "matchedSpend": 2947.365714285714
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 724,
+            "operation": 2223.365714285714,
+            "purchase": 0,
+            "spent": 2947.365714285714,
+            "target": 3154.4085714285716,
+            "excess": -11.402857142857158
+          }
+        ],
+        "capitalLimit": null,
+        "target": 3154.4085714285716,
+        "spent": 2947.365714285714,
+        "unspent": 207.04285714285743,
+        "execution": 0.934363969519303,
+        "maxPrefixOverspend": -11.402857142857158
+      },
+      "co2Intensity": 0.21347863290091082
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "ties",
+      "score": 80.6,
+      "parts": {
+        "pop": 52.4,
+        "ind": 47.5,
+        "fin": 100,
+        "co2": 91.4,
+        "appr": 70.6,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 774.3979999999998,
+        "tariffGross": 3376.4939999999992,
+        "service": 922.3199999999998,
+        "interest": 0,
+        "construction": 307,
+        "researchOperation": 0,
+        "purchase": 512.5828571428572,
+        "operation": 2089.5128571428577,
+        "investment": 307,
+        "matchedSpend": 2909.095714285715
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 307,
+            "operation": 2089.5128571428577,
+            "purchase": 512.5828571428572,
+            "spent": 2909.095714285715,
+            "target": 3154.4085714285716,
+            "excess": -101.75714285714287
+          }
+        ],
+        "capitalLimit": null,
+        "target": 3154.4085714285716,
+        "spent": 2909.095714285715,
+        "unspent": 245.3128571428565,
+        "execution": 0.9222317427853809,
+        "maxPrefixOverspend": -101.75714285714287
+      },
+      "co2Intensity": 0.32109005794245404
+    },
+    {
+      "id": "pyeongtaek",
+      "strategy": "hybrid",
+      "score": 84.5,
+      "parts": {
+        "pop": 58.5,
+        "ind": 56.6,
+        "fin": 100,
+        "co2": 100,
+        "appr": 67.8,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 1086.013,
+        "tariffGross": 3395.501000000001,
+        "service": 925.733,
+        "interest": 0,
+        "construction": 723,
+        "researchOperation": 0,
+        "purchase": 432.6442857142857,
+        "operation": 1876.8442857142857,
+        "investment": 723,
+        "matchedSpend": 3032.488571428571
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 723,
+            "operation": 1876.8442857142857,
+            "purchase": 432.6442857142857,
+            "spent": 3032.488571428571,
+            "target": 3154.4085714285716,
+            "excess": -29.23999999999978
+          }
+        ],
+        "capitalLimit": null,
+        "target": 3154.4085714285716,
+        "spent": 3032.488571428571,
+        "unspent": 121.92000000000053,
+        "execution": 0.9613493315024866,
+        "maxPrefixOverspend": -29.23999999999978
+      },
+      "co2Intensity": 0.2563018724585629
+    },
+    {
+      "id": "anseong",
+      "strategy": "smr",
+      "score": 83.3,
+      "parts": {
+        "pop": 54,
+        "ind": 49.7,
+        "fin": 100,
+        "co2": 100,
+        "appr": 71.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 66.77899999999998,
+        "tariffGross": 586.9039999999998,
+        "service": 220.17799999999994,
+        "interest": 8.276,
+        "construction": 322.42,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 736.1228571428577,
+        "investment": 538.4200000000001,
+        "matchedSpend": 1058.5428571428577
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.03701086919962676
+    },
+    {
+      "id": "anseong",
+      "strategy": "research",
+      "score": 23.8,
+      "parts": {
+        "pop": 36.1,
+        "ind": 44.5,
+        "fin": 0,
+        "co2": 11.5,
+        "appr": 57.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -402.25999999999993,
+        "tariffGross": 578.5129999999999,
+        "service": 189.892,
+        "interest": 14.610999999999999,
+        "construction": 247,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1196.7714285714287,
+        "investment": 463,
+        "matchedSpend": 1443.7714285714287
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.7569602313860584
+    },
+    {
+      "id": "anseong",
+      "strategy": "none",
+      "score": 58.3,
+      "parts": {
+        "pop": 42.9,
+        "ind": 43.3,
+        "fin": 100,
+        "co2": 31.7,
+        "appr": 68.9,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -195.46300000000002,
+        "tariffGross": 424.30600000000004,
+        "service": 279.524,
+        "interest": 0,
+        "construction": 158,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 619.7685714285715,
+        "investment": 158,
+        "matchedSpend": 777.7685714285715
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.647132011882774
+    },
+    {
+      "id": "anseong",
+      "strategy": "hydrogen",
+      "score": 19.4,
+      "parts": {
+        "pop": 35.7,
+        "ind": 44.1,
+        "fin": 0,
+        "co2": 5.6,
+        "appr": 56,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -427.896,
+        "tariffGross": 589.1790000000001,
+        "service": 189.77999999999997,
+        "interest": 16.862999999999996,
+        "construction": 256,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1233.0714285714284,
+        "investment": 472,
+        "matchedSpend": 1489.0714285714284
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.7894511398234463
+    },
+    {
+      "id": "anseong",
+      "strategy": "renew",
+      "score": 65,
+      "parts": {
+        "pop": 46.6,
+        "ind": 53.7,
+        "fin": 79.1,
+        "co2": 54.7,
+        "appr": 52.1,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -158.95499999999993,
+        "tariffGross": 425.001,
+        "service": 199.376,
+        "interest": 9.639999999999999,
+        "construction": 470,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 583.9571428571429,
+        "investment": 470,
+        "matchedSpend": 1053.957142857143
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 482,
+            "operation": 583.9571428571429,
+            "purchase": 0,
+            "spent": 1065.957142857143,
+            "target": 1058.5428571428577,
+            "excess": 8.055714285713748
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 473.94428571428625,
+            "construction": 470,
+            "operation": 583.9571428571429,
+            "purchase": 0,
+            "spent": 1053.957142857143,
+            "target": 1058.5428571428577,
+            "excess": -3.834285714286011
+          }
+        ],
+        "capitalLimit": 473.94428571428625,
+        "target": 1058.5428571428577,
+        "spent": 1053.957142857143,
+        "unspent": 4.58571428571463,
+        "execution": 0.9956678992685359,
+        "maxPrefixOverspend": -3.834285714286011
+      },
+      "co2Intensity": 0.5214464971174201
+    },
+    {
+      "id": "anseong",
+      "strategy": "ties",
+      "score": 60.7,
+      "parts": {
+        "pop": 43.3,
+        "ind": 43.5,
+        "fin": 100,
+        "co2": 36.5,
+        "appr": 69.1,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -182.767,
+        "tariffGross": 424.3550000000001,
+        "service": 279.69499999999994,
+        "interest": 0,
+        "construction": 163,
+        "researchOperation": 0,
+        "purchase": 12.06285714285714,
+        "operation": 595.0585714285716,
+        "investment": 163,
+        "matchedSpend": 770.1214285714287
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 163,
+            "operation": 595.0585714285716,
+            "purchase": 12.06285714285714,
+            "spent": 770.1214285714287,
+            "target": 1058.5428571428577,
+            "excess": -103.7057142857143
+          }
+        ],
+        "capitalLimit": null,
+        "target": 1058.5428571428577,
+        "spent": 770.1214285714287,
+        "unspent": 288.4214285714289,
+        "execution": 0.727529757888202,
+        "maxPrefixOverspend": -103.7057142857143
+      },
+      "co2Intensity": 0.6206853728976686
+    },
+    {
+      "id": "anseong",
+      "strategy": "hybrid",
+      "score": 65.1,
+      "parts": {
+        "pop": 46.9,
+        "ind": 53.6,
+        "fin": 87.7,
+        "co2": 52.3,
+        "appr": 52.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -158.64899999999997,
+        "tariffGross": 424.9439999999999,
+        "service": 204.56900000000005,
+        "interest": 9.068999999999999,
+        "construction": 455,
+        "researchOperation": 0,
+        "purchase": 7.092857142857144,
+        "operation": 576.4971428571429,
+        "investment": 455,
+        "matchedSpend": 1038.5900000000001
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 479,
+            "operation": 576.4528571428572,
+            "purchase": 7.092857142857144,
+            "spent": 1062.5457142857144,
+            "target": 1058.5428571428577,
+            "excess": 4.002857142856783
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 474.9971428571432,
+            "construction": 455,
+            "operation": 576.4971428571429,
+            "purchase": 7.092857142857144,
+            "spent": 1038.5900000000001,
+            "target": 1058.5428571428577,
+            "excess": -17.572857142857288
+          }
+        ],
+        "capitalLimit": 474.9971428571432,
+        "target": 1058.5428571428577,
+        "spent": 1038.5900000000001,
+        "unspent": 19.95285714285751,
+        "execution": 0.9811506383438147,
+        "maxPrefixOverspend": -17.572857142857288
+      },
+      "co2Intensity": 0.5344900292011299
+    },
+    {
+      "id": "dangjin",
+      "strategy": "smr",
+      "score": 83.8,
+      "parts": {
+        "pop": 61,
+        "ind": 67.5,
+        "fin": 100,
+        "co2": 79.9,
+        "appr": 71.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 969.8519999999999,
+        "tariffGross": 2119.2760000000007,
+        "service": 274.636,
+        "interest": 0,
+        "construction": 318.42,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1365.4242857142856,
+        "investment": 534.4200000000001,
+        "matchedSpend": 1683.8442857142857
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.38366495666057604
+    },
+    {
+      "id": "dangjin",
+      "strategy": "research",
+      "score": 84.5,
+      "parts": {
+        "pop": 66.9,
+        "ind": 78.7,
+        "fin": 100,
+        "co2": 75.5,
+        "appr": 71.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 1061.1370000000002,
+        "tariffGross": 2125.5260000000003,
+        "service": 275.4340000000001,
+        "interest": 0,
+        "construction": 300,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1280.392857142857,
+        "investment": 516,
+        "matchedSpend": 1580.392857142857
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.4076224274036874
+    },
+    {
+      "id": "dangjin",
+      "strategy": "none",
+      "score": 23.3,
+      "parts": {
+        "pop": 51.8,
+        "ind": 53.4,
+        "fin": 100,
+        "co2": 0,
+        "appr": 66.6,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 898.01,
+        "tariffGross": 1957.293,
+        "service": 272.6460000000001,
+        "interest": 0,
+        "construction": 150,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1059.2842857142857,
+        "investment": 150,
+        "matchedSpend": 1209.2842857142857
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 1.0074967536391246
+    },
+    {
+      "id": "dangjin",
+      "strategy": "hydrogen",
+      "score": 24.5,
+      "parts": {
+        "pop": 61.6,
+        "ind": 68.6,
+        "fin": 100,
+        "co2": 0,
+        "appr": 70.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 1062.3139999999999,
+        "tariffGross": 2125.456,
+        "service": 274.819,
+        "interest": 0,
+        "construction": 319,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1279.1414285714286,
+        "investment": 535,
+        "matchedSpend": 1598.1414285714286
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.9303831226237126
+    },
+    {
+      "id": "dangjin",
+      "strategy": "renew",
+      "score": 47,
+      "parts": {
+        "pop": 64.8,
+        "ind": 78.6,
+        "fin": 100,
+        "co2": 10.7,
+        "appr": 61.1,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 951.488,
+        "tariffGross": 1981.3509999999999,
+        "service": 274.472,
+        "interest": 0,
+        "construction": 534,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1029.86,
+        "investment": 534,
+        "matchedSpend": 1563.86
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 534,
+            "operation": 1029.86,
+            "purchase": 0,
+            "spent": 1563.86,
+            "target": 1683.8442857142857,
+            "excess": -4.494285714285752
+          }
+        ],
+        "capitalLimit": null,
+        "target": 1683.8442857142857,
+        "spent": 1563.86,
+        "unspent": 119.98428571428576,
+        "execution": 0.9287438353224042,
+        "maxPrefixOverspend": -4.494285714285752
+      },
+      "co2Intensity": 0.7617309791825645
+    },
+    {
+      "id": "dangjin",
+      "strategy": "ties",
+      "score": 23.2,
+      "parts": {
+        "pop": 51.1,
+        "ind": 52.6,
+        "fin": 100,
+        "co2": 0,
+        "appr": 66.5,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 823.3300000000002,
+        "tariffGross": 1881.326,
+        "service": 272.47799999999995,
+        "interest": 0,
+        "construction": 175,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1335.2185714285713,
+        "investment": 175,
+        "matchedSpend": 1510.2185714285713
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 175,
+            "operation": 1335.2185714285713,
+            "purchase": 0,
+            "spent": 1510.2185714285713,
+            "target": 1683.8442857142857,
+            "excess": -87.87428571428569
+          }
+        ],
+        "capitalLimit": null,
+        "target": 1683.8442857142857,
+        "spent": 1510.2185714285713,
+        "unspent": 173.62571428571437,
+        "execution": 0.8968873097359698,
+        "maxPrefixOverspend": -87.87428571428569
+      },
+      "co2Intensity": 1.0236098085939902
+    },
+    {
+      "id": "dangjin",
+      "strategy": "hybrid",
+      "score": 45.3,
+      "parts": {
+        "pop": 64.6,
+        "ind": 78.3,
+        "fin": 100,
+        "co2": 9.3,
+        "appr": 62.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 913.8409999999997,
+        "tariffGross": 1935.9020000000003,
+        "service": 274.411,
+        "interest": 0,
+        "construction": 516,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1105.85,
+        "investment": 516,
+        "matchedSpend": 1621.85
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 516,
+            "operation": 1105.85,
+            "purchase": 0,
+            "spent": 1621.85,
+            "target": 1683.8442857142857,
+            "excess": -5.492857142857133
+          }
+        ],
+        "capitalLimit": null,
+        "target": 1683.8442857142857,
+        "spent": 1621.85,
+        "unspent": 61.99428571428575,
+        "execution": 0.9631828867786383,
+        "maxPrefixOverspend": -5.492857142857133
+      },
+      "co2Intensity": 0.7693591427871114
+    },
+    {
+      "id": "asan",
+      "strategy": "smr",
+      "score": 84.5,
+      "parts": {
+        "pop": 56.9,
+        "ind": 49.9,
+        "fin": 100,
+        "co2": 100,
+        "appr": 75.1,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 296.0659999999999,
+        "tariffGross": 1754.9310000000003,
+        "service": 475.05500000000006,
+        "interest": 3.496,
+        "construction": 414.42,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1674.8685714285712,
+        "investment": 630.4200000000001,
+        "matchedSpend": 2089.2885714285712
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.006090123486149317
+    },
+    {
+      "id": "asan",
+      "strategy": "research",
+      "score": 83.3,
+      "parts": {
+        "pop": 52.8,
+        "ind": 49.1,
+        "fin": 100,
+        "co2": 100,
+        "appr": 73,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -56.359,
+        "tariffGross": 1750.3809999999996,
+        "service": 436.7509999999999,
+        "interest": 2.5870000000000006,
+        "construction": 400.8,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2022.7428571428568,
+        "investment": 616.8,
+        "matchedSpend": 2423.542857142857
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.007079805993528664
+    },
+    {
+      "id": "asan",
+      "strategy": "none",
+      "score": 83.9,
+      "parts": {
+        "pop": 54.5,
+        "ind": 48.3,
+        "fin": 100,
+        "co2": 100,
+        "appr": 75.4,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -20.855000000000004,
+        "tariffGross": 1616.214,
+        "service": 523.1189999999999,
+        "interest": 0,
+        "construction": 278,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1637.0685714285719,
+        "investment": 278,
+        "matchedSpend": 1915.0685714285719
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.00674617043946935
+    },
+    {
+      "id": "asan",
+      "strategy": "hydrogen",
+      "score": 83.3,
+      "parts": {
+        "pop": 52.9,
+        "ind": 48.9,
+        "fin": 100,
+        "co2": 100,
+        "appr": 73,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -66.78699999999998,
+        "tariffGross": 1755.8169999999998,
+        "service": 436.75399999999985,
+        "interest": 4.5040000000000004,
+        "construction": 411,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2038.6042857142857,
+        "investment": 627,
+        "matchedSpend": 2449.6042857142857
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.0013143539580712275
+    },
+    {
+      "id": "asan",
+      "strategy": "renew",
+      "score": 85.4,
+      "parts": {
+        "pop": 59.9,
+        "ind": 60.2,
+        "fin": 100,
+        "co2": 100,
+        "appr": 68.9,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 151.051,
+        "tariffGross": 1627.545,
+        "service": 463.498,
+        "interest": 3.513000000000001,
+        "construction": 594,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1476.494285714286,
+        "investment": 594,
+        "matchedSpend": 2070.494285714286
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 594,
+            "operation": 1476.494285714286,
+            "purchase": 0,
+            "spent": 2070.494285714286,
+            "target": 2089.2885714285712,
+            "excess": -1.614285714285188
+          }
+        ],
+        "capitalLimit": null,
+        "target": 2089.2885714285712,
+        "spent": 2070.494285714286,
+        "unspent": 18.79428571428525,
+        "execution": 0.9910044567460423,
+        "maxPrefixOverspend": -1.614285714285188
+      },
+      "co2Intensity": 0.061847850722985286
+    },
+    {
+      "id": "asan",
+      "strategy": "ties",
+      "score": 84.1,
+      "parts": {
+        "pop": 55.3,
+        "ind": 47.8,
+        "fin": 100,
+        "co2": 100,
+        "appr": 76.3,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 133.011,
+        "tariffGross": 1594.8860000000002,
+        "service": 529.8259999999999,
+        "interest": 0,
+        "construction": 268,
+        "researchOperation": 0,
+        "purchase": 531.2214285714286,
+        "operation": 930.6514285714287,
+        "investment": 268,
+        "matchedSpend": 1729.8728571428574
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 268,
+            "operation": 930.6514285714287,
+            "purchase": 531.2214285714286,
+            "spent": 1729.8728571428574,
+            "target": 2089.2885714285712,
+            "excess": -98.85714285714286
+          }
+        ],
+        "capitalLimit": null,
+        "target": 2089.2885714285712,
+        "spent": 1729.8728571428574,
+        "unspent": 359.4157142857139,
+        "execution": 0.8279722010636569,
+        "maxPrefixOverspend": -98.85714285714286
+      },
+      "co2Intensity": 0.1873922313331988
+    },
+    {
+      "id": "asan",
+      "strategy": "hybrid",
+      "score": 85.7,
+      "parts": {
+        "pop": 60.9,
+        "ind": 60,
+        "fin": 100,
+        "co2": 100,
+        "appr": 69.8,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 278.258,
+        "tariffGross": 1603.463,
+        "service": 476.5279999999999,
+        "interest": 2.3320000000000003,
+        "construction": 624,
+        "researchOperation": 0,
+        "purchase": 414.42285714285725,
+        "operation": 910.7828571428571,
+        "investment": 624,
+        "matchedSpend": 1949.2057142857145
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 624,
+            "operation": 910.7828571428571,
+            "purchase": 414.42285714285725,
+            "spent": 1949.2057142857145,
+            "target": 2089.2885714285712,
+            "excess": -16.6357142857143
+          }
+        ],
+        "capitalLimit": null,
+        "target": 2089.2885714285712,
+        "spent": 1949.2057142857145,
+        "unspent": 140.0828571428567,
+        "execution": 0.9329518865615228,
+        "maxPrefixOverspend": -16.6357142857143
+      },
+      "co2Intensity": 0.19993021510046846
+    },
+    {
+      "id": "cheonan",
+      "strategy": "smr",
+      "score": 82.8,
+      "parts": {
+        "pop": 52.1,
+        "ind": 47.2,
+        "fin": 100,
+        "co2": 100,
+        "appr": 72.1,
+        "rel": 100
+      },
+      "account": {
+        "tariff": 106.05200000000004,
+        "tariffGross": 1377.2300000000002,
+        "service": 859.1180000000002,
+        "interest": 4.571000000000001,
+        "construction": 348.42,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 1487.1771428571433,
+        "investment": 564.4200000000001,
+        "matchedSpend": 1835.5971428571434
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.0527599514289748
+    },
+    {
+      "id": "cheonan",
+      "strategy": "research",
+      "score": 77.3,
+      "parts": {
+        "pop": 44.2,
+        "ind": 44.9,
+        "fin": 98.2,
+        "co2": 88.6,
+        "appr": 67.2,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -452.1829999999999,
+        "tariffGross": 1378.7440000000001,
+        "service": 792.65,
+        "interest": 6.954000000000001,
+        "construction": 336,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2046.9271428571426,
+        "investment": 552,
+        "matchedSpend": 2382.927142857143
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.3364030856094617
+    },
+    {
+      "id": "cheonan",
+      "strategy": "none",
+      "score": 79.6,
+      "parts": {
+        "pop": 46.4,
+        "ind": 45.5,
+        "fin": 100,
+        "co2": 93.2,
+        "appr": 70,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -350.7220000000001,
+        "tariffGross": 1232.386,
+        "service": 894.1470000000002,
+        "interest": 0,
+        "construction": 182,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1583.107142857143,
+        "investment": 182,
+        "matchedSpend": 1765.107142857143
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.3110147079579442
+    },
+    {
+      "id": "cheonan",
+      "strategy": "hydrogen",
+      "score": 75.6,
+      "parts": {
+        "pop": 43.9,
+        "ind": 44.5,
+        "fin": 82.7,
+        "co2": 88.7,
+        "appr": 67,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -491.8179999999999,
+        "tariffGross": 1373.909,
+        "service": 792.199,
+        "interest": 9.812000000000001,
+        "construction": 341,
+        "researchOperation": 216,
+        "purchase": 0,
+        "operation": 2081.7257142857147,
+        "investment": 557,
+        "matchedSpend": 2422.7257142857147
+      },
+      "avgUns": 0,
+      "budget": null,
+      "co2Intensity": 0.3356421978883302
+    },
+    {
+      "id": "cheonan",
+      "strategy": "renew",
+      "score": 83,
+      "parts": {
+        "pop": 51.7,
+        "ind": 53.3,
+        "fin": 100,
+        "co2": 100,
+        "appr": 68,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -115.01300000000006,
+        "tariffGross": 1237.983,
+        "service": 836.5479999999999,
+        "interest": 2.358,
+        "construction": 472,
+        "researchOperation": 0,
+        "purchase": 0,
+        "operation": 1352.9957142857143,
+        "investment": 472,
+        "matchedSpend": 1824.9957142857143
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 484,
+            "operation": 1352.9957142857143,
+            "purchase": 0,
+            "spent": 1836.9957142857143,
+            "target": 1835.5971428571434,
+            "excess": 5.462857142856819
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 478.5371428571432,
+            "construction": 472,
+            "operation": 1352.9957142857143,
+            "purchase": 0,
+            "spent": 1824.9957142857143,
+            "target": 1835.5971428571434,
+            "excess": -6.537142857143181
+          }
+        ],
+        "capitalLimit": 478.5371428571432,
+        "target": 1835.5971428571434,
+        "spent": 1824.9957142857143,
+        "unspent": 10.601428571429096,
+        "execution": 0.9942245341726084,
+        "maxPrefixOverspend": -6.537142857143181
+      },
+      "co2Intensity": 0.24844677071235569
+    },
+    {
+      "id": "cheonan",
+      "strategy": "ties",
+      "score": 79.5,
+      "parts": {
+        "pop": 46.4,
+        "ind": 45.5,
+        "fin": 100,
+        "co2": 93,
+        "appr": 70,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -353.953,
+        "tariffGross": 1231.5120000000002,
+        "service": 905.3129999999998,
+        "interest": 0,
+        "construction": 187,
+        "researchOperation": 0,
+        "purchase": 4.5685714285714285,
+        "operation": 1580.8985714285711,
+        "investment": 187,
+        "matchedSpend": 1772.4671428571426
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 187,
+            "operation": 1580.8985714285711,
+            "purchase": 4.5685714285714285,
+            "spent": 1772.4671428571426,
+            "target": 1835.5971428571434,
+            "excess": -63.13000000000079
+          }
+        ],
+        "capitalLimit": null,
+        "target": 1835.5971428571434,
+        "spent": 1772.4671428571426,
+        "unspent": 63.13000000000079,
+        "execution": 0.9656079220619521,
+        "maxPrefixOverspend": -63.13000000000079
+      },
+      "co2Intensity": 0.31215739046544005
+    },
+    {
+      "id": "cheonan",
+      "strategy": "hybrid",
+      "score": 81.5,
+      "parts": {
+        "pop": 48.7,
+        "ind": 48.3,
+        "fin": 100,
+        "co2": 100,
+        "appr": 67.2,
+        "rel": 100
+      },
+      "account": {
+        "tariff": -192.337,
+        "tariffGross": 1231.181,
+        "service": 850.27,
+        "interest": 0.8890000000000002,
+        "construction": 399,
+        "researchOperation": 0,
+        "purchase": 2.0471428571428576,
+        "operation": 1421.4714285714288,
+        "investment": 399,
+        "matchedSpend": 1822.5185714285717
+      },
+      "avgUns": 0,
+      "budget": {
+        "fitHistory": [
+          {
+            "attempt": 1,
+            "capitalLimit": null,
+            "construction": 465,
+            "operation": 1429.8785714285714,
+            "purchase": 2.002857142857143,
+            "spent": 1896.8814285714286,
+            "target": 1835.5971428571434,
+            "excess": 61.28428571428526
+          },
+          {
+            "attempt": 2,
+            "capitalLimit": 403.71571428571474,
+            "construction": 399,
+            "operation": 1421.4714285714288,
+            "purchase": 2.0471428571428576,
+            "spent": 1822.5185714285717,
+            "target": 1835.5971428571434,
+            "excess": -13.07857142857165
+          }
+        ],
+        "capitalLimit": 403.71571428571474,
+        "target": 1835.5971428571434,
+        "spent": 1822.5185714285717,
+        "unspent": 13.07857142857165,
+        "execution": 0.9928750317140859,
+        "maxPrefixOverspend": -13.07857142857165
+      },
+      "co2Intensity": 0.2555676871276916
+    }
+  ],
+  "bots": {
+    "checks": 18326,
+    "failures": [],
+    "summary": {
+      "firstCounts": {
+        "nothing": 0,
+        "base": 1,
+        "diesel": 0,
+        "renew": 1,
+        "ties": 1,
+        "taxlow": 0,
+        "taxhigh": 0,
+        "dm": 1,
+        "storage": 2
+      },
+      "completeCities": [
+        "hwaseong",
+        "pyeongtaek",
+        "anseong",
+        "dangjin",
+        "asan",
+        "cheonan"
+      ],
+      "meanScores": {
+        "nothing": 9.666666666666666,
+        "base": 68.95,
+        "diesel": 48.23333333333333,
+        "renew": 68.60000000000001,
+        "ties": 67.56666666666666,
+        "taxlow": 47.73333333333333,
+        "taxhigh": 66.26666666666667,
+        "dm": 71.45,
+        "storage": 72.8
+      },
+      "meanUnsPct": {
+        "nothing": 100.0,
+        "base": 0.0,
+        "diesel": 0.0,
+        "renew": 0.0,
+        "ties": 0.0,
+        "taxlow": 0.0,
+        "taxhigh": 0.0,
+        "dm": 0.0,
+        "storage": 0.0
+      },
+      "meanWaitingMW": {
+        "nothing": 0.0,
+        "base": 0.3333333333333333,
+        "diesel": 0.2810185185185185,
+        "renew": 0.35694444444444445,
+        "ties": 0.36712962962962964,
+        "taxlow": 0.23796296296296293,
+        "taxhigh": 0.38703703703703707,
+        "dm": 0.3277777777777778,
+        "storage": 1.0185185185185184
+      },
+      "meanCurtailMWh": {
+        "nothing": 0.0,
+        "base": 2.5676956763066864e-17,
+        "diesel": 0.016814777742691942,
+        "renew": 2.253436145066988e-17,
+        "ties": 4.222042896238349e-17,
+        "taxlow": 2.797776714715788e-17,
+        "taxhigh": 2.1885959970374612e-17,
+        "dm": 2.511852452306858e-17,
+        "storage": 5.3245656294914776e-18
+      },
+      "best": "storage",
+      "worst": "taxlow",
+      "meanScoreGap": 25.06666666666667
+    },
+    "horizons": {
+      "12": {
+        "n": 54,
+        "overCities": 3,
+        "debtMedian": 0.0,
+        "overCityMonths": 7,
+        "cityMonths": 648,
+        "nothingCashRank": 1,
+        "nothingCashCityRanks": {
+          "hwaseong": 1,
+          "pyeongtaek": 5,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 1,
+          "cheonan": 1
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.7,
+          "base": 68.41666666666667,
+          "diesel": 48.71666666666667,
+          "renew": 68.33333333333333,
+          "ties": 69.96666666666667,
+          "taxlow": 56.233333333333334,
+          "taxhigh": 65.68333333333334,
+          "dm": 71.01666666666667,
+          "storage": 68.05
+        },
+        "meanCash": {
+          "nothing": 366.0875,
+          "base": 79.06533333333337,
+          "diesel": -37.61216666666663,
+          "renew": 126.99916666666668,
+          "ties": 111.4365,
+          "taxlow": -160.37966666666668,
+          "taxhigh": 362.3266666666667,
+          "dm": 148.22566666666665,
+          "storage": 132.23033333333336
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "dm"
+          ],
+          "dangjin": [
+            "renew",
+            "storage"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "ties"
+          ]
+        }
+      },
+      "24": {
+        "n": 54,
+        "overCities": 6,
+        "debtMedian": 0.0,
+        "overCityMonths": 63,
+        "cityMonths": 1296,
+        "nothingCashRank": 2,
+        "nothingCashCityRanks": {
+          "hwaseong": 2,
+          "pyeongtaek": 7,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 2,
+          "cheonan": 1
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.6,
+          "base": 69.53333333333333,
+          "diesel": 48.516666666666666,
+          "renew": 68.85000000000001,
+          "ties": 70.1,
+          "taxlow": 47.666666666666664,
+          "taxhigh": 66.1,
+          "dm": 71.81666666666666,
+          "storage": 71.06666666666666
+        },
+        "meanCash": {
+          "nothing": 494.08583333333326,
+          "base": 195.0125,
+          "diesel": -83.98099999999994,
+          "renew": 301.1516666666667,
+          "ties": 263.35083333333336,
+          "taxlow": -333.45383333333336,
+          "taxhigh": 727.8498333333334,
+          "dm": 311.00666666666666,
+          "storage": 324.05466666666666
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "dm"
+          ],
+          "dangjin": [
+            "renew"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "storage"
+          ]
+        }
+      },
+      "36": {
+        "n": 54,
+        "overCities": 6,
+        "debtMedian": 0.0,
+        "overCityMonths": 134,
+        "cityMonths": 1944,
+        "nothingCashRank": 2,
+        "nothingCashCityRanks": {
+          "hwaseong": 2,
+          "pyeongtaek": 7,
+          "anseong": 1,
+          "dangjin": 9,
+          "asan": 2,
+          "cheonan": 2
+        },
+        "nothingScoreCityRanks": {
+          "hwaseong": 9,
+          "pyeongtaek": 9,
+          "anseong": 9,
+          "dangjin": 9,
+          "asan": 9,
+          "cheonan": 9
+        },
+        "meanScores": {
+          "nothing": 9.666666666666666,
+          "base": 68.95,
+          "diesel": 48.233333333333334,
+          "renew": 68.60000000000001,
+          "ties": 67.56666666666666,
+          "taxlow": 47.733333333333334,
+          "taxhigh": 66.26666666666667,
+          "dm": 71.45,
+          "storage": 72.8
+        },
+        "meanCash": {
+          "nothing": 632.8461666666666,
+          "base": 309.0175000000001,
+          "diesel": -96.72233333333332,
+          "renew": 469.85166666666663,
+          "ties": 388.53166666666664,
+          "taxlow": -520.0943333333335,
+          "taxhigh": 1095.1081666666666,
+          "dm": 451.62899999999996,
+          "storage": 531.2416666666667
+        },
+        "winners": {
+          "hwaseong": [
+            "storage"
+          ],
+          "pyeongtaek": [
+            "base"
+          ],
+          "anseong": [
+            "dm"
+          ],
+          "dangjin": [
+            "renew"
+          ],
+          "asan": [
+            "ties"
+          ],
+          "cheonan": [
+            "storage"
+          ]
+        }
+      }
+    }
+  },
+  "basic": {
+    "balance": 0,
+    "test-econ": 0,
+    "next": 0,
+    "tech": 0,
+    "sec": 0,
+    "recal": 1
+  },
+  "reviews": {
+    "1-invariants.js": 0,
+    "10-tech.js": 0,
+    "12-next.js": 0,
+    "13-confirmed.js": 0,
+    "14-he.js": 0,
+    "15-map.js": 0,
+    "15-recal-r2.js": 0,
+    "16-recal-audit.js": 0,
+    "17-ai-r2.js": 0,
+    "18-growth-calibration.js": 0,
+    "19-fiscal-grid.js": 0,
+    "2-extremes.js": 0,
+    "20-fiscal-contract.js": 0,
+    "22-g4-contract.js": 0,
+    "23-g5-contract.js": 0,
+    "24-g5-ai-debt.js": 0,
+    "25-g6-score-contract.js": 0,
+    "26-g9-start-contract.js": 0,
+    "27-g9-preservation.js": 0,
+    "28-g10-contract.js": 0,
+    "3-policy-grid.js": 0,
+    "4-drift.js": 0,
+    "5-exploits.js": 0,
+    "6-ind-jump.js": 0,
+    "7-fiscal-approval.js": 0,
+    "8-offers.js": 0,
+    "9-grid.js": 0,
+    "g10-sensitivity.js": 0,
+    "g6-variants.js": 0,
+    "g7-variants.js": 0,
+    "lib.js": 0
+  },
+  "seeds": [
+    {
+      "seed": "alpha",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 0,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 73.5,
+        "pyeongtaek": 86,
+        "anseong": 84.5,
+        "dangjin": 25.6,
+        "asan": 85.6,
+        "cheonan": 83.8
+      },
+      "cash": {
+        "hwaseong": -476,
+        "pyeongtaek": 754,
+        "anseong": -9,
+        "dangjin": 1006,
+        "asan": 182,
+        "cheonan": -48
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 6,
+          "diesel": 3,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "hydro": 10,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 9,
+          "battery": 2,
+          "hydro": 24,
+          "solar": 2
+        },
+        "anseong": {
+          "biomass": 1,
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 2,
+          "uni": 1
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 2,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10,
+          "uni": 1
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "beta",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 8,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.6,
+        "pyeongtaek": 83.8,
+        "anseong": 58,
+        "dangjin": 25,
+        "asan": 83.5,
+        "cheonan": 78.5
+      },
+      "cash": {
+        "hwaseong": -782,
+        "pyeongtaek": 1286,
+        "anseong": 70,
+        "dangjin": 1089,
+        "asan": -14,
+        "cheonan": -68
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 8,
+          "battery": 2,
+          "hydro": 23,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 10,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 20
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "gamma",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 11,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.4,
+        "pyeongtaek": 83.8,
+        "anseong": 58.5,
+        "dangjin": 25.2,
+        "asan": 83.4,
+        "cheonan": 78.4
+      },
+      "cash": {
+        "hwaseong": -893,
+        "pyeongtaek": 1480,
+        "anseong": 12,
+        "dangjin": 1098,
+        "asan": 22,
+        "cheonan": 22
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 5,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 7,
+          "battery": 2,
+          "hydro": 25,
+          "solar": 1,
+          "wind": 1
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 10,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 18
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 1
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 2,
+          "roof": 2
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 9,
+          "battery": 1,
+          "roof": 9
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "delta",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 3,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.7,
+        "pyeongtaek": 83.9,
+        "anseong": 58,
+        "dangjin": 24.2,
+        "asan": 84,
+        "cheonan": 80.3
+      },
+      "cash": {
+        "hwaseong": -706,
+        "pyeongtaek": 1198,
+        "anseong": 57,
+        "dangjin": 1119,
+        "asan": 52,
+        "cheonan": -5
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 8,
+          "battery": 2,
+          "hydro": 16,
+          "wind": 1,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 9,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 24
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 2,
+          "roof": 4,
+          "battery": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 2,
+          "hydro": 4,
+          "battery": 1,
+          "roof": 10,
+          "uni": 1
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "epsilon",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 10,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.5,
+        "pyeongtaek": 83.9,
+        "anseong": 82.9,
+        "dangjin": 24.2,
+        "asan": 83.5,
+        "cheonan": 79.4
+      },
+      "cash": {
+        "hwaseong": -876,
+        "pyeongtaek": 1316,
+        "anseong": -16,
+        "dangjin": 1122,
+        "asan": 15,
+        "cheonan": 3
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "hydro": 4,
+          "wind": 1,
+          "solar": 1
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "solar": 1,
+          "hydro": 20
+        },
+        "anseong": {
+          "biomass": 1,
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 2
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 2,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 3
+        }
+      }
+    }
+  ],
+  "researchBorrow": {
+    "variant": "research-borrow",
+    "overrides": {
+      "aiResearchDebtShare": 1
+    },
+    "cities": {
+      "hwaseong": {
+        "cash": -505.89899999999983,
+        "debtCap": 641.2,
+        "overMonths": 0,
+        "minHeadroom": 135.30100000000022,
+        "maxUns": 0,
+        "score": 69.4
+      },
+      "pyeongtaek": {
+        "cash": 1275.4830000000004,
+        "debtCap": 380.8,
+        "overMonths": 0,
+        "minHeadroom": 560.10275,
+        "maxUns": 0,
+        "score": 83.8
+      },
+      "anseong": {
+        "cash": -266.498,
+        "debtCap": 133.7,
+        "overMonths": 16,
+        "minHeadroom": -132.798,
+        "maxUns": 0,
+        "score": 25.7
+      },
+      "dangjin": {
+        "cash": 1194.5720000000001,
+        "debtCap": 120,
+        "overMonths": 0,
+        "minHeadroom": 232.6005,
+        "maxUns": 0,
+        "score": 24
+      },
+      "asan": {
+        "cash": 20.07300000000002,
+        "debtCap": 208.9,
+        "overMonths": 0,
+        "minHeadroom": 182.78800000000004,
+        "maxUns": 0,
+        "score": 83.9
+      },
+      "cheonan": {
+        "cash": -221.58500000000006,
+        "debtCap": 341.7,
+        "overMonths": 0,
+        "minHeadroom": 120.11499999999992,
+        "maxUns": 0,
+        "score": 71.1
+      }
+    }
+  }
+}

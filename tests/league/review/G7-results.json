@@ -1,0 +1,8325 @@
+{
+  "technology": {
+    "12": {
+      "meanScores": {
+        "research": 42.8,
+        "none": 43.1,
+        "smr": 33.55,
+        "hydrogen": 37.3
+      },
+      "winners": {
+        "hwaseong": [
+          "research"
+        ],
+        "pyeongtaek": [
+          "research"
+        ],
+        "anseong": [
+          "none"
+        ],
+        "dangjin": [
+          "research",
+          "smr",
+          "hydrogen"
+        ],
+        "asan": [
+          "none"
+        ],
+        "cheonan": [
+          "research"
+        ]
+      },
+      "smrFirstCities": 1,
+      "researchGain": -0.30000000000000426,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 41.7,
+          "parts": {
+            "pop": 47.9,
+            "ind": 48.1,
+            "fin": 73.6,
+            "co2": 10.2,
+            "appr": 65.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 3,
+          "strategy": "research"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 36.5,
+          "parts": {
+            "pop": 47.2,
+            "ind": 46.8,
+            "fin": 100,
+            "co2": 5.6,
+            "appr": 65.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "none"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 21.6,
+          "parts": {
+            "pop": 47.2,
+            "ind": 47.6,
+            "fin": 43.7,
+            "co2": 1.2,
+            "appr": 65.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "smr"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 38.8,
+          "parts": {
+            "pop": 47.7,
+            "ind": 47.8,
+            "fin": 61.7,
+            "co2": 8.6,
+            "appr": 65.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 76.8,
+          "parts": {
+            "pop": 57.5,
+            "ind": 54.3,
+            "fin": 100,
+            "co2": 71.8,
+            "appr": 68.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "research"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 75.5,
+          "parts": {
+            "pop": 55.1,
+            "ind": 49.1,
+            "fin": 100,
+            "co2": 71.9,
+            "appr": 67.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "none"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 75.8,
+          "parts": {
+            "pop": 57.1,
+            "ind": 53.9,
+            "fin": 100,
+            "co2": 68.9,
+            "appr": 68.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 75.7,
+          "parts": {
+            "pop": 57.1,
+            "ind": 53.8,
+            "fin": 100,
+            "co2": 68.9,
+            "appr": 68.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 37.3,
+          "parts": {
+            "pop": 46.1,
+            "ind": 49,
+            "fin": 26.6,
+            "co2": 11.1,
+            "appr": 63.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 4,
+          "strategy": "research"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 44.2,
+          "parts": {
+            "pop": 48.5,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 11.1,
+            "appr": 66,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "none"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 21.4,
+          "parts": {
+            "pop": 44.8,
+            "ind": 48.5,
+            "fin": 0,
+            "co2": 6.7,
+            "appr": 62.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "smr"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 21.1,
+          "parts": {
+            "pop": 45.1,
+            "ind": 48.5,
+            "fin": 0,
+            "co2": 6.3,
+            "appr": 63.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 24.7,
+          "parts": {
+            "pop": 63,
+            "ind": 80.1,
+            "fin": 100,
+            "co2": 0,
+            "appr": 66.3,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "research"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 24.4,
+          "parts": {
+            "pop": 59.8,
+            "ind": 75.7,
+            "fin": 100,
+            "co2": 0,
+            "appr": 65.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "none"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 24.7,
+          "parts": {
+            "pop": 63,
+            "ind": 80,
+            "fin": 100,
+            "co2": 0,
+            "appr": 66.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "smr"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 24.7,
+          "parts": {
+            "pop": 63,
+            "ind": 80,
+            "fin": 100,
+            "co2": 0,
+            "appr": 66.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 34.5,
+          "parts": {
+            "pop": 46.6,
+            "ind": 47.4,
+            "fin": 26.4,
+            "co2": 8.3,
+            "appr": 65.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 40.2,
+          "parts": {
+            "pop": 47.4,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 7.9,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 4,
+          "strategy": "none"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 17.2,
+          "parts": {
+            "pop": 45.3,
+            "ind": 46.6,
+            "fin": 0,
+            "co2": 3,
+            "appr": 64.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "smr"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 23.1,
+          "parts": {
+            "pop": 45.6,
+            "ind": 46.7,
+            "fin": 6.3,
+            "co2": 3.8,
+            "appr": 64.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 41.8,
+          "parts": {
+            "pop": 46.3,
+            "ind": 45.4,
+            "fin": 100,
+            "co2": 9.2,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 3,
+          "strategy": "research"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 37.8,
+          "parts": {
+            "pop": 46.6,
+            "ind": 45.3,
+            "fin": 100,
+            "co2": 6.4,
+            "appr": 66.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 4,
+          "strategy": "none"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 40.6,
+          "parts": {
+            "pop": 46.3,
+            "ind": 45.3,
+            "fin": 97.1,
+            "co2": 8.4,
+            "appr": 66.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 3,
+          "strategy": "smr"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 40.4,
+          "parts": {
+            "pop": 46.3,
+            "ind": 45.3,
+            "fin": 100,
+            "co2": 8.2,
+            "appr": 66.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 3,
+          "strategy": "hydrogen"
+        }
+      ]
+    },
+    "24": {
+      "meanScores": {
+        "research": 49.516666666666666,
+        "none": 46.733333333333334,
+        "smr": 73.43333333333334,
+        "hydrogen": 40.05
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.7833333333333314,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 44.5,
+          "parts": {
+            "pop": 47.7,
+            "ind": 48.2,
+            "fin": 43.5,
+            "co2": 16.4,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 3,
+          "strategy": "research"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 43.3,
+          "parts": {
+            "pop": 46.9,
+            "ind": 46.7,
+            "fin": 77.1,
+            "co2": 11.7,
+            "appr": 65.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 4,
+          "strategy": "none"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 58.3,
+          "parts": {
+            "pop": 48,
+            "ind": 48.2,
+            "fin": 64.3,
+            "co2": 37.2,
+            "appr": 64.3,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 49.9,
+          "parts": {
+            "pop": 48.2,
+            "ind": 48.2,
+            "fin": 46.6,
+            "co2": 24,
+            "appr": 66.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 79.3,
+          "parts": {
+            "pop": 59.2,
+            "ind": 55,
+            "fin": 100,
+            "co2": 77.8,
+            "appr": 71.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "research"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 77.4,
+          "parts": {
+            "pop": 55.5,
+            "ind": 48.6,
+            "fin": 100,
+            "co2": 77.9,
+            "appr": 68.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "none"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 84.6,
+          "parts": {
+            "pop": 60.8,
+            "ind": 55.3,
+            "fin": 100,
+            "co2": 97.4,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 79,
+          "parts": {
+            "pop": 58.9,
+            "ind": 54.7,
+            "fin": 100,
+            "co2": 77.4,
+            "appr": 70.8,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 38.4,
+          "parts": {
+            "pop": 44.5,
+            "ind": 48.5,
+            "fin": 26.8,
+            "co2": 12.8,
+            "appr": 61,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 45.9,
+          "parts": {
+            "pop": 48.8,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 12.6,
+            "appr": 67.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "none"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 82,
+          "parts": {
+            "pop": 53.5,
+            "ind": 51,
+            "fin": 100,
+            "co2": 100,
+            "appr": 63.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 22.1,
+          "parts": {
+            "pop": 43.5,
+            "ind": 47.9,
+            "fin": 0.7,
+            "co2": 7.8,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 66.5,
+          "parts": {
+            "pop": 67.1,
+            "ind": 80.2,
+            "fin": 100,
+            "co2": 34.6,
+            "appr": 70,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "research"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 24.6,
+          "parts": {
+            "pop": 62.5,
+            "ind": 74.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "none"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 77.6,
+          "parts": {
+            "pop": 66.9,
+            "ind": 80.2,
+            "fin": 100,
+            "co2": 60.5,
+            "appr": 70.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 25.1,
+          "parts": {
+            "pop": 67.1,
+            "ind": 79.7,
+            "fin": 100,
+            "co2": 0,
+            "appr": 69.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 26.8,
+          "parts": {
+            "pop": 44.1,
+            "ind": 46.9,
+            "fin": 0,
+            "co2": 15.5,
+            "appr": 61.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 51.4,
+          "parts": {
+            "pop": 47.3,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 19.2,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "none"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 64.8,
+          "parts": {
+            "pop": 46.6,
+            "ind": 47.1,
+            "fin": 70.2,
+            "co2": 54.6,
+            "appr": 62.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 23,
+          "parts": {
+            "pop": 43.1,
+            "ind": 46,
+            "fin": 0,
+            "co2": 9.1,
+            "appr": 61.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 41.6,
+          "parts": {
+            "pop": 45.7,
+            "ind": 44.3,
+            "fin": 78.1,
+            "co2": 10.3,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 37.8,
+          "parts": {
+            "pop": 45.9,
+            "ind": 44.2,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "none"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 73.3,
+          "parts": {
+            "pop": 49.6,
+            "ind": 45.6,
+            "fin": 100,
+            "co2": 68.9,
+            "appr": 67,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 41.2,
+          "parts": {
+            "pop": 45.6,
+            "ind": 44.2,
+            "fin": 74.4,
+            "co2": 10.2,
+            "appr": 66.3,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "hydrogen"
+        }
+      ]
+    },
+    "36": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "smr": 79.3,
+        "hydrogen": 40.050000000000004
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 43.9,
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "research"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 40.6,
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 4,
+          "strategy": "none"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 63.8,
+          "parts": {
+            "pop": 48.8,
+            "ind": 47.8,
+            "fin": 83.5,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "hwaseong",
+          "name": "화성·오산",
+          "score": 50.5,
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 79.4,
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "research"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 77.1,
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "none"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 85.8,
+          "parts": {
+            "pop": 62.1,
+            "ind": 55.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "pyeongtaek",
+          "name": "평택",
+          "score": 79.4,
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 35.5,
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 46,
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "none"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 85.1,
+          "parts": {
+            "pop": 61.2,
+            "ind": 52,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "anseong",
+          "name": "안성",
+          "score": 22.1,
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 86.4,
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "research"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 25.5,
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "none"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 87.7,
+          "parts": {
+            "pop": 78.6,
+            "ind": 96.5,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 1,
+          "strategy": "smr"
+        },
+        {
+          "id": "dangjin",
+          "name": "당진",
+          "score": 26,
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 27,
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 51.8,
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "none"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 75.6,
+          "parts": {
+            "pop": 50.8,
+            "ind": 47.5,
+            "fin": 100,
+            "co2": 75.8,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "asan",
+          "name": "아산",
+          "score": 23.3,
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 6,
+          "strategy": "hydrogen"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 39,
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "research"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 37.7,
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "none"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 77.8,
+          "parts": {
+            "pop": 52.4,
+            "ind": 45.4,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.7,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 2,
+          "strategy": "smr"
+        },
+        {
+          "id": "cheonan",
+          "name": "천안",
+          "score": 39,
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "coop": 0,
+          "rank": 5,
+          "strategy": "hydrogen"
+        }
+      ]
+    }
+  },
+  "bots": {
+    "12": {
+      "n": 54,
+      "overCities": 3,
+      "debtMedian": 0.0,
+      "overCityMonths": 11,
+      "cityMonths": 648,
+      "nothingCashRank": 1,
+      "nothingCashCityRanks": {
+        "hwaseong": 1,
+        "pyeongtaek": 7,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 1,
+        "cheonan": 1
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 5.25,
+        "base": 42.5,
+        "diesel": 39.55,
+        "renew": 42.65,
+        "ties": 50.766666666666666,
+        "taxlow": 34.4,
+        "taxhigh": 40.25,
+        "dm": 41.333333333333336,
+        "storage": 38.35
+      },
+      "meanCash": {
+        "nothing": 348.68300000000005,
+        "base": 51.4128333333333,
+        "diesel": 98.49933333333334,
+        "renew": 88.92783333333334,
+        "ties": 153.03266666666667,
+        "taxlow": -191.0643333333334,
+        "taxhigh": 334.23783333333336,
+        "dm": 122.19800000000006,
+        "storage": 85.81966666666668
+      },
+      "winners": {
+        "hwaseong": [
+          "ties"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "ties"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "24": {
+      "n": 54,
+      "overCities": 15,
+      "debtMedian": 0.24544370147820738,
+      "overCityMonths": 145,
+      "cityMonths": 1296,
+      "nothingCashRank": 2,
+      "nothingCashCityRanks": {
+        "hwaseong": 1,
+        "pyeongtaek": 9,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 1,
+        "cheonan": 1
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 5.166666666666666,
+        "base": 42.2,
+        "diesel": 35.166666666666664,
+        "renew": 40.56666666666667,
+        "ties": 45.583333333333336,
+        "taxlow": 33.45,
+        "taxhigh": 45.233333333333334,
+        "dm": 38.1,
+        "storage": 38.4
+      },
+      "meanCash": {
+        "nothing": 459.21850000000006,
+        "base": 90.71733333333327,
+        "diesel": 172.06249999999997,
+        "renew": 199.35783333333336,
+        "ties": 338.422,
+        "taxlow": -405.5043333333333,
+        "taxhigh": 696.2621666666668,
+        "dm": 235.76716666666684,
+        "storage": 167.26099999999997
+      },
+      "winners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "36": {
+      "n": 54,
+      "overCities": 21,
+      "debtMedian": 0.4415122928543491,
+      "overCityMonths": 359,
+      "cityMonths": 1944,
+      "nothingCashRank": 2,
+      "nothingCashCityRanks": {
+        "hwaseong": 1,
+        "pyeongtaek": 9,
+        "anseong": 1,
+        "dangjin": 9,
+        "asan": 1,
+        "cheonan": 1
+      },
+      "nothingScoreCityRanks": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "meanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "meanCash": {
+        "nothing": 580.3391666666668,
+        "base": 152.05483333333336,
+        "diesel": 265.24516666666665,
+        "renew": 326.7535,
+        "ties": 513.1126666666667,
+        "taxlow": -632.0688333333335,
+        "taxhigh": 1075.7565000000004,
+        "dm": 362.0018333333333,
+        "storage": 266.9639999999999
+      },
+      "winners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    }
+  },
+  "botSummary": {
+    "firstCounts": {
+      "nothing": 0,
+      "base": 0,
+      "diesel": 0,
+      "renew": 1,
+      "ties": 2,
+      "taxlow": 1,
+      "taxhigh": 2,
+      "dm": 0,
+      "storage": 0
+    },
+    "completeCities": [
+      "hwaseong",
+      "pyeongtaek",
+      "anseong",
+      "dangjin",
+      "asan",
+      "cheonan"
+    ],
+    "meanScores": {
+      "nothing": 5.183333333333334,
+      "base": 39.85,
+      "diesel": 35.083333333333336,
+      "renew": 36.68333333333333,
+      "ties": 43.78333333333333,
+      "taxlow": 34.1,
+      "taxhigh": 45.699999999999996,
+      "dm": 34.18333333333333,
+      "storage": 35.550000000000004
+    },
+    "meanUnsPct": {
+      "nothing": 100.0,
+      "base": 0.0,
+      "diesel": 0.0,
+      "renew": 0.0,
+      "ties": 0.0,
+      "taxlow": 0.0,
+      "taxhigh": 0.0,
+      "dm": 0.0,
+      "storage": 0.0
+    },
+    "meanWaitingMW": {
+      "nothing": 0.0,
+      "base": 0.0,
+      "diesel": 0.0,
+      "renew": 0.02083333333333334,
+      "ties": 0.0,
+      "taxlow": 0.0,
+      "taxhigh": 0.0,
+      "dm": 0.0,
+      "storage": 0.0
+    },
+    "meanCurtailMWh": {
+      "nothing": 0.0,
+      "base": 2.4346837173217658e-17,
+      "diesel": 2.1269660590614707e-17,
+      "renew": 1.5782894874207738e-17,
+      "ties": 3.2921566817751614e-17,
+      "taxlow": 1.4482335165638186e-17,
+      "taxhigh": 1.735507765742783e-17,
+      "dm": 1.395106288023566e-17,
+      "storage": 1.3261587024482273e-17
+    },
+    "best": "taxhigh",
+    "worst": "taxlow",
+    "meanScoreGap": 11.599999999999994
+  },
+  "techFailures": [
+    "T5 smr 6도시 모두 1위 금지(공동1위 포함)",
+    "G6 SMR 1위 6/6, 목표 ≤3(공동1위 포함)"
+  ],
+  "botFailures": [
+    "B18 storage 실제 ESS 추가 0회·충전으로 버림 감소 0MWh"
+  ],
+  "passes": {
+    "tech": 10444,
+    "bots": 18072
+  },
+  "smrComparison": {
+    "hwaseong": {
+      "alternative": "hydrogen",
+      "score": [
+        63.8,
+        50.5
+      ],
+      "parts": [
+        {
+          "pop": 48.8,
+          "ind": 47.8,
+          "fin": 83.5,
+          "co2": 44.6,
+          "appr": 67.4,
+          "rel": 100
+        },
+        {
+          "pop": 47.3,
+          "ind": 47.5,
+          "fin": 48.1,
+          "co2": 25.6,
+          "appr": 64.1,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": -1158.862,
+          "tariffGross": 4008.888,
+          "service": 1419.9380000000003,
+          "interest": 26.034999999999997,
+          "construction": 512.4200000000001
+        },
+        {
+          "tariff": -1402.309,
+          "tariffGross": 4011.1259999999993,
+          "service": 1398.7810000000002,
+          "interest": 27.294000000000004,
+          "construction": 498
+        }
+      ],
+      "contributions": {
+        "pop": 0.17770684228607886,
+        "ind": 0.03583692963315121,
+        "fin": 3.9244363814705823,
+        "co2": 8.689752435441262,
+        "appr": 0.4286192220043155,
+        "rel": 0
+      },
+      "coopDelta": 0
+    },
+    "pyeongtaek": {
+      "alternative": "research",
+      "score": [
+        85.8,
+        79.4
+      ],
+      "parts": [
+        {
+          "pop": 62.1,
+          "ind": 55.3,
+          "fin": 100,
+          "co2": 100,
+          "appr": 73.6,
+          "rel": 100
+        },
+        {
+          "pop": 59.7,
+          "ind": 54.6,
+          "fin": 100,
+          "co2": 77.5,
+          "appr": 72.1,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": 2083.611,
+          "tariffGross": 4721.379,
+          "service": 931.4890000000001,
+          "interest": 0,
+          "construction": 436.42
+        },
+        {
+          "tariff": 1621.5160000000008,
+          "tariffGross": 4718.536,
+          "service": 929.836,
+          "interest": 0,
+          "construction": 414.42
+        }
+      ],
+      "contributions": {
+        "pop": 0.3253497924136646,
+        "ind": 0.10515661187329135,
+        "fin": 0,
+        "co2": 5.786150058730407,
+        "appr": 0.2549580181742205,
+        "rel": 0
+      },
+      "coopDelta": 0
+    },
+    "anseong": {
+      "alternative": "none",
+      "score": [
+        85.1,
+        46
+      ],
+      "parts": [
+        {
+          "pop": 61.2,
+          "ind": 52,
+          "fin": 100,
+          "co2": 100,
+          "appr": 73.2,
+          "rel": 100
+        },
+        {
+          "pop": 48.9,
+          "ind": 44.3,
+          "fin": 100,
+          "co2": 12.8,
+          "appr": 68,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": 227.759,
+          "tariffGross": 754.235,
+          "service": 243.34799999999996,
+          "interest": 5.723000000000002,
+          "construction": 322.42
+        },
+        {
+          "tariff": -150.446,
+          "tariffGross": 545.4599999999998,
+          "service": 295.828,
+          "interest": 0,
+          "construction": 146
+        }
+      ],
+      "contributions": {
+        "pop": 1.4263459133115317,
+        "ind": 1.0187861113722296,
+        "fin": 0,
+        "co2": 35.938354578338526,
+        "appr": 0.7026625834327641,
+        "rel": 0
+      },
+      "coopDelta": 0
+    },
+    "dangjin": {
+      "alternative": "research",
+      "score": [
+        87.7,
+        86.4
+      ],
+      "parts": [
+        {
+          "pop": 78.6,
+          "ind": 96.5,
+          "fin": 100,
+          "co2": 81.9,
+          "appr": 72.4,
+          "rel": 100
+        },
+        {
+          "pop": 78.8,
+          "ind": 96.8,
+          "fin": 100,
+          "co2": 77.3,
+          "appr": 72.2,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": 1654.7990000000002,
+          "tariffGross": 2822.7490000000003,
+          "service": 279.13699999999994,
+          "interest": 0,
+          "construction": 350.42
+        },
+        {
+          "tariff": 1746.0699999999993,
+          "tariffGross": 2817.4359999999992,
+          "service": 279.179,
+          "interest": 0,
+          "construction": 332.26000000000005
+        }
+      ],
+      "contributions": {
+        "pop": -0.022118183405318948,
+        "ind": -0.027015543116112248,
+        "fin": 0,
+        "co2": 1.3835419194387217,
+        "appr": 0.03611413292931938,
+        "rel": 0
+      },
+      "coopDelta": 0
+    },
+    "asan": {
+      "alternative": "none",
+      "score": [
+        75.6,
+        51.8
+      ],
+      "parts": [
+        {
+          "pop": 50.8,
+          "ind": 47.5,
+          "fin": 100,
+          "co2": 75.8,
+          "appr": 66.6,
+          "rel": 100
+        },
+        {
+          "pop": 47.5,
+          "ind": 45.5,
+          "fin": 100,
+          "co2": 19.9,
+          "appr": 67.1,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": -125.35400000000001,
+          "tariffGross": 2141.0870000000004,
+          "service": 393.629,
+          "interest": 10.18,
+          "construction": 366.42
+        },
+        {
+          "tariff": -537.782,
+          "tariffGross": 1973.9189999999999,
+          "service": 438.493,
+          "interest": 1.162,
+          "construction": 192
+        }
+      ],
+      "contributions": {
+        "pop": 0.42306432756739043,
+        "ind": 0.27095474976742456,
+        "fin": 0,
+        "co2": 23.165400446477143,
+        "appr": -0.07066667178892819,
+        "rel": 0
+      },
+      "coopDelta": 0
+    },
+    "cheonan": {
+      "alternative": "research",
+      "score": [
+        77.8,
+        39
+      ],
+      "parts": [
+        {
+          "pop": 52.4,
+          "ind": 45.4,
+          "fin": 100,
+          "co2": 81.9,
+          "appr": 70.7,
+          "rel": 100
+        },
+        {
+          "pop": 45.7,
+          "ind": 43,
+          "fin": 52.9,
+          "co2": 9.8,
+          "appr": 66.4,
+          "rel": 100
+        }
+      ],
+      "account": [
+        {
+          "tariff": -13.40100000000005,
+          "tariffGross": 1742.505,
+          "service": 854.2270000000001,
+          "interest": 2.831,
+          "construction": 292.42
+        },
+        {
+          "tariff": -636.978,
+          "tariffGross": 1737.881,
+          "service": 793.8410000000002,
+          "interest": 9.133,
+          "construction": 288
+        }
+      ],
+      "contributions": {
+        "pop": 0.7685756606516987,
+        "ind": 0.30511946354467173,
+        "fin": 4.471617618626193,
+        "co2": 32.80052102936856,
+        "appr": 0.5287725757098899,
+        "rel": 0
+      },
+      "coopDelta": 0
+    }
+  },
+  "renewDieselLMDI": {
+    "hwaseong": {
+      "contributions": {
+        "pop": 0.03056044111456058,
+        "ind": 0.07834667968239882,
+        "fin": 0.0,
+        "co2": 5.9754052475281965,
+        "appr": 0.027706322902080187,
+        "rel": 0.0
+      },
+      "geometricDelta": 6.112018691227238,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": -0.012018691227236644,
+      "scoreDelta": 6.100000000000001,
+      "parts": [
+        {
+          "pop": 48.3,
+          "ind": 49,
+          "fin": 0,
+          "co2": 9.6,
+          "appr": 68.3,
+          "rel": 100
+        },
+        {
+          "pop": 47.6,
+          "ind": 47.2,
+          "fin": 0,
+          "co2": 3.4,
+          "appr": 67.7,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 122,
+            "salvage": 0,
+            "indTax": 445.696,
+            "trade": 323.432,
+            "royalty": 0,
+            "resTax": 1356.148,
+            "tariff": -1945.192,
+            "subsidy": 277.634
+          },
+          "exp": {
+            "service": 1461.821,
+            "capex": 530,
+            "opex": 107.996,
+            "trade": 0,
+            "interest": 56.399,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 365,
+          "cash": -1211.498,
+          "cashBridgeResidual": 0.0,
+          "debtRatio": 0.7910070414433529,
+          "co2Intensity": 0.767452816642927,
+          "waitingMW": 0.05833333333333335,
+          "waitingMonths": 2,
+          "curtailMWhPerMonth": 1.5213249531383903e-18,
+          "co2PerPerson": 0.0056181074094004335,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 122,
+            "salvage": 0,
+            "indTax": 443.899,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 1353.88,
+            "tariff": -2221.319,
+            "subsidy": 278.524
+          },
+          "exp": {
+            "service": 1459.377,
+            "capex": 379,
+            "opex": 107.993,
+            "trade": 0,
+            "interest": 69.782,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 365,
+          "cash": -1674.1680000000008,
+          "cashBridgeResidual": -9.094947017729282e-13,
+          "debtRatio": 1.0952251796440449,
+          "co2Intensity": 0.8015679118435964,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 4.963881970258534e-17,
+          "co2PerPerson": 0.005842321144100254,
+          "unsPct": 0
+        }
+      }
+    },
+    "pyeongtaek": {
+      "contributions": {
+        "pop": 0.1358724241348503,
+        "ind": 0.30849084231104845,
+        "fin": 0.0,
+        "co2": 1.48675535395958,
+        "appr": -0.03384130911548293,
+        "rel": 0.0
+      },
+      "geometricDelta": 1.8972773112900114,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": 0.0027226887099942587,
+      "scoreDelta": 1.9000000000000057,
+      "parts": [
+        {
+          "pop": 58.7,
+          "ind": 57.5,
+          "fin": 100,
+          "co2": 80.2,
+          "appr": 70,
+          "rel": 100
+        },
+        {
+          "pop": 57.7,
+          "ind": 55.3,
+          "fin": 100,
+          "co2": 74.9,
+          "appr": 70.2,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 122,
+            "salvage": 0,
+            "indTax": 195.037,
+            "trade": 38.337,
+            "royalty": 0,
+            "resTax": 678.755,
+            "tariff": 1967.199,
+            "subsidy": 211.328
+          },
+          "exp": {
+            "service": 743.848,
+            "capex": 489,
+            "opex": 197.959,
+            "trade": 0,
+            "interest": 0,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 320,
+          "cash": 2101.8489999999997,
+          "cashBridgeResidual": -2.2737367544323206e-13,
+          "debtRatio": 0,
+          "co2Intensity": 0.3818611857099675,
+          "waitingMW": 0.06666666666666668,
+          "waitingMonths": 2,
+          "curtailMWhPerMonth": 8.628442289363806e-19,
+          "co2PerPerson": 0.005357119102931898,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 137,
+            "salvage": 0,
+            "indTax": 193.949,
+            "trade": 0.059000000000000004,
+            "royalty": 0,
+            "resTax": 677.046,
+            "tariff": 1593.14,
+            "subsidy": 211.96
+          },
+          "exp": {
+            "service": 741.976,
+            "capex": 366,
+            "opex": 203.997,
+            "trade": 0,
+            "interest": 0,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 320,
+          "cash": 1821.1809999999998,
+          "cashBridgeResidual": -2.2737367544323206e-13,
+          "debtRatio": 0,
+          "co2Intensity": 0.4110830896767406,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 1.4746870501632202e-17,
+          "co2PerPerson": 0.005682940613320282,
+          "unsPct": 0
+        }
+      }
+    },
+    "anseong": {
+      "contributions": {
+        "pop": -0.8702162217278819,
+        "ind": -0.9448600436023564,
+        "fin": 0.0,
+        "co2": 0.0,
+        "appr": 0.07477987122906664,
+        "rel": 0.0
+      },
+      "geometricDelta": -1.740296394101179,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": 0.04029639410117625,
+      "scoreDelta": -1.7000000000000028,
+      "parts": [
+        {
+          "pop": 48.5,
+          "ind": 48.5,
+          "fin": 0,
+          "co2": 10.8,
+          "appr": 67.8,
+          "rel": 100
+        },
+        {
+          "pop": 68,
+          "ind": 70,
+          "fin": 0,
+          "co2": 10.8,
+          "appr": 66.5,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 50,
+            "salvage": 0,
+            "indTax": 78.228,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 215.13,
+            "tariff": -199.591,
+            "subsidy": 165.643
+          },
+          "exp": {
+            "service": 246.143,
+            "capex": 212,
+            "opex": 180.0,
+            "trade": 0,
+            "interest": 6.35,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 160,
+          "cash": -175.08299999999997,
+          "cashBridgeResidual": 1.1368683772161603e-13,
+          "debtRatio": 0.520996005408648,
+          "co2Intensity": 0.7612321717740174,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 0,
+          "co2PerPerson": 0.004935494651500912,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 50,
+            "salvage": 0,
+            "indTax": 80.627,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 221.857,
+            "tariff": -291.738,
+            "subsidy": 164.447
+          },
+          "exp": {
+            "service": 253.837,
+            "capex": 204,
+            "opex": 179.987,
+            "trade": 0,
+            "interest": 9.526,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 160,
+          "cash": -262.1569999999999,
+          "cashBridgeResidual": 1.1368683772161603e-13,
+          "debtRatio": 0.7648952925256127,
+          "co2Intensity": 0.7607901340121584,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 0,
+          "co2PerPerson": 0.004900739239989893,
+          "unsPct": 0
+        }
+      }
+    },
+    "dangjin": {
+      "contributions": {
+        "pop": 0.3440695558172423,
+        "ind": 0.22001112712007806,
+        "fin": 0.0,
+        "co2": 0.0,
+        "appr": -0.034321881429369094,
+        "rel": 0.0
+      },
+      "geometricDelta": 0.5297588015079526,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": -0.029758801507952626,
+      "scoreDelta": 0.5,
+      "parts": [
+        {
+          "pop": 89.7,
+          "ind": 100,
+          "fin": 100,
+          "co2": 0,
+          "appr": 68,
+          "rel": 100
+        },
+        {
+          "pop": 78.6,
+          "ind": 91.9,
+          "fin": 100,
+          "co2": 0,
+          "appr": 68.6,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 87,
+            "salvage": 0,
+            "indTax": 57.693,
+            "trade": 461.64,
+            "royalty": 0,
+            "resTax": 200.257,
+            "tariff": 1532.168,
+            "subsidy": 162.298
+          },
+          "exp": {
+            "service": 229.654,
+            "capex": 280,
+            "opex": 335.816,
+            "trade": 0,
+            "interest": 0,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 215,
+          "cash": 1870.5860000000002,
+          "cashBridgeResidual": 2.2737367544323206e-13,
+          "debtRatio": 0,
+          "co2Intensity": 0.8607988903044095,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 3.0008844594934363e-17,
+          "co2PerPerson": 0.025665359936145583,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 72,
+            "salvage": 0,
+            "indTax": 56.663,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 196.91400000000002,
+            "tariff": 2373.381,
+            "subsidy": 162.847
+          },
+          "exp": {
+            "service": 225.819,
+            "capex": 286,
+            "opex": 198.021,
+            "trade": 0,
+            "interest": 0,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 215,
+          "cash": 2366.9650000000006,
+          "cashBridgeResidual": 4.547473508864641e-13,
+          "debtRatio": 0,
+          "co2Intensity": 0.8769707173541046,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 1.655613287696739e-17,
+          "co2PerPerson": 0.02602710018701102,
+          "unsPct": 0
+        }
+      }
+    },
+    "asan": {
+      "contributions": {
+        "pop": 0.6254371151163264,
+        "ind": 0.5099967077773455,
+        "fin": 13.406401304803348,
+        "co2": 2.638206996665182,
+        "appr": 0.015424159455133871,
+        "rel": 0.0
+      },
+      "geometricDelta": 17.195466283817318,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": 0.004533716182681502,
+      "scoreDelta": 17.2,
+      "parts": [
+        {
+          "pop": 60.6,
+          "ind": 59.1,
+          "fin": 21.3,
+          "co2": 18.8,
+          "appr": 68.3,
+          "rel": 100
+        },
+        {
+          "pop": 50.7,
+          "ind": 51.1,
+          "fin": 0,
+          "co2": 14.3,
+          "appr": 68.1,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 72,
+            "salvage": 0,
+            "indTax": 127.857,
+            "trade": 45.79,
+            "royalty": 0,
+            "resTax": 400.79200000000003,
+            "tariff": -303.119,
+            "subsidy": 185.57
+          },
+          "exp": {
+            "service": 441.631,
+            "capex": 296,
+            "opex": 179.99699999999999,
+            "trade": 0,
+            "interest": 8.053,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 220,
+          "cash": -176.7909999999999,
+          "cashBridgeResidual": 0.0,
+          "debtRatio": 0.33622115349505205,
+          "co2Intensity": 0.7171694825846581,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 6.230435546823729e-17,
+          "co2PerPerson": 0.008979645913511893,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 72,
+            "salvage": 0,
+            "indTax": 126.503,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 394.759,
+            "tariff": -690.805,
+            "subsidy": 186.463
+          },
+          "exp": {
+            "service": 434.983,
+            "capex": 253,
+            "opex": 107.996,
+            "trade": 0,
+            "interest": 21.468,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 220,
+          "cash": -508.52699999999993,
+          "cashBridgeResidual": 0.0,
+          "debtRatio": 0.9773478743187755,
+          "co2Intensity": 0.7418158045705557,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 4.6676140462503294e-17,
+          "co2PerPerson": 0.009120918605104108,
+          "unsPct": 0
+        }
+      }
+    },
+    "cheonan": {
+      "contributions": {
+        "pop": -0.15162957777194658,
+        "ind": -0.005634546985437355,
+        "fin": -14.528092216991157,
+        "co2": 0.28520273143881025,
+        "appr": 0.0,
+        "rel": 0.0
+      },
+      "geometricDelta": -14.40015361030973,
+      "coopDelta": 0,
+      "clipDelta": 0.0,
+      "roundingDelta": 0.0001536103097308228,
+      "scoreDelta": -14.399999999999999,
+      "parts": [
+        {
+          "pop": 48.4,
+          "ind": 47.8,
+          "fin": 0,
+          "co2": 5.3,
+          "appr": 67.1,
+          "rel": 100
+        },
+        {
+          "pop": 51.2,
+          "ind": 47.9,
+          "fin": 74.5,
+          "co2": 5.1,
+          "appr": 67.1,
+          "rel": 100
+        }
+      ],
+      "accounts": {
+        "renew": {
+          "rev": {
+            "bonus": 72,
+            "salvage": 0,
+            "indTax": 211.832,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 727.9300000000001,
+            "tariff": -673.148,
+            "subsidy": 231.57600000000002
+          },
+          "exp": {
+            "service": 798.292,
+            "capex": 230,
+            "opex": 179.997,
+            "trade": 0,
+            "interest": 15.443,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 205,
+          "cash": -448.54200000000003,
+          "cashBridgeResidual": -1.1368683772161603e-13,
+          "debtRatio": 0.5230082248605851,
+          "co2Intensity": 0.7908826071704372,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 0,
+          "co2PerPerson": 0.004249213787206806,
+          "unsPct": 0
+        },
+        "diesel": {
+          "rev": {
+            "bonus": 72,
+            "salvage": 0,
+            "indTax": 211.876,
+            "trade": 0,
+            "royalty": 0,
+            "resTax": 731.281,
+            "tariff": -387.429,
+            "subsidy": 231.247
+          },
+          "exp": {
+            "service": 801.973,
+            "capex": 230,
+            "opex": 179.986,
+            "trade": 0,
+            "interest": 3.839,
+            "incentive": 0,
+            "policy": 0
+          },
+          "cash0": 205,
+          "cash": -151.823,
+          "cashBridgeResidual": 1.1368683772161603e-13,
+          "debtRatio": 0.17646257526127732,
+          "co2Intensity": 0.7922877369090455,
+          "waitingMW": 0,
+          "waitingMonths": 0,
+          "curtailMWhPerMonth": 0,
+          "co2PerPerson": 0.0042557850009678705,
+          "unsPct": 0
+        }
+      }
+    }
+  },
+  "candidates": {
+    "default-floor1": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "smr": 79.3,
+        "hydrogen": 40.050000000000004
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.8,
+            "ind": 47.8,
+            "fin": 83.5,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 63.8
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 62.1,
+            "ind": 55.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.2,
+            "ind": 52,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.2,
+            "rel": 100
+          },
+          "score": 85.1
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 22.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 25.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.6,
+            "ind": 96.5,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 26.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 27.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.8,
+            "ind": 47.5,
+            "fin": 100,
+            "co2": 75.8,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "score": 75.6
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 23.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 52.4,
+            "ind": 45.4,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.7,
+            "rel": 100
+          },
+          "score": 77.8
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        }
+      ],
+      "simulationFailures": [
+        "T5 smr 6도시 모두 1위 금지(공동1위 포함)",
+        "G6 SMR 1위 6/6, 목표 ≤3(공동1위 포함)"
+      ],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "renewMinusDiesel": 1.6000000000000014,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "default-floor5": {
+      "meanScores": {
+        "research": 52.86666666666667,
+        "none": 48.81666666666666,
+        "smr": 79.3,
+        "hydrogen": 44.16666666666667
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 4.050000000000004,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.8,
+            "ind": 47.8,
+            "fin": 83.5,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 63.8
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 62.1,
+            "ind": 55.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.2,
+            "ind": 52,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.2,
+            "rel": 100
+          },
+          "score": 85.1
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 27.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 39.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.6,
+            "ind": 96.5,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 40.5
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 33.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.8,
+            "ind": 47.5,
+            "fin": 100,
+            "co2": 75.8,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "score": 75.6
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 28.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 52.4,
+            "ind": 45.4,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.7,
+            "rel": 100
+          },
+          "score": 77.8
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        }
+      ],
+      "simulationFailures": [
+        "T5 smr 6도시 모두 1위 금지(공동1위 포함)",
+        "G6 SMR 1위 6/6, 목표 ≤3(공동1위 포함)"
+      ],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 11.716666666666667,
+        "base": 43.833333333333336,
+        "diesel": 40.55,
+        "renew": 41.7,
+        "ties": 48.65,
+        "taxlow": 41.5,
+        "taxhigh": 47.95,
+        "dm": 40.3,
+        "storage": 40.583333333333336
+      },
+      "renewMinusDiesel": 1.1500000000000057,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "default-floor10": {
+      "meanScores": {
+        "research": 53.400000000000006,
+        "none": 51.0,
+        "smr": 79.3,
+        "hydrogen": 46.833333333333336
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.4000000000000057,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.8,
+            "ind": 47.8,
+            "fin": 83.5,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 63.8
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 62.1,
+            "ind": 55.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.2,
+            "ind": 52,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.2,
+            "rel": 100
+          },
+          "score": 85.1
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 31.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 48.0
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.6,
+            "ind": 96.5,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 49.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 36.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.8,
+            "ind": 47.5,
+            "fin": 100,
+            "co2": 75.8,
+            "appr": 66.6,
+            "rel": 100
+          },
+          "score": 75.6
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 31.4
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 42.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 52.4,
+            "ind": 45.4,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.7,
+            "rel": 100
+          },
+          "score": 77.8
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.2
+        }
+      ],
+      "simulationFailures": [
+        "T5 smr 6도시 모두 1위 금지(공동1위 포함)",
+        "G6 SMR 1위 6/6, 목표 ≤3(공동1위 포함)"
+      ],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 17.816666666666666,
+        "base": 47.81666666666667,
+        "diesel": 45.43333333333333,
+        "renew": 45.36666666666667,
+        "ties": 51.28333333333333,
+        "taxlow": 46.2,
+        "taxhigh": 49.95,
+        "dm": 43.81666666666666,
+        "storage": 44.21666666666667
+      },
+      "renewMinusDiesel": -0.06666666666666288,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need72-floor1": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "hydrogen": 40.050000000000004,
+        "smr": 79.25
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 22.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 25.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 26.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 27.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 23.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.3,
+            "ind": 47.9,
+            "fin": 100,
+            "co2": 50.6,
+            "appr": 67.5,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.9,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 59.9,
+            "ind": 51.5,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 84.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.5,
+            "ind": 96.4,
+            "fin": 100,
+            "co2": 80.7,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.3
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.1,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 69,
+            "appr": 64.6,
+            "rel": 100
+          },
+          "score": 72.9
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.9,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 80.9,
+            "appr": 70.1,
+            "rel": 100
+          },
+          "score": 77.4
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "adopted": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "botsMeanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "renewMinusDiesel": 1.6000000000000014,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need72-floor5": {
+      "meanScores": {
+        "research": 52.86666666666667,
+        "none": 48.81666666666666,
+        "hydrogen": 44.16666666666667,
+        "smr": 79.25
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 4.050000000000004,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 27.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 39.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 40.5
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 33.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 28.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.3,
+            "ind": 47.9,
+            "fin": 100,
+            "co2": 50.6,
+            "appr": 67.5,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.9,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 59.9,
+            "ind": 51.5,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 84.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.5,
+            "ind": 96.4,
+            "fin": 100,
+            "co2": 80.7,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.3
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.1,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 69,
+            "appr": 64.6,
+            "rel": 100
+          },
+          "score": 72.9
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.9,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 80.9,
+            "appr": 70.1,
+            "rel": 100
+          },
+          "score": 77.4
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "adopted": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "botsMeanScores": {
+        "nothing": 11.716666666666667,
+        "base": 43.833333333333336,
+        "diesel": 40.55,
+        "renew": 41.7,
+        "ties": 48.65,
+        "taxlow": 41.5,
+        "taxhigh": 47.95,
+        "dm": 40.3,
+        "storage": 40.583333333333336
+      },
+      "renewMinusDiesel": 1.1500000000000057,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need72-floor10": {
+      "meanScores": {
+        "research": 53.400000000000006,
+        "none": 51.0,
+        "hydrogen": 46.833333333333336,
+        "smr": 79.25
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.4000000000000057,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 31.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 48.0
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 49.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 36.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 31.4
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 42.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.3,
+            "ind": 47.9,
+            "fin": 100,
+            "co2": 50.6,
+            "appr": 67.5,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.9,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 59.9,
+            "ind": 51.5,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 84.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.5,
+            "ind": 96.4,
+            "fin": 100,
+            "co2": 80.7,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.3
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.1,
+            "ind": 46.4,
+            "fin": 100,
+            "co2": 69,
+            "appr": 64.6,
+            "rel": 100
+          },
+          "score": 72.9
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.9,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 80.9,
+            "appr": 70.1,
+            "rel": 100
+          },
+          "score": 77.4
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "adopted": {
+        "hwaseong": 6,
+        "pyeongtaek": 6,
+        "anseong": 6,
+        "dangjin": 6,
+        "asan": 6,
+        "cheonan": 6
+      },
+      "botsMeanScores": {
+        "nothing": 17.816666666666666,
+        "base": 47.81666666666667,
+        "diesel": 45.43333333333333,
+        "renew": 45.36666666666667,
+        "ties": 51.28333333333333,
+        "taxlow": 46.2,
+        "taxhigh": 49.95,
+        "dm": 43.81666666666666,
+        "storage": 44.21666666666667
+      },
+      "renewMinusDiesel": -0.06666666666666288,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need144-floor1": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "hydrogen": 40.050000000000004,
+        "smr": 76.10000000000001
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 22.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 25.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 26.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 27.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 23.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 46.9,
+            "ind": 46.8,
+            "fin": 52.1,
+            "co2": 37.7,
+            "appr": 63.5,
+            "rel": 100
+          },
+          "score": 56.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.4,
+            "ind": 54.7,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.1,
+            "rel": 100
+          },
+          "score": 85.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.4,
+            "ind": 50.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 68.5,
+            "rel": 100
+          },
+          "score": 83.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.4,
+            "ind": 96.2,
+            "fin": 100,
+            "co2": 78.3,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 86.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.7,
+            "ind": 45.9,
+            "fin": 72.3,
+            "co2": 62.7,
+            "appr": 63.1,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 80.4,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 76.9
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "adopted": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "botsMeanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "renewMinusDiesel": 1.6000000000000014,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need144-floor5": {
+      "meanScores": {
+        "research": 52.86666666666667,
+        "none": 48.81666666666666,
+        "hydrogen": 44.16666666666667,
+        "smr": 76.10000000000001
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 4.050000000000004,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 27.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 39.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 40.5
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 33.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 28.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 46.9,
+            "ind": 46.8,
+            "fin": 52.1,
+            "co2": 37.7,
+            "appr": 63.5,
+            "rel": 100
+          },
+          "score": 56.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.4,
+            "ind": 54.7,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.1,
+            "rel": 100
+          },
+          "score": 85.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.4,
+            "ind": 50.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 68.5,
+            "rel": 100
+          },
+          "score": 83.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.4,
+            "ind": 96.2,
+            "fin": 100,
+            "co2": 78.3,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 86.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.7,
+            "ind": 45.9,
+            "fin": 72.3,
+            "co2": 62.7,
+            "appr": 63.1,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 80.4,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 76.9
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "adopted": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "botsMeanScores": {
+        "nothing": 11.716666666666667,
+        "base": 43.833333333333336,
+        "diesel": 40.55,
+        "renew": 41.7,
+        "ties": 48.65,
+        "taxlow": 41.5,
+        "taxhigh": 47.95,
+        "dm": 40.3,
+        "storage": 40.583333333333336
+      },
+      "renewMinusDiesel": 1.1500000000000057,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "need144-floor10": {
+      "meanScores": {
+        "research": 53.400000000000006,
+        "none": 51.0,
+        "hydrogen": 46.833333333333336,
+        "smr": 76.10000000000001
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.4000000000000057,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 31.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 48.0
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 49.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 36.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 31.4
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 42.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 46.9,
+            "ind": 46.8,
+            "fin": 52.1,
+            "co2": 37.7,
+            "appr": 63.5,
+            "rel": 100
+          },
+          "score": 56.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.4,
+            "ind": 54.7,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.1,
+            "rel": 100
+          },
+          "score": 85.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.4,
+            "ind": 50.3,
+            "fin": 100,
+            "co2": 100,
+            "appr": 68.5,
+            "rel": 100
+          },
+          "score": 83.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 78.4,
+            "ind": 96.2,
+            "fin": 100,
+            "co2": 78.3,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 86.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.7,
+            "ind": 45.9,
+            "fin": 72.3,
+            "co2": 62.7,
+            "appr": 63.1,
+            "rel": 100
+          },
+          "score": 67.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 80.4,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 76.9
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "adopted": {
+        "hwaseong": 9,
+        "pyeongtaek": 9,
+        "anseong": 9,
+        "dangjin": 9,
+        "asan": 9,
+        "cheonan": 9
+      },
+      "botsMeanScores": {
+        "nothing": 17.816666666666666,
+        "base": 47.81666666666667,
+        "diesel": 45.43333333333333,
+        "renew": 45.36666666666667,
+        "ties": 51.28333333333333,
+        "taxlow": 46.2,
+        "taxhigh": 49.95,
+        "dm": 43.81666666666666,
+        "storage": 44.21666666666667
+      },
+      "renewMinusDiesel": -0.06666666666666288,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel2-floor1": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "hydrogen": 40.050000000000004,
+        "smr": 78.95
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 22.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 25.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 26.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 27.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 23.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.7,
+            "ind": 47.8,
+            "fin": 71.4,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 62.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.8,
+            "ind": 55.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 60.8,
+            "ind": 51.9,
+            "fin": 100,
+            "co2": 100,
+            "appr": 72.6,
+            "rel": 100
+          },
+          "score": 84.9
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 77.9,
+            "ind": 95.4,
+            "fin": 100,
+            "co2": 81.8,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.1,
+            "ind": 47.3,
+            "fin": 100,
+            "co2": 75.4,
+            "appr": 66,
+            "rel": 100
+          },
+          "score": 75.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.7,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.2,
+            "rel": 100
+          },
+          "score": 77.6
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "renewMinusDiesel": 1.6000000000000014,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel2-floor5": {
+      "meanScores": {
+        "research": 52.86666666666667,
+        "none": 48.81666666666666,
+        "hydrogen": 44.16666666666667,
+        "smr": 78.95
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 4.050000000000004,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 27.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 39.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 40.5
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 33.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 28.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.7,
+            "ind": 47.8,
+            "fin": 71.4,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 62.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.8,
+            "ind": 55.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 60.8,
+            "ind": 51.9,
+            "fin": 100,
+            "co2": 100,
+            "appr": 72.6,
+            "rel": 100
+          },
+          "score": 84.9
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 77.9,
+            "ind": 95.4,
+            "fin": 100,
+            "co2": 81.8,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.1,
+            "ind": 47.3,
+            "fin": 100,
+            "co2": 75.4,
+            "appr": 66,
+            "rel": 100
+          },
+          "score": 75.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.7,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.2,
+            "rel": 100
+          },
+          "score": 77.6
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 11.716666666666667,
+        "base": 43.833333333333336,
+        "diesel": 40.55,
+        "renew": 41.7,
+        "ties": 48.65,
+        "taxlow": 41.5,
+        "taxhigh": 47.95,
+        "dm": 40.3,
+        "storage": 40.583333333333336
+      },
+      "renewMinusDiesel": 1.1500000000000057,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel2-floor10": {
+      "meanScores": {
+        "research": 53.400000000000006,
+        "none": 51.0,
+        "hydrogen": 46.833333333333336,
+        "smr": 78.95
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.4000000000000057,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 31.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 48.0
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 49.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 36.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 31.4
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 42.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.7,
+            "ind": 47.8,
+            "fin": 71.4,
+            "co2": 44.6,
+            "appr": 67.4,
+            "rel": 100
+          },
+          "score": 62.6
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.8,
+            "ind": 55.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.6,
+            "rel": 100
+          },
+          "score": 85.8
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 60.8,
+            "ind": 51.9,
+            "fin": 100,
+            "co2": 100,
+            "appr": 72.6,
+            "rel": 100
+          },
+          "score": 84.9
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 77.9,
+            "ind": 95.4,
+            "fin": 100,
+            "co2": 81.8,
+            "appr": 72.3,
+            "rel": 100
+          },
+          "score": 87.5
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 50.1,
+            "ind": 47.3,
+            "fin": 100,
+            "co2": 75.4,
+            "appr": 66,
+            "rel": 100
+          },
+          "score": 75.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 51.7,
+            "ind": 45.2,
+            "fin": 100,
+            "co2": 81.9,
+            "appr": 70.2,
+            "rel": 100
+          },
+          "score": 77.6
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 17.816666666666666,
+        "base": 47.81666666666667,
+        "diesel": 45.43333333333333,
+        "renew": 45.36666666666667,
+        "ties": 51.28333333333333,
+        "taxlow": 46.2,
+        "taxhigh": 49.95,
+        "dm": 43.81666666666666,
+        "storage": 44.21666666666667
+      },
+      "renewMinusDiesel": -0.06666666666666288,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel4-floor1": {
+      "meanScores": {
+        "research": 51.86666666666667,
+        "none": 46.45,
+        "hydrogen": 40.050000000000004,
+        "smr": 77.0
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 5.416666666666664,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 22.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 25.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 26.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 27.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 23.3
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.3,
+            "ind": 47.7,
+            "fin": 49.2,
+            "co2": 44.5,
+            "appr": 66.8,
+            "rel": 100
+          },
+          "score": 59.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.3,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.7,
+            "ind": 51.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.1,
+            "rel": 100
+          },
+          "score": 84.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 79,
+            "ind": 97,
+            "fin": 100,
+            "co2": 81.1,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.6
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.4,
+            "ind": 46.4,
+            "fin": 58.8,
+            "co2": 67.9,
+            "appr": 63.8,
+            "rel": 100
+          },
+          "score": 67.6
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.7,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 83.5,
+            "appr": 69.2,
+            "rel": 100
+          },
+          "score": 77.5
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 5.183333333333334,
+        "base": 39.85,
+        "diesel": 35.08333333333333,
+        "renew": 36.68333333333333,
+        "ties": 43.78333333333333,
+        "taxlow": 34.1,
+        "taxhigh": 45.7,
+        "dm": 34.18333333333333,
+        "storage": 35.55
+      },
+      "renewMinusDiesel": 1.6000000000000014,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel4-floor5": {
+      "meanScores": {
+        "research": 52.86666666666667,
+        "none": 48.81666666666666,
+        "hydrogen": 44.16666666666667,
+        "smr": 77.0
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 4.050000000000004,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 27.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 39.7
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 40.5
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 33.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 28.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 37.7
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.0
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.3,
+            "ind": 47.7,
+            "fin": 49.2,
+            "co2": 44.5,
+            "appr": 66.8,
+            "rel": 100
+          },
+          "score": 59.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.3,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.7,
+            "ind": 51.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.1,
+            "rel": 100
+          },
+          "score": 84.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 79,
+            "ind": 97,
+            "fin": 100,
+            "co2": 81.1,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.6
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.4,
+            "ind": 46.4,
+            "fin": 58.8,
+            "co2": 67.9,
+            "appr": 63.8,
+            "rel": 100
+          },
+          "score": 67.6
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.7,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 83.5,
+            "appr": 69.2,
+            "rel": 100
+          },
+          "score": 77.5
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 11.716666666666667,
+        "base": 43.833333333333336,
+        "diesel": 40.55,
+        "renew": 41.7,
+        "ties": 48.65,
+        "taxlow": 41.5,
+        "taxhigh": 47.95,
+        "dm": 40.3,
+        "storage": 40.583333333333336
+      },
+      "renewMinusDiesel": 1.1500000000000057,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    },
+    "fuel4-floor10": {
+      "meanScores": {
+        "research": 53.400000000000006,
+        "none": 51.0,
+        "hydrogen": 46.833333333333336,
+        "smr": 77.0
+      },
+      "winners": {
+        "hwaseong": [
+          "smr"
+        ],
+        "pyeongtaek": [
+          "smr"
+        ],
+        "anseong": [
+          "smr"
+        ],
+        "dangjin": [
+          "smr"
+        ],
+        "asan": [
+          "smr"
+        ],
+        "cheonan": [
+          "smr"
+        ]
+      },
+      "smrFirstCities": 6,
+      "researchGain": 2.4000000000000057,
+      "rows": [
+        {
+          "id": "hwaseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 46,
+            "ind": 47.3,
+            "fin": 43.3,
+            "co2": 16.4,
+            "appr": 62.9,
+            "rel": 100
+          },
+          "score": 43.9
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 46.4,
+            "ind": 45.8,
+            "fin": 45.7,
+            "co2": 11.9,
+            "appr": 65.8,
+            "rel": 100
+          },
+          "score": 40.6
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 47.3,
+            "ind": 47.5,
+            "fin": 48.1,
+            "co2": 25.6,
+            "appr": 64.1,
+            "rel": 100
+          },
+          "score": 50.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "research",
+          "parts": {
+            "pop": 59.7,
+            "ind": 54.6,
+            "fin": 100,
+            "co2": 77.5,
+            "appr": 72.1,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "none",
+          "parts": {
+            "pop": 55.3,
+            "ind": 47.6,
+            "fin": 100,
+            "co2": 77.2,
+            "appr": 69,
+            "rel": 100
+          },
+          "score": 77.1
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 59.6,
+            "ind": 54.4,
+            "fin": 100,
+            "co2": 77.7,
+            "appr": 72,
+            "rel": 100
+          },
+          "score": 79.4
+        },
+        {
+          "id": "anseong",
+          "strategy": "research",
+          "parts": {
+            "pop": 44.8,
+            "ind": 47.4,
+            "fin": 14.3,
+            "co2": 13,
+            "appr": 60.6,
+            "rel": 100
+          },
+          "score": 35.5
+        },
+        {
+          "id": "anseong",
+          "strategy": "none",
+          "parts": {
+            "pop": 48.9,
+            "ind": 44.3,
+            "fin": 100,
+            "co2": 12.8,
+            "appr": 68,
+            "rel": 100
+          },
+          "score": 46.0
+        },
+        {
+          "id": "anseong",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 44,
+            "ind": 46.8,
+            "fin": 0,
+            "co2": 7.9,
+            "appr": 60.1,
+            "rel": 100
+          },
+          "score": 31.5
+        },
+        {
+          "id": "dangjin",
+          "strategy": "research",
+          "parts": {
+            "pop": 78.8,
+            "ind": 96.8,
+            "fin": 100,
+            "co2": 77.3,
+            "appr": 72.2,
+            "rel": 100
+          },
+          "score": 86.4
+        },
+        {
+          "id": "dangjin",
+          "strategy": "none",
+          "parts": {
+            "pop": 73.3,
+            "ind": 89.4,
+            "fin": 100,
+            "co2": 0,
+            "appr": 67.9,
+            "rel": 100
+          },
+          "score": 48.0
+        },
+        {
+          "id": "dangjin",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 78.2,
+            "ind": 95.2,
+            "fin": 100,
+            "co2": 0,
+            "appr": 71.4,
+            "rel": 100
+          },
+          "score": 49.0
+        },
+        {
+          "id": "asan",
+          "strategy": "research",
+          "parts": {
+            "pop": 43.9,
+            "ind": 45.9,
+            "fin": 0,
+            "co2": 16.2,
+            "appr": 61.5,
+            "rel": 100
+          },
+          "score": 36.0
+        },
+        {
+          "id": "asan",
+          "strategy": "none",
+          "parts": {
+            "pop": 47.5,
+            "ind": 45.5,
+            "fin": 100,
+            "co2": 19.9,
+            "appr": 67.1,
+            "rel": 100
+          },
+          "score": 51.8
+        },
+        {
+          "id": "asan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 43,
+            "ind": 44.8,
+            "fin": 0,
+            "co2": 9.7,
+            "appr": 61,
+            "rel": 100
+          },
+          "score": 31.4
+        },
+        {
+          "id": "cheonan",
+          "strategy": "research",
+          "parts": {
+            "pop": 45.7,
+            "ind": 43,
+            "fin": 52.9,
+            "co2": 9.8,
+            "appr": 66.4,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "cheonan",
+          "strategy": "none",
+          "parts": {
+            "pop": 45.9,
+            "ind": 43,
+            "fin": 100,
+            "co2": 6.5,
+            "appr": 66.7,
+            "rel": 100
+          },
+          "score": 42.5
+        },
+        {
+          "id": "cheonan",
+          "strategy": "hydrogen",
+          "parts": {
+            "pop": 45.6,
+            "ind": 43,
+            "fin": 53,
+            "co2": 9.9,
+            "appr": 66.1,
+            "rel": 100
+          },
+          "score": 39.2
+        },
+        {
+          "id": "hwaseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 48.3,
+            "ind": 47.7,
+            "fin": 49.2,
+            "co2": 44.5,
+            "appr": 66.8,
+            "rel": 100
+          },
+          "score": 59.5
+        },
+        {
+          "id": "pyeongtaek",
+          "strategy": "smr",
+          "parts": {
+            "pop": 61.3,
+            "ind": 55.1,
+            "fin": 100,
+            "co2": 100,
+            "appr": 73.5,
+            "rel": 100
+          },
+          "score": 85.7
+        },
+        {
+          "id": "anseong",
+          "strategy": "smr",
+          "parts": {
+            "pop": 57.7,
+            "ind": 51.2,
+            "fin": 100,
+            "co2": 100,
+            "appr": 71.1,
+            "rel": 100
+          },
+          "score": 84.1
+        },
+        {
+          "id": "dangjin",
+          "strategy": "smr",
+          "parts": {
+            "pop": 79,
+            "ind": 97,
+            "fin": 100,
+            "co2": 81.1,
+            "appr": 72.4,
+            "rel": 100
+          },
+          "score": 87.6
+        },
+        {
+          "id": "asan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 47.4,
+            "ind": 46.4,
+            "fin": 58.8,
+            "co2": 67.9,
+            "appr": 63.8,
+            "rel": 100
+          },
+          "score": 67.6
+        },
+        {
+          "id": "cheonan",
+          "strategy": "smr",
+          "parts": {
+            "pop": 49.7,
+            "ind": 44.8,
+            "fin": 100,
+            "co2": 83.5,
+            "appr": 69.2,
+            "rel": 100
+          },
+          "score": 77.5
+        }
+      ],
+      "simulationFailures": [],
+      "started": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "adopted": {
+        "hwaseong": 4,
+        "pyeongtaek": 4,
+        "anseong": 4,
+        "dangjin": 4,
+        "asan": 4,
+        "cheonan": 4
+      },
+      "botsMeanScores": {
+        "nothing": 17.816666666666666,
+        "base": 47.81666666666667,
+        "diesel": 45.43333333333333,
+        "renew": 45.36666666666667,
+        "ties": 51.28333333333333,
+        "taxlow": 46.2,
+        "taxhigh": 49.95,
+        "dm": 43.81666666666666,
+        "storage": 44.21666666666667
+      },
+      "renewMinusDiesel": -0.06666666666666288,
+      "botsWinners": {
+        "hwaseong": [
+          "taxhigh"
+        ],
+        "pyeongtaek": [
+          "taxlow"
+        ],
+        "anseong": [
+          "ties"
+        ],
+        "dangjin": [
+          "renew"
+        ],
+        "asan": [
+          "taxhigh"
+        ],
+        "cheonan": [
+          "ties"
+        ]
+      }
+    }
+  }
+}

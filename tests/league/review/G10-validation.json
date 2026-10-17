@@ -1,0 +1,638 @@
+{
+  "baseline": "cc8fd25",
+  "workdir": "/Users/yurosung/Projects/kentech-wt/econ-recal10",
+  "branch": "wip/recal10",
+  "node": "v24.21.0",
+  "pnpm": "11.25.0",
+  "basicExitCodes": {
+    "balance": 0,
+    "test-econ": 0,
+    "next": 0,
+    "tech": 0,
+    "sec": 0,
+    "recal": 1
+  },
+  "reviewExitCodes": {
+    "1-invariants.js": 0,
+    "10-tech.js": 0,
+    "12-next.js": 0,
+    "13-confirmed.js": 0,
+    "14-he.js": 0,
+    "15-map.js": 0,
+    "15-recal-r2.js": 0,
+    "16-recal-audit.js": 0,
+    "17-ai-r2.js": 0,
+    "18-growth-calibration.js": 0,
+    "19-fiscal-grid.js": 0,
+    "2-extremes.js": 0,
+    "20-fiscal-contract.js": 0,
+    "22-g4-contract.js": 0,
+    "23-g5-contract.js": 0,
+    "24-g5-ai-debt.js": 0,
+    "25-g6-score-contract.js": 0,
+    "26-g9-start-contract.js": 0,
+    "27-g9-preservation.js": 0,
+    "28-g10-contract.js": 0,
+    "3-policy-grid.js": 0,
+    "4-drift.js": 0,
+    "5-exploits.js": 0,
+    "6-ind-jump.js": 0,
+    "7-fiscal-approval.js": 0,
+    "8-offers.js": 0,
+    "9-grid.js": 0,
+    "g10-sensitivity.js": 0,
+    "g6-variants.js": 0,
+    "g7-variants.js": 0,
+    "lib.js": 0,
+    "11-tech-balance.js": 0,
+    "21-host-policy-grid.js": 0
+  },
+  "ai": {
+    "checks": 6764,
+    "passes": 6764,
+    "failures": 0
+  },
+  "bots": {
+    "checks": 18326,
+    "failures": 0,
+    "months": 36,
+    "rotations": 9
+  },
+  "T5": {
+    "passes": 22030,
+    "failures": [],
+    "finalRuns": 42,
+    "prefixAssertions": 648,
+    "tolerance": 1e-06,
+    "fitAttempts": 22,
+    "researchGain": 4.483333333333334,
+    "smrFirstCities": 2
+  },
+  "syntax": {
+    "tests/league/balance.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/bots36.py": {
+      "check": "ast.parse",
+      "exit": 0
+    },
+    "tests/league/review/11-tech-balance.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/21-host-policy-grid.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/23-g5-contract.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/26-g9-start-contract.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/g9-report.py": {
+      "check": "ast.parse",
+      "exit": 0
+    },
+    "ui/econ-data.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "ui/league-ai.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "ui/league-core.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/28-g10-contract.js": {
+      "check": "node --check",
+      "exit": 0
+    },
+    "tests/league/review/g10-report.py": {
+      "check": "ast.parse",
+      "exit": 0
+    },
+    "tests/league/review/g10-sensitivity.js": {
+      "check": "node --check",
+      "exit": 0
+    }
+  },
+  "allowedFileScope": true,
+  "decisionsOnlyD66Footnote": true,
+  "recal": {
+    "passes": 251,
+    "failures": 8,
+    "fileUnchanged": true,
+    "sameFailureDetails": true,
+    "failureDetails": [
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / kPM: params.kPM 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSlope: params.airSlope 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / airBase: params.airBase 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / airSpill: params.airSpill 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / pmFuelW: params.pmFuelW 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-0: params.kPM 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-1: params.kPM 없음",
+      "- 14 정전 시 대기 [미구현 허용: H01 뒤] / recal-2: params.kPM 없음"
+    ]
+  },
+  "regression": {
+    "currentPass75": true,
+    "g9AIMutationExpectedFailure": "같은 입지 연료 조건: 가중 1/4 종류 비교 불변",
+    "command": "G10_OLD_AI=1 node tests/league/review/28-g10-contract.js"
+  },
+  "additionalSeeds": [
+    {
+      "seed": "alpha",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 0,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 73.5,
+        "pyeongtaek": 86,
+        "anseong": 84.5,
+        "dangjin": 25.6,
+        "asan": 85.6,
+        "cheonan": 83.8
+      },
+      "cash": {
+        "hwaseong": -476,
+        "pyeongtaek": 754,
+        "anseong": -9,
+        "dangjin": 1006,
+        "asan": 182,
+        "cheonan": -48
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 6,
+          "diesel": 3,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "hydro": 10,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 9,
+          "battery": 2,
+          "hydro": 24,
+          "solar": 2
+        },
+        "anseong": {
+          "biomass": 1,
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 2,
+          "uni": 1
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 2,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10,
+          "uni": 1
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "beta",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 8,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.6,
+        "pyeongtaek": 83.8,
+        "anseong": 58,
+        "dangjin": 25,
+        "asan": 83.5,
+        "cheonan": 78.5
+      },
+      "cash": {
+        "hwaseong": -782,
+        "pyeongtaek": 1286,
+        "anseong": 70,
+        "dangjin": 1089,
+        "asan": -14,
+        "cheonan": -68
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 8,
+          "battery": 2,
+          "hydro": 23,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 10,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 20
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "gamma",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 11,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.4,
+        "pyeongtaek": 83.8,
+        "anseong": 58.5,
+        "dangjin": 25.2,
+        "asan": 83.4,
+        "cheonan": 78.4
+      },
+      "cash": {
+        "hwaseong": -893,
+        "pyeongtaek": 1480,
+        "anseong": 12,
+        "dangjin": 1098,
+        "asan": 22,
+        "cheonan": 22
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 5,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 7,
+          "battery": 2,
+          "hydro": 25,
+          "solar": 1,
+          "wind": 1
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 10,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 18
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 1
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 2,
+          "roof": 2
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 9,
+          "battery": 1,
+          "roof": 9
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "delta",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 3,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.7,
+        "pyeongtaek": 83.9,
+        "anseong": 58,
+        "dangjin": 24.2,
+        "asan": 84,
+        "cheonan": 80.3
+      },
+      "cash": {
+        "hwaseong": -706,
+        "pyeongtaek": 1198,
+        "anseong": 57,
+        "dangjin": 1119,
+        "asan": 52,
+        "cheonan": -5
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 8,
+          "battery": 2,
+          "hydro": 16,
+          "wind": 1,
+          "solar": 2
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 9,
+          "battery": 2,
+          "solar": 2,
+          "hydro": 24
+        },
+        "anseong": {
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 2,
+          "roof": 4,
+          "battery": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 2,
+          "hydro": 4,
+          "battery": 1,
+          "roof": 10,
+          "uni": 1
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 1,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 5
+        }
+      }
+    },
+    {
+      "seed": "epsilon",
+      "style": "balanced",
+      "over": {
+        "hwaseong": 10,
+        "pyeongtaek": 0,
+        "anseong": 0,
+        "dangjin": 0,
+        "asan": 0,
+        "cheonan": 0
+      },
+      "score": {
+        "hwaseong": 45.5,
+        "pyeongtaek": 83.9,
+        "anseong": 82.9,
+        "dangjin": 24.2,
+        "asan": 83.5,
+        "cheonan": 79.4
+      },
+      "cash": {
+        "hwaseong": -876,
+        "pyeongtaek": 1316,
+        "anseong": -16,
+        "dangjin": 1122,
+        "asan": 15,
+        "cheonan": 3
+      },
+      "types": {
+        "hwaseong": {
+          "biomass": 4,
+          "diesel": 4,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "hydro": 4,
+          "wind": 1,
+          "solar": 1
+        },
+        "pyeongtaek": {
+          "biomass": 2,
+          "diesel": 2,
+          "lab": 2,
+          "uni": 1,
+          "roof": 13,
+          "battery": 2,
+          "solar": 1,
+          "hydro": 20
+        },
+        "anseong": {
+          "biomass": 1,
+          "diesel": 1,
+          "hydro": 3,
+          "battery": 1,
+          "roof": 3,
+          "lab": 2
+        },
+        "dangjin": {
+          "lab": 2,
+          "uni": 1,
+          "solar": 3,
+          "battery": 1,
+          "roof": 1
+        },
+        "asan": {
+          "biomass": 4,
+          "diesel": 1,
+          "lab": 1,
+          "hydro": 2,
+          "battery": 1,
+          "roof": 10
+        },
+        "cheonan": {
+          "biomass": 3,
+          "diesel": 1,
+          "lab": 1,
+          "solar": 2,
+          "battery": 1,
+          "hydro": 1,
+          "roof": 3
+        }
+      }
+    }
+  ],
+  "researchBorrowSensitivity": {
+    "variant": "research-borrow",
+    "overrides": {
+      "aiResearchDebtShare": 1
+    },
+    "cities": {
+      "hwaseong": {
+        "cash": -505.89899999999983,
+        "debtCap": 641.2,
+        "overMonths": 0,
+        "minHeadroom": 135.30100000000022,
+        "maxUns": 0,
+        "score": 69.4
+      },
+      "pyeongtaek": {
+        "cash": 1275.4830000000004,
+        "debtCap": 380.8,
+        "overMonths": 0,
+        "minHeadroom": 560.10275,
+        "maxUns": 0,
+        "score": 83.8
+      },
+      "anseong": {
+        "cash": -266.498,
+        "debtCap": 133.7,
+        "overMonths": 16,
+        "minHeadroom": -132.798,
+        "maxUns": 0,
+        "score": 25.7
+      },
+      "dangjin": {
+        "cash": 1194.5720000000001,
+        "debtCap": 120,
+        "overMonths": 0,
+        "minHeadroom": 232.6005,
+        "maxUns": 0,
+        "score": 24
+      },
+      "asan": {
+        "cash": 20.07300000000002,
+        "debtCap": 208.9,
+        "overMonths": 0,
+        "minHeadroom": 182.78800000000004,
+        "maxUns": 0,
+        "score": 83.9
+      },
+      "cheonan": {
+        "cash": -221.58500000000006,
+        "debtCap": 341.7,
+        "overMonths": 0,
+        "minHeadroom": 120.11499999999992,
+        "maxUns": 0,
+        "score": 71.1
+      }
+    }
+  },
+  "sourceHashes": {
+    "tests/league/balance.js": "4780eaa456fe5dccda0d878e7a816b9b0e3071790624cce3d6982cfb7f0b342e",
+    "tests/league/bots36.py": "e09e8f98aee776f2e122b5e37b63984155203b80f42a9401b0ad25cfc795f581",
+    "tests/league/review/11-tech-balance.js": "d0f3095cc8881d181a39fbc2d1ab25fa7ea049f8f7825f3b18da13a3811f294a",
+    "tests/league/review/21-host-policy-grid.js": "d07fba59b90c4a3758c9932a34da39293be7ca9e2548f68889cce73d46e94ceb",
+    "tests/league/review/23-g5-contract.js": "3e83b6e43485bd328f9abb0f5eb3a940140abb809417af6c7e6b5e82682949ff",
+    "tests/league/review/26-g9-start-contract.js": "191cb2502384380a48dde037c1459ee7c0dd809f2d9e96e1df574b0817d13574",
+    "tests/league/review/g9-report.py": "9ff3ed815cbe2868d4e2de765015e13006b4865e6bca9543159e0f60ca3bcb41",
+    "ui/econ-data.js": "44f7dc2d94456f4bf4f2ab708589b1361bb5e980b259a582adc2e129ce25c609",
+    "ui/league-ai.js": "1c01c0c2e13eef605e0019c108f27f0cb26a002d559a2d295fda97612ba8f70e",
+    "ui/league-core.js": "d62cda124a28a30d1247d1f33645fd3bf0799dbb6e3ebdf9b3abf5b8d69ed6c0",
+    "tests/league/review/28-g10-contract.js": "bcf5a8320f5224997e6bda3e2e3b3d3a0c2f751022ac9f43ab8d428231fe61c7",
+    "tests/league/review/g10-report.py": "9a054a7b9e016e3c1b231b569ad54359241fc894f4d7096198bc7cdb260c145c",
+    "tests/league/review/g10-sensitivity.js": "e6a070850edeb65052d730826278f950c80af9fcf65431645c9a3db6e41e6d2e"
+  },
+  "limitations": [
+    "브라우저·운영 환경 미실행",
+    "지정 공통 씨앗 정책0 초과0과 달리 추가 씨앗 4개에서 화성 부채 초과",
+    "탄소 100 상한·bioCo2 일부 반영 여부는 남은 충돌; 구현하지 않음",
+    "SMR≤3은 이 고정 전략 집합에서 충족; 일반적 기술 우열 아님"
+  ]
+}

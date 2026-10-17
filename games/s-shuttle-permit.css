@@ -111,6 +111,10 @@
   font-family: inherit;
   font-variant-numeric: tabular-nums;
 }
+.sp-table .chip {
+  max-width: 100%;
+  white-space: normal;
+}
 .sp-cell-label {
   display: none;
 }
@@ -147,7 +151,9 @@
 #sp-rule-table,
 #sp-rule-costs,
 #sp-rule-table thead,
-#sp-rule-costs thead {
+#sp-rule-costs thead,
+#sp-rule-table caption,
+#sp-rule-costs caption {
   display: block;
 }
 #sp-rule-table tbody,

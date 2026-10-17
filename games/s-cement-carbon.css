@@ -42,6 +42,7 @@
 .cc-metric h4 { font-size:14px; font-weight:600; margin:0; }
 .cc-metric-value { font-size:20px; font-weight:700; line-height:1.4; overflow-wrap:anywhere; margin:8px 0; }
 .cc-metric-note { font-size:12px; color:var(--ink-2); }
+.cc-metric-note p { margin-block:0 6px; }
 .cc-warning { border:1px solid var(--line); padding:8px; }
 .cc-table { width:100%; table-layout:fixed; border-collapse:collapse; }
 .cc-table th,
