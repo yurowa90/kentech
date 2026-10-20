@@ -273,7 +273,14 @@
     if (!E?.speeds) return `<p class="lg-hint">${esc(E ? speedText(E) : "")}</p>`;
     const s = E.speeds;
     const items = [["이동 시간", s.monthsPerTurn, "배"], ["지지율 회복", s.eduMemory, "배"], ["주민 평가 간격", s.reviewEvery, "달"], ["대기 영향(집단 만족만·교육용)", s.eduAir, "배"], ["탄소 국경 부담", s.eduCbam, "배"], ["전력망 접속", s.eduConn, "배"], ["버리는 재생 전기", s.eduCurtail, "배"], ["기상 사건 빈도", s.hazardFreq, "배"], ["SMR 공사", s.smrTurns, "달"], ["LNG 가격 급등 빈도", s.lngSpikeFrequency, "배"], ["정전 1% 환산", s.outageHoursPerPercent, "시간/연"], ["연습 섬 송전 손실", s.islandLineLoss, "배"], ["연구 기간 비교", Array.isArray(s.researchYears) ? s.researchYears.join("~") : null, "년"], ["민원이 지지에 미치는 영향", Array.isArray(s.complaintPoliticalEffect) ? s.complaintPoliticalEffect.join("~") : null, "배"]];
-    return `<details id="lg-speeds"><summary>수업용 시간과 효과 크기 · ${esc(gradeWords("G"))}</summary><p>${esc(speedText(E, true))}</p>${items.filter(([,v]) => v != null).map(([name,v,unit]) => `<p>${esc(name)}: ${esc(v)}${unit}</p>`).join("")}</details>`;
+    return `<details id="lg-speeds"><summary>수업용 시간과 효과 크기 · ${esc(gradeWords("G"))}</summary><p>${esc(speedText(E, true))}</p>${items.filter(([,v]) => v != null).map(([name,v,unit]) => `<p>${esc(name)}: ${esc(v)}${unit}</p>`).join("")}${buildLeadHTML()}</details>`;
+  }
+  // D-81: 실제 공사 기간과 이 게임의 공사 규칙 차이를 밝힌다. 자료는 기기 안 params에서 읽는다(공개 상태 아님).
+  function buildLeadHTML() {
+    const lead = KCP.ECON_DATA.params.buildLeadYears?.v, kr = KCP.ECON_DATA.params.buildLeadKorea?.v;
+    if (!lead || !kr) return "";
+    const names = [["solar", "태양광"], ["wind", "육상풍력"], ["ess", "배터리(ESS)"], ["biomass", "바이오매스"], ["diesel", "디젤"], ["smr", "SMR"]];
+    return `<p id="lg-build-lead">실제 공사 기간(착공~가동, 미국 에너지정보청 가정값 · ${esc(gradeWords("P"))}): ${names.map(([k, n]) => `${esc(n)} ${esc(lead[k])}년`).join(" · ")}. 한국 사례 · ${esc(gradeWords("O*"))}: LNG 복합 ${esc(kr.lngMonths.join("~"))}개월, 육상풍력은 인허가까지 약 ${esc(kr.windPermitYears)}년. 송전망은 계획·인허가부터 완공까지 ${esc(kr.gridYears.join("~"))}년(국제에너지기구 · ${esc(gradeWords("P"))}).</p><p id="lg-build-rule">이 게임은 SMR만 공사 ${esc(KCP.TECH_DATA?.params.smrTurns.v ?? 12)}달을 기다리고, 다른 설비는 바로 지어져 전력망 접속만 기다려요. 그래서 SMR이 현실보다 상대적으로 불리하게 그려져 있어요(${esc(gradeWords("G"))}).</p>`;
   }
   const bioCo2Text = value => `바이오 CO₂ ${fmt(value, 2)} t(국가 총량 밖 · IPCC 정보 항목)`;
   function recalHTML(rep, id) {
