@@ -742,7 +742,8 @@ def economic(checks, context, base, label, pages):
             confirmed_plan(checks, team, 1, False, 'result', label + ' 유지·변경 없음 운영 뒤')
         if month == 1:
             team.locator('#lg-result-heading').wait_for(state='visible', timeout=WAIT)
-            checks.ok(wait_count(team, '#lg-result-deltas > div', 3) == 3 and
+            # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
+            checks.ok(wait_count(team, '#lg-result-deltas > div:not([data-grid-fill])', 3) == 3 and
                       team.locator('#lg-result-reasons').count() == 1 and team.locator('#lg-result-details').count() == 1 and
                       not team.locator('#lg-result-details').evaluate('el => el.open'), f'{label} U2 결과 숫자 셋·원인·자세히 접힘')
             checks.ok(wait_shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
@@ -1034,7 +1035,9 @@ def ui_fixes(checks, context, base, label, pages):
       return nodes.length === 1 && !nodes[0].disabled;
     }""", other)
     checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
-    box = proposal.bounding_box()
+    # 4배 감속에서 bounding_box가 다시 그려지는 순간의 옛 노드를 잡아 None을 돌려준 기록이 있다(같은 순간
+    # 새 노드는 231×44). 크기 판정은 연결된 노드의 실제 사각형으로 한다. 44px 기준은 그대로다.
+    box = proposal.evaluate("el => el.isConnected ? el.getBoundingClientRect().toJSON() : null")
     checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
     proposal.focus(); proposal.press('Enter')
     host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>
@@ -1113,7 +1116,7 @@ def ui_fixes(checks, context, base, label, pages):
         checks.ok(wait_count(team, '.lg-ask .lg-rebuttal-metrics > div', 2) == 2 and
                   team.locator('.lg-ask .lg-rebuttal-metrics').evaluate("""el => {
                     const [a,b]=el.children, x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
-                    return Math.abs(x.top-y.top)<1 && x.right <= y.left;
+                    return x.width > 0 && y.width > 0 && Math.abs(x.top-y.top)<1 && x.right <= y.left;
                   }"""), f'{label} #18 r-{key} 두 지표 나란히')
         overflow(checks, team, f'{label} 반문 {key}')
     team.evaluate("""() => {
@@ -1213,7 +1216,10 @@ def feature_hiding(checks, context, base, label, pages):
     team.locator('.lg-px').click()
     team.locator('[data-run="7"]').click(); team.wait_for_selector('#bd-skip')
     team.locator('#bd-skip').click(); team.wait_for_selector('#bd-res-title')
-    checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내')
+    if not checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내'):
+        print('  진단:', team.evaluate("() => ({fab2: KCP.buildGame.current()?.fab2, "
+              "title: document.querySelector('#bd-res-title')?.textContent, "
+              "notice: !!document.querySelector('#bd-fab2-active')})"), flush=True)
     checks.ok(all(absent_or_hidden(team, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
               f'{label} E G12 시험 결과의 일지 쓰기·대화상자·타이머 숨김')
     saved = team.evaluate('''() => {

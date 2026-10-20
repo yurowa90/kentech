@@ -35,7 +35,8 @@ function fixture() {
     setTimeout: later, clearTimeout: id => tasks.delete(id), setInterval: (fn, ms) => later(fn, ms, true), clearInterval: id => tasks.delete(id) };
   vm.runInNewContext(source, context);
   const N = context.window.KCP.leagueNet;
-  const conn = N.open({ kind: 'supabase', room: 'TESTROOM', url: 'ws://127.0.0.1/realtime/v1/websocket', key: 'fixture' });
+  // 단위4-A: ACK·경고 검사는 진행자 연결로 한정한다. 팀 연결의 기본값은 아래에서 별도로 확인한다.
+  const conn = N.open({ kind: 'supabase', room: 'TESTROOM', url: 'ws://127.0.0.1/realtime/v1/websocket', key: 'fixture', ack: true });
   return { N, conn, sockets, tasks, tick, socket: sockets[0] };
 }
 {
@@ -50,11 +51,13 @@ function fixture() {
   socket.receive({ topic: m.topic, event: 'phx_reply', ref: '없는-ref', payload: { status: 'ok' } });
   ok(delivered.length === 0, '모르는 ref 무시'); socket.reply(m);
   ok(delivered.length === 1 && delivered[0].ev === 'snap' && delivered[0].bytes === size, 'ack ok는 해당 프레임의 종류·UTF-8 바이트와 delivered 알림');
+  ok(Number.isSafeInteger(delivered[0].seq) && delivered[0].seq > 0, 'delivered에 연결 내 전송 순서 번호 포함');
   tick(5000); ok(missed.length === 0, 'ack 수신 시 타이머 해제');
   const payload = { text: 'x'.repeat(220000) };
   conn.send('snap', payload); const fail = socket.sent.at(-1), failBytes = Buffer.byteLength(JSON.stringify(fail));
   tick(4999); ok(missed.length === 0, '5초 이전에는 미확인 아님'); tick(1);
   ok(missed.length === 1 && missed[0].ev === 'snap' && missed[0].bytes === failBytes && missed[0].reason === 'timeout', '5초 후 프레임 바이트·시간 초과 이유와 미확인 알림');
+  ok(missed[0].seq > delivered[0].seq, '시간 초과 undelivered에도 증가한 전송 순서 번호 포함');
   socket.reply(fail); ok(delivered.length === 1, '시간 초과 뒤 늦은 ack 무시');
   let count = socket.sent.length;
   ok(conn.send('snap', payload) && socket.sent.length === count + 1 && Buffer.byteLength(JSON.stringify(socket.sent.at(-1))) === failBytes, '미확인 뒤에도 같은 크기를 계속 보냄');
@@ -64,6 +67,7 @@ function fixture() {
   socket.reply(socket.sent.at(-1));
   conn.send('req', { text: '작은 요청' }); const rejected = socket.sent.at(-1); socket.reply(rejected, 'error');
   ok(missed.at(-1).ev === 'req' && missed.at(-1).bytes === Buffer.byteLength(JSON.stringify(rejected)) && missed.at(-1).reason === '검사용 거절', 'error 답도 프레임 바이트·서버 이유와 미확인 알림');
+  ok(missed.at(-1).seq > delivered.at(-1).seq, '서버 거절 undelivered에도 전송 순서 번호 포함');
   const misses = missed.length; tick(5000);
   ok(missed.length === misses, 'error 답 뒤 시간 초과 중복 알림 없음');
   conn.close(); tick(10000);
@@ -85,6 +89,7 @@ function fixture() {
   for (let i = 0; i < 100; i++) conn.send('req', { i });
   ok([...tasks.values()].filter(t => !t.interval).length === 64, '대기 ack 타이머 최대 64개');
   ok(missed.length === 36 && missed.every((m, i) => m.reason === 'pending-limit' && m.bytes === Buffer.byteLength(JSON.stringify(socket.sent[i + 1]))), '표가 꽉 차면 오래된 36개부터 미확인으로 정리');
+  ok(missed.every((m, i) => Number.isSafeInteger(m.seq) && (i === 0 || m.seq > missed[i - 1].seq)), '대기 상한 정리 이벤트도 전송 순서 번호 증가');
   for (const m of socket.sent.slice(1, 37)) socket.reply(m);
   ok(delivered.length === 0, '정리한 오래된 ref의 ack 무시');
   socket.reply(socket.sent[37]);
@@ -96,9 +101,27 @@ function fixture() {
   ok(delivered.length === 1, '재연결 뒤 이전 소켓의 늦은 ack 무시');
   conn.send('snap', '재연결 후'); next.reply(next.sent.at(-1));
   ok(delivered.length === 2, '재연결 뒤 새 프레임 ack 정상 처리');
+  ok(delivered[1].seq > Math.max(delivered[0].seq, ...missed.map(m => m.seq)), '소켓 재연결 뒤에도 연결 객체의 전송 순서 번호 증가');
   conn.send('snap', '닫기 전'); const late = next.sent.at(-1);
   conn.close(); next.reply(late); tick(10000);
   ok(delivered.length === 2 && missed.length === 99 && tasks.size === 0, '닫을 때 모든 타이머 해제·닫은 뒤 늦은 ack 무시');
+}
+// 기본값과 명시적 false 모두 ACK 추적 없이 팀 요청을 보낸다.
+for (const option of [{}, { ack: false }]) {
+  const { N, conn, sockets, tasks, tick } = fixture();
+  conn.close();
+  const team = N.open({ kind: 'supabase', room: 'TESTROOM', url: 'ws://127.0.0.1/realtime/v1/websocket', key: 'fixture', ...option });
+  const socket = sockets.at(-1), results = [];
+  team.on('delivered', x => results.push(x)); team.on('undelivered', x => results.push(x));
+  team.send('req', { i: -1 }); socket.join();
+  ok(socket.sent[0].payload.config.broadcast.ack === false, '팀 연결은 기본값·명시적 false 모두 broadcast.ack 비활성');
+  for (let i = 0; i < 100; i++) team.send('req', { i });
+  ok(socket.sent.filter(m => m.event === 'broadcast').length === 101, 'ACK 비활성 연결도 가입 전 대기 요청과 이후 요청을 모두 전송');
+  ok([...tasks.values()].filter(t => !t.interval).length === 0 && results.length === 0, 'ACK 비활성 연결은 대기 타이머·상한 정리 이벤트 0개');
+  for (const m of socket.sent.slice(1)) socket.reply(m);
+  tick(5000);
+  ok(results.length === 0, 'ACK 비활성 연결은 서버 답변·시간 경과에도 전달 이벤트 없음');
+  team.close(); ok(tasks.size === 0, 'ACK 비활성 연결을 닫으면 남은 타이머 없음');
 }
 {
   const { N, conn, tick } = fixture(), a = N.open({ room: 'LOCAL' }), b = N.open({ room: 'LOCAL' });
@@ -111,6 +134,25 @@ function fixture() {
 // 실제 진행자 open 구독과 경고 함수를 실제 연결 이벤트로 검사한다.
 {
   const ui = fs.readFileSync(require('node:path').join(__dirname, '../../ui/league.js'), 'utf8');
+  const openStart = ui.indexOf('      L.conn = NET.open('), openEnd = ui.indexOf(';', openStart);
+  let hostOptions;
+  vm.runInNewContext(ui.slice(openStart, openEnd + 1), {
+    L: {}, save: { room: 'TESTROOM', net: { kind: 'supabase', ack: false } },
+    NET: { open: options => { hostOptions = options; } }
+  });
+  ok(hostOptions.room === 'TESTROOM' && hostOptions.ack === true, '진행자 NET.open은 저장된 설정과 무관하게 ACK 요청');
+  const teamOpenStart = ui.indexOf('      L.conn = NET.open(', openEnd);
+  let teamOptions;
+  vm.runInNewContext(ui.slice(teamOpenStart, ui.indexOf(';', teamOpenStart) + 1), {
+    L: { net: { kind: 'supabase' } }, save: { room: 'TESTROOM' },
+    NET: { open: options => { teamOptions = options; } }
+  });
+  ok(teamOptions.room === 'TESTROOM' && !teamOptions.ack, '팀 NET.open은 ACK 활성 옵션을 추가하지 않음');
+  vm.runInNewContext(ui.slice(teamOpenStart, ui.indexOf(';', teamOpenStart) + 1), {
+    L: { net: { kind: 'supabase', ack: true } }, save: { room: 'TESTROOM' },
+    NET: { open: options => { teamOptions = options; } }
+  });
+  ok(teamOptions.ack === false, '팀 NET.open은 저장값에 ack:true가 있어도 끔');
   const start = ui.indexOf('  function hostChannelWatch()');
   const block = ui.slice(start, ui.indexOf('  function hostSend(', start));
   const statusStart = ui.indexOf('      L.conn.onStatus(s =>');
@@ -136,6 +178,18 @@ function fixture() {
   ok(text.includes('전달 확인을 서버에서 받지 못했어요'), 'send 반환만으로 미확인 경고를 지우지 않음');
   socket.reply(socket.sent.at(-1));
   ok(!text.includes('전달 확인을 서버에서 받지 못했어요') && text.includes('저장하지 못했어요'), '다음 snap delivered에서 해제·저장 경고 유지');
+  conn.send('snap', '이전 상태 A'); tick(4000);
+  conn.send('snap', '새 상태 B'); socket.reply(socket.sent.at(-1));
+  const afterDelivered = writes; tick(1000);
+  ok(writes === afterDelivered && !text.includes('전달 확인을 서버에서 받지 못했어요'), 'B delivered 뒤 A 시간 초과가 경고를 다시 켜지 않음');
+  conn.send('snap', '새 상태 C'); tick(5000);
+  ok(text.includes('전달 확인을 서버에서 받지 못했어요'), '마지막 delivered보다 새 snap 시간 초과는 경고 표시');
+  conn.send('snap', '회복 전 상태'); socket.reply(socket.sent.at(-1));
+  conn.send('snap', '이전 상태 D'); const older = socket.sent.at(-1);
+  conn.send('snap', '새 상태 E'); socket.reply(socket.sent.at(-1), 'error');
+  socket.reply(older);
+  ok(text.includes('전달 확인을 서버에서 받지 못했어요'), 'E 거절 뒤 늦게 온 D delivered가 경고를 지우지 않음');
+  conn.send('snap', '회복 상태'); socket.reply(socket.sent.at(-1));
   socket.receive({ topic: socket.sent[0].topic, event: 'phx_error' }); tick(1000); socket.reply(socket.sent.at(-1));
   ok(subscribed.length === 2, '재연결 open에서도 전달 결과 구독 중복 없음');
   const before = writes;

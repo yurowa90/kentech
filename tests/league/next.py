@@ -413,7 +413,8 @@ def results(host, team, checks, fixture):
     shown_goal = re.search(r'CO₂ ≤ ([\d,]+)\s*t', goals)
     checks.ok(shown_goal is not None and abs(float(shown_goal.group(1).replace(',', '')) - target) <= .5,
               'D-A3 결과 CO₂ 목표 = 해당 달 평가 보고서 값')
-    checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
+    # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
+    checks.ok(team.locator('#lg-result-deltas > div:not([data-grid-fill])').count() == 3, 'U2 result starts with exactly three numbers')
     for key in ('lg-result-reasons', 'lg-result-details'):
         detail = team.locator('#' + key)
         checks.ok(detail.count() == 1, 'U2 native disclosure ' + key)

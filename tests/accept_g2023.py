@@ -824,10 +824,20 @@ def t_06_calculation_modes(c: Ctx):
         c.check(f"§6 {mode} 기본 꺼짐")
 
 
-def _submit(c, values):
+def _submit(c, values, valid=True):
     for suffix, value in zip(("s", "h", "e"), values):
         c.page.fill(f"#calc23-{suffix}", str(value))
+    before = c.page.locator("#calc23-msg").inner_text()
+    filled = [c.page.input_value(f"#calc23-{s}") for s in ("s", "h", "e")]
     c.page.click("#calc23-ok")
+    if valid:
+        # 부하에서 고정 대기 대신, 확인 처리기가 비교 문장을 쓸 때까지 최대 3초 기다린다.
+        # 기대값은 그대로 두고, 처리되지 않았으면 원인을 가릴 진단만 남긴다.
+        try:
+            c.page.wait_for_function("t => document.querySelector('#calc23-msg')?.innerText !== t", arg=before, timeout=3000, polling=50)
+        except Exception:
+            now = [c.page.input_value(f"#calc23-{s}") if c.page.locator(f"#calc23-{s}").count() else None for s in ("s", "h", "e")]
+            c.expect(False, f"§6 확인 처리 진단: 채운 값 {filled}, 지금 입력 {now}, 알림 {c.page.locator('#calc23-msg').inner_text()!r}")
     return _saved(c)
 
 
@@ -861,7 +871,7 @@ def t_07_calculation_inputs_and_reveal(c: Ctx):
         c.expect(bool(re.search(pattern, normalized)), "W4 직접 계산 사건 안내 " + pattern)
     for invalid in (("", "0", "0"), ("1.5", "0", "0"), ("1", "0.5", "0"), ("1", "0", "-0.5"),
                     ("1000", "0", "0"), ("0", "-1000", "0"), ("0", "0", "1e2")):
-        saved = _submit(c, invalid)
+        saved = _submit(c, invalid, valid=False)
         c.eq(saved.get("calc"), {}, f"§6 비정수·빈 입력 저장 안 함 {invalid}")
         c.eq(_shown(c), 0, "§6 유효하지 않은 입력은 shown 유지")
         msg = c.page.locator("#calc23-msg")

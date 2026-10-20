@@ -230,6 +230,40 @@ async function hostSecurity() {
   ok(!await N.hostReceiver({ room: S.room, fingerprint: "wrong-link-fingerprint" }, () => {})("snap", wire), "링크 지문 불일치면 첫 키도 거절");
   ok(!await N.hostReceiver({ room: "AAAAAA" }, () => {})("snap", { ...wire, room: "AAAAAA" }), "방 코드 불일치 키 거절");
   ok(await N.hostReceiver({ room: S.room, fingerprint: binding.fingerprint }, () => {})("snap", wire), "링크 지문 일치 참가");
+  // 단위4-A: 상한을 옛 200KB로 되돌리면 유효한 큰 서명 봉투 수용 단언이 실패해야 한다.
+  // hostReceiver는 서명 봉투 전체, 팀 요청 receiver는 서명한 body의 UTF-8 바이트를 제한한다.
+  {
+    const requestKey = await N.createIdentity(), requestState = state(S.room), team = ids[0];
+    let requestApplied = 0;
+    const receiveRequest = N.receiver(requestState, m => {
+      requestApplied++; return C.reduce(requestState, m, 1, BG);
+    });
+    const request = extra => N.signEnvelope(requestKey, team, { type: "ready", ready: true, sid: requestState.sid, seat: 0, ...extra });
+    ok((await receiveRequest(await request({ type: "claim", publicKey: requestKey.publicKey }))).ok,
+      "수신 상한 검사 준비: 팀 공개 키 착석");
+    const padding = size => "가".repeat(Math.floor(size / 3)) + "x".repeat(size % 3);
+    for (const size of [200001, 230000, 256000, 256001]) {
+      const data = { room: S.room, sid: S.sid, padding: "" };
+      const empty = await N.signHost(host, "snap", S.room, S.sid, data);
+      data.padding = padding(size - Buffer.byteLength(JSON.stringify(empty), "utf8"));
+      const frame = await N.signHost(host, "snap", S.room, S.sid, data);
+      ok(Buffer.byteLength(JSON.stringify(frame), "utf8") === size, "진행자 서명 봉투 정확한 UTF-8 크기 " + size);
+      let hostApplied = 0;
+      const accepted = await N.hostReceiver({ room: S.room }, (event, received) => {
+        if (event === "snap" && received.body.padding === data.padding) hostApplied++;
+      })("snap", frame);
+      ok(size <= 256000 ? accepted && hostApplied === 1 : !accepted && hostApplied === 0,
+        "진행자 hostReceiver 수신 상한 " + size + "B: " + (size <= 256000 ? "수용" : "거절"));
+      const emptyRequest = await request({ padding: "" });
+      const content = padding(size - Buffer.byteLength(emptyRequest.body, "utf8"));
+      const envelope = await request({ padding: content });
+      ok(Buffer.byteLength(envelope.body, "utf8") === size, "팀 요청 body 정확한 UTF-8 크기 " + size);
+      const before = requestApplied, result = await receiveRequest(envelope);
+      ok(size <= 256000 ? result.ok && result.verified && requestApplied === before + 1 && result.request.padding === content :
+        !result.ok && result.err === "bad" && requestApplied === before,
+        "팀 요청 receiver 수신 상한 " + size + "B: " + (size <= 256000 ? "수용" : "거절"));
+    }
+  }
   const packed = N.compactSnapshot(V), expanded = N.expandSnapshot(structuredClone(packed));
   ok(N.canonical(expanded) === N.canonical(V), "건설 base·계통 entries 전송 축약은 무손실 복원");
   // 인위적으로 오래된 팀 기록만 키운다. 현재 계획과 최근 두 기록은 그대로 남아야 한다.

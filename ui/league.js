@@ -1092,12 +1092,14 @@
     if (!needsLoop(V)) return "";
     const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
-    return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
+    const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
+    const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향`;
+    return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
       const label = x.key === "wind" ? x.text.replace(EVIDENCE_NAMES.wind, "풍속") : x.key === "neighbor" ? x.text.slice(x.text.indexOf(EVIDENCE_NAMES.neighbor)) : x.text;
       return `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text)}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}</button>`;
     }).join("")}</div>
-      <p id="lg-promise-baseline" class="lg-hint">비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${esc(comparison.label)} · 정전 ${Number.isFinite(comparison.value) ? `${esc(fmt(comparison.value, 2))}%` : "시험 기록 없음"}`}</p>
-      <label class="lg-field">2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향<select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <p id="lg-promise-baseline" class="lg-hint" title="${esc(baseline)}">${esc(baseline)}</p>
+      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
       ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section><details id="lg-promise-rules"><summary>약속 비교 기준 자세히</summary><p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p><p class="lg-hint">${PREDICTION_RULE}</p></details>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
@@ -1229,10 +1231,16 @@
     const unsChange = baseUns == null ? null : res.unsPct - baseUns, cashChange = c.cash - (V.econ.before?.[L.team]?.cash ?? c.cash);
     const pred = promiseResultHTML(V, n, reviewOrder);
     const key = n.ask || n.quarterKey, revisable = /^lg-[rpf]-/.test(key || ""), reflection = revisable || needsReviewLoop(n);
-    const controls = reflection ? `<div class="lg-acts">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const controls = reflection ? `<div class="lg-acts lg-decision-actions">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const rules = learningRuleHTML();
+    const questionBody = n.ask ? `<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}` : "";
+    const questionReason = `<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>`;
+    // 반문의 두 지표는 판단 근거라 접지 않는다. 접는 것은 질문 전문뿐이다.
+    const rebuttal = /^lg-r-/.test(n.ask || "") ? rebuttalMetricsHTML(V, n.ask, n.nb) : "";
+    const question = reviewOrder ? `${rebuttal}<details class="lg-question-full" data-decision-detail="question"><summary><span class="lg-question-preview">${questionBody.replaceAll("<p>", "").replaceAll("</p>", " ")}</span><span>질문 전문</span></summary>${questionBody}${!revisable && needsReviewLoop(n) ? questionReason : ""}</details>` : `${rebuttal}${questionBody}`;
     // c/i/d/e/h형 질문에는 선택 버튼을 붙이지 않는다. 고리의 수정은 별도 영역이다.
-    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}</section>` : "";
-    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}"><h3>질문 한 장 <span class="tag-mine">연습용</span></h3>${/^lg-r-/.test(n.ask) ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}` : ""}</section>` : "";
+    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}</section>` : "";
+    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}">${reviewOrder && loop ? "" : `<h3>질문 한 장 <span class="tag-mine">연습용</span></h3>`}${question}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}${reviewOrder && !revisable && needsReviewLoop(n) ? "" : questionReason}${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}` : ""}</section>` : "";
     return `${pred}${loop}${ask}`;
   }
 
@@ -1277,7 +1285,7 @@
     const { d } = monthNote(), inv = d.interview, end = inv.end || {};
     const crit = V.teams[L.team].crit, own = V.econ.score.by[L.team], top = V.econ.score.rank[0];
     const summary = `<section id="lg-final-summary" class="lg-sec"><h2>최종 순위</h2><p>${esc(teamName(L.team))} ${esc(own.rank)}위 · ${esc(fmt(own.score, 1))}점 / 종합 1위 ${esc(top.name)} ${esc(fmt(top.score, 1))}점</p></section>`;
-    return `${summary}${decisionsHTML(V)}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
+    return `${summary}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team) || ""}${decisionsHTML(V)}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
   }
   function finalCausesHTML(V) {
     // 혼자 하기·진행자는 전체 보고서를 보관한다. 공개 스냅에는 마지막 보고서만 있어
@@ -1933,7 +1941,7 @@
       const ok = S && S.region === REGION && S.teams && actT(S).length >= 2 && actT(S).every(t => S.teams[t.id]);
       L = { role: "host", room: save.room, net: save.net, identity: save.identity, fingerprint: save.fingerprint, migration: save.migration, S: ok ? S : C.newState(save.room, REGION, Date.now()), timers: [], pending: 0 };
       L.S.sid = NET.sessionId(); // 실행마다 새 세션: 저장 실패 전 봉투도 다시 적용하지 않는다.
-      L.conn = NET.open(Object.assign({ room: save.room }, save.net));
+      L.conn = NET.open(Object.assign({ room: save.room }, save.net, { ack: true }));
       const session = L;
       const replyFor = NET.replyGate();
       const receive = NET.receiver(L.S, m => L === session ? C.reduce(session.S, m, Date.now(), BG) : { ok: false, err: "closed" });
@@ -1982,8 +1990,11 @@
     if (L?.role !== "host" || L.conn.kind !== "supabase" || L.channelWatching) return;
     const session = L;
     L.channelWatching = true;
+    // 전달 결과는 순서가 뒤섞여 올 수 있다. 더 새 상태의 결과만 경고를 켜고 끈다.
+    let lastSeq = 0;
     const watch = (event, missed) => L.conn.on(event, m => {
-      if (L !== session || m.ev !== "snap") return;
+      if (L !== session || m.ev !== "snap" || m.seq < lastSeq) return;
+      lastSeq = m.seq;
       L.channelMissed = missed ? m.bytes : 0; hostWarning();
     });
     watch("undelivered", true);
@@ -2208,7 +2219,10 @@
       const ticker = $("#lg-host-ticker"), rank = $("#lg-host-rank"), debrief = $("#lg-host-debrief");
       if (ticker) ticker.innerHTML = tickerHTML(V);
       if (rank) {
-        rank.innerHTML = rankHTML(V.econ, false);
+        if (S.phase !== "end" || !rank.querySelector(".lg-fx-end")) {
+          rank.innerHTML = rankHTML(V.econ, false) + (S.phase === "end" ? KCP.fxEnd?.html({ ...V, results: S.results }, null, { allCities: true }) || "" : "");
+          if (S.phase === "end") KCP.fxEnd?.mount(rank);
+        }
         rank.querySelectorAll(".lg-scoreparts [data-leader=true] > span").forEach(el => { el.textContent = el.textContent.replace("· 1위(동점 포함)", "◆"); el.title = "부분 점수 공동 선두(동점 포함)"; });
       }
       if (debrief && S.phase === "end" && !debrief.querySelector("#lg-debrief")) {
@@ -2436,10 +2450,15 @@
   // flow는 손실 뒤 도착량이며 화력 대체도 포함한다. 기존 결과로 계통 수입 전
   // 거래 단계를 복원한다. 시간별 공급 식은 core만 소유하고 반올림 잔차는 마지막 몫에 둔다.
   // D-74: 이번 결과의 공급이 모두 바깥 계통에서 왔는지(자체 발전·이웃 구매 0). 결과 서랍의 계통 수입 역산과 같은 공개 필드만 쓴다.
+  // 바깥 계통이 메워 준 전기(대표 기간 MWh): 고립 운전 정전 − 실제 정전 − 이웃 구매 + 판매 대체분. 공개 필드로 역산하며 없으면 null.
+  function gridFillMWh(r) {
+    if (!r || ![r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return null;
+    return Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
+  }
   function gridOnlyServed(V, r) {
-    if (!V.econ || !r || ![r.dem, r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return false;
-    const served = r.dem - r.uns, grid = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
-    return served > 0.01 && served - grid <= 0.01;
+    if (!V.econ || !r || !Number.isFinite(r.dem)) return false;
+    const served = r.dem - r.uns, grid = gridFillMWh(r);
+    return grid != null && served > 0.01 && served - grid <= 0.01;
   }
   function outageNeighborStage(res, id, isolated) {
     const imported = Object.entries(res.flow || {}).reduce((sum, [key, flow]) => {
@@ -3008,6 +3027,12 @@
     const range = params("outageIndustryUsd").map(usd => kwh * (share * params("outageHomeWon") + (1 - share) * usd * params("outageFx")) / params("wonPerEok"));
     return `<p id="lg-outage-damage">정전 피해 추정 ${range.map(v => esc(fmt(v, v >= 10 ? 0 : 1))).join("~")}억 원(실제 돈, 현금에는 안 들어감, 추정) · 주거 몫 ${esc(fmt(share * 100, 1))}%·산업 몫 ${esc(fmt((1 - share) * 100, 1))}%: 비산업 수요를 주거로, 미공급을 수요 비례로 근사(${esc(gradeWords("M"))}) · 가구 대상 지불의사 설문 Jin(2025)·제조업 조사 Jin 외(2024)(${esc(gradeWords("P"))}), 문헌 환율·단위 환산(${esc(gradeWords("M"))}), 지도 축척(${esc(gradeWords("G"))})</p>`;
   }
+  // D-74: 정전 0%인 달에도 계통이 메웠으면 맨 위 숫자 줄에서 보이게 한다. 표시 단위(0.1 MWh) 미만이면 칸을 숨긴다.
+  function gridFillHTML(r, mul) {
+    const grid = gridFillMWh(r), mwh = grid == null ? 0 : grid * mul;
+    if (!(mwh >= .05)) return "";
+    return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(mwh, 1))} MWh</dd><small>비용 약 ${esc(fmt(mwh * params("normalCost") * params("gridImportMarkup"), 2))}억 · 상한·할증은 ${esc(gradeWords("G"))}</small></div>`;
+  }
   function resultHTML(V, res) {
     const id = L.team, r = res.team[id], rep = resultReport(V, res), { days, mul } = resultPeriod(V, res);
     const previous = V.results.find(x => x.round === res.round - 1), p = previous?.team[id];
@@ -3019,7 +3044,7 @@
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
-      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
+      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}${gridFillHTML(r, mul)}</dl>
       ${outageDamageHTML(V, res, id)}
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
@@ -3178,7 +3203,6 @@
   const LAKES = [{ n: `${teamName("dangjin")} 인근 호수`, at: [126.83, 36.88], r: [16, 7] }, { n: `${teamName("asan")} 인근 호수`, at: [126.98, 36.9], r: [20, 6] }, { n: `${teamName("hwaseong")} 인근 호수`, at: [126.75, 37.12], r: [12, 6] }, { n: `${teamName("asan")} 남쪽 호수`, at: [126.8, 36.63], r: [12, 6] }];
   // 광역 지도: R().board = 여섯 도시 지도를 합친 한 장. 팀마다 도시 창(BUILD_MAPS[pack].win)에서 지은 선·설비를 제자리에 그린다.
   const SQ3 = Math.sqrt(3);
-  const TER = { "~": "#2f6f9f", b: "#d9cc95", p: "#93c26a", f: "#4e8e4f", h: "#a3a26e", m: "#857563", u: "#b4b6bc", r: "#2f8fe0", l: "#5ab0e6", g: "#f0c83c", ".": "#c3c8bf" };
   let boardCache = null;
   function boardInfo() {
     const B = R().board;
@@ -3207,7 +3231,8 @@
     const w = P.win || [0, 0], c = g.c + w[0], r = g.r + w[1];
     return [SQ3 * (c + 0.5 * (r & 1)) + SQ3 / 2, 1.5 * r + 1];
   }
-  function renderBoard(cv, V, res, flash, preview = null) {
+  function renderBoard(cv, V, res, flash, preview = null, layoutZoom = 1) {
+    const TER = KCP.fxRegion.terrain;
     const G = boardInfo(), reg = R(), on = new Set(actT(V).map(t => t.id)), goals = V.goals || reg.goals;
     // 로비에서는 결과·건설 계획 없이 같은 지형과 경계를 그린다. 진행 화면은 원래 경로를 쓴다.
     const lit = new Set(preview?.lit || on), tokens = getComputedStyle(cv);
@@ -3219,13 +3244,38 @@
     const kx = k, ox = preview ? (cssW - G.W * k) / 2 : 0, oy = preview ? (cssH - G.H * k) / 2 : 0;
     if (cv.width !== Math.round(cssW * dpr) || cv.height !== Math.round(cssH * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); cv.style.height = cssH + "px"; }
     const g = cv.getContext("2d");
+    const labelBounds = [], names = [], icons = [];
+    const box = (x, y, width, height, extra = {}) => ({ x: ox + x * k, y: oy + y * k, width: width * k, height: height * k, ...extra });
+    const polygonBox = (points, extra) => {
+      const xs = points.map(p => p[0]), ys = points.map(p => p[1]), x = Math.min(...xs) - .3, y = Math.min(...ys) - .3;
+      labelBounds.push(box(x, y, Math.max(...xs) + .3 - x, Math.max(...ys) + .3 - y, extra));
+    };
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
     g.setTransform(dpr * kx, 0, 0, dpr * k, dpr * ox, dpr * oy);
     const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
     const hex = (x, y, rr) => { g.beginPath(); for (let a = 0; a < 6; a++) { const t = Math.PI / 180 * (60 * a - 90); const px = x + rr * Math.cos(t), py = y + rr * Math.sin(t); if (a) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); };
     // 강 칸은 땅 위에 물줄기(이웃 강·호수·바다 칸까지 잇는 띠)로 그려 호수(물 면 전체)와 구별한다.
     const WET = ch => ch === "r" || ch === "l" || ch === "~", nbOf = cl => (cl.r & 1 ? NB_O : NB_E).map(([dc, dr]) => { const o = G.at(cl.c + dc, cl.r + dr); return o && o.c === cl.c + dc ? o : null; }).filter(Boolean);
-    G.cells.forEach(cl => { if (preview && !cl.team) return; hex(cl.x, cl.y, 1.03); g.fillStyle = cl.ch === "r" ? TER.p : TER[cl.ch] || TER.p; g.fill(); });
+    G.cells.forEach(cl => {
+      if (preview && !cl.team) return;
+      const wet = cl.ch === "~" || cl.ch === "l", ch = cl.ch === "r" ? "p" : cl.ch;
+      const base = TER[ch] || TER.p, color = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16));
+      // 도시 지도 drawTile처럼 칸마다 7% 이내의 명도 차. 물은 원색 유지.
+      const jitter = 1 + (((cl.c * 17 + cl.r * 31) % 19) / 18 - .5) * .07;
+      const outside = !preview && (!cl.team || !on.has(cl.team));
+      const out = [1, 3, 5].map(i => parseInt(TER.out.slice(i, i + 2), 16));
+      g.fillStyle = wet ? base : `rgb(${color.map((v, i) => Math.round((outside ? v * .1 + out[i] * .9 : v) * (outside ? .72 : 1) * jitter)).join(",")})`;
+      hex(cl.x, cl.y, 1.03); g.fill();
+      if (!wet && ["f", "h", "m"].includes(ch)) {
+        g.fillStyle = outside ? "rgba(25,55,25,.12)" : "rgba(255,255,225,.13)";
+        g.beginPath(); g.moveTo(cl.x - .6, cl.y + .3); g.lineTo(cl.x, cl.y - .55); g.lineTo(cl.x + .65, cl.y + .3); g.closePath(); g.fill();
+      }
+      if (cl.ch === "g") {
+        g.strokeStyle = "#243c30"; g.lineWidth = .16;
+        g.beginPath(); g.moveTo(cl.x - .35, cl.y); g.lineTo(cl.x + .35, cl.y); g.stroke();
+        g.strokeRect(cl.x - .6, cl.y - .22, .3, .44); g.strokeRect(cl.x + .3, cl.y - .22, .3, .44);
+      }
+    });
     g.lineCap = "round"; g.lineJoin = "round";
     [["rgba(230,244,255,0.9)", 0.95], [TER.r, 0.62]].forEach(([col, w]) => {
       g.strokeStyle = col; g.lineWidth = w;
@@ -3238,7 +3288,7 @@
         g.fillStyle = token("--ui-panel");
         g.globalAlpha = lit.has(cl.team) ? 0.04 : 0.82;
         g.fill(); g.globalAlpha = 1;
-      } else if (cl.team && !on.has(cl.team)) { hex(cl.x, cl.y, 1.03); g.fillStyle = "rgba(200,204,196,0.72)"; g.fill(); }
+      }
     });
     // 도시 경계(팀 색 굵은 선)
     const B = G.B;
@@ -3249,7 +3299,7 @@
         const o = G.at(cl.c + dc, cl.r + dr) || null, ot = o && o.c === cl.c + dc ? o.team : null;
         if (ot === cl.team) return;
         const nx = SQ3 * (cl.c + dc + 0.5 * ((cl.r + dr) & 1)) + SQ3 / 2, ny = 1.5 * (cl.r + dr) + 1, mx = (cl.x + nx) / 2, my = (cl.y + ny) / 2, dx = (ny - cl.y) / 2 / SQ3, dy = -(nx - cl.x) / 2 / SQ3;
-        let border = on.has(cl.team) ? teamCol(cl.team) : "#9aa096";
+        let border = on.has(cl.team) ? teamCol(cl.team) : "#c2d2c6";
         if (preview) border = !lit.has(cl.team) ? token("--ui-border") : cl.team === preview.player ? token("--ui-gold") : token("--ui-border");
         g.strokeStyle = border;
         g.lineWidth = preview && cl.team === preview.player ? 0.7 : ot ? 0.32 : 0.42;
@@ -3269,21 +3319,37 @@
     reg.ties.filter(D => !preview && on.has(D.a) && on.has(D.b)).forEach(D => {
       const A = gateXY(D.a, D.b), Bq = gateXY(D.b, D.a);
       if (!A || !Bq) return;
-      const T = V.ties.find(x => x.a === D.a && x.b === D.b), F = res && T && res.flow[C.tieId(T)], net = F ? F.ab - F.ba : 0;
+      const T = V.ties.find(x => x.a === D.a && x.b === D.b), F = res && T?.st === "built" && res.flow?.[C.tieId(T)], net = F && Number.isFinite(F.ab) && Number.isFinite(F.ba) ? F.ab - F.ba : 0;
       g.setLineDash(!T ? [0.5, 0.9] : T.st === "prop" ? [1.2, 0.8] : []);
       g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? token("--ui-gold") : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
       g.beginPath(); g.moveTo(...A); g.lineTo(...Bq); g.stroke(); g.setLineDash([]);
       if (F && Math.abs(net) > 0.05) {
-        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
+        const flowWidth = .35 + Math.min(1.4, Math.sqrt(Math.abs(net)) * .035);
+        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches || KCP.v2?.reduced?.() ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flowWidth + (flash ? .15 : 0);
         g.beginPath(); if (net >= 0) { g.moveTo(...A); g.lineTo(...Bq); } else { g.moveTo(...Bq); g.lineTo(...A); } g.stroke(); g.setLineDash([]);
+        g.lineDashOffset = 0;
+        const from = net >= 0 ? A : Bq, to = net >= 0 ? Bq : A, dx = to[0] - from[0], dy = to[1] - from[1], len = Math.hypot(dx, dy);
+        if (len) for (const at of [.35, .7]) {
+          const x = from[0] + dx * at, y = from[1] + dy * at, s = 1 + flowWidth;
+          polygonBox([[x, y], [x - dx / len * s + dy / len * s * .55, y - dy / len * s - dx / len * s * .55],
+            [x - dx / len * s - dy / len * s * .55, y - dy / len * s + dx / len * s * .55]], { kind: "flow-arrow" });
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx / len * s + dy / len * s * .55, y - dy / len * s - dx / len * s * .55);
+          g.lineTo(x - dx / len * s - dy / len * s * .55, y - dy / len * s + dx / len * s * .55); g.closePath(); g.fillStyle = "#ffd23f"; g.fill();
+        }
         g.font = "700 1.35px sans-serif"; g.textAlign = "center"; g.lineWidth = 0.35; g.strokeStyle = "#fff"; g.fillStyle = "#1d2430";
         const mx = (A[0] + Bq[0]) / 2, my = (A[1] + Bq[1]) / 2 - 0.9, tx = `${fmt(Math.abs(net), 0)} MWh`;
         g.strokeText(tx, mx, my); g.fillText(tx, mx, my); flows++;
+        labelBounds.push(box(mx - g.measureText(tx).width / 2 - .3, my - 1.65, g.measureText(tx).width + .6, 2.2, { kind: "flow-text" }));
       }
     });
     // 이름표(도시·호수)
     g.textAlign = "center";
-    if (!preview) (B.labels || []).forEach(L0 => { const x = SQ3 * (L0.c + 0.5 * (L0.r & 1)) + SQ3 / 2, y = 1.5 * L0.r + 1; g.font = "600 1.2px sans-serif"; g.fillStyle = "rgba(20,40,60,0.75)"; g.fillText(L0.t, x, y); });
+    if (!preview) (B.labels || []).forEach(L0 => {
+      const x = SQ3 * (L0.c + 0.5 * (L0.r & 1)) + SQ3 / 2, y = 1.5 * L0.r + 1;
+      g.font = "600 1.2px sans-serif"; g.fillStyle = "rgba(20,40,60,0.75)"; g.fillText(L0.t, x, y);
+      const width = g.measureText(L0.t).width;
+      labelBounds.push(box(x - width / 2, y - 1.2, width, 1.6, { kind: "water", soft: true }));
+    });
     reg.teams.forEach(t => {
       const c0 = G.cen[t.id]; if (!c0) return;
       const act = on.has(t.id), r0 = res && res.team[t.id], v = V.teams[t.id];
@@ -3307,10 +3373,37 @@
         g.restore();
         return;
       }
-      g.font = `800 ${act ? 2.6 : 2.0}px sans-serif`; g.lineWidth = 0.6; g.strokeStyle = act ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)"; g.fillStyle = act ? "#fff" : "#6a6f66";
+      g.font = `800 ${act ? 2.6 : 2.0}px sans-serif`; g.lineWidth = 0.6; g.strokeStyle = "rgba(0,0,0,0.55)"; g.fillStyle = act ? "#fff" : "#f1f5ec";
       g.strokeText(t.name, c0[0], c0[1]); g.fillText(t.name, c0[0], c0[1]);
+      const nameWidth = g.measureText(t.name).width;
+      names.push(box(c0[0] - nameWidth / 2 - .3, c0[1] - (act ? 2.9 : 2.3), nameWidth + .6, act ? 3.5 : 2.9, { id: t.id }));
       const sub = !act ? "" : r0 ? `정전 ${fmt(r0.unsPct, 1)}%` : v && !v.seated ? "빈 자리" : "";
       if (sub) { g.font = "700 1.5px sans-serif"; g.lineWidth = 0.45; g.strokeText(sub, c0[0], c0[1] + 2.2); g.fillStyle = r0 && r0.unsPct > goals.unsPct ? "#ffb3a8" : "#fff"; g.fillText(sub, c0[0], c0[1] + 2.2); }
+      const halfWidth = Math.max(nameWidth, sub ? g.measureText(sub).width : 0) / 2 + .6;
+      const iconSize = Math.max(1, 7 / (k / layoutZoom)), iconY = c0[1] - 1;
+      const outage = act && r0?.unsPct >= .05, building = act && KCP.fxRegion.newBuildCount(v, V.round, V.phase) > 0;
+      if (outage || building) {
+        const iconX = c0[0] + halfWidth + iconSize + .7;
+        g.save(); g.lineWidth = .22; g.strokeStyle = "#fff";
+        if (outage) {
+          icons.push(box(iconX - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2, { id: t.id, kind: "outage" }));
+          g.beginPath(); g.arc(iconX, iconY, iconSize, 0, Math.PI * 2); g.fillStyle = "#b52b32"; g.fill(); g.stroke();
+          g.beginPath(); g.moveTo(iconX + iconSize * .25, iconY - iconSize * .75); g.lineTo(iconX - iconSize * .5, iconY + iconSize * .1);
+          g.lineTo(iconX, iconY + iconSize * .1); g.lineTo(iconX - iconSize * .25, iconY + iconSize * .75);
+          g.lineTo(iconX + iconSize * .5, iconY - iconSize * .15); g.lineTo(iconX, iconY - iconSize * .15); g.closePath(); g.fillStyle = "#fff"; g.fill();
+        }
+        if (building) {
+          const x = iconX + (outage ? iconSize * 2.4 : 0);
+          icons.push(box(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2, { id: t.id, kind: "build" }));
+          g.fillStyle = "#12634c"; g.fillRect(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2); g.strokeRect(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2);
+          g.lineWidth = .4; g.beginPath(); g.moveTo(x - iconSize * .55, iconY); g.lineTo(x + iconSize * .55, iconY); g.moveTo(x, iconY - iconSize * .55); g.lineTo(x, iconY + iconSize * .55); g.stroke();
+        }
+        g.restore();
+      }
+      // 카드 배치는 도시 이름·정전 줄·기호의 실제 픽셀 영역을 피한다.
+      const right = halfWidth + (outage || building ? .7 + iconSize * (outage && building ? 4.4 : 2) : 0);
+      labelBounds.push(box(c0[0] - halfWidth, c0[1] - Math.max(3, iconSize + 1),
+        halfWidth + right, Math.max(3, iconSize + 1) + Math.max(sub ? 3 : 1, iconSize - 1), { id: t.id, kind: "city" }));
     });
     if (V.econ) {
       const top = (V.econ.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter), max = Math.max(1, ...top.map(f => f.n));
@@ -3334,6 +3427,10 @@
         g.setLineDash([]); g.lineWidth = 0.4 + f.n / max; g.strokeStyle = "#8d2755";
         g.beginPath(); g.moveTo(tail[0], tail[1]); g.lineTo(x, y); g.stroke();
         g.fillStyle = "#8d2755"; g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx / len * 2 + dy / len, y - dy / len * 2 - dx / len); g.lineTo(x - dx / len * 2 - dy / len, y - dy / len * 2 + dx / len); g.closePath(); g.fill();
+        polygonBox([[x, y], [x - dx / len * 2 + dy / len, y - dy / len * 2 - dx / len],
+          [x - dx / len * 2 - dy / len, y - dy / len * 2 + dx / len]], { kind: "migration-arrow" });
+        const mx = (tail[0] + x) / 2, my = (tail[1] + y) / 2;
+        labelBounds.push(box(mx - 1.5, my - 1.5, 3, 3, { kind: "migration-mid" }));
         drawn.push([f.from, f.to]);
       });
       cv.dataset.moves = String(drawn.length);
@@ -3343,6 +3440,11 @@
     if (preview) { cv.dataset.preview = "true"; cv.dataset.ox = String(ox); cv.dataset.kx = String(kx); cv.dataset.oy = String(oy); }
     if (preview?.mode === "seat") cv.dataset.seatActive = [...on].join(" ");
     else delete cv.dataset.seatActive;
+    if (!preview) {
+      cv.setAttribute("aria-label", `도시별 설비·송전선·거래·이주 지도. ${KCP.fxRegion.legend}`);
+      KCP.fxRegion.recordLayout(cv, { cards: [], names, icons });
+    }
+    return labelBounds;
   }
   function boardHit(cv, ev) {
     const G = boardInfo(), rect = cv.getBoundingClientRect(), scale = rect.width / cv.clientWidth;
@@ -3392,6 +3494,7 @@
       close();
       L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, migrationFrom: save.migrationFrom, lastHostAt: Date.now(), lastSnapAt: Date.now(), pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, L.net, {
+        ack: false, // 전달 확인은 진행자만 쓴다(D-77). 저장값 형식이 바뀌어도 팀은 켜지 않는다.
         canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(NET.requestBody(m)?.type)
       }));
       const session = L;
@@ -3678,6 +3781,7 @@
       outageRememberIntl(V);
       // 결과를 받은 즉시, 다음 계획이 편집되기 전에 한 번만 계산한다.
       if (V.econ && ["review", "end"].includes(V.phase)) {
+        if (L.role === "team") KCP.fxEnd?.remember(V, V.results.at(-1));
         outageSnapshot(V, V.results.at(-1), L.team);
         outageAttribution(V, V.results.at(-1), L.team);
       }
@@ -4081,15 +4185,54 @@
     const region = document.getElementById("lg-region"), V = L.snap, G = boardInfo();
     if (!region || !V) return;
     const viewport = region.querySelector(".lg-regionviewport");
-    region.querySelector(".lg-regionboard").style.width = `${Math.min(viewport.clientWidth, viewport.clientHeight * G.W / G.H) * L.regionZoom}px`;
-    renderBoard(region.querySelector("canvas"), V, V.results.at(-1), false);
-    region.querySelector(".lg-regionlabels").innerHTML = actT(V).map(t => {
-      const xy = G.cen[t.id];
-      return `<span class="lg-regionlabel" style="left:${esc(xy[0] / G.W * 100)}%;top:${esc(xy[1] / G.H * 100)}%;--c:${esc(t.color)}">${esc(regionSummary(V, t.id))}</span>`;
+    const baseWidth = Math.min(viewport.clientWidth, viewport.clientHeight * G.W / G.H);
+    region.querySelector(".lg-regionboard").style.width = `${baseWidth * L.regionZoom}px`;
+    const cv = region.querySelector("canvas"), zoom = cv.clientWidth / baseWidth;
+    const drawnLabels = renderBoard(cv, V, V.results.at(-1), false, null, zoom);
+    const labels = drawnLabels.map(b => ({ ...b, x: b.x / zoom, y: b.y / zoom, width: b.width / zoom, height: b.height / zoom }));
+    const overlay = region.querySelector(".lg-regionlabels");
+    overlay.style.width = baseWidth + "px"; overlay.style.height = G.H * baseWidth / G.W + "px";
+    overlay.style.transform = `scale(${zoom})`;
+    overlay.innerHTML = actT(V).map(t => {
+      // SUMMARY_JS는 innerText를 읽는다. 이름은 생성 텍스트라 기존 목록의 요약 후보 수를 늘리지 않는다.
+      return `<span class="lg-regionlabel" style="--c:${esc(t.color)}"><span class="lg-regionlabel-name" aria-hidden="true" aria-label="${esc(t.name)}"></span>${esc(regionSummary(V, t.id))}</span>`;
     }).join("");
+    const nodes = [...region.querySelectorAll(".lg-regionlabel")], cities = actT(V), k = +cv.dataset.k / zoom;
+    const measure = () => nodes.map((el, i) => ({ id: cities[i].id, x: G.cen[cities[i].id][0] * k,
+      y: G.cen[cities[i].id][1] * k, width: el.offsetWidth, height: el.offsetHeight }));
+    const bounds = { width: baseWidth, height: G.H * baseWidth / G.W };
+    let cards = measure(), placed = KCP.fxRegion.placeCards(cards, labels, bounds);
+    if (placed.length !== nodes.length) {
+      // 좁은 창·큰 숫자에서만 글자와 폭을 줄이고 실제 크기를 다시 측정한다.
+      nodes.forEach(el => { el.style.fontSize = "10px"; el.style.width = Math.min(108, bounds.width * .3) + "px"; });
+      cards = measure(); placed = KCP.fxRegion.placeCards(cards, labels, bounds);
+    }
+    const g = cv.getContext("2d"), dpr = Math.min(2, window.devicePixelRatio || 1);
+    g.save(); g.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+    placed.forEach((p, i) => {
+      const el = nodes[i], anchor = cards[i];
+      el.style.left = p.x + "px"; el.style.top = p.y + "px";
+      const x = Math.max(p.x, Math.min(p.x + p.width, anchor.x)), y = Math.max(p.y, Math.min(p.y + p.height, anchor.y));
+      // 도시명 바깥부터 연결해 이름표와 기호를 선으로 덮지 않는다.
+      const box = labels.find(b => b.kind === "city" && b.id === anchor.id);
+      const dx = x - anchor.x, dy = y - anchor.y;
+      let start = 0;
+      if (box) start = Math.min(dx > 0 ? (box.x + box.width - anchor.x) / dx : dx < 0 ? (box.x - anchor.x) / dx : Infinity,
+        dy > 0 ? (box.y + box.height - anchor.y) / dy : dy < 0 ? (box.y - anchor.y) / dy : Infinity);
+      if (start >= 1) return;
+      g.beginPath(); g.moveTo(anchor.x + dx * start, anchor.y + dy * start); g.lineTo(x, y);
+      g.strokeStyle = "rgba(20,36,30,.85)"; g.lineWidth = 2.5; g.stroke();
+      g.strokeStyle = cities[i].color; g.lineWidth = 1; g.stroke();
+    });
+    // 물리적으로 들어가지 않는 극소 영역에서는 아래 도시 목록을 대안으로 둔다.
+    if (!placed.length) nodes.forEach(el => { el.hidden = true; });
+    g.restore();
+    KCP.fxRegion.recordLayout(cv, { cards: placed.map(p => ({ ...p, x: p.x * zoom, y: p.y * zoom, width: p.width * zoom, height: p.height * zoom })) });
     region.querySelectorAll("[data-region-city]").forEach(b => { b.querySelector("span").textContent = regionSummary(V, b.dataset.regionCity); });
     const moves = (V.econ?.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter);
-    region.querySelector("#lg-regioncap").textContent = moves.map(f => `${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join(" · ");
+    const movement = moves.map(f => `${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join(" · ");
+    region.querySelector("#lg-regioncap").textContent = [KCP.fxRegion.legend, movement,
+      placed.length < nodes.length ? "지도 아래 도시 목록에서 보기" : ""].filter(Boolean).join("\n");
   }
   function updateTeamAway() {
     updateAwayStatus();
@@ -4339,6 +4482,14 @@
       if (card) { p.querySelector(".lg-pbody")?.scrollTo(0, 0); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
   }
+  // 원인 카드(분해된 #lg-missed[data-opened])가 있는 달만 S7을 먼저 거치게 한다. 분해할 수 없는 달(시험 기록·지난달 사본 없음,
+  // 계산 전)은 할 수 있는 S7 행동이 없으므로 바로 단추를 낸다. 고르기를 생략하는 달(data-single)은 카드가 보이는 순간 S7이 끝난다.
+  function decisionShortcutHTML(outage, n) {
+    const card = outage?.hasAttribute("data-opened") ? outage : null;
+    if (!card || card.dataset.single === "true" || n.missedCarry || n.outageSingleShown)
+      return `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`;
+    return `<p id="lg-to-decision" class="lg-hint">${n.outageOpened || card.dataset.opened === "true" ? "연 원인을 다음 달 약속 카드에 붙이면 다음 결정으로 가요" : "원인 하나를 먼저 골라 열어 봐요"}</p>`;
+  }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
   function scrollPanelTo(el) {
     const p = document.getElementById("lg-panel");
@@ -4387,8 +4538,8 @@
     const V = L.snap, reg = R(), tab = L.panel;
     const reviewOrder = tab === "result" && V?.econ && V.phase === "review" && ["team", "solo"].includes(L.role);
     const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
-    const bodyScroll = p.querySelector(".lg-pbody")?.scrollTop || 0;
-    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : null).filter(Boolean);
+    const bodyScroll = V?.phase === "end" && (p.dataset.stage !== "end" || p.dataset.tab !== tab) ? 0 : p.querySelector(".lg-pbody")?.scrollTop || 0;
+    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : el.hasAttribute("data-decision-detail") ? ["data-decision-detail", el.dataset.decisionDetail] : null).filter(Boolean);
     const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "data-evidence", "data-confidence", "data-answer", "data-missed", "data-crit", "data-crit-choice", "data-resp", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
@@ -4436,7 +4587,6 @@
             <div><dt>정전</dt><dd class="num" data-bad="${r.unsPct > g.unsPct}">${fmt(r.unsPct, 2)}%</dd><small>혼자였다면 ${fmt(100 * r.isolated.uns / Math.max(1e-9, r.dem), 2)}%</small></div>
             <div><dt>병원 정전</dt><dd class="num" data-bad="${r.hospH > 0}">${r.hospH}시간</dd></div>
             <div><dt>사 온 전기 / 판 전기</dt><dd class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)} MWh</dd><small>거래 수지 ${fmt(r.earn - r.pay, 2)}억</small></div>
-            ${V.econ && [r.isolated?.uns, r.uns, r.imp, r.sub].every(Number.isFinite) ? (() => { const gridMWh = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub) * (rd.mdays || rd.days) / rd.days; return `<div><dt>바깥 계통이 메워 준 전기</dt><dd class="num">${fmt(gridMWh, 1)} MWh</dd><small>비용 약 ${fmt(gridMWh * params("normalCost") * params("gridImportMarkup"), 2)}억 · 상한·할증은 ${gradeWords("G")}</small></div>`; })() : ""}
             <div><dt>CO₂ 생산 / 소비 기준</dt><dd class="num">${fmt(r.co2Prod)} / ${fmt(r.co2Cons)} t</dd></div>
             <div><dt>이번 라운드 돈</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>새 투자 ${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} + 운영 ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}(연료·정책·대응${r.cost.research ? "·연구소" : ""}·거래) · 누적 투자 ${fmt(r.cost.stock != null ? r.cost.stock : r.cost.capex, 1)}</small></div>
             <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>
@@ -4472,6 +4622,8 @@
       body = goal + body;
     }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    p.querySelectorAll(".lg-promise-carry > p").forEach(line => { line.title = line.textContent; });
+    if (tab === "result" && V?.phase === "end") KCP.fxEnd?.mount(p);
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
     syncResultMapSpace();
@@ -4480,20 +4632,33 @@
       // 숫자 → 판정 → 원인 카드 → 결정을 먼저 두고, 상세의 기존 열림 상태는 보존한다.
       const deltas = p.querySelector("#lg-result-deltas"), outage = p.querySelector("#lg-missed");
       const compared = p.querySelector(".lg-compared"), questions = [...p.querySelectorAll("#lg-loop-review, .lg-ask")];
-      const decision = document.createElement("section"); decision.className = "lg-result-decision";
-      if (compared) decision.append(compared);
+      const decision = document.createElement("section"); decision.className = "lg-result-decision"; decision.id = "lg-result-decision"; decision.tabIndex = -1;
       decision.append(...questions);
+      const loop = decision.querySelector("#lg-loop-review"), ask = decision.querySelector(".lg-ask");
+      if (loop && ask) loop.querySelector("h3").after(ask);
+      const actions = decision.querySelector(".lg-decision-actions");
+      if (compared) { if (actions) actions.prepend(compared); else decision.prepend(compared); }
+      // 판정 줄은 남기고 긴 규칙 문단만 기존 펼치기 안으로 옮긴다.
+      const mission = decision.querySelector("#lg-learning-mission"), rules = mission?.nextElementSibling;
+      const ruleDetails = rules?.nextElementSibling;
+      if (rules?.matches(".lg-hint") && ruleDetails?.matches(".lg-learning-details")) {
+        ruleDetails.querySelector("summary").textContent = "학습 미션 판정 규칙";
+        ruleDetails.querySelector("summary").after(rules);
+        ruleDetails.dataset.decisionDetail = "rule";
+      }
+      const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(outage, monthNote().n) : "";
       // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
       const techNews = p.querySelector(".lg-tech-results");
       panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
-    } else if (summary) panelBody.prepend(summary);
+      if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
+    } else if (summary && V?.phase !== "end") panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
       const cause = noSupplyCause(res.team[L.team]?.unsPct, note?.planIssues);
       if (cause) {
         const line = document.createElement("p"); line.id = "lg-no-supply-cause"; line.className = "lg-hint"; line.textContent = cause;
         if (reviewOrder) p.querySelector("#lg-result-heading").after(line);
-        else if (summary) summary.after(line); else panelBody.prepend(line);
+        else if (summary) summary.after(line); else if (V.phase === "end") p.querySelector("#lg-last-month")?.append(line); else panelBody.prepend(line);
       }
     }
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });
@@ -4540,6 +4705,10 @@
   function onPanelClick(e) {
     if (e.target.closest("#lg-coach-again")) { closePanel(); showFirstGuide(document.getElementById("bd-root"), true); return; }
     if (e.target.closest("#lg-solo-restart")) { restartSolo(); return; }
+    if (e.target.closest("button#lg-to-decision")) {
+      const decision = document.getElementById("lg-result-decision");
+      scrollPanelTo(decision); decision?.focus({ preventScroll: true }); return;
+    }
     if (e.target.closest("[data-promise-details]")) {
       const details = document.getElementById("lg-last-month"); if (details) details.open = true;
       scrollPanelTo(document.getElementById("lg-promise-result")); return;
@@ -4633,7 +4802,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
+    uiMath: { monthPoints, resultPeriod, fmt, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st);
       // 실제 화면 편집처럼 건설 문서도 저장한다(mountCity의 save와 같은 모양). 안 하면 새로고침 뒤 옛 문서가 실린다.

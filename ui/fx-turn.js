@@ -469,5 +469,5 @@
     return false;
   }
   KCP.on?.("route:change", clear);
-  KCP.fxTurn = { monthStart, monthEnd, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
+  KCP.fxTurn = { eventMood: EVENT_MOOD, monthStart, monthEnd, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
 })();
