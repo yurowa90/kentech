@@ -6,7 +6,9 @@
 .lg-fx-end .lg-fx-zero { stroke: var(--ui-text); stroke-width: 1; opacity: .55; }
 .lg-fx-end { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; margin: 10px 0 16px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); opacity: 1; transform: translateY(0); transition: opacity .8s, transform .8s; }
 .lg-fx-end h3 { margin: 0 0 8px; font-size: 16px; }
-.lg-fx-strip { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+/* position: relative — 칸마다 있는 화면 낭독용 .lg-sr(절대 위치)이 띠를 기준 상자로 삼게 한다.
+   없으면 띠의 잘림을 벗어나 문서 폭을 늘린다(진행자 390px 끝 화면 scrollWidth 864). */
+.lg-fx-strip { position: relative; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
 .lg-fx-strip:focus-visible { outline: 2px solid var(--ui-cyan); outline-offset: 2px; }
 .lg-fx-strip ol { display: flex; gap: 0; width: max-content; margin: 0; padding: 0 0 6px; list-style: none; }
 .lg-fx-strip li { flex: 0 0 76px; box-sizing: border-box; padding: 6px; border-right: 1px solid var(--ui-border); font-size: 11px; text-align: center; }
