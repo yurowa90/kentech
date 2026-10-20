@@ -12,7 +12,11 @@
     coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
     spring_dust_haze: "haze", finedust_coal_cap: "haze" });
   const moodOf = cards => cards.map(c => Object.hasOwn(EVENT_MOOD, c.id) ? EVENT_MOOD[c.id] : null).find(Boolean) || null;
-  const forecastMonths = new Set(); // W1처럼 모듈 메모리만 쓴다. 기기 저장·전송 없음.
+  const forecastMonths = new Set();
+  // 예보 카드를 이미 본 달: 새로고침 뒤에도 다시 띄우지 않으려고 이 탭의 sessionStorage에만 적는다(리그 상태·전송 아님, D-65).
+  const SEEN = "kcp-fx-forecast-v1:";
+  const seenForecast = key => { try { return sessionStorage.getItem(SEEN + key) === "1"; } catch (_) { return false; } };
+  const markForecast = key => { try { sessionStorage.setItem(SEEN + key, "1"); } catch (_) {} };
   let moodRoot = null, forecastCards = new Map(), forecastMonth = null, activeMonth = null, activePhase = null;
   // review → end는 W1과 같이 같은 결과 연출이다.
   const phaseOf = phase => phase === "end" ? "review" : phase;
@@ -182,6 +186,21 @@
         box = spaces.sort((a, b) => area(b) - area(a))[0];
       }
     }
+    // 좁은 화면에서 결과 서랍 등이 지도를 거의 다 덮으면 남은 틈(예: 390px에서 오른쪽 44px)에 카드가 끼어
+    // 누를 수 없게 된다. 카드가 떠 있을 때 남은 틈이 카드 한 장보다 작으면 위쪽 막대와 도구 막대 사이 전체를
+    // 쓰고 서랍 위에 띄운다(data-over). 카드는 닫기·Esc로 바로 걷을 수 있다.
+    const fits = b => b.right - b.left >= 280 && b.bottom - b.top >= 240;
+    layer.dataset.over = "false";
+    if (deck && !fits(box)) {
+      const over = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8), top: Math.max(8, stage.top + 8), bottom: 0 };
+      for (const sel of ["#bd-hud", ".lg-bar", "#bd-mapbar"]) {
+        const el = root.querySelector(sel);
+        if (el && el.getClientRects().length) over.top = Math.max(over.top, el.getBoundingClientRect().bottom + 8);
+      }
+      const dock = root.querySelector("#bd-dock");
+      over.bottom = Math.min(window.innerHeight - 8, stage.bottom - 8, dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top - 8 : Infinity);
+      if (fits(over)) { box = over; layer.dataset.over = "true"; }
+    }
     const run = root.querySelector("#bd-run");
     if (root.classList.contains("bd-replaying") && run && !run.hidden) {
       Object.assign(run.style, { left: `${(box.left + box.right) / 2}px`,
@@ -237,7 +256,8 @@
         const front = face(card.forecast, "fx-turn-front"), back = face(card, "fx-turn-back");
         front.hidden = reduced(); back.hidden = false;
         front.setAttribute("aria-hidden", "true");
-        rotor.append(front, back); article.append(rotor);
+        // 확정 면을 DOM 앞에 둔다: 화면 낭독·문서 순서로는 확정 내용이 먼저 읽히고, 뒤집힌 예보 면은 aria-hidden.
+        rotor.append(back, front); article.append(rotor);
       } else article.append(face(card, ""));
       if (Object.hasOwn(EVENT_MOOD, card.id) && EVENT_MOOD[card.id] === status.mood)
         article.append(node("small", "fx-turn-mood-note", moodNote));
@@ -253,6 +273,8 @@
     layer.append(deck); status.cardsOpen = true; status.forecastOpen = forecast;
     layer.dataset.paged = String(cards.length > 3);
     syncCardSounds = () => articles.forEach(revealCard);
+    // 삽입으로 바뀐 영역을 같은 틱에 확정한 뒤 카드를 공개한다.
+    place(root);
     articles.forEach((article, i) => {
       const reveal = () => {
         if (!deck) return;
@@ -260,7 +282,17 @@
       };
       if (reduced()) reveal(); else later(80 + i * 260, reveal);
     });
-    later(forecast ? 8000 : 10000, closeCards);
+    // 자동 닫힘: 카드를 넘기거나 누르는 동안에는 다시 센다. 좁은 화면에서 서랍 접힘·펼침(UX U10, 최대 6초)과
+    // 겹쳐 읽는 도중에 닫히는 일을 막는다. 덧층이 걷히면(clear) 타이머도 함께 무시된다(epoch).
+    const wait = forecast ? 8000 : 10000, owner = deck;
+    let closeAt = 0;
+    const arm = () => {
+      const at = closeAt = performance.now() + wait;
+      later(wait, () => { if (deck === owner && closeAt === at) closeCards(); });
+    };
+    deck.addEventListener("pointerdown", arm);
+    deck.addEventListener("keydown", arm);
+    arm();
   }
   const monthKey = opts => {
     const session = KCP.league?.state?.(), V = opts.view || session?.snap || session?.S;
@@ -289,10 +321,10 @@
     if (!root || root.hidden || root.classList.contains("lg-peek") || root.querySelector(".lg-awaybar")) return false;
     const cards = opts.cards || [], key = monthKey(opts);
     setMood(moodOf(cards), root);
-    if (forecastMonths.has(key)) return false;
+    if (forecastMonths.has(key) || seenForecast(key)) return false;
     clear(); setMood(moodOf(cards), root);
     if (!cards.length) return false;
-    forecastMonths.add(key); forecastMonth = key;
+    forecastMonths.add(key); markForecast(key); forecastMonth = key;
     forecastCards = new Map(cards.map(card => [card.id, { ...card }]));
     mountLayer(root, key, opts.view?.phase || session?.snap?.phase || session?.S?.phase || "plan");
     showCards(cards, opts.sound, root, true);
@@ -303,7 +335,6 @@
   }
   function showSummary(opts, root) {
     if (!layer?.isConnected || !root.isConnected) return;
-    place(root);
     toast = node("div", "fx-turn-summary");
     const visual = node("div", "fx-turn-summary-values"); visual.setAttribute("aria-hidden", "true");
     visual.append(node("span", "fx-turn-tag", `${opts.monthLabel} 운영`));
@@ -314,6 +345,7 @@
     });
     const live = node("span", "bd-sr"); live.setAttribute("aria-live", "polite"); live.setAttribute("aria-atomic", "true");
     toast.append(visual, live); layer.append(toast);
+    place(root);
     for (const { el, direction } of opts.hud || []) {
       if (!el || !["up", "down"].includes(direction)) continue;
       const cls = `fx-flash-${direction}`; el.classList.add(cls);

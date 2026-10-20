@@ -25,7 +25,8 @@ function setup() {
     };
   })();`);
   const window = { KCP, addEventListener() {} }, document = { addEventListener() {}, getElementById: () => null, querySelector: () => null };
-  const context = vm.createContext({ window, document, matchMedia: () => ({ matches: false }) });
+  // forecastStart는 배치가 자리 잡도록 두 프레임 뒤에 부른다. 검사에서는 프레임 콜백을 바로 실행한다.
+  const context = vm.createContext({ window, document, matchMedia: () => ({ matches: false }), requestAnimationFrame: fn => fn() });
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, "../../ui/econ-data.js"), "utf8"), context);
   vm.runInContext(source, context);
   const view = { room: "FAKE", round: 1, phase: "plan", teams: { "fake-city": { fcx: { [E.id]: [.8, 1.2] } } },

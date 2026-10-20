@@ -3671,7 +3671,14 @@
   function forecastStart(V) {
     if (!L || L.away || !V || V.phase !== "plan") return;
     const cards = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(({ E }) => E && C.hits(R(), E, L.team)).map(({ ev, E }) => ({ id: ev.id, tag: "사건 예보", title: E.name, body: turnText(E.text, V), big: evSize(E, { id: ev.id, round: V.round }, V.teams[L.team]?.fcx?.[ev.id]) }));
-    if (cards.length) KCP.fxTurn?.monthStart({ round: V.round, team: L.team, view: V, cards, sound: kind => signal(kind) });
+    if (!cards.length) return;
+    // 계획 단계의 코치 띠·문제 칩이 같은 틱에 그려지므로 두 프레임 뒤(배치가 자리 잡은 뒤)에 띄운다.
+    // 그래야 움직임 줄이기에서도 카드가 처음부터 최종 위치에 나타난다.
+    const round = V.round, team = L.team;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!L || L.away || L.team !== team || L.snap?.round !== round || L.snap?.phase !== "plan") return;
+      KCP.fxTurn?.monthStart({ round, team, view: L.snap, cards, sound: kind => signal(kind) });
+    }));
   }
   function phaseChanged(V) {
     if (matchMedia("(max-width: 760px)").matches) BG.closeDrawer?.();

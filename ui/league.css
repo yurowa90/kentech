@@ -1139,6 +1139,8 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 
 /* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
 .fx-turn-layer { position: fixed; z-index: 35; pointer-events: none; overflow: hidden; color: var(--ui-text); font-family: var(--body); }
+/* 좁은 화면에서 남은 지도 틈이 카드보다 작을 때는 결과 서랍(#lg-panel z 46) 위에 띄운다. */
+.fx-turn-layer[data-over="true"] { z-index: 47; }
 .fx-turn-summary { width: max-content; max-width: calc(100% - 8px); box-sizing: border-box; margin: 4px auto; padding: 10px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow); animation: fx-toast-in .35s ease-out; }
 .fx-turn-summary-values { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px 12px; font-size: 14px; }
 .fx-turn-stat { display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; }
@@ -1163,7 +1165,8 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-turn-back { transform: rotateY(180deg); }
 .fx-revealed .fx-turn-rotor { transform: rotateY(180deg); }
 .fx-turn-mood-note { color: var(--ui-muted); font-size: 10px; line-height: 1.4; }
-.fx-turn-layer[data-paged="true"] .fx-turn-card-row { width: min(100%, 360px); grid-template-columns: minmax(0, 1fr); }
+/* 한 장씩 넘기기: 카드 수에 따른 :has 열 규칙(특이성 0,4,0)보다 뒤에서 같은 특이성으로 덮는다. */
+.fx-turn-layer[data-paged="true"] .fx-turn-card-row:has(.fx-turn-card) { width: min(100%, 360px); max-width: none; grid-template-columns: minmax(0, 1fr); }
 .fx-turn-layer[data-paged="true"] .fx-turn-card { grid-area: 1 / 1; }
 .fx-turn-layer[data-paged="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
 .fx-turn-layer[data-paged="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
@@ -1171,7 +1174,8 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-turn-card p { margin: 0; color: var(--ui-muted); font-size: 13px; line-height: 1.55; }
 .fx-turn-big { margin-top: auto; color: var(--ui-gold); font: 600 19px var(--mono); }
 .fx-turn-card-nav { display: none; }
-.fx-turn-layer[data-compact="true"] .fx-turn-card-row { width: min(100%, 360px); max-width: 360px; grid-template-columns: minmax(0, 1fr); }
+/* 좁은 덧층: 카드 수에 따른 :has 열 규칙(특이성 0,4,0)을 같은 특이성으로 뒤에서 덮어 한 장씩 보인다. */
+.fx-turn-layer[data-compact="true"] .fx-turn-card-row:has(.fx-turn-card) { width: min(100%, 360px); max-width: 360px; grid-template-columns: minmax(0, 1fr); }
 .fx-turn-layer[data-compact="true"] .fx-turn-card { grid-area: 1 / 1; padding: 12px; gap: 6px; }
 .fx-turn-layer[data-compact="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
 .fx-turn-layer[data-compact="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; color: var(--ui-muted); font: 12px var(--mono); }
