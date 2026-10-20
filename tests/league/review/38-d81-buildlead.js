@@ -1,0 +1,184 @@
+'use strict';
+// D-81 / RECAL-SPEC §8 #31 / D-72 독립 수용 검사. Node VM만 사용한다.
+// 실행: node tests/league/review/38-d81-buildlead.js (Git 읽기만, 브라우저·네트워크 없음)
+const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { execFileSync } = require('node:child_process');
+const ROOT = path.resolve(__dirname, '../../..');
+const BEFORE = '777805a', IMPLEMENTATION = '249a41b';
+const plain = x => JSON.parse(JSON.stringify(x));
+const clone = structuredClone;
+let assertions = 0;
+const failures = [];
+const ok = (value, label) => { assertions++; assert.ok(value, label); };
+const eq = (actual, expected, label) => { assertions++; assert.deepEqual(plain(actual), plain(expected), label); };
+function test(label, fn) {
+  try { fn(); }
+  catch (e) { failures.push({ label, error: e.message }); console.error(`FAIL ${label}: ${e.stack}`); }
+}
+const gitSource = (ref, name) => execFileSync('git', ['show', `${ref}:ui/${name}.js`],
+  { cwd: ROOT, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+const read = name => fs.readFileSync(path.join(ROOT, 'ui', `${name}.js`), 'utf8');
+
+// 36-h03-h04.js와 같은 IIFE 노출 방식. 함수 본문은 바꾸지 않는다.
+// build.js가 제공하는 실제 gradeWords를 사용하며 등급 대역은 넣지 않는다.
+function engine(ref) {
+  const ctx = vm.createContext({ console, structuredClone, performance,
+    document: { documentElement: {}, addEventListener() {} }, addEventListener() {},
+    KCP: { route() {}, on() {}, esc: String, leagueNet: {} } });
+  ctx.window = ctx;
+  vm.runInContext('Math.random = () => { throw Error("씨앗 없는 난수 금지"); };', ctx);
+  for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core',
+    ...(ref ? [] : ['league'])]) {
+    let source = ref ? gitSource(ref, name) : read(name);
+    if (name === 'league') {
+      const end = /\}\)\(\);\s*$/;
+      ok(end.test(source), 'league IIFE 노출 연결점');
+      source = source.replace(end, 'KCP.__d81 = { speedsHTML, buildLeadHTML };\n})();');
+    }
+    vm.runInContext(source, ctx, { filename: `${ref || 'worktree'}/ui/${name}.js` });
+  }
+  return ctx.KCP;
+}
+function game(K) {
+  const C = K.leagueCore, ids = C.regionOf('south').teams.map(t => t.id);
+  return C.newState('D81FIXTURE', 'south', 0, ids, { turns: 24, seedMode: 'fixed' });
+}
+function line(html, id) { return html.match(new RegExp(`<p id="${id}">([^<]*)</p>`))?.[1]; }
+function keyPaths(value, prefix = '', paths = new Set()) {
+  if (Array.isArray(value)) value.forEach(v => keyPaths(v, `${prefix}[]`, paths));
+  else if (value && typeof value === 'object') for (const [key, v] of Object.entries(value)) {
+    const p = prefix ? `${prefix}.${key}` : key;
+    paths.add(p); keyPaths(v, p, paths);
+  }
+  return [...paths].sort();
+}
+const K = engine(), D = K.ECON_DATA, U = K.__d81, C = K.leagueCore;
+const S = game(K), E = plain(C.publicView(S, 0).econ);
+const YEARS = { solar: 2, wind: 3, ess: 1, biomass: 4, diesel: 2, smr: 6 };
+const KOREA = { lngMonths: [27, 32], windPermitYears: 10, gridYears: [5, 15] };
+const NAMES = { solar: '태양광', wind: '육상풍력', ess: '배터리(ESS)', biomass: '바이오매스', diesel: '디젤', smr: 'SMR' };
+
+test('params: 명세의 값·등급·자료 출처', () => {
+  eq(D.params.buildLeadYears?.v, YEARS, 'EIA lead time 6종');
+  eq(D.params.buildLeadYears.grade, 'P', 'EIA 가정값 등급');
+  eq(D.params.buildLeadKorea?.v, KOREA, '한국 사례와 송전망 범위');
+  eq(D.params.buildLeadKorea.grade, 'O*', '한국 사례 등급');
+  ok(D.params.buildLeadYears.note.includes('EIA AEO2022'), 'EIA AEO2022 출처');
+  ok(D.params.buildLeadYears.note.includes('W6-report.md'), 'W6 조사 문서 출처');
+  ok(D.params.buildLeadKorea.note.includes('한국') && D.params.buildLeadKorea.note.includes('보도'), '한국 사례의 보도 근거');
+  ok(D.params.buildLeadKorea.note.includes('IEA') && D.params.buildLeadKorea.note.includes('P'), '송전망은 별도 IEA P 근거');
+});
+
+function checkDisplay(years, korea, label) {
+  const beforeE = clone(E), beforeD = clone(D), beforeT = clone(K.TECH_DATA.params);
+  const html = U.speedsHTML(E), lead = line(html, 'lg-build-lead'), rule = line(html, 'lg-build-rule');
+  eq((html.match(/id="lg-build-lead"/g) || []).length, 1, `${label}: 실제 기간 한 줄`);
+  eq((html.match(/id="lg-build-rule"/g) || []).length, 1, `${label}: 게임 규칙 한 줄`);
+  ok(/<details id="lg-speeds">[\s\S]*id="lg-build-lead"[\s\S]*id="lg-build-rule"[\s\S]*<\/details>/.test(html), `${label}: 배속표 안에 두 줄`);
+  for (const [key, name] of Object.entries(NAMES)) ok(lead.includes(`${name} ${years[key]}년`), `${label}: ${key} 숫자`);
+  ok(lead.includes(`LNG 복합 ${korea.lngMonths.join('~')}개월`), `${label}: 한국 LNG 범위`);
+  ok(lead.includes(`육상풍력은 인허가까지 약 ${korea.windPermitYears}년`), `${label}: 한국 풍력 인허가`);
+  ok(lead.includes(`미국 에너지정보청 가정값 · ${K.gradeWords('P')}`), `${label}: 미국 값 옆 P 낱말`);
+  ok(lead.includes(`한국 사례 · ${K.gradeWords('O*')}: LNG 복합`), `${label}: 한국 사례 옆 O* 낱말`);
+  ok(lead.includes(`송전망은 계획·인허가부터 완공까지 ${korea.gridYears.join('~')}년(국제에너지기구 · ${K.gradeWords('P')})`), `${label}: 송전망 값 옆 별도 P 낱말`);
+  ok(!/\((?:O\*?|P|M|G)\)/.test(lead + rule), `${label}: 내부 등급 글자 노출 없음`);
+  ok(rule.includes(`SMR만 공사 ${K.TECH_DATA.params.smrTurns.v}달`), `${label}: TECH_DATA SMR 달 수`);
+  ok(rule.includes('다른 설비는 바로 지어져 전력망 접속만 기다려요'), `${label}: 다른 설비 공사 생략·접속 대기 공개`);
+  ok(rule.includes('SMR이 현실보다 상대적으로 불리하게'), `${label}: 비대칭의 의미 공개`);
+  ok(rule.includes(K.gradeWords('G')), `${label}: 게임 규칙 G 낱말`);
+  eq(E, beforeE, `${label}: 입력 공개 경제 상태 불변`);
+  eq(D, beforeD, `${label}: 표시가 자료를 바꾸지 않음`);
+  eq(K.TECH_DATA.params, beforeT, `${label}: 표시가 기술 규칙을 바꾸지 않음`);
+}
+test('speedsHTML: 실제 params의 기간·근거·규칙 표시', () => checkDisplay(YEARS, KOREA, '기본'));
+test('speedsHTML: 모든 기간 params와 TECH_DATA 변경을 즉시 반영', () => {
+  const years = clone(D.params.buildLeadYears.v), korea = clone(D.params.buildLeadKorea.v);
+  const turns = K.TECH_DATA.params.smrTurns.v;
+  try {
+    // 기본값과 겹치지 않는 값으로 하드코딩·서로 다른 항목의 오연결을 잡는다.
+    const changedYears = { solar: 11, wind: 13, ess: 17, biomass: 19, diesel: 23, smr: 29 };
+    const changedKorea = { lngMonths: [31, 47], windPermitYears: 37, gridYears: [41, 53] };
+    D.params.buildLeadYears.v = changedYears; D.params.buildLeadKorea.v = changedKorea;
+    K.TECH_DATA.params.smrTurns.v = 7;
+    eq(E.speeds.smrTurns, 12, '옛 공개 speeds의 12달과 다른 기술값 7달 fixture');
+    checkDisplay(changedYears, changedKorea, '변형');
+  } finally {
+    D.params.buildLeadYears.v = years; D.params.buildLeadKorea.v = korea;
+    K.TECH_DATA.params.smrTurns.v = turns;
+  }
+});
+
+// ECON_DATA.params 자체는 기존 경제 자료 계약이다. D-81의 새 항목이 없는 옛 자료와
+// 각 항목의 v가 없는 경우에도 공사 기간 조각만 빈 문자열로 빠져야 한다.
+for (const missing of [['buildLeadYears'], ['buildLeadKorea'], ['buildLeadYears', 'buildLeadKorea']]) {
+  test(`기간 params 누락: ${missing.join('·')}`, () => {
+    const saved = Object.fromEntries(missing.map(key => [key, D.params[key]]));
+    try {
+      for (const key of missing) delete D.params[key];
+      eq(U.buildLeadHTML(), '', '누락이면 예외 없이 빈 문자열');
+      const html = U.speedsHTML(E);
+      ok(html.includes('id="lg-speeds"'), '기존 배속표는 유지');
+      ok(!html.includes('id="lg-build-lead"') && !html.includes('id="lg-build-rule"'), '불완전한 기간·규칙 줄 생략');
+    } finally { Object.assign(D.params, saved); }
+  });
+}
+for (const key of ['buildLeadYears', 'buildLeadKorea']) test(`기간 값 누락: ${key}.v`, () => {
+  const saved = D.params[key].v;
+  try { delete D.params[key].v; eq(U.buildLeadHTML(), '', 'v 누락도 예외 없이 빈 문자열'); }
+  finally { D.params[key].v = saved; }
+});
+
+test('D-81 커밋: smrTurns·공사 대기·발전 계산 코드 불변', () => {
+  for (const name of ['tech-data', 'league-core', 'build']) {
+    const before = gitSource(BEFORE, name);
+    ok(gitSource(IMPLEMENTATION, name) === before, `${name}: D-81이 기존 규칙 코드를 바꾸지 않음`);
+    ok(read(name) === before, `${name}: 검사 대상 작업 파일도 기존 규칙과 동일`);
+  }
+  eq(K.TECH_DATA.params.smrTurns.v, 12, 'SMR 공사 12달 유지');
+});
+
+test('공사 규칙 실행: SMR만 12달 대기·완공 경계', () => {
+  const state = game(K), id = state.active[0], token = 'd81-core-fixture';
+  ok(C.host(state, 'next', 0), '첫 달 시작');
+  ok(C.reduce(state, { type: 'claim', team: id, token }, 0).ok, '가상 팀 입장');
+  // 입지·예산은 이 검사의 대상이 아니다. bg 없이 실제 reduce의 공사 등록을 실행한다.
+  const builds = ['smr', 'solar', 'wind', 'battery', 'biomass', 'diesel'].map((t, i) => ({ t, i: 100 + i }));
+  const out = C.reduce(state, { type: 'plan', team: id, token, rev: 1, plan: { builds, lines: [] } }, 0);
+  ok(out.ok, `공사 계획 반영: ${out.err || 'ok'}`);
+  eq(state.teams[id].construction, { 'smr:100': { startRound: 1, readyRound: 13 } }, 'SMR만 1월 착공→13월 완공');
+  for (const round of [1, 12, 13, 14]) {
+    state.round = round;
+    eq(C.modsFor(state, C.regionOf(state.region), id).disabledBuilds || [], round < 13 ? ['smr:100'] : [], `${round}달: 공사 대기 경계`);
+  }
+});
+
+test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
+  const previous = engine(BEFORE), oldC = previous.leagueCore, old = game(previous), current = game(K);
+  eq(previous.TECH_DATA.params.smrTurns.v, K.TECH_DATA.params.smrTurns.v, '이전 SMR 달 수 동일');
+  for (const phase of ['lobby', 'plan', 'review']) {
+    if (phase === 'plan') {
+      ok(oldC.host(old, 'next', 0) && C.host(current, 'next', 0), '양쪽 첫 달 시작');
+    } else if (phase === 'review') {
+      ok(!!oldC.run(old, previous.buildGame, 0) && !!C.run(current, K.buildGame, 0), '양쪽 실제 운영');
+    }
+    eq(current.phase, phase, `${phase}: 비교 단계`);
+    const before = plain(oldC.publicView(old, 0)), after = plain(C.publicView(current, 0));
+    eq(keyPaths(after), keyPaths(before), `${phase}: 중첩 공개 키 집합 동일`);
+    eq(Object.keys(after.econ.speeds).sort(), Object.keys(before.econ.speeds).sort(), `${phase}: speeds 키 집합 동일`);
+    eq(after, before, `${phase}: 공개 상태 값도 동일`);
+    const stateBefore = clone(current), dataBefore = clone(D);
+    U.speedsHTML(after.econ);
+    eq(current, stateBefore, `${phase}: 표시 후 게임 상태 불변`);
+    eq(D, dataBefore, `${phase}: 표시 후 params 불변`);
+  }
+  const viewBefore = plain(C.publicView(current, 0)), years = D.params.buildLeadYears.v, korea = D.params.buildLeadKorea.v;
+  try {
+    D.params.buildLeadYears.v = { ...YEARS, solar: 99 };
+    D.params.buildLeadKorea.v = { ...KOREA, windPermitYears: 88 };
+    eq(C.publicView(current, 0), viewBefore, '기기 안 공사 기간 자료는 공개 상태에 추가되지 않음');
+  } finally { D.params.buildLeadYears.v = years; D.params.buildLeadKorea.v = korea; }
+});
+
+console.log(JSON.stringify({ suite: '38-d81-buildlead', assertions, failures: failures.length, details: failures }));
+process.exitCode = failures.length ? 1 : 0;
