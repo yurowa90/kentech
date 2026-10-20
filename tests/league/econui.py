@@ -578,7 +578,7 @@ def u_plan_contract(checks, team, host, tid, label):
       return {html, speed:m.speedText({speeds:{monthsPerTurn:1.5},eduSpeed:99}),
         reason:m.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'집값이 올라서 (M)',whyGrade:'M'})};
     }""")
-    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
+    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100 게임 원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
     # D-72(품질8 UX U9): 학생 기본 화면의 등급 글자는 학생 말(KCP.gradeWords)로 보인다.
     checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes(KCP.gradeWords('G'))"),
