@@ -306,7 +306,8 @@ def month_one(r):
         r.act('#lg-bar [data-panel="result"]', "결과 서랍 열기")
     page.wait_for_selector("#lg-promise-result", timeout=30000)
     r.shot("top")
-    r.view("#lg-promise-result", "약속 판정 보기")
+    # S6 판정은 결과 서랍 맨 위 판정 줄(#lg-promise-summary, 품질8 UX ①). 상세(#lg-promise-result)는 '예측 자세히'의 보조 정보.
+    r.view("#lg-promise-summary" if r.visible("#lg-promise-summary") else "#lg-promise-result", "약속 판정 보기")
 
     # S7 원인 하나
     r.scene("S7")

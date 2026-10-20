@@ -116,39 +116,51 @@
         delete t.trialGrid.entries;
       }
     }
-    // 한 번 측정하고 오래된 기록을 바이트 비율로 한 번에 덜어낸다. 현재 계획은 보존한다.
-    let size = bytes(snapshotEnvelope(view, [])).length;
+    const pack = () => {
+      const keys = [], index = new Map();
+      const row = obj => {
+        if (!snapshotObject(obj)) return [-1, obj];
+        const ks = Object.keys(obj), signature = JSON.stringify(ks);
+        if (!index.has(signature)) { index.set(signature, keys.length); keys.push(ks); }
+        return [index.get(signature), ...ks.map(k => obj[k])];
+      };
+      snapshotRows(view, row, true);
+      return snapshotEnvelope(view, keys);
+    };
+    // 사전까지 포함한 최종 봉투로 판단한다. 행마다 축약률이 달라 보정은 최대 두 번이다.
+    const MAX_COMPACTION_PASSES = 2;
+    let packed = pack(), size = bytes(packed).length;
     if (size > 178000) {
-      // 예전 저장에 남은 계획 전문은 그 팀의 건설 속도 요약으로 바꾼다.
-      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
-        (Array.isArray(t.hist) ? t.hist : []).forEach((row, i) => {
-          if (!snapshotObject(row)) return;
-          if (i >= t.hist.length - 2 || !row.plan) return;
-          const summary = Object.fromEntries(["t", "r", "cap", "n", "l"].filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
-          size -= bytes(row).length - bytes(summary).length;
-          t.hist[i] = summary;
-        });
-      }
-      const rows = Object.values(view.teams || {}).filter(snapshotObject).flatMap(t => (Array.isArray(t.hist) ? t.hist : []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
-      const removable = rows.reduce((sum, x) => sum + x.size, 0);
-      const ratio = Math.max(0, Math.min(1, (size - 177000) / Math.max(1, removable)));
-      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
-        const old = rows.filter(x => x.t === t), target = old.reduce((sum, x) => sum + x.size, 0) * ratio;
-        let removed = 0, count = 0;
-        while (count < old.length && removed < target) removed += old[count++].size;
-        if (count) t.hist = t.hist.slice(count);
+      for (let pass = 0; pass < MAX_COMPACTION_PASSES && size > 178000; pass++) {
+        // base·배분은 유지하고, 기록만 객체로 되돌린 뒤 비율을 한 번 계산한다.
+        snapshotRows(view, values => values[0] === -1 ? values[1] :
+          Object.fromEntries(packed.keys[values[0]].map((k, i) => [k, values[i + 1]])), false);
+        // 예전 저장에 남은 계획 전문은 그 팀의 건설 속도 요약으로 바꾼다.
+        for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+          (Array.isArray(t.hist) ? t.hist : []).forEach((row, i) => {
+            if (!snapshotObject(row)) return;
+            if (i >= t.hist.length - 2 || !row.plan) return;
+            const summary = Object.fromEntries(["t", "r", "cap", "n", "l"].filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
+            // 객체 바이트로 절감량을 근사한다. 다음 차례 여부는 재포장한 봉투 실측으로 결정한다.
+            size -= bytes(row).length - bytes(summary).length;
+            t.hist[i] = summary;
+          });
+        }
+        const rows = Object.values(view.teams || {}).filter(snapshotObject).flatMap(t => (Array.isArray(t.hist) ? t.hist : []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
+        const removable = rows.reduce((sum, x) => sum + x.size, 0);
+        const ratio = Math.max(0, Math.min(1, (size - 177000) / Math.max(1, removable)));
+        for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+          const old = rows.filter(x => x.t === t), target = old.reduce((sum, x) => sum + x.size, 0) * ratio;
+          let removed = 0, count = 0;
+          while (count < old.length && removed < target) removed += old[count++].size;
+          if (count) t.hist = t.hist.slice(count);
+        }
+        // 한 행씩 전체를 재측정하지 않는다. 한 차례 삭제가 끝난 뒤 한 번만 재포장한다.
+        packed = pack();
+        size = bytes(packed).length;
       }
     }
-    // 비상 축약은 객체 기록에서 먼저 끝낸다. 봉투 표지·방·지역·사전도 크기에 포함한다.
-    const keys = [], index = new Map();
-    const row = obj => {
-      if (!snapshotObject(obj)) return [-1, obj];
-      const ks = Object.keys(obj), signature = JSON.stringify(ks);
-      if (!index.has(signature)) { index.set(signature, keys.length); keys.push(ks); }
-      return [index.get(signature), ...ks.map(k => obj[k])];
-    };
-    snapshotRows(view, row, true);
-    return snapshotEnvelope(view, keys);
+    return packed;
   }
   function expandSnapshot(view) {
     if (!snapshotObject(view)) return null;
