@@ -1230,10 +1230,15 @@
     const unsChange = baseUns == null ? null : res.unsPct - baseUns, cashChange = c.cash - (V.econ.before?.[L.team]?.cash ?? c.cash);
     const pred = promiseResultHTML(V, n, reviewOrder);
     const key = n.ask || n.quarterKey, revisable = /^lg-[rpf]-/.test(key || ""), reflection = revisable || needsReviewLoop(n);
-    const controls = reflection ? `<div class="lg-acts">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const controls = reflection ? `<div class="lg-acts lg-decision-actions">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const rules = learningRuleHTML();
+    const questionBody = n.ask ? `<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}` : "";
+    const questionReason = `<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>`;
+    const questionDetails = `${/^lg-r-/.test(n.ask || "") ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}${questionBody}`;
+    const question = reviewOrder ? `<details class="lg-question-full" data-decision-detail="question"><summary><span class="lg-question-preview">${questionBody.replaceAll("<p>", "").replaceAll("</p>", " ")}</span><span>질문 전문</span></summary>${questionDetails}${!revisable && needsReviewLoop(n) ? questionReason : ""}</details>` : questionDetails;
     // c/i/d/e/h형 질문에는 선택 버튼을 붙이지 않는다. 고리의 수정은 별도 영역이다.
-    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}</section>` : "";
-    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}"><h3>질문 한 장 <span class="tag-mine">연습용</span></h3>${/^lg-r-/.test(n.ask) ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}` : ""}</section>` : "";
+    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}</section>` : "";
+    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}">${reviewOrder && loop ? "" : `<h3>질문 한 장 <span class="tag-mine">연습용</span></h3>`}${question}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}${reviewOrder && !revisable && needsReviewLoop(n) ? "" : questionReason}${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}` : ""}</section>` : "";
     return `${pred}${loop}${ask}`;
   }
 
@@ -4261,6 +4266,11 @@
       if (card) { p.querySelector(".lg-pbody")?.scrollTo(0, 0); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
   }
+  function decisionShortcutHTML(hasOutage, n) {
+    return !hasOutage || n.missedCarry || n.outageSingleShown
+      ? `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`
+      : `<p id="lg-to-decision" class="lg-hint">원인 하나를 먼저 골라 열어 봐요</p>`;
+  }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
   function scrollPanelTo(el) {
     const p = document.getElementById("lg-panel");
@@ -4310,7 +4320,7 @@
     const reviewOrder = tab === "result" && V?.econ && V.phase === "review" && ["team", "solo"].includes(L.role);
     const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
     const bodyScroll = p.querySelector(".lg-pbody")?.scrollTop || 0;
-    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : null).filter(Boolean);
+    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : el.hasAttribute("data-decision-detail") ? ["data-decision-detail", el.dataset.decisionDetail] : null).filter(Boolean);
     const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "data-evidence", "data-confidence", "data-answer", "data-missed", "data-crit", "data-crit-choice", "data-resp", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
@@ -4402,12 +4412,25 @@
       // 숫자 → 판정 → 원인 카드 → 결정을 먼저 두고, 상세의 기존 열림 상태는 보존한다.
       const deltas = p.querySelector("#lg-result-deltas"), outage = p.querySelector("#lg-missed");
       const compared = p.querySelector(".lg-compared"), questions = [...p.querySelectorAll("#lg-loop-review, .lg-ask")];
-      const decision = document.createElement("section"); decision.className = "lg-result-decision";
-      if (compared) decision.append(compared);
+      const decision = document.createElement("section"); decision.className = "lg-result-decision"; decision.id = "lg-result-decision"; decision.tabIndex = -1;
       decision.append(...questions);
+      const loop = decision.querySelector("#lg-loop-review"), ask = decision.querySelector(".lg-ask");
+      if (loop && ask) loop.querySelector("h3").after(ask);
+      const actions = decision.querySelector(".lg-decision-actions");
+      if (compared) { if (actions) actions.prepend(compared); else decision.prepend(compared); }
+      // 판정 줄은 남기고 긴 규칙 문단만 기존 펼치기 안으로 옮긴다.
+      const mission = decision.querySelector("#lg-learning-mission"), rules = mission?.nextElementSibling;
+      const ruleDetails = rules?.nextElementSibling;
+      if (rules?.matches(".lg-hint") && ruleDetails?.matches(".lg-learning-details")) {
+        ruleDetails.querySelector("summary").textContent = "학습 미션 판정 규칙";
+        ruleDetails.querySelector("summary").after(rules);
+        ruleDetails.dataset.decisionDetail = "rule";
+      }
+      const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(!!outage, monthNote().n) : "";
       // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
       const techNews = p.querySelector(".lg-tech-results");
       panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
+      if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
     } else if (summary) panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
@@ -4462,6 +4485,10 @@
   function onPanelClick(e) {
     if (e.target.closest("#lg-coach-again")) { closePanel(); showFirstGuide(document.getElementById("bd-root"), true); return; }
     if (e.target.closest("#lg-solo-restart")) { restartSolo(); return; }
+    if (e.target.closest("button#lg-to-decision")) {
+      const decision = document.getElementById("lg-result-decision");
+      scrollPanelTo(decision); decision?.focus({ preventScroll: true }); return;
+    }
     if (e.target.closest("[data-promise-details]")) {
       const details = document.getElementById("lg-last-month"); if (details) details.open = true;
       scrollPanelTo(document.getElementById("lg-promise-result")); return;
