@@ -278,6 +278,14 @@ async function transport() {
     ok(await N.verifyEnvelope(received, identity.publicKey), "로컬 채널도 같은 서명 봉투");
     localA.on("oversize", () => warns++);
     ok(localA.send("snap", { text: "가".repeat(90000) }) === false && warns === 2, "로컬 초과도 경고 이벤트");
+    const oversized = await N.signHost(identity, "snap", "MOCK01", "fixture-session", {
+      teams: { [team]: { plan: { detail: "x".repeat(210000) },
+        hist: Array.from({ length: 20 }, (_, r) => ({ r, detail: "x".repeat(1000) })) } }
+    });
+    ok(online.send("snap", oversized) === false && warns === 3 && socket.sent.length === count,
+      "F3-6 두 차례 축약 뒤에도 전송 상한 초과 시 Supabase oversize·전송 차단");
+    ok(localA.send("snap", oversized) === false && warns === 4,
+      "F3-6 두 차례 축약 뒤에도 전송 상한 초과 시 로컬 oversize·전송 차단");
     // 네트워크 대신 메모리 모형만 사용한다. 안전하지 않은 문맥도 독립 VM에서 검사한다.
     const vm = require("node:vm"), fs = require("node:fs"), context = { window: { KCP: {} }, TextEncoder };
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, "../../ui/league-net.js"), "utf8"), context);
@@ -789,6 +797,65 @@ async function floor3Network() {
   const zero = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: 0 }); zero.data.body.probe = -0;
   await N.hostReceiver({ room: S.room }, (_, data) => { normalized = data; })("snap", zero);
   ok(normalized && !Object.is(normalized.body.probe, -0), "F3-7 검증한 정규 JSON 파싱 값을 반영");
+  // 객체 봉투만 문턱을 넘는 경우: 행 변환으로 충분하므로 옛 계획까지 전부 남아야 한다.
+  const below = { teams: { [team]: { hist: Array.from({ length: 3000 }, (_, r) =>
+    ({ r, t: r, cap: r * 2, n: r, l: 0, plan: { builds: [] } })) } } };
+  const belowPacked = N.compactSnapshot(below);
+  ok(N.byteLength({ _cp: 1, keys: [], body: below }) > 178000 && N.byteLength(belowPacked) < 178000,
+    "F3-6 객체 봉투만 문턱 초과인 경계 사례");
+  ok(N.canonical(N.expandSnapshot(structuredClone(belowPacked))) === N.canonical(below),
+    "F3-6 최종 행 봉투가 문턱 미만이면 hist·오래된 계획 무손실");
+  const measureCompact = value => {
+    const stringify = JSON.stringify, sizes = [];
+    let serializations = 0, packed;
+    JSON.stringify = function (v, ...args) {
+      const text = stringify.call(this, v, ...args);
+      if (v?.teams || v?._cp === 1) serializations++;
+      if (v?._cp === 1) sizes.push(Buffer.byteLength(text, "utf8"));
+      return text;
+    };
+    try { packed = N.compactSnapshot(value); } finally { JSON.stringify = stringify; }
+    ok(serializations <= 4 && sizes.length <= 3, "F3-6 부풀린 상태 최대 두 차례 축약·전체 직렬화 4회 상한");
+    return { packed, sizes, serializations };
+  };
+  for (const limit of [178000, 178001]) {
+    const boundary = { ...below, padding: "" };
+    boundary.padding = "x".repeat(limit - N.byteLength({ ...belowPacked,
+      body: { ...belowPacked.body, padding: "" } }));
+    const measured = measureCompact(boundary);
+    ok(measured.sizes[0] === limit, "F3-6 사전 포함 최종 봉투 문턱 경계");
+    if (limit === 178000) {
+      ok(measured.serializations <= 2 && N.canonical(N.expandSnapshot(structuredClone(measured.packed))) === N.canonical(boundary),
+        "F3-6 정확히 178000B는 비상 축약 없이 모든 기록 보존");
+    } else {
+      ok(measured.sizes.length > 1 && N.byteLength(measured.packed) <= 178000,
+        "F3-6 178001B부터 비상 축약 발동");
+    }
+  }
+  const retry = { teams: { [team]: {
+    hist: Array.from({ length: 2300 }, (_, r) => ({ r, repeatedLongMetricName: 0, detail: "x".repeat(65) })),
+    plan: { builds: [1] }, base: [{ k: "b:0", c: 2 }],
+    trialGrid: { entries: [{ key: "b:0", allocatedMW: 2 }] }
+  } }, econ: { cities: { [team]: { hist: [{ r: 1 }] } } },
+    results: [{ round: 1, team: { [team]: { n: 1 } } }] };
+  const retried = measureCompact(retry);
+  ok(retried.sizes.length === 3 && retried.sizes[1] > 178000 && N.byteLength(retried.packed) <= 178000,
+    "F3-6 행별 축약률 차이로 남은 초과분을 두 번째 비율 축약으로 해소");
+  const blocked = structuredClone(retry);
+  blocked.teams[team].plan.detail = "x".repeat(210000);
+  const stopped = measureCompact(blocked);
+  ok(stopped.sizes.length === 3 && N.byteLength(stopped.packed) > 200000,
+    "F3-6 두 번 뒤에도 큰 보존 항목은 전송 oversize 경로에 남김");
+  for (const [original, measured] of [[retry, retried], [blocked, stopped]]) {
+    const restored = N.expandSnapshot(structuredClone(measured.packed));
+    for (const key of ["plan", "base", "trialGrid"])
+      ok(N.canonical(restored.teams[team][key]) === N.canonical(original.teams[team][key]),
+        "F3-6 두 차례 축약 뒤 현재 " + key + " 보존");
+    ok(N.canonical(restored.teams[team].hist.slice(-2)) === N.canonical(original.teams[team].hist.slice(-2)),
+      "F3-6 두 차례 축약 뒤 최근 두 hist 보존");
+    for (const key of ["econ", "results"])
+      ok(N.canonical(restored[key]) === N.canonical(original[key]), "F3-6 재포장 뒤 " + key + " 무손실");
+  }
   const large = structuredClone(view);
   large.teams[team].hist = Array.from({ length: 400 }, (_, r) => ({ r, detail: "x".repeat(6000) }));
   const stringify = JSON.stringify; let serializations = 0;
@@ -802,6 +869,16 @@ async function floor3Network() {
   const summarized = N.compactSnapshot(planned);
   const restoredSummary = N.expandSnapshot(structuredClone(summarized));
   ok(N.byteLength(summarized) <= 178000 && restoredSummary.teams[team].hist.length === 20 && !restoredSummary.teams[team].hist[0].plan && restoredSummary.teams[team].hist[0].cap === 0 && restoredSummary.teams[team].hist.at(-1).plan, "F3-6 오래된 계획 전문은 해당 팀 건설 속도 요약으로 축약");
+  for (const [original, packed] of [[large, compact], [planned, summarized]]) {
+    const restored = N.expandSnapshot(structuredClone(packed));
+    for (const id of ids) {
+      for (const key of ["plan", "base", "trialGrid"])
+        assert.deepStrictEqual(restored.teams[id][key], original.teams[id][key], "F3-6 비상 축약 뒤 현재 " + key + " 보존");
+      assert.deepStrictEqual(restored.teams[id].hist.slice(-2), original.teams[id].hist.slice(-2),
+        "F3-6 비상 축약 뒤 모든 팀 최근 두 hist 보존");
+      checks += 4;
+    }
+  }
   console.log("F3 compact", JSON.stringify({ input: N.byteLength(large), output: N.byteLength(compact), ms: +elapsed.toFixed(3), serializations }));
 }
 function floor3Restore() {
