@@ -195,11 +195,13 @@ def wait_ui(page, condition, arg=None):
 
 
 def wait_shown(page, selector):
-    # shown의 숨김·폭 조건을 그대로 기다린다. 부재 검사는 기존 shown을 사용한다.
-    wait_ui(page, "selector => [...document.querySelectorAll(selector)].some(el => "
-            "!(" + HIDDEN_JS + ")(el) && el.getBoundingClientRect().width > 0 && "
-            "el.getBoundingClientRect().height > 0)", selector)
-    return shown(page, selector)
+    # shown의 숨김·폭 조건을 그대로 기다리고, 그 한 번의 페이지 안 판정을 결과로 쓴다. 부재 검사는 기존 shown을 사용한다.
+    # 기다린 뒤 shown()을 다시 부르면 개수·요소별 확인이 여러 번 왕복하는 사이 서랍 다시 그리기의 중간 상태를 읽는다.
+    # 2026-10-21 CPU 4배 감속 계측: 기다림이 참이 된 직후 shown()만 거짓 4회(.lg-grp·#lg-fiscal·#lg-evidence-direction·
+    # #lg-predict), 같은 동안 프레임마다 잰 페이지 안 판정은 계속 '보임' — 화면에 숨는 순간은 없었다.
+    return wait_ui(page, "selector => [...document.querySelectorAll(selector)].some(el => "
+                   "!(" + HIDDEN_JS + ")(el) && el.getBoundingClientRect().width > 0 && "
+                   "el.getBoundingClientRect().height > 0)", selector)
 
 
 def wait_count(page, selector, count):

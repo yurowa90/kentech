@@ -3710,10 +3710,11 @@
   function connectionWarning() {
     // 서명을 확인한 진행자 메시지(ack 포함)가 10초 없거나, 받아들인 공개 상태가 20초 없을 때 안내한다.
     // 부하 중 무거운 snap 처리만 밀릴 때 일찍 뜨지 않게 하면서, 형식이 안 맞는 snap만 오는 경우(D-77 판본 혼재)도 잡는다.
-    const now = Date.now();
-    if (now - L.lastHostAt <= 10000 && now - (L.lastSnapAt ?? L.lastHostAt) <= 20000) return;
+    const now = Date.now(), hostAge = now - L.lastHostAt, snapAge = now - (L.lastSnapAt ?? L.lastHostAt);
+    if (hostAge <= 10000 && snapAge <= 20000) return;
     L.hostWarning = true;
-    const text = "진행자 화면과 연결을 확인하는 중 · 새로고침하면 다시 연결됩니다";
+    // 새로고침 권유는 30초가 지나도 돌아오지 않을 때만 붙인다. 짧은 밀림에 학생이 새로고침부터 누르지 않게 한다.
+    const text = "진행자 화면과 연결을 확인하는 중" + (Math.max(hostAge, snapAge) > 30000 ? " · 새로고침하면 다시 연결됩니다" : "");
     const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
     if (el) { el.textContent = text; el.dataset.s = "connecting"; }
   }

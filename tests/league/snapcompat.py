@@ -14,7 +14,9 @@ from econui import (Checks, HOST_JS, advance, context_for, diagnostics,
                     local_address, monitored_page, open_panel, overflow,
                     setup_pair, shown)
 
-NOTICE = "진행자 화면과 연결을 확인하는 중 · 새로고침하면 다시 연결됩니다"
+# 단계 안내(2026-10-21 총괄 승인): 10·20초 문턱에는 확인 중만, 30초가 지나면 새로고침 권유를 붙인다.
+NOTICE_FIRST = "진행자 화면과 연결을 확인하는 중"
+NOTICE = NOTICE_FIRST + " · 새로고침하면 다시 연결됩니다"
 RECONNECT_WAIT = 30000
 
 # 실제 전송에 성공한 공개 메시지만 관찰한다. 서명·봉투·수신 경로는 바꾸지 않는다.
@@ -132,7 +134,7 @@ def reconnect(checks, context, base, host, team, pages):
       return !!actual && Object.keys(expected).every(key => actual[key] === expected[key]);
     }""", arg=expected, timeout=5000)
     overflow(checks, host, "C3 종료 전 진행자")
-    checks.ok(not team.evaluate(NOTICE_JS, NOTICE), "C3 진행자 종료 전 무응답 안내 없음")
+    checks.ok(not team.evaluate(NOTICE_JS, NOTICE_FIRST) and not team.evaluate(NOTICE_JS, NOTICE), "C3 진행자 종료 전 무응답 안내 없음")
     # 직전 수신 후 시간이 많이 지난 채 닫으면 종료 직후 안내가 떠도 통과할 수 있다.
     # 다음 정상 스냅숏 수신을 기다려 실제 메시지를 끊은 시점을 분명히 한다.
     previous = team.evaluate("() => KCP.league.state().snap.now")
@@ -144,17 +146,21 @@ def reconnect(checks, context, base, host, team, pages):
     def wait_notice():
         # C3 대체 계약: 10초 초과 무응답 뒤 보통 11~15초에 안내, 조건 대기 상한 20초.
         # 안내 실패도 기록한 뒤 아래 복원·새로고침 검사를 계속한다.
-        team.wait_for_function(NOTICE_JS, arg=NOTICE, polling=100, timeout=20000)
+        team.wait_for_function(NOTICE_JS, arg=NOTICE_FIRST, polling=100, timeout=20000)
         elapsed = time.monotonic() - started
         # 마지막 진행자 메시지 기준 10초 초과인지도 확인한다. 종료 시각만으로는
         # 닫기 직전 전송·검증 중인 메시지의 시차를 정확히 판단할 수 없다.
         # lastHostAt은 공개 상태(KCP.league.state())에 없다. 진행자 종료 시각부터 잰 경과가 10초를 넘었는지로 본다
         # (종료 직전 메시지가 있었다면 실제 무응답은 이보다 조금 짧을 수 있으나, 앱 판정 문턱 10초보다 이르게 뜨면 실패다).
-        checks.ok(10 < elapsed <= 20 and team.evaluate(NOTICE_JS, NOTICE),
-                  f"C3 무응답 10초 초과 뒤 연결·새로고침 안내 표시(종료 후 {elapsed:.1f}초, 상한 20초)")
+        checks.ok(10 < elapsed <= 20 and team.evaluate(NOTICE_JS, NOTICE_FIRST),
+                  f"C3 무응답 10초 초과 뒤 연결 확인 안내 표시, 새로고침 권유 없음(종료 후 {elapsed:.1f}초, 상한 20초)")
+        # 안내는 5초 주기로 다시 판정하므로 30초를 넘긴 뒤 보통 30~35초에 권유가 붙는다. 상한 40초.
+        team.wait_for_function(NOTICE_JS, arg=NOTICE, polling=100, timeout=max(1, int((40 - (time.monotonic() - started)) * 1000)))
+        later = time.monotonic() - started
+        checks.ok(30 < later <= 40, f"C3 무응답 30초 초과 뒤 새로고침 권유 추가(종료 후 {later:.1f}초, 상한 40초)")
         return True
 
-    checks.test("C3 무응답 안내 조건 대기(최대 20초)", wait_notice)
+    checks.test("C3 무응답 안내 조건 대기(최대 40초)", wait_notice)
     overflow(checks, team, "C3 진행자 없는 팀")
 
     restored, events = monitored_page(context)
@@ -177,7 +183,7 @@ def reconnect(checks, context, base, host, team, pages):
     team.wait_for_selector("#lg-bar", timeout=remaining())
     checks.ok(team.evaluate(SNAP_MATCH_JS, host_summary(restored)) and shown(team, "#lg-bar"),
               "C3 팀 새로고침 후 진행자와 같은 round·phase·결과로 재연결")
-    checks.ok(not team.evaluate(NOTICE_JS, NOTICE), "C3 재연결 후 무응답 안내 해제")
+    checks.ok(not team.evaluate(NOTICE_JS, NOTICE_FIRST) and not team.evaluate(NOTICE_JS, NOTICE), "C3 재연결 후 무응답 안내 해제")
     overflow(checks, restored, "C3 복원 진행자")
     overflow(checks, team, "C3 새로고침 팀")
     return True
