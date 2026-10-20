@@ -1251,7 +1251,7 @@
     try { return S.opts.leagueGrid(st); }
     finally { if (PK.id !== pack) selectPack(pack, "league"); }
   }
-  function rememberTrial(res, st, round) {
+  function rememberTrial(res, st, round, gridMWh = 0) {
     const scope = S?.opts.trialScope || "", key = JSON.stringify([scope, res.map]);
     const trial = {
       map: res.map, scope, year: round?.year || null, month: round?.month || null,
@@ -1262,6 +1262,8 @@
       outTotal: res.outTotal, co2: res.co2, cost: res.cost.total,
       capex: res.cost.capex, opex: res.cost.total - res.cost.capex,
       loss: res.tot.loss, idle: res.tot.idle,
+      // D-80: gridFill이 더한 바깥 계통 전기(대표 기간 MWh). 지도의 수입 설비 출력은 섞지 않는다. 옛 기록에는 없다.
+      gridMWh,
       plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, rq: st.rq }
     };
     // 수치와 선택만 저장한다. 일지·이유·매시 배열·사건의 실제 크기는 저장하지 않는다.
@@ -2693,7 +2695,7 @@
     const raw = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
     // D-74 계통 수입은 경제 모드(달이 있는 월 리그)의 실제 운영에만 있으므로 시험도 그때만 보정한다. 계절 4라운드는 그대로.
     const res = S.opts.league && leagueMonth() ? KCP.leagueCore.gridFill(raw) : raw;
-    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.());
+    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.(), res === raw ? 0 : Math.max(0, res.tot.by.import - raw.tot.by.import));
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
     let n = 0;
