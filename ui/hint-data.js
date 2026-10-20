@@ -141,10 +141,18 @@
     },
     "2023": {
       keys: {
-        "23-q1-conflict": { sci: ["rel"] }, "23-q1-oppose": { sci: ["rel"] },
-        "23-q2-top": { sci: ["sd", "cum"] }, "23-q2-gap": { sci: ["rel", "cum"] }, "23-q2-avoid": { sci: ["rel"] },
-        "23-q2-event": { sci: ["epi"] }, "23-q2-timing": { sci: ["cum"] },
-        "23-lost": { sci: ["infer"] }, "23-flex": { sci: ["cum"] }, "23-hum-verify": { sci: ["sd"] },
+        "23-q1-check": { type: "task", sci: ["cum", "rel"] },
+        "23-q1-like": { type: "task", sci: ["sd"] }, "23-q1-nation": { type: "task", sci: ["sd"] },
+        "23-q1-policy": { type: "task", sci: ["sd"] }, "23-q1-sustain": { type: "human", sci: ["sd"] },
+        "23-q1-oppose": { type: "human", sci: ["rel"] }, "23-q1-export": { type: "divergent", sci: ["rel"] },
+        "23-q1-conflict": { type: "counter", el: [HUM, DIV], sci: ["rel"] }, "23-q1-whole": { type: "task", sci: ["rel"] },
+        "23-q1-live": { type: "human", sci: ["rel"] },
+        "23-q2-top": { type: "task", sci: ["sd", "cum"] }, "23-q2-avoid": { type: "task", sci: ["rel"] },
+        "23-q2-timing": { type: "task", sci: ["cum"] }, "23-q2-event": { type: "task", sci: ["epi"] },
+        "23-q2-lead": { type: "task", sci: ["rel", "cum"] }, "23-lost": { type: "calc", sci: ["infer"] },
+        "23-q2-gap": { type: "task", sci: ["rel", "cum"] }, "23-flex": { type: "counter", sci: ["cum"] },
+        "23-q2-shorten": { type: "counter", sci: ["cum"] }, "23-q2-real": { type: "human", sci: ["rel"] },
+        "23-q2-coop": { type: "human", sci: ["rel"] }, "23-hum-verify": { type: "human", sci: ["sd"] },
       },
       tags: { "문제 1": { sci: ["rel"] }, "문제 2": { sci: ["sd", "cum"], pts: ["연차별로 고른 이유를 시점(초기·중반·후반)으로 묶어 말한다."] } },
       fallback: ["sd"],
@@ -259,7 +267,8 @@
     const ids = hit && hit.sci ? hit.sci : game ? game.fallback : [];
     return {
       type: type.id,
-      el: type.el,
+      // 키 항목이 평가 요소 순서를 덮어쓸 수 있다(기준 탭이 먼저 볼 요소). 지정하지 않으면 유형의 순서.
+      el: hit && Array.isArray(hit.el) && hit.el.length ? hit.el : type.el,
       pick: hit && hit.pick ? hit.pick : type.pick,
       pts: type.pts.concat(hit && hit.pts ? hit.pts : []),
       short: type.short,
