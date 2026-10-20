@@ -86,12 +86,12 @@
 | A 간헐 원인 | `tests/.venv/bin/python tests/league/econui.py $U` | 2,052/0(1128f23) | U5: `econui.py`의 도움말 close 대기(690919c). wait_shown: 같은 파일 주석(1128f23) |
 | A 3회 연속 | `KCP_PORT_BASE=<포트> tests/run.sh s-riverdeal`, `... tests/run.sh probe`를 번갈아 3회씩 | 6회 모두 problems 0(3ca0aa4, 2026-10-21) | §4 표. probe A3는 원인 미확정이라 A를 7로 둔다 |
 | A 감속 | `KCP_UI_WAIT=20000 tests/.venv/bin/python tests/league/throttle_repro.py tests/league/econui.py $U 4 <기록파일>` | 2,052/0 | 근거 실행은 같은 CDP 감속(`Emulation.setCPUThrottlingRate` 4)을 거는 임시 래퍼로 했다. `throttle_repro.py`는 같은 감속에 진단 기록을 더한 저장소 도구다 |
-| B WebKit | `tests/.venv/bin/python tests/league/webkit.py $U` | 148/0 | `tests/league/webkit.py` |
-| C 36달 | `tests/.venv/bin/python tests/league/long36.py $U`, `node tests/league/size-budget.js` | 문제 0. 압축 공개 상태 최대 149,068·152,599B(회귀선 155,099B, 하드선 178,000B) | 두 파일의 예산 상수 |
+| B WebKit | `tests/.venv/bin/python tests/league/webkit.py $U` | 148/0(5339a40, 2026-10-21, 부하 12) | `tests/league/webkit.py` |
+| C 36달 | `tests/.venv/bin/python tests/league/long36.py $U`, `node tests/league/size-budget.js` | long36 268/0, size-budget 문제 0(5339a40, 2026-10-21, 부하 11~15). 압축 공개 상태 최대 균형 149,721·신중 153,241B(목표선 165,000B·회귀선 155,099B·바닥 하드선 178,000B), 혼자 하기 저장 최대 1,493,124자(한도 2,080,000자) | 두 파일의 예산 상수 |
 | D 성능 | `tests/.venv/bin/python tests/league/perf.py $U --budget` | problems 0. 중앙값 달 넘김 ≤1.0초·서랍 ≤1.5초·새로고침 ≤1초, 긴 작업(200ms 초과) 표본마다 0 | `tests/results/perf.json`의 `summary.*.budget.judgment_valid`가 true인지(시작·끝 1분 부하가 모두 150 미만일 때만 true) |
 | E 복구 | `KCP_MOCK_PORT=<포트> tests/.venv/bin/python tests/league/recover.py $U`, `tests/.venv/bin/python tests/league/snapcompat.py $U`, `KCP_MOCK_PORT=<포트> tests/.venv/bin/python tests/league/chanlimit.py $U`, `node tests/league/chanlimit.js` | recover 79/0, snapcompat 40/0(확인 중 안내 10~20초, 새로고침 권유 30~40초), chanlimit.py '통과:' 세 줄·콘솔·페이지 오류 0(2026-10-21 확인), chanlimit.js 63/0 | `ui/league-net.js` hostReceiver, `ui/league.js` connectionWarning, D-77 |
-| E 통신 안전 | `node tests/league/sec.js`, 변형은 `F2_MUTATION=<이름> node tests/league/sec.js --quick` | 734/0. 변형마다 이름에 적힌 단언에서 실패 | `sec.js` 앞쪽 변형 표. 전체 `--mutations`는 compact_loop 변형(작업 줄기 480130e부터 TypeError)에서 멈추는 기존 문제가 있으니 변형을 하나씩 돌린다 |
-| F 저장 | `tests/.venv/bin/python tests/league/storage.py $U` | 1,815/0 | `tests/league/storage.py`의 손상·옛 판본 목록 |
+| E 통신 안전 | `node tests/league/sec.js`, 변형은 `F2_MUTATION=<이름> node tests/league/sec.js --quick` | 734/0. `node tests/league/sec.js --mutations`는 변형 64개가 모두 이름에 적힌 단언에서 실패하고 exit 0(5339a40) | `sec.js` 앞쪽 변형 표 |
+| F 저장 | `tests/.venv/bin/python tests/league/storage.py $U` | 1,815/0(5339a40, 2026-10-21, 부하 15) | `tests/league/storage.py`의 손상·옛 판본 목록 |
 | G 콘솔 | 위 브라우저 검사 전부의 `error 0, warning 0, pageerror 0` 줄 | 모두 0 | 각 검사의 진단 출력 |
 
 ### 측정 메모(이전 §5)
