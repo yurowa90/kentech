@@ -2455,6 +2455,25 @@
     if (!r || ![r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return null;
     return Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
   }
+  // D-80: 정전 0은 표시 자릿수(소수 둘째 자리)에서 0. '같을 것' 문턱은 A-3 측정 전 임시값(G).
+  const ZERO_OUTAGE_PCT = 0.005, GRID_SAME_MWH = 1, GRID_SAME_SHARE = 0.05;
+  const gridSameTol = baseMwh => Math.max(GRID_SAME_MWH, Number.isFinite(baseMwh) ? GRID_SAME_SHARE * Math.abs(baseMwh) : 0);
+  // 계통이 메운 전기의 월 환산과 비교 기준. 공개 결과 필드와 기기 안 시험 기록만 읽는 순수 함수다.
+  function gridReliance(V, res, id) {
+    const price = params("normalCost") * params("gridImportMarkup"), costOf = mwh => mwh == null ? null : mwh * price;
+    const own = gridFillMWh(res?.team?.[id]), mwh = own == null ? null : own * resultPeriod(V, res).mul;
+    const previous = V.results?.find(x => x.round === res.round - 1), last = gridFillMWh(previous?.team?.[id]);
+    let base = { kind: null, label: previous ? "비교 없음(지난달 계통 값 없음)" : "비교 없음(첫 결과)", mwh: null, cost: null };
+    if (last != null) base = { kind: "last", label: "지난달 대비", mwh: last * resultPeriod(V, previous).mul };
+    else if (!previous) {
+      const trial = matchingTrial(V, res, id);
+      if (trial && Number.isFinite(trial.gridMWh)) base = { kind: "trial", label: "시험 1주 대비", mwh: trial.gridMWh * resultPeriod(V, res).days / trial.days };
+      else if (trial) base.label = "비교 없음(시험 기록에 계통 값 없음)";
+    }
+    base.cost = costOf(base.mwh);
+    const delta = mwh != null && base.mwh != null ? mwh - base.mwh : null;
+    return { mwh, cost: costOf(mwh), base, delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(base.mwh) };
+  }
   function gridOnlyServed(V, r) {
     if (!V.econ || !r || !Number.isFinite(r.dem)) return false;
     const served = r.dem - r.uns, grid = gridFillMWh(r);
