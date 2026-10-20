@@ -118,7 +118,9 @@ CITY_COLOR_JS = """() => {
       clientHeight:cv.clientHeight,x:box.x,y:box.y,widthCSS:box.width,heightCSS:box.height,
       visible:cv.checkVisibility({visibilityProperty:true})},k:cv.dataset.k ?? null,
       viewport:{width:innerWidth,height:innerHeight},candidates:candidates.length,
-      inCanvas:inCanvas.length,visibleCandidates:tiles.length}};
+      inCanvas:inCanvas.length,visibleCandidates:tiles.length,
+      cover:[...new Set(inCanvas.slice(0,40).map(t=>{const e=document.elementFromPoint(box.left+t.x,box.top+t.y);
+        return e ? `${e.tagName}#${e.id}.${String(e.className).slice(0,60)}` : null;}))].slice(0,5)}};
 }"""
 
 REGION_COLOR_JS = """reference => {
@@ -250,6 +252,10 @@ def city_color(page):
         if not pressed.count():
             break
         pressed.first.click()
+    # 달 시작 예보 카드(W4)는 Esc로 닫히는 덧층이다. 지형색 표본은 카드가 닫힌 지도에서 읽는다.
+    if page.locator('.fx-turn-layer .fx-turn-card:visible').count():
+        page.keyboard.press('Escape')
+        page.wait_for_function("() => !document.querySelector('.fx-turn-layer .fx-turn-card')?.checkVisibility()", timeout=3000)
     page.mouse.move(0, 0)
     frames(page)
     return page.evaluate(CITY_COLOR_JS)
