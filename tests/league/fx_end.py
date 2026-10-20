@@ -362,7 +362,9 @@ def layout(checks, page, label, mobile):
       const r=line.getBoundingClientRect(), b=body.getBoundingClientRect(), p=body.parentElement.getBoundingClientRect();
       const x=(Math.max(r.left,b.left)+Math.min(r.right,b.right))/2, y=(r.top+r.bottom)/2;
       const hit=document.elementFromPoint(x,y);
-      return {first:body.firstElementChild===summary, adjacent:summary.nextElementSibling===graph,
+      // 총괄 결정(2026-10-21, V3A 5와 W6 충돌 해소 '가'): 요약 → 결정과 결과 → 그래프 순서.
+      const decisions=body.querySelector('#lg-decisions');
+      return {first:body.firstElementChild===summary, adjacent:summary.nextElementSibling===decisions && !!decisions && decisions.nextElementSibling===graph,
         top:body.scrollTop, panelTop:body.parentElement.scrollTop, text:line.innerText,
         visible:r.top>=Math.max(0,b.top,p.top) && r.bottom<=Math.min(innerHeight,b.bottom,p.bottom) &&
           r.right>r.left && !!hit && line.contains(hit),
@@ -380,7 +382,7 @@ def layout(checks, page, label, mobile):
     match = re.search(rf'(\d+)위\s*·\s*({NUMBER})점', data['text'])
     checks.ok(data['first'] and data['adjacent'] and bool(match) and
               int(match[1]) == own.get('rank') and near(number(match[2] + '점', '점'), own.get('score')),
-              label + ' (a) 첫 블록 내 최종 순위·점수, 바로 아래 그래프')
+              label + ' (a) 첫 블록 내 최종 순위·점수, 결정과 결과 다음 그래프')
     checks.ok(data['top'] == data['panelTop'] == 0 and data['visible'],
               label + ' (a) 서랍 스크롤 0 첫 화면에 내 순위 줄 표시')
     if mobile:
