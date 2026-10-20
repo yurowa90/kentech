@@ -1154,6 +1154,19 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-turn-card-row:has(.fx-turn-card:only-child) { grid-template-columns: minmax(0, 1fr); max-width: 280px; }
 .fx-turn-card { pointer-events: auto; min-width: 0; min-height: 0; box-sizing: border-box; padding: 18px; border: 1px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow), inset 0 0 0 5px var(--ui-border); overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 10px; opacity: 0; transform: rotateY(180deg) translateY(30px); backface-visibility: hidden; transition: transform .7s cubic-bezier(.2,.8,.2,1), opacity .3s; }
 .fx-turn-card.fx-revealed { opacity: 1; transform: none; }
+.fx-turn-card[data-forecast="true"] { transform: translateX(36px) translateY(12px); }
+.fx-turn-card[data-forecast="true"].fx-revealed { transform: none; }
+.fx-turn-face { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; flex: 1; overflow-y: auto; overflow-wrap: anywhere; }
+.fx-turn-card.fx-turn-flip { opacity: 1; transform: none; overflow: hidden; }
+.fx-turn-rotor { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); transform-style: preserve-3d; transition: transform .9s cubic-bezier(.2,.8,.2,1); }
+.fx-turn-flip .fx-turn-face { grid-area: 1 / 1; backface-visibility: hidden; }
+.fx-turn-back { transform: rotateY(180deg); }
+.fx-revealed .fx-turn-rotor { transform: rotateY(180deg); }
+.fx-turn-mood-note { color: var(--ui-muted); font-size: 10px; line-height: 1.4; }
+.fx-turn-layer[data-paged="true"] .fx-turn-card-row { width: min(100%, 360px); grid-template-columns: minmax(0, 1fr); }
+.fx-turn-layer[data-paged="true"] .fx-turn-card { grid-area: 1 / 1; }
+.fx-turn-layer[data-paged="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
+.fx-turn-layer[data-paged="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .fx-turn-card h3 { margin: 0; color: var(--ui-text); font: 400 24px var(--display); }
 .fx-turn-card p { margin: 0; color: var(--ui-muted); font-size: 13px; line-height: 1.55; }
 .fx-turn-big { margin-top: auto; color: var(--ui-gold); font: 600 19px var(--mono); }
@@ -1180,11 +1193,16 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 @media (prefers-reduced-motion: reduce) {
   .fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down { animation: none; transition: none; transform: none; }
   .fx-turn-card { opacity: 1; }
+  .fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-revealed .fx-turn-rotor, .fx-turn-back { animation: none; transition: none; transform: none; }
+  .fx-turn-front { display: none; }
   .fx-flash-up { outline: 2px solid var(--ui-danger); }
   .fx-flash-down { outline: 2px solid var(--ui-mint); }
 }
 html.v2-still :is(.fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down) { animation: none; transition: none; transform: none; }
 html.v2-still .fx-turn-card { opacity: 1; }
+html.v2-still :is(.fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-turn-back),
+.fx-turn-card[data-still="true"], .fx-turn-card[data-still="true"] :is(.fx-turn-rotor, .fx-turn-back) { animation: none; transition: none; transform: none; opacity: 1; }
+html.v2-still .fx-turn-front, .fx-turn-card[data-still="true"] .fx-turn-front { display: none; }
 html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 

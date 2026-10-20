@@ -3666,6 +3666,13 @@
     L.rev = me.rev;
     mountCity(L.app);
   }
+  // 연출 훅: 계획 단계에 들어오면(달이 바뀔 때·처음 도시에 들어올 때) 내 도시 사건 예보 카드를 띄운다.
+  // 문장은 결과 서랍과 같은 evSize를 쓴다. 같은 달 재표시는 fx-turn이 막는다.
+  function forecastStart(V) {
+    if (!L || L.away || !V || V.phase !== "plan") return;
+    const cards = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(({ E }) => E && C.hits(R(), E, L.team)).map(({ ev, E }) => ({ id: ev.id, tag: "사건 예보", title: E.name, body: turnText(E.text, V), big: evSize(E, { id: ev.id, round: V.round }, V.teams[L.team]?.fcx?.[ev.id]) }));
+    if (cards.length) KCP.fxTurn?.monthStart({ round: V.round, team: L.team, view: V, cards, sound: kind => signal(kind) });
+  }
   function phaseChanged(V) {
     if (matchMedia("(max-width: 760px)").matches) BG.closeDrawer?.();
     const live = document.getElementById("lg-live");
@@ -3698,8 +3705,9 @@
         ...events.map(ev => {
           const E = C.eventDef(R(), ev.id);
           if (!E) return null;
-          const nx = C.hits(R(), E, L.team) ? V.teams[L.team]?.fcx?.[ev.id] : null;
-          return { tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정" };
+          const hit = C.hits(R(), E, L.team), nx = hit ? V.teams[L.team]?.fcx?.[ev.id] : null;
+          return { id: ev.id, tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정",
+            ...(hit ? { forecast: { id: ev.id, tag: "사건 예보", title: E.name, body: turnText(E.text, V), big: evSize(E, { id: ev.id, round: ev.round }, nx) } } : {}) };
         }).filter(Boolean)] : [];
       const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
       const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
@@ -3707,7 +3715,7 @@
       foldResultDuringReplay(replayed);
       if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
     }
-    else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); }
+    else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); forecastStart(V); }
   }
   function foldResultDuringReplay(replayed) {
     if (!replayed || !matchMedia("(max-width: 760px)").matches ||
@@ -3843,11 +3851,13 @@
     });
     if (resume) {
       if (L.coach) showFirstGuide(document.getElementById("bd-root"));
+      forecastStart(L.snap);
       return;
     }
     send("claim");
     sendPlan();
     showFirstGuide(document.getElementById("bd-root"));
+    forecastStart(L.snap);
   }
   function warnUnsentPlan() {
     const V = L?.snap;
