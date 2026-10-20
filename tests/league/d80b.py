@@ -281,7 +281,9 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
         checks.ok(bool(re.search(r"\)\s*·\s*" + verdict, text)) and other not in text,
                   label + f" S6 판정 {verdict} (|Δ|≤max(1,|기준|×5%)={values['tol']:.6f}이면 same)")
         if not hit:
-            checks.ok(page.locator("#lg-missed").count() == 1 and page.locator("#lg-outage-cards").count() == 1,
+            # D-80 C-5: 유의미한 원인이 하나뿐이면 S7은 카드 목록 대신 한 줄 요약(#lg-outage-single)을 보인다.
+            checks.ok(page.locator("#lg-missed").count() == 1 and
+                      page.locator("#lg-outage-cards, #lg-outage-single").count() == 1,
                       label + " grid 다름 달에도 S7 카드 존재(내부 단위는 검사하지 않음)")
     if uns >= ZERO:
         require(checks, shown(page, "#lg-promise-also-outage"), label + " 실제 정전 추가 안내 표시")
