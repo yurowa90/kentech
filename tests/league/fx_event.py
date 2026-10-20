@@ -1,14 +1,16 @@
-"""품질8 W4: 자연 발생 사건의 예보·확정 카드와 지도 분위기 수용 검사.
+"""품질8 W4: 재현 가능한 자연 사건의 예보·확정 카드와 지도 분위기 검사.
 
 실행(총괄 Claude의 샌드박스 밖 로컬 환경):
   tests/.venv/bin/python tests/league/fx_event.py http://127.0.0.1:9430/index.html
 서버는 tests/srv.py를 쓴다. 작성 세션에서는 py_compile만 실행한다.
 
-1280×900/390×844 밝음 × 일반/reduce의 빈 컨텍스트에서 화면 단추로
-최대 12달 진행한다. 사건/씨앗/계획/저장소를 주입하거나 fx API를 직접
-호출하지 않는다. 사건을 못 만나면 SKIP이며 Checks의 통과 수에 넣지 않는다.
+1280×900/390×844 밝음 × 일반/reduce마다 두 고정 방 코드로 12달 진행한다.
+fx_event_seeds.js가 D-64 room 규칙으로 만든 lobby 시작 저장본만 기존
+혼자 하기 복원 경로로 넣는다(s8n.py restore_solo와 같은 저장 형식).
+사건·계획·라운드를 주입하거나 fx API를 직접 호출하지 않는다.
 분위기 표는 w4-event-cards.md 3절의 독립 기대값이다. 여러 사건은 자료
-순서의 첫 유효 분위기를 비교한다. 자연 발생하지 않은 id는 별도 SKIP한다.
+순서의 첫 유효 분위기를 비교한다. 8항목 모두 계획·실제 예보·결과/재생
+검사를 수행해야 하며, 고정 판의 사건이 달라지거나 항목이 빠지면 실패한다.
 명세 1절은 새로고침·재마운트를 포함해 같은 방·달의 재표시를 금지한다.
 첫 해당 사건에서 Esc→서랍 왕복→새로고침을 확인하고 결과로 이어 간다.
 DOM 관찰자는 앱 상태를 바꾸지 않고 첫 등장/180ms 뒤의 사각형·면을
@@ -18,14 +20,17 @@ DOM 관찰자는 앱 상태를 바꾸지 않고 첫 등장/180ms 뒤의 사각�
 캡처는 econui 형식(tests/results/fx-event-*.png), 마지막 줄은 checks N fail M.
 """
 
+import json
+from pathlib import Path
 import re
+import subprocess
 import sys
 
 from playwright.sync_api import sync_playwright
 
 from econui import (BOOT_JS, WAIT, Checks, context_for, diagnostics,
                     local_address, monitored_page, overflow, screenshot)
-from league_flow import pass_issue_check, start_solo, wait_unfolded
+from league_flow import pass_issue_check, wait_unfolded
 from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer
 
 
@@ -112,6 +117,7 @@ OBSERVE_JS = r"""() => {
     return {id:ev.id, name:E?.name || null, mine:!!E && C.hits(R,E,L.team)};
   });
   return {round:S.round, phase:S.phase, count:S.results?.length || 0,
+    seedMode:S.seedMode, seedKey:S.seedKey, salt:S.salt, active:S.active,
     room:S.room, team:L.team, months:C.roundsOf(S).length, events,
     resultRound:result?.round, resultEvents:result?.events || [],
     fx:KCP.fxTurn?.state?.() || null,
@@ -209,12 +215,13 @@ def mood(checks, state, label, seen):
     ids = [ev['id'] for ev in state['events'] if ev['mine']]
     selected = next((key for key in ids if key in EVENT_MOOD), None)
     expected = EVENT_MOOD.get(selected)
-    if selected:
+    passed = checks.ok(state['fx'] is not None and 'mood' in state['fx'] and
+                       state['fx']['mood'] == expected,
+                       f"{label} 내 도시 사건 {ids} → mood {expected!r} "
+                       f"(실제 {(state['fx'] or {}).get('mood')!r})")
+    if selected and passed:
         seen.add(selected)
-    checks.ok(state['fx'] is not None and 'mood' in state['fx'] and
-              state['fx']['mood'] == expected,
-              f"{label} 내 도시 사건 {ids} → mood {expected!r} "
-              f"(실제 {(state['fx'] or {}).get('mood')!r})")
+    return selected
 
 
 def card_details(cards):
@@ -320,7 +327,9 @@ def inspect_cards(checks, page, names, forecast, label, mobile, reduced,
                       f'{label} 범위 예보로 본 내 도시 사건의 확정 면 문장에 확정: '
                       f'{sorted(forecast_range_names)}; 카드 {details}')
         else:
-            print(f'SKIP {label} 계획 때 본 범위 예보 없음: 확정 문장 검사 미실행',
+            # 일정/fc 없는 사건에는 범위→확정 문장이 없다는 W4b 2항.
+            # 범위 사례의 실행 보장은 run_case의 saw_range로 별도 단언한다.
+            print(f'INFO {label} 범위 없는 예보: 범위→확정 문장 대상 아님',
                   flush=True)
         checks.ok(all(c['frontTitle'] == c['title'] for c in predicted) and
                   all(c['frontTitle'] is None and not c['hasBack']
@@ -426,32 +435,73 @@ def outside_click(checks, page, label):
         target.click()  # 검사에서 연 서랍은 같은 화면 단추로 원래 상태로 돌린다.
 
 
-def run_case(checks, page, base, label, mobile, reduced):
+def seeded_fixtures():
+    helper = Path(__file__).with_name('fx_event_seeds.js')
+    result = subprocess.run(['node', str(helper), '--json'], check=True,
+                            capture_output=True, text=True, timeout=120)
+    fixtures = json.loads(result.stdout)
+    targets = [key for fixture in fixtures for key in fixture['targets']]
+    if sorted(targets) != sorted(EVENT_MOOD):
+        raise AssertionError(f'고정 시작본의 분위기 표 8항목 누락/중복: {targets}')
+    return fixtures
+
+
+def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
     page.goto(base + '#league')
     page.wait_for_function(BOOT_JS)
     checks.ok(page.evaluate('() => localStorage.length') == 0, f'{label} 빈 저장소')
-    start_solo(page, months=12)
+    # 숫자 씨앗 UI는 없고 room/fixed 선택만 있다. league.js #lg-solo-start와
+    # 같은 newState→claim의 lobby 저장본을 s8n.py처럼 K_SOLO로 복원한다.
+    # 활성 판이 없는 로비에서 넣어 pagehide 저장의 덮어쓰기를 피한다.
+    # 사건은 비어 있으며 첫 달부터 host(next)의 정상 추첨을 거친다.
+    page.evaluate("save => localStorage.setItem('kcp-league-solo-v1', JSON.stringify(save))",
+                  fixture['save'])
+    page.reload()
+    page.wait_for_function(BOOT_JS)
+    page.locator('#lg-solo-resume').click()
+    page.locator('#lg-bar').wait_for(state='visible', timeout=30000)
     state = wait_state(page, 1, ['plan'])
-    checks.ok(state['months'] == 12, f'{label} 혼자 하기 12달')
+    checks.ok(state['months'] == 12 and state['team'] == 'pyeongtaek' and
+              state['active'] == ['pyeongtaek', 'dangjin'],
+              f'{label} 혼자 하기 평택·당진 12달')
+    checks.ok(state['room'] == fixture['room'] and state['seedMode'] == 'room' and
+              state['salt'] == fixture['salt'] and state['seedKey'] == str(fixture['salt']),
+              f"{label} D-64 room 소금/씨앗 {fixture['salt']} 복원(사건 주입 없음)")
     checks.ok(state['setMapMood'] and all(key in (state['fx'] or {})
               for key in ('forecastOpen', 'mood', 'cardsOpen')),
               f'{label} fxTurn 공개 상태와 buildGame.setMapMood 존재')
-    seen, saw_forecast, saw_result, saw_empty = set(), False, False, False
+    saw_forecast, saw_result, saw_empty, saw_range = False, False, False, False
     for month in range(1, 13):
         state = wait_state(page, month, ['plan'])
         prefix = f'{label} {month}월'
+        checks.ok([e['id'] for e in state['events']] ==
+                  [e['id'] for e in fixture['months'][month - 1]['events']],
+                  f'{prefix} Node 정상 운영과 자연 사건 목록·순서 일치')
         mine = [e['name'] for e in state['events'] if e['mine']]
+        if mine:
+            # forecastStart는 배치 뒤 두 RAF에 실행된다. 단계 변경만 기다려
+            # 이전 mood를 읽지 않고, 실제 예보가 열린 뒤 표를 검사한다.
+            page.wait_for_function('() => KCP.fxTurn?.state?.().forecastOpen === true',
+                                   timeout=WAIT)
+            state = observe(page)
         forecast_names = set()
         forecast_range_names = set()
-        mood(checks, state, prefix + ' 계획', seen)
+        selected = mood(checks, state, prefix + ' 계획', coverage['plan'])
+        for key, target in fixture['targets'].items():
+            if target == month:
+                checks.ok(selected == key, f'{prefix} 필수 표 항목 {key}가 내 도시 우선 사건')
         if mine:
             forecast_names, forecast_range_names = inspect_cards(
                 checks, page, mine, True, prefix + ' 예보', mobile, reduced)
+            if selected and any(e['id'] == selected and e['name'] in forecast_names
+                                for e in state['events'] if e['mine']):
+                coverage['forecast'].add(selected)
+            saw_range = saw_range or bool(forecast_range_names)
             if not saw_forecast:
                 screenshot(checks, page, f'fx-event-{label}-forecast.png')
             dismiss_forecast(checks, page, state, prefix, not saw_forecast)
             saw_forecast = True
-            mood(checks, observe(page), prefix + ' 예보 닫은 뒤', seen)
+            mood(checks, observe(page), prefix + ' 예보 닫은 뒤', set())
         else:
             checks.ok((state['fx'] or {}).get('forecastOpen') is False and
                       not any(c['tag'] == '사건 예보' for c in state['cards']),
@@ -465,7 +515,19 @@ def run_case(checks, page, base, label, mobile, reduced):
         result = click_progress(page, observe(page))
         checks.ok(result['round'] == month and result['resultRound'] == month and
                   result['count'] == month, f'{prefix} 화면 단추 → 같은 달 결과')
-        mood(checks, result, prefix + ' 결과/재생', seen)
+        # 일반 모드는 playing 중 표본이어야 한다. reduce는 재생 금지이므로
+        # 즉시 결과 mood를 검사한다. 두 모드를 같은 실행 집계로 숨기지 않는다.
+        if not reduced:
+            page.wait_for_function('() => KCP.fxTurn?.state?.().playing === true',
+                                   timeout=WAIT)
+            result = observe(page)
+        replay_state = (result['fx'] or {})
+        replay_valid = checks.ok(
+            (replay_state.get('playing') is False and replay_state.get('ms') == 0)
+            if reduced else replay_state.get('playing') is True,
+            f'{prefix} ' + ('reduce 재생 없이 결과 표시' if reduced else '실제 결과 재생 중 표본'))
+        mood(checks, result, prefix + ' 결과/재생',
+             coverage['result'] if replay_valid else set())
         # 일반 재생은 Esc 한 번으로 끝내고 요약→카드는 자연 타이머로 기다린다.
         if (result['fx'] or {}).get('playing'):
             page.keyboard.press('Escape')
@@ -493,15 +555,10 @@ def run_case(checks, page, base, label, mobile, reduced):
         overflow(checks, page, prefix + ' 결과')
         if month < 12:
             click_progress(page, observe(page))
-    if not saw_forecast:
-        print(f'SKIP {label} 내 도시 자연 사건 없음: 예보·Esc·중복·새로고침 검사 미실행', flush=True)
-    if not saw_result:
-        print(f'SKIP {label} 자연 사건 결과 없음: 확정·뒤집힘·클릭 전달 검사 미실행', flush=True)
-    if not saw_empty:
-        print(f'SKIP {label} 사건 없는 달을 만나지 못함: 해당 mood null 사례 미실행', flush=True)
-    for key in EVENT_MOOD:
-        if key not in seen:
-            print(f'SKIP {label} {key}: 단독/우선 사건으로 관측되지 않아 표 항목 미실행', flush=True)
+    checks.ok(saw_forecast and saw_result,
+              f'{label} 자연 사건 예보·확정·Esc·중복·새로고침·클릭 전달 실행')
+    checks.ok(saw_range, f'{label} 실제 범위 예보→확정 문장 검사 실행')
+    checks.ok(saw_empty, f'{label} 사건 없는 달 mood null 검사 실행')
 
 
 class MotionBrowser:
@@ -520,28 +577,40 @@ def main():
     checks = Checks()
     try:
         base = local_address(sys.argv)
+        fixtures = seeded_fixtures()
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
             try:
                 for width, height in ((1280, 900), (390, 844)):
                     for reduced in (False, True):
                         label = f'{width}x{height}-light-' + ('reduce' if reduced else 'motion')
-                        print(f'INFO {label} 자연 사건 탐색(최대 12달)', flush=True)
-                        context, external = context_for(MotionBrowser(browser, reduced),
-                                                        base, width, height, 'light')
-                        context.add_init_script(PROBE_JS)
-                        page, events = monitored_page(context)
-                        try:
-                            run_case(checks, page, base, label, width == 390, reduced)
-                        except Exception as exc:
-                            checks.ok(False, f'{label} 진행 예외 {type(exc).__name__}: '
-                                      f'{str(exc).splitlines()[0][:200]}')
-                            screenshot(checks, page, f'fx-event-{label}-failure.png')
-                        finally:
-                            overflow(checks, page, label + ' 마지막 화면')
-                            diagnostics(checks, events, label)
-                            checks.ok(not external, f'{label} 외부 연결 시도 0: {external}')
-                            context.close()
+                        coverage = {stage: set() for stage in ('plan', 'forecast', 'result')}
+                        for fixture in fixtures:
+                            case_label = f"{label}-{fixture['room']}"
+                            print(f"INFO {case_label} room 씨앗 {fixture['salt']} 자연 사건 12달",
+                                  flush=True)
+                            context, external = context_for(MotionBrowser(browser, reduced),
+                                                            base, width, height, 'light')
+                            context.add_init_script(PROBE_JS)
+                            page, events = monitored_page(context)
+                            try:
+                                run_case(checks, page, base, case_label, width == 390,
+                                         reduced, fixture, coverage)
+                            except Exception as exc:
+                                checks.ok(False, f'{case_label} 진행 예외 {type(exc).__name__}: '
+                                          f'{str(exc).splitlines()[0][:200]}')
+                                screenshot(checks, page, f'fx-event-{case_label}-failure.png')
+                            finally:
+                                overflow(checks, page, case_label + ' 마지막 화면')
+                                diagnostics(checks, events, case_label)
+                                checks.ok(not external, f'{case_label} 외부 연결 시도 0: {external}')
+                                context.close()
+                        # 한 판에서 우연히 본 id나 결과만 본 id로 표 실행을 세지 않는다.
+                        # 화면 크기·motion 각각에서 8종×3단계가 모두 실행돼야 한다.
+                        for key in EVENT_MOOD:
+                            for stage in coverage:
+                                checks.ok(key in coverage[stage],
+                                          f'{label} 필수 분위기 표 {key} {stage} 실행')
             finally:
                 browser.close()
     except Exception as exc:

@@ -1285,7 +1285,7 @@
     const { d } = monthNote(), inv = d.interview, end = inv.end || {};
     const crit = V.teams[L.team].crit, own = V.econ.score.by[L.team], top = V.econ.score.rank[0];
     const summary = `<section id="lg-final-summary" class="lg-sec"><h2>최종 순위</h2><p>${esc(teamName(L.team))} ${esc(own.rank)}위 · ${esc(fmt(own.score, 1))}점 / 종합 1위 ${esc(top.name)} ${esc(fmt(top.score, 1))}점</p></section>`;
-    return `${summary}${decisionsHTML(V)}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
+    return `${summary}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team) || ""}${decisionsHTML(V)}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
   }
   function finalCausesHTML(V) {
     // 혼자 하기·진행자는 전체 보고서를 보관한다. 공개 스냅에는 마지막 보고서만 있어
@@ -2219,7 +2219,10 @@
       const ticker = $("#lg-host-ticker"), rank = $("#lg-host-rank"), debrief = $("#lg-host-debrief");
       if (ticker) ticker.innerHTML = tickerHTML(V);
       if (rank) {
-        rank.innerHTML = rankHTML(V.econ, false);
+        if (S.phase !== "end" || !rank.querySelector(".lg-fx-end")) {
+          rank.innerHTML = rankHTML(V.econ, false) + (S.phase === "end" ? KCP.fxEnd?.html({ ...V, results: S.results }, null, { allCities: true }) || "" : "");
+          if (S.phase === "end") KCP.fxEnd?.mount(rank);
+        }
         rank.querySelectorAll(".lg-scoreparts [data-leader=true] > span").forEach(el => { el.textContent = el.textContent.replace("· 1위(동점 포함)", "◆"); el.title = "부분 점수 공동 선두(동점 포함)"; });
       }
       if (debrief && S.phase === "end" && !debrief.querySelector("#lg-debrief")) {
@@ -3189,7 +3192,6 @@
   const LAKES = [{ n: `${teamName("dangjin")} 인근 호수`, at: [126.83, 36.88], r: [16, 7] }, { n: `${teamName("asan")} 인근 호수`, at: [126.98, 36.9], r: [20, 6] }, { n: `${teamName("hwaseong")} 인근 호수`, at: [126.75, 37.12], r: [12, 6] }, { n: `${teamName("asan")} 남쪽 호수`, at: [126.8, 36.63], r: [12, 6] }];
   // 광역 지도: R().board = 여섯 도시 지도를 합친 한 장. 팀마다 도시 창(BUILD_MAPS[pack].win)에서 지은 선·설비를 제자리에 그린다.
   const SQ3 = Math.sqrt(3);
-  const TER = { "~": "#2f6f9f", b: "#d9cc95", p: "#93c26a", f: "#4e8e4f", h: "#a3a26e", m: "#857563", u: "#b4b6bc", r: "#2f8fe0", l: "#5ab0e6", g: "#f0c83c", ".": "#c3c8bf" };
   let boardCache = null;
   function boardInfo() {
     const B = R().board;
@@ -3218,7 +3220,8 @@
     const w = P.win || [0, 0], c = g.c + w[0], r = g.r + w[1];
     return [SQ3 * (c + 0.5 * (r & 1)) + SQ3 / 2, 1.5 * r + 1];
   }
-  function renderBoard(cv, V, res, flash, preview = null) {
+  function renderBoard(cv, V, res, flash, preview = null, layoutZoom = 1) {
+    const TER = KCP.fxRegion.terrain;
     const G = boardInfo(), reg = R(), on = new Set(actT(V).map(t => t.id)), goals = V.goals || reg.goals;
     // 로비에서는 결과·건설 계획 없이 같은 지형과 경계를 그린다. 진행 화면은 원래 경로를 쓴다.
     const lit = new Set(preview?.lit || on), tokens = getComputedStyle(cv);
@@ -3230,13 +3233,38 @@
     const kx = k, ox = preview ? (cssW - G.W * k) / 2 : 0, oy = preview ? (cssH - G.H * k) / 2 : 0;
     if (cv.width !== Math.round(cssW * dpr) || cv.height !== Math.round(cssH * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); cv.style.height = cssH + "px"; }
     const g = cv.getContext("2d");
+    const labelBounds = [], names = [], icons = [];
+    const box = (x, y, width, height, extra = {}) => ({ x: ox + x * k, y: oy + y * k, width: width * k, height: height * k, ...extra });
+    const polygonBox = (points, extra) => {
+      const xs = points.map(p => p[0]), ys = points.map(p => p[1]), x = Math.min(...xs) - .3, y = Math.min(...ys) - .3;
+      labelBounds.push(box(x, y, Math.max(...xs) + .3 - x, Math.max(...ys) + .3 - y, extra));
+    };
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
     g.setTransform(dpr * kx, 0, 0, dpr * k, dpr * ox, dpr * oy);
     const NB_E = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], NB_O = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
     const hex = (x, y, rr) => { g.beginPath(); for (let a = 0; a < 6; a++) { const t = Math.PI / 180 * (60 * a - 90); const px = x + rr * Math.cos(t), py = y + rr * Math.sin(t); if (a) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); };
     // 강 칸은 땅 위에 물줄기(이웃 강·호수·바다 칸까지 잇는 띠)로 그려 호수(물 면 전체)와 구별한다.
     const WET = ch => ch === "r" || ch === "l" || ch === "~", nbOf = cl => (cl.r & 1 ? NB_O : NB_E).map(([dc, dr]) => { const o = G.at(cl.c + dc, cl.r + dr); return o && o.c === cl.c + dc ? o : null; }).filter(Boolean);
-    G.cells.forEach(cl => { if (preview && !cl.team) return; hex(cl.x, cl.y, 1.03); g.fillStyle = cl.ch === "r" ? TER.p : TER[cl.ch] || TER.p; g.fill(); });
+    G.cells.forEach(cl => {
+      if (preview && !cl.team) return;
+      const wet = cl.ch === "~" || cl.ch === "l", ch = cl.ch === "r" ? "p" : cl.ch;
+      const base = TER[ch] || TER.p, color = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16));
+      // 도시 지도 drawTile처럼 칸마다 7% 이내의 명도 차. 물은 원색 유지.
+      const jitter = 1 + (((cl.c * 17 + cl.r * 31) % 19) / 18 - .5) * .07;
+      const outside = !preview && (!cl.team || !on.has(cl.team));
+      const out = [1, 3, 5].map(i => parseInt(TER.out.slice(i, i + 2), 16));
+      g.fillStyle = wet ? base : `rgb(${color.map((v, i) => Math.round((outside ? v * .1 + out[i] * .9 : v) * (outside ? .72 : 1) * jitter)).join(",")})`;
+      hex(cl.x, cl.y, 1.03); g.fill();
+      if (!wet && ["f", "h", "m"].includes(ch)) {
+        g.fillStyle = outside ? "rgba(25,55,25,.12)" : "rgba(255,255,225,.13)";
+        g.beginPath(); g.moveTo(cl.x - .6, cl.y + .3); g.lineTo(cl.x, cl.y - .55); g.lineTo(cl.x + .65, cl.y + .3); g.closePath(); g.fill();
+      }
+      if (cl.ch === "g") {
+        g.strokeStyle = "#243c30"; g.lineWidth = .16;
+        g.beginPath(); g.moveTo(cl.x - .35, cl.y); g.lineTo(cl.x + .35, cl.y); g.stroke();
+        g.strokeRect(cl.x - .6, cl.y - .22, .3, .44); g.strokeRect(cl.x + .3, cl.y - .22, .3, .44);
+      }
+    });
     g.lineCap = "round"; g.lineJoin = "round";
     [["rgba(230,244,255,0.9)", 0.95], [TER.r, 0.62]].forEach(([col, w]) => {
       g.strokeStyle = col; g.lineWidth = w;
@@ -3249,7 +3277,7 @@
         g.fillStyle = token("--ui-panel");
         g.globalAlpha = lit.has(cl.team) ? 0.04 : 0.82;
         g.fill(); g.globalAlpha = 1;
-      } else if (cl.team && !on.has(cl.team)) { hex(cl.x, cl.y, 1.03); g.fillStyle = "rgba(200,204,196,0.72)"; g.fill(); }
+      }
     });
     // 도시 경계(팀 색 굵은 선)
     const B = G.B;
@@ -3260,7 +3288,7 @@
         const o = G.at(cl.c + dc, cl.r + dr) || null, ot = o && o.c === cl.c + dc ? o.team : null;
         if (ot === cl.team) return;
         const nx = SQ3 * (cl.c + dc + 0.5 * ((cl.r + dr) & 1)) + SQ3 / 2, ny = 1.5 * (cl.r + dr) + 1, mx = (cl.x + nx) / 2, my = (cl.y + ny) / 2, dx = (ny - cl.y) / 2 / SQ3, dy = -(nx - cl.x) / 2 / SQ3;
-        let border = on.has(cl.team) ? teamCol(cl.team) : "#9aa096";
+        let border = on.has(cl.team) ? teamCol(cl.team) : "#c2d2c6";
         if (preview) border = !lit.has(cl.team) ? token("--ui-border") : cl.team === preview.player ? token("--ui-gold") : token("--ui-border");
         g.strokeStyle = border;
         g.lineWidth = preview && cl.team === preview.player ? 0.7 : ot ? 0.32 : 0.42;
@@ -3280,21 +3308,37 @@
     reg.ties.filter(D => !preview && on.has(D.a) && on.has(D.b)).forEach(D => {
       const A = gateXY(D.a, D.b), Bq = gateXY(D.b, D.a);
       if (!A || !Bq) return;
-      const T = V.ties.find(x => x.a === D.a && x.b === D.b), F = res && T && res.flow[C.tieId(T)], net = F ? F.ab - F.ba : 0;
+      const T = V.ties.find(x => x.a === D.a && x.b === D.b), F = res && T?.st === "built" && res.flow?.[C.tieId(T)], net = F && Number.isFinite(F.ab) && Number.isFinite(F.ba) ? F.ab - F.ba : 0;
       g.setLineDash(!T ? [0.5, 0.9] : T.st === "prop" ? [1.2, 0.8] : []);
       g.strokeStyle = !T ? "rgba(40,50,60,0.55)" : T.st === "prop" ? token("--ui-gold") : "#1d2430"; g.lineWidth = !T ? 0.3 : T.cap === 4 ? 0.95 : 0.6;
       g.beginPath(); g.moveTo(...A); g.lineTo(...Bq); g.stroke(); g.setLineDash([]);
       if (F && Math.abs(net) > 0.05) {
-        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flash ? 0.7 : 0.5;
+        const flowWidth = .35 + Math.min(1.4, Math.sqrt(Math.abs(net)) * .035);
+        g.setLineDash([0.9, 1.1]); g.lineDashOffset = window.matchMedia("(prefers-reduced-motion: reduce)").matches || KCP.v2?.reduced?.() ? 0 : -(performance.now() / 120) % 4; g.strokeStyle = "#ffd23f"; g.lineWidth = flowWidth + (flash ? .15 : 0);
         g.beginPath(); if (net >= 0) { g.moveTo(...A); g.lineTo(...Bq); } else { g.moveTo(...Bq); g.lineTo(...A); } g.stroke(); g.setLineDash([]);
+        g.lineDashOffset = 0;
+        const from = net >= 0 ? A : Bq, to = net >= 0 ? Bq : A, dx = to[0] - from[0], dy = to[1] - from[1], len = Math.hypot(dx, dy);
+        if (len) for (const at of [.35, .7]) {
+          const x = from[0] + dx * at, y = from[1] + dy * at, s = 1 + flowWidth;
+          polygonBox([[x, y], [x - dx / len * s + dy / len * s * .55, y - dy / len * s - dx / len * s * .55],
+            [x - dx / len * s - dy / len * s * .55, y - dy / len * s + dx / len * s * .55]], { kind: "flow-arrow" });
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx / len * s + dy / len * s * .55, y - dy / len * s - dx / len * s * .55);
+          g.lineTo(x - dx / len * s - dy / len * s * .55, y - dy / len * s + dx / len * s * .55); g.closePath(); g.fillStyle = "#ffd23f"; g.fill();
+        }
         g.font = "700 1.35px sans-serif"; g.textAlign = "center"; g.lineWidth = 0.35; g.strokeStyle = "#fff"; g.fillStyle = "#1d2430";
         const mx = (A[0] + Bq[0]) / 2, my = (A[1] + Bq[1]) / 2 - 0.9, tx = `${fmt(Math.abs(net), 0)} MWh`;
         g.strokeText(tx, mx, my); g.fillText(tx, mx, my); flows++;
+        labelBounds.push(box(mx - g.measureText(tx).width / 2 - .3, my - 1.65, g.measureText(tx).width + .6, 2.2, { kind: "flow-text" }));
       }
     });
     // 이름표(도시·호수)
     g.textAlign = "center";
-    if (!preview) (B.labels || []).forEach(L0 => { const x = SQ3 * (L0.c + 0.5 * (L0.r & 1)) + SQ3 / 2, y = 1.5 * L0.r + 1; g.font = "600 1.2px sans-serif"; g.fillStyle = "rgba(20,40,60,0.75)"; g.fillText(L0.t, x, y); });
+    if (!preview) (B.labels || []).forEach(L0 => {
+      const x = SQ3 * (L0.c + 0.5 * (L0.r & 1)) + SQ3 / 2, y = 1.5 * L0.r + 1;
+      g.font = "600 1.2px sans-serif"; g.fillStyle = "rgba(20,40,60,0.75)"; g.fillText(L0.t, x, y);
+      const width = g.measureText(L0.t).width;
+      labelBounds.push(box(x - width / 2, y - 1.2, width, 1.6, { kind: "water", soft: true }));
+    });
     reg.teams.forEach(t => {
       const c0 = G.cen[t.id]; if (!c0) return;
       const act = on.has(t.id), r0 = res && res.team[t.id], v = V.teams[t.id];
@@ -3318,10 +3362,37 @@
         g.restore();
         return;
       }
-      g.font = `800 ${act ? 2.6 : 2.0}px sans-serif`; g.lineWidth = 0.6; g.strokeStyle = act ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)"; g.fillStyle = act ? "#fff" : "#6a6f66";
+      g.font = `800 ${act ? 2.6 : 2.0}px sans-serif`; g.lineWidth = 0.6; g.strokeStyle = "rgba(0,0,0,0.55)"; g.fillStyle = act ? "#fff" : "#f1f5ec";
       g.strokeText(t.name, c0[0], c0[1]); g.fillText(t.name, c0[0], c0[1]);
+      const nameWidth = g.measureText(t.name).width;
+      names.push(box(c0[0] - nameWidth / 2 - .3, c0[1] - (act ? 2.9 : 2.3), nameWidth + .6, act ? 3.5 : 2.9, { id: t.id }));
       const sub = !act ? "" : r0 ? `정전 ${fmt(r0.unsPct, 1)}%` : v && !v.seated ? "빈 자리" : "";
       if (sub) { g.font = "700 1.5px sans-serif"; g.lineWidth = 0.45; g.strokeText(sub, c0[0], c0[1] + 2.2); g.fillStyle = r0 && r0.unsPct > goals.unsPct ? "#ffb3a8" : "#fff"; g.fillText(sub, c0[0], c0[1] + 2.2); }
+      const halfWidth = Math.max(nameWidth, sub ? g.measureText(sub).width : 0) / 2 + .6;
+      const iconSize = Math.max(1, 7 / (k / layoutZoom)), iconY = c0[1] - 1;
+      const outage = act && r0?.unsPct >= .05, building = act && KCP.fxRegion.newBuildCount(v, V.round, V.phase) > 0;
+      if (outage || building) {
+        const iconX = c0[0] + halfWidth + iconSize + .7;
+        g.save(); g.lineWidth = .22; g.strokeStyle = "#fff";
+        if (outage) {
+          icons.push(box(iconX - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2, { id: t.id, kind: "outage" }));
+          g.beginPath(); g.arc(iconX, iconY, iconSize, 0, Math.PI * 2); g.fillStyle = "#b52b32"; g.fill(); g.stroke();
+          g.beginPath(); g.moveTo(iconX + iconSize * .25, iconY - iconSize * .75); g.lineTo(iconX - iconSize * .5, iconY + iconSize * .1);
+          g.lineTo(iconX, iconY + iconSize * .1); g.lineTo(iconX - iconSize * .25, iconY + iconSize * .75);
+          g.lineTo(iconX + iconSize * .5, iconY - iconSize * .15); g.lineTo(iconX, iconY - iconSize * .15); g.closePath(); g.fillStyle = "#fff"; g.fill();
+        }
+        if (building) {
+          const x = iconX + (outage ? iconSize * 2.4 : 0);
+          icons.push(box(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2, { id: t.id, kind: "build" }));
+          g.fillStyle = "#12634c"; g.fillRect(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2); g.strokeRect(x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2);
+          g.lineWidth = .4; g.beginPath(); g.moveTo(x - iconSize * .55, iconY); g.lineTo(x + iconSize * .55, iconY); g.moveTo(x, iconY - iconSize * .55); g.lineTo(x, iconY + iconSize * .55); g.stroke();
+        }
+        g.restore();
+      }
+      // 카드 배치는 도시 이름·정전 줄·기호의 실제 픽셀 영역을 피한다.
+      const right = halfWidth + (outage || building ? .7 + iconSize * (outage && building ? 4.4 : 2) : 0);
+      labelBounds.push(box(c0[0] - halfWidth, c0[1] - Math.max(3, iconSize + 1),
+        halfWidth + right, Math.max(3, iconSize + 1) + Math.max(sub ? 3 : 1, iconSize - 1), { id: t.id, kind: "city" }));
     });
     if (V.econ) {
       const top = (V.econ.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter), max = Math.max(1, ...top.map(f => f.n));
@@ -3345,6 +3416,10 @@
         g.setLineDash([]); g.lineWidth = 0.4 + f.n / max; g.strokeStyle = "#8d2755";
         g.beginPath(); g.moveTo(tail[0], tail[1]); g.lineTo(x, y); g.stroke();
         g.fillStyle = "#8d2755"; g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx / len * 2 + dy / len, y - dy / len * 2 - dx / len); g.lineTo(x - dx / len * 2 - dy / len, y - dy / len * 2 + dx / len); g.closePath(); g.fill();
+        polygonBox([[x, y], [x - dx / len * 2 + dy / len, y - dy / len * 2 - dx / len],
+          [x - dx / len * 2 - dy / len, y - dy / len * 2 + dx / len]], { kind: "migration-arrow" });
+        const mx = (tail[0] + x) / 2, my = (tail[1] + y) / 2;
+        labelBounds.push(box(mx - 1.5, my - 1.5, 3, 3, { kind: "migration-mid" }));
         drawn.push([f.from, f.to]);
       });
       cv.dataset.moves = String(drawn.length);
@@ -3354,6 +3429,11 @@
     if (preview) { cv.dataset.preview = "true"; cv.dataset.ox = String(ox); cv.dataset.kx = String(kx); cv.dataset.oy = String(oy); }
     if (preview?.mode === "seat") cv.dataset.seatActive = [...on].join(" ");
     else delete cv.dataset.seatActive;
+    if (!preview) {
+      cv.setAttribute("aria-label", `도시별 설비·송전선·거래·이주 지도. ${KCP.fxRegion.legend}`);
+      KCP.fxRegion.recordLayout(cv, { cards: [], names, icons });
+    }
+    return labelBounds;
   }
   function boardHit(cv, ev) {
     const G = boardInfo(), rect = cv.getBoundingClientRect(), scale = rect.width / cv.clientWidth;
@@ -3690,6 +3770,7 @@
       outageRememberIntl(V);
       // 결과를 받은 즉시, 다음 계획이 편집되기 전에 한 번만 계산한다.
       if (V.econ && ["review", "end"].includes(V.phase)) {
+        if (L.role === "team") KCP.fxEnd?.remember(V, V.results.at(-1));
         outageSnapshot(V, V.results.at(-1), L.team);
         outageAttribution(V, V.results.at(-1), L.team);
       }
@@ -4093,15 +4174,54 @@
     const region = document.getElementById("lg-region"), V = L.snap, G = boardInfo();
     if (!region || !V) return;
     const viewport = region.querySelector(".lg-regionviewport");
-    region.querySelector(".lg-regionboard").style.width = `${Math.min(viewport.clientWidth, viewport.clientHeight * G.W / G.H) * L.regionZoom}px`;
-    renderBoard(region.querySelector("canvas"), V, V.results.at(-1), false);
-    region.querySelector(".lg-regionlabels").innerHTML = actT(V).map(t => {
-      const xy = G.cen[t.id];
-      return `<span class="lg-regionlabel" style="left:${esc(xy[0] / G.W * 100)}%;top:${esc(xy[1] / G.H * 100)}%;--c:${esc(t.color)}">${esc(regionSummary(V, t.id))}</span>`;
+    const baseWidth = Math.min(viewport.clientWidth, viewport.clientHeight * G.W / G.H);
+    region.querySelector(".lg-regionboard").style.width = `${baseWidth * L.regionZoom}px`;
+    const cv = region.querySelector("canvas"), zoom = cv.clientWidth / baseWidth;
+    const drawnLabels = renderBoard(cv, V, V.results.at(-1), false, null, zoom);
+    const labels = drawnLabels.map(b => ({ ...b, x: b.x / zoom, y: b.y / zoom, width: b.width / zoom, height: b.height / zoom }));
+    const overlay = region.querySelector(".lg-regionlabels");
+    overlay.style.width = baseWidth + "px"; overlay.style.height = G.H * baseWidth / G.W + "px";
+    overlay.style.transform = `scale(${zoom})`;
+    overlay.innerHTML = actT(V).map(t => {
+      // SUMMARY_JS는 innerText를 읽는다. 이름은 생성 텍스트라 기존 목록의 요약 후보 수를 늘리지 않는다.
+      return `<span class="lg-regionlabel" style="--c:${esc(t.color)}"><span class="lg-regionlabel-name" aria-hidden="true" aria-label="${esc(t.name)}"></span>${esc(regionSummary(V, t.id))}</span>`;
     }).join("");
+    const nodes = [...region.querySelectorAll(".lg-regionlabel")], cities = actT(V), k = +cv.dataset.k / zoom;
+    const measure = () => nodes.map((el, i) => ({ id: cities[i].id, x: G.cen[cities[i].id][0] * k,
+      y: G.cen[cities[i].id][1] * k, width: el.offsetWidth, height: el.offsetHeight }));
+    const bounds = { width: baseWidth, height: G.H * baseWidth / G.W };
+    let cards = measure(), placed = KCP.fxRegion.placeCards(cards, labels, bounds);
+    if (placed.length !== nodes.length) {
+      // 좁은 창·큰 숫자에서만 글자와 폭을 줄이고 실제 크기를 다시 측정한다.
+      nodes.forEach(el => { el.style.fontSize = "10px"; el.style.width = Math.min(108, bounds.width * .3) + "px"; });
+      cards = measure(); placed = KCP.fxRegion.placeCards(cards, labels, bounds);
+    }
+    const g = cv.getContext("2d"), dpr = Math.min(2, window.devicePixelRatio || 1);
+    g.save(); g.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+    placed.forEach((p, i) => {
+      const el = nodes[i], anchor = cards[i];
+      el.style.left = p.x + "px"; el.style.top = p.y + "px";
+      const x = Math.max(p.x, Math.min(p.x + p.width, anchor.x)), y = Math.max(p.y, Math.min(p.y + p.height, anchor.y));
+      // 도시명 바깥부터 연결해 이름표와 기호를 선으로 덮지 않는다.
+      const box = labels.find(b => b.kind === "city" && b.id === anchor.id);
+      const dx = x - anchor.x, dy = y - anchor.y;
+      let start = 0;
+      if (box) start = Math.min(dx > 0 ? (box.x + box.width - anchor.x) / dx : dx < 0 ? (box.x - anchor.x) / dx : Infinity,
+        dy > 0 ? (box.y + box.height - anchor.y) / dy : dy < 0 ? (box.y - anchor.y) / dy : Infinity);
+      if (start >= 1) return;
+      g.beginPath(); g.moveTo(anchor.x + dx * start, anchor.y + dy * start); g.lineTo(x, y);
+      g.strokeStyle = "rgba(20,36,30,.85)"; g.lineWidth = 2.5; g.stroke();
+      g.strokeStyle = cities[i].color; g.lineWidth = 1; g.stroke();
+    });
+    // 물리적으로 들어가지 않는 극소 영역에서는 아래 도시 목록을 대안으로 둔다.
+    if (!placed.length) nodes.forEach(el => { el.hidden = true; });
+    g.restore();
+    KCP.fxRegion.recordLayout(cv, { cards: placed.map(p => ({ ...p, x: p.x * zoom, y: p.y * zoom, width: p.width * zoom, height: p.height * zoom })) });
     region.querySelectorAll("[data-region-city]").forEach(b => { b.querySelector("span").textContent = regionSummary(V, b.dataset.regionCity); });
     const moves = (V.econ?.report?.flows.pop || []).slice().sort((a, b) => b.n - a.n).slice(0, IQ.quarter);
-    region.querySelector("#lg-regioncap").textContent = moves.map(f => `${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join(" · ");
+    const movement = moves.map(f => `${teamName(f.from)} → ${teamName(f.to)} ${fmt(f.n)}명: ${migrationReason(f)}`).join(" · ");
+    region.querySelector("#lg-regioncap").textContent = [KCP.fxRegion.legend, movement,
+      placed.length < nodes.length ? "지도 아래 도시 목록에서 보기" : ""].filter(Boolean).join("\n");
   }
   function updateTeamAway() {
     updateAwayStatus();
@@ -4407,7 +4527,7 @@
     const V = L.snap, reg = R(), tab = L.panel;
     const reviewOrder = tab === "result" && V?.econ && V.phase === "review" && ["team", "solo"].includes(L.role);
     const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
-    const bodyScroll = p.querySelector(".lg-pbody")?.scrollTop || 0;
+    const bodyScroll = V?.phase === "end" && (p.dataset.stage !== "end" || p.dataset.tab !== tab) ? 0 : p.querySelector(".lg-pbody")?.scrollTop || 0;
     const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : el.hasAttribute("data-decision-detail") ? ["data-decision-detail", el.dataset.decisionDetail] : null).filter(Boolean);
     const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "data-evidence", "data-confidence", "data-answer", "data-missed", "data-crit", "data-crit-choice", "data-resp", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
@@ -4492,6 +4612,7 @@
     }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     p.querySelectorAll(".lg-promise-carry > p").forEach(line => { line.title = line.textContent; });
+    if (tab === "result" && V?.phase === "end") KCP.fxEnd?.mount(p);
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
     syncResultMapSpace();
@@ -4519,14 +4640,14 @@
       const techNews = p.querySelector(".lg-tech-results");
       panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
       if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
-    } else if (summary) panelBody.prepend(summary);
+    } else if (summary && V?.phase !== "end") panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
       const cause = noSupplyCause(res.team[L.team]?.unsPct, note?.planIssues);
       if (cause) {
         const line = document.createElement("p"); line.id = "lg-no-supply-cause"; line.className = "lg-hint"; line.textContent = cause;
         if (reviewOrder) p.querySelector("#lg-result-heading").after(line);
-        else if (summary) summary.after(line); else panelBody.prepend(line);
+        else if (summary) summary.after(line); else if (V.phase === "end") p.querySelector("#lg-last-month")?.append(line); else panelBody.prepend(line);
       }
     }
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });
@@ -4670,7 +4791,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
+    uiMath: { monthPoints, resultPeriod, fmt, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st);
       // 실제 화면 편집처럼 건설 문서도 저장한다(mountCity의 save와 같은 모양). 안 하면 새로고침 뒤 옛 문서가 실린다.
