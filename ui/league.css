@@ -1096,12 +1096,16 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-team-map #lg-bar .lg-actions > :first-child { margin-left: 0; }
 .lg-team-map #lg-bar #lg-ready {
   grid-column: 2; grid-row: 2; position: static; width: 112px; min-width: 112px; height: 44px; margin: 0; box-shadow: none;
-  background: linear-gradient(135deg, var(--ui-cyan), var(--ui-blue)); border-color: transparent;
+  background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
 }
-.lg-team-map #lg-bar #lg-ready[aria-pressed="true"] { background: var(--ui-gold); color: var(--ui-hud); }
 .lg-team-map[data-promise-open="true"] #lg-bar #lg-ready {
   background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
 }
+/* HUD 주 동작은 금색, 약속 카드의 primary는 기존 청록·파랑 그라데이션이다. */
+/* 약속 카드가 열려 있으면(data-promise-open) 위 규칙대로 보조로 둔다: 주 단추가 둘처럼 보이지 않게(UX 조건). */
+.lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="false"] { background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); }
+.lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="true"] { background: var(--ui-cyan); color: #0d2a33; border-color: var(--ui-cyan); }
+#bd-hud[data-last-outage="true"] { border-color: color-mix(in srgb, var(--ui-danger) 75%, white); }
 .lg-team-map #lg-bar #lg-plan-co2 { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 서랍 자체 대신 본문만 스크롤한다. 확정 줄은 언제나 서랍 아래에 남는다. */
@@ -1400,3 +1404,14 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* '지도 보기'를 펼친 동안은 안내 묶음(문제 칩·코치)을 지도 막대(z 25) 아래로 내려 펼친 선택지가 깔리지 않게 한다. */
 #bd-root:has(.lg-map-views[open]) .lg-map-guidance { z-index: 24; }
+
+/* 안내의 위치·조작 크기는 유지하고 배경만 조금 비치게 한다. */
+@media (max-width: 480px) {
+  .lg-map-guidance .lg-map-result,
+  .lg-map-guidance #lg-coach,
+  .lg-map-guidance #lg-plan-issues button { background: rgba(10, 25, 42, .88); }
+  .lg-map-guidance .lg-map-result { font-size: 12px; padding: 6px 8px; }
+  .lg-map-guidance #lg-coach { font-size: 12px; padding: 3px; }
+  .lg-map-guidance #lg-coach button,
+  .lg-map-guidance #lg-plan-issues button { font-size: 12px; padding-inline: 4px; }
+}

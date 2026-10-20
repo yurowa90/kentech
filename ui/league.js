@@ -4330,6 +4330,20 @@
     L.conn.flush?.();
   }
 
+  function syncLastOutage(root, V, id) {
+    const hud = root.querySelector("#bd-hud"), power = hud?.querySelector('[data-cap="power"]');
+    if (!hud || !power) return;
+    const pct = V?.results.at(-1)?.team[id]?.unsPct, outage = Number.isFinite(pct) && pct >= ZERO_OUTAGE_PCT;
+    hud.dataset.lastOutage = String(outage);
+    const note = outage ? `지난달 정전 ${pct < 0.05 ? "0.1% 미만" : `${fmt(pct, 1)}%`}` : null;
+    const label = note ? `${power.textContent.trim()} · ${note}` : null;
+    for (const [key, text] of [["title", note], ["aria-label", label]]) {
+      if (text === null) power.removeAttribute(key);
+      else if (power.getAttribute(key) !== text) power.setAttribute(key, text);
+    }
+    // build.refreshHUD가 title을 다시 써도 기존 관찰자의 syncMoney에서 설명을 복원한다.
+    L.hudObserver?.observe(power, { attributes: true, attributeFilter: ["title"] });
+  }
   function setupTeamMap(root, id = L.team) {
     root.classList.add("lg-team-map");
     // 자료 지도만 접는다. 녹화·검사에서 쓰는 세 렌즈는 항상 펼침 밖에 둔다.
@@ -4367,6 +4381,7 @@
         const description = `남은 돈 ${text} (빚 한도 포함)`;
         money.title = description; money.setAttribute("aria-label", description);
       }
+      syncLastOutage(root, L.snap, id);
     };
     root.querySelectorAll('[data-cap]').forEach(cap => {
       // 같은 서랍을 여는 중복 바로가기는 숫자 표시로 둔다(도움말·결과·도시는 막대에서 연다).

@@ -3049,7 +3049,8 @@
     const rd = S.opts.league && S.opts.leagueRound ? S.opts.leagueRound() : null;
     if (rd) {
       const season = (SEASONS.find(q => q.id === rd.season) || SEASONS[1]).name;
-      set("time", rd.month ? `${rd.month}월 · ${season}` : season);
+      // 표시만: 가운뎃점 앞뒤를 줄 바꿈 없는 공백으로 묶어 좁은 칩에서 '2월 / · / 겨울' 세 줄로 갈라지지 않게 한다.
+      set("time", rd.month ? `${rd.month}월\u00a0·\u00a0${season}` : season);
       const time = S.root.querySelector('[data-cap="time"] [data-v]');
       if (rd.month && time) { time.title = `${rd.year}년 ${rd.month}월 · ${season}`; time.setAttribute("aria-label", time.title); }
     }
