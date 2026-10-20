@@ -120,11 +120,12 @@
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards(restoreFocus = false) {
-    const target = restoreFocus && expanded ? expandFocus : null;
-    const fallback = restoreFocus && expanded ? document.querySelector('#lg-bar [data-panel="result"]') : null;
-    // 띠의 펼치기 단추는 덱과 함께 사라지므로, 연결된 외부 초점 또는 결과 탭으로 돌아간다.
-    const focus = target?.isConnected && target !== document.body && !deck?.contains(target) && visibleRect(target) ? target : fallback;
+  function closeCards(restoreFocus = true) {
+    const restore = restoreFocus && deck?.contains(document.activeElement);
+    // 덱 안의 초점만 복귀시킨다. 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾는다.
+    const focus = restore ? [expandFocus, document.querySelector('#lg-bar [data-panel="result"]'),
+      ...(document.querySelector("#lg-bar")?.querySelectorAll("button") || [])].find(target =>
+      target?.isConnected && target !== document.body && !deck.contains(target) && visibleRect(target)) : null;
     if (status.forecastOpen) removeLayer();
     else {
       deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
@@ -229,7 +230,7 @@
       if (el && !el.hidden && el.getClientRects().length) box.bottom = Math.min(box.bottom, el.getBoundingClientRect().top - 8);
     }
     const mapBox = { ...box }, panels = [], drawers = openDrawers(root);
-    if (expanded && !drawers.length) { expanded = false; expandFocus = null; }
+    if (expanded && !drawers.length) expanded = false;
     let guidanceBox = null;
     const overlaps = (b, p) => p.left < b.right && p.right > b.left && p.top < b.bottom && p.bottom > b.top;
     const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
@@ -349,11 +350,15 @@
     hideSummary();
     deck = node("section", "fx-turn-cards");
     deck.setAttribute("aria-label", "이번 달 사건 카드");
+    let summaryLive = null, summaryAnnounced = false;
+    const announceSummary = () => {
+      if (summaryAnnounced || status.deferred || !summaryLive?.isConnected) return;
+      summaryAnnounced = true; summaryLive.textContent = summary;
+    };
     if (summary != null) {
-      const live = node("span", "bd-sr");
-      live.setAttribute("aria-live", "polite"); live.setAttribute("aria-atomic", "true");
-      deck.append(live);
-      later(0, () => { if (live.isConnected) live.textContent = summary; });
+      summaryLive = node("span", "bd-sr");
+      summaryLive.setAttribute("aria-live", "polite"); summaryLive.setAttribute("aria-atomic", "true");
+      deck.append(summaryLive);
     }
     const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
     close.addEventListener("click", () => closeCards(true)); deck.append(close);
@@ -368,7 +373,7 @@
     expand.setAttribute("aria-expanded", "false");
     expand.setAttribute("aria-label", `${first.title}${rest} 펼치기`);
     expand.addEventListener("click", () => {
-      expandFocus = document.activeElement; expanded = true;
+      expanded = true;
       place(root); if (deck && expanded) close.focus?.({ preventScroll: true });
     });
     const stripClose = node("button", "fx-turn-strip-close", "×"); stripClose.type = "button";
@@ -415,7 +420,7 @@
       const select = n => articles.forEach((a, k) => { a.dataset.active = String(k === n); if (k === n) revealCard(a); });
       prev.addEventListener("click", () => select(i - 1)); next.addEventListener("click", () => select(i + 1));
       nav.append(prev, node("span", "", `${i + 1} / ${cards.length}`), next);
-      if (forecast) article.addEventListener("click", e => { if (!nav.contains(e.target)) closeCards(); });
+      if (forecast) article.addEventListener("click", e => { if (!nav.contains(e.target)) closeCards(true); });
       article.append(nav); row.append(article); return article;
     });
     layer.append(deck); status.cardsOpen = true; status.forecastOpen = forecast;
@@ -426,7 +431,9 @@
       const live = root.querySelector("#bd-live");
       if (announced || !live) return;
       announced = true;
-      live.textContent = `사건 카드 ${events.length}장 — 서랍을 접으면 보여요`;
+      const prefix = summary != null && !summaryAnnounced ? `${summary}. ` : "";
+      live.textContent = `${prefix}사건 카드 ${events.length}장 — 서랍을 접으면 보여요`;
+      if (prefix) summaryAnnounced = true;
     };
     // 삽입으로 바뀐 영역을 같은 틱에 확정한 뒤 카드를 공개한다.
     place(root);
@@ -444,6 +451,7 @@
     let closeAt = 0;
     const arm = () => {
       if (status.deferred) { closeAt = 0; return; }
+      if (summaryLive && !summaryAnnounced) later(0, announceSummary);
       const wait = status.strip ? 10000 : forecast ? 8000 : 10000;
       const at = closeAt = performance.now() + wait;
       later(wait, () => { if (deck === owner && closeAt === at) closeCards(); });
@@ -460,6 +468,8 @@
   function mountLayer(root, key, phase) {
     activeMonth = key; activePhase = phaseOf(phase);
     layer = node("div", "fx-turn-layer"); root.querySelector(".bd-stage").append(layer); place(root);
+    expandFocus = document.activeElement;
+    listen(document, "focusin", e => { if (!deck?.contains(e.target) && e.target !== document.body) expandFocus = e.target; });
     listen(window, "resize", () => schedulePlace(root));
     if (window.visualViewport) listen(window.visualViewport, "resize", () => schedulePlace(root));
     if (window.ResizeObserver) {
@@ -493,7 +503,8 @@
         monthKey({ round: view?.round, team: session.team, view }) === key);
     };
     forecastVisible = () => {
-      if (forecastMonths.has(key) || !layer?.isConnected || layer.hidden !== false || status.deferred || !deck) return;
+      if (forecastMonths.has(key) || !layer?.isConnected || layer.hidden !== false || status.deferred ||
+          layer.dataset.chip === "true" || !deck) return;
       const target = status.strip ? stripBar : [...deck.querySelectorAll(".fx-turn-card")].find(article =>
         article.classList.contains("fx-revealed") &&
         (!(layer.dataset.compact === "true" || layer.dataset.paged === "true") || article.dataset.active === "true"));
@@ -510,7 +521,7 @@
     listen(document, "click", e => {
       if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
     }, true);
-    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(true); }, true);
+    listen(document, "keydown", e => { if (e.key === "Escape" && !status.deferred) closeCards(true); }, true);
     return true;
   }
   function showSummary(opts, root) {
@@ -596,7 +607,8 @@
       if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
-    listen(document, "keydown", e => { if (e.key === "Escape") { if (status.playing || pending) skip(); else { closeCards(true); hideSummary(); } } }, true);
+    // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다. 재생 건너뛰기는 그대로 둔다.
+    listen(document, "keydown", e => { if (e.key === "Escape") { if (status.playing || pending) skip(); else if (!status.deferred) { closeCards(true); hideSummary(); } } }, true);
     let finished = false;
     const done = info => {
       if (token !== epoch || !keepCurrentCards()) return;
