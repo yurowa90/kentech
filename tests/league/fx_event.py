@@ -17,6 +17,8 @@ DOM 관찰자는 앱 상태를 바꾸지 않고 첫 등장/180ms 뒤의 사각�
 기록한다. reduce는 두 시각 모두 움직임이 없고 처음부터 확정 면만 보여야
 한다. 위치 변화는 배치 기준 요소의 크기 변화가 없을 때만 실패로 센다.
 일반 동작의 겹침은 등장 애니메이션 후, reduce는 최초 표본에서도 검사한다.
+390 결과 서랍은 w4c-card-strip.md 1~5절에 따라 자동 표시 띠의 교차 0,
+서랍 단추 클릭 전달, 명시적 펼치기와 Esc 뒤 완전 닫힘을 검사한다.
 캡처는 econui 형식(tests/results/fx-event-*.png), 마지막 줄은 checks N fail M.
 """
 
@@ -238,8 +240,9 @@ def geometry(checks, page, label, mobile, cards=None):
     checks.ok(bool(visible), f'{label} 실제 보이는 카드 존재: {details}')
     checks.ok(bool(visible) and all(c['inside'] for c in visible),
               f'{label} 카드가 뷰포트 안의 양수 크기: {details}')
-    # 이 브리프 1항의 좁은 화면 대체 배치: data-over=true일 때만 열린
-    # #lg-panel 위에 뜰 수 있다. 막대·도구·문제 칩·코치는 계속 금지한다.
+    # 기존 W4 대체 배치. W4c 모바일 결과는 자동 띠에서 별도로 교차 0을
+    # 검사하고, 이 함수는 사용자 펼치기 뒤에만 호출한다(W4c 3절).
+    # 막대·도구·문제 칩·코치는 계속 금지한다.
     collisions = []
     for c in visible:
         blocked = [key for key in c['overlaps']
@@ -303,7 +306,7 @@ def reduced_entry(checks, page, round_number, forecast, label, mobile, forecast_
 
 
 def inspect_cards(checks, page, names, forecast, label, mobile, reduced,
-                  forecast_names=(), forecast_range_names=()):
+                  forecast_names=(), forecast_range_names=(), strip_expanded=False):
     state = observe(page)
     details = card_details(state['cards'])
     flag = 'forecastOpen' if forecast else 'cardsOpen'
@@ -336,8 +339,17 @@ def inspect_cards(checks, page, names, forecast, label, mobile, reduced,
                       for c in cards if c['title'] not in forecast_names),
                   f'{label} 예보로 본 사건은 앞·뒷면 제목 동일·나머지는 단면; '
                   f'카드 {details}')
-    if reduced:
+    if reduced and not strip_expanded:
         reduced_entry(checks, page, state['round'], forecast, label, mobile, forecast_names)
+    elif reduced:
+        # W4c에서는 최초 자동 표시가 카드가 아닌 띠다. 사용자 펼치기 뒤의
+        # 확정 면·무동작을 검사하며, 숨겨진 카드의 최초 관측을 재사용하지 않는다.
+        checks.ok(bool(cards) and all(c['transform'] == 'none' and c['opacity'] == 1 and
+                  all(v.strip() == 'none' for v in c['animation'].split(',')) and
+                  all(v.strip() == '0s' for v in c['transition'].split(',')) for c in cards) and
+                  all(c['frontHidden'] and c['backFinal'] for c in cards
+                      if c['title'] in forecast_names),
+                  f'{label} reduce 띠 펼친 직후 움직임 없음·예보한 사건은 확정 면만: {details}')
 
     # compact/paged는 결산 카드 다음에 사건 카드가 있다. 숨은 DOM만 읽고
     # 통과시키지 않고, 실제 이전/다음 단추로 모든 카드를 화면에 표시한다.
@@ -435,6 +447,111 @@ def outside_click(checks, page, label):
         target.click()  # 검사에서 연 서랍은 같은 화면 단추로 원래 상태로 돌린다.
 
 
+def strip_geometry(checks, page, label, reduced):
+    """W4c 1·2절: 자동 표시는 data-over 여부와 관계없이 열린 서랍을 피한다."""
+    data = page.evaluate("""() => {
+      const dom=(""" + DOM_JS + """);
+      const rect=el=>{const r=el.getBoundingClientRect();
+        return {x:r.x,y:r.y,width:r.width,height:r.height};};
+      const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x))*
+        Math.max(0,Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y));
+      const blockers=[...document.querySelectorAll('#lg-panel, #bd-drawer')].filter(dom.visible);
+      const layers=[...document.querySelectorAll('.fx-turn-layer')].filter(dom.visible);
+      const boxes=layers.flatMap(layer=>[layer,...layer.querySelectorAll(
+        'article, .fx-turn-cards, [data-strip]')]).filter(dom.visible).map(el=>({
+          element:el.className,box:rect(el),
+          overlaps:blockers.map(b=>({id:b.id,area:overlap(rect(el),rect(b))}))}));
+      return {blockers:blockers.map(b=>b.id),boxes,
+        layers:layers.map(el=>({strip:el.getAttribute('data-strip'),box:rect(el),
+          animation:getComputedStyle(el).animationName,
+          transition:getComputedStyle(el).transitionDuration}))};
+    }""")
+    checks.ok('lg-panel' in data['blockers'], f'{label} 결과 서랍 #lg-panel이 열린 상태: {data}')
+    strip = checks.ok(len(data['layers']) == 1 and data['layers'][0]['strip'] == 'true',
+                      f'{label} W4c 2절 .fx-turn-layer[data-strip="true"]: {data["layers"]}')
+    checks.ok(bool(data['boxes']) and all(b['box']['width'] > 0 and b['box']['height'] > 0 and
+              all(o['area'] == 0 for o in b['overlaps']) for b in data['boxes']),
+              f'{label} W4c 1절 layer·카드·띠와 #lg-panel/#bd-drawer 사각형 교차 면적 0: {data}')
+    if reduced:
+        checks.ok(bool(data['layers']) and all(
+            all(v.strip() == 'none' for v in layer['animation'].split(',')) and
+            all(v.strip() == '0s' for v in layer['transition'].split(','))
+            for layer in data['layers']), f'{label} W4c 7절 reduce 띠 애니메이션 없음')
+    overflow(checks, page, label + ' 자동 띠')
+    return strip
+
+
+def strip_drawer_click(checks, page, label, reduced):
+    """W4c 4절: 클릭 관측기 대신 실제 S8 선택의 aria-pressed 변화를 본다."""
+    target = page.locator('#lg-panel [data-answer="keep"]')
+    if not target.count() or not target.first.is_visible() or not target.first.is_enabled():
+        return False  # 다른 자연 사건 달에서 다시 시도하며 마지막에 실행 여부를 단언한다.
+    target = target.first
+    target.scroll_into_view_if_needed()
+    page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+    strip_geometry(checks, page, label + ' 유지 단추 스크롤 뒤', reduced)
+    before = target.get_attribute('aria-pressed')
+    hit = target.evaluate("""el => {
+      const r=el.getBoundingClientRect(), x=(r.left+r.right)/2, y=(r.top+r.bottom)/2;
+      const hit=document.elementFromPoint(x,y);
+      return {x,y,own:!!hit && (hit===el || el.contains(hit)),
+        hit:hit ? {tag:hit.tagName,id:hit.id,cls:hit.className} : null};
+    }""")
+    clear = checks.ok(hit['own'] and before == 'false' and
+                      (observe(page)['fx'] or {}).get('cardsOpen') is True and
+                      page.locator('.fx-turn-layer[data-strip="true"]:visible').count() == 1,
+                      f'{label} 띠 열린 채 유지 단추 미선택·elementFromPoint가 단추/자손: {hit}')
+    # 실제 좌표 클릭. force/dispatch_event로 덧층의 가로채기를 우회하지 않는다.
+    page.mouse.click(hit['x'], hit['y'])
+    pressed = checks.test(f'{label} 유지 단추 실제 동작: aria-pressed false → true',
+                         lambda: bool(page.wait_for_function("""() =>
+                           document.querySelector('#lg-panel [data-answer="keep"]')?.
+                             getAttribute('aria-pressed') === 'true'""", timeout=1000)))
+    return clear and pressed
+
+
+def expand_strip(checks, page, label):
+    # 새 구현의 클래스/내부 상태를 추측하지 않는다. W4c 2·5절의 data-strip과
+    # 접근 가능한 단추 이름·aria-expanded만 계약으로 사용한다.
+    buttons = page.locator('.fx-turn-layer[data-strip="true"]').get_by_role(
+        'button', name=re.compile('펼치기'))
+    if not checks.ok(buttons.count() == 1 and buttons.first.is_visible(),
+                     f'{label} W4c 띠 안 펼치기 단추 1개'):
+        return False
+    button = buttons.first
+    checks.ok(button.get_attribute('aria-expanded') == 'false',
+              label + ' 펼치기 전 aria-expanded=false')
+    button.click()
+    return checks.test(label + ' 사용자 펼치기 뒤 aria-expanded=true·카드 표시',
+                       lambda: bool(page.wait_for_function("""() => {
+                         const dom=(""" + DOM_JS + """);
+                         return !!document.querySelector('.fx-turn-layer button[aria-expanded="true"]') &&
+                           dom.cards().some(c=>c.visible);
+                       }""", timeout=1000)))
+
+
+def close_expanded_strip(checks, page, label):
+    page.keyboard.press('Escape')
+    # W4c 3절: 접힌 띠로 돌아오면 실패. 500ms 동안 재표시도 없어야 한다.
+    closed_js = """() => {
+      const dom=(""" + DOM_JS + """);
+      return KCP.fxTurn?.state?.().cardsOpen === false &&
+        ![...document.querySelectorAll('.fx-turn-layer, [data-strip="true"]')].some(dom.visible) &&
+        !dom.cards().some(c=>c.visible);
+    }"""
+    if not checks.test(label + ' Esc 뒤 카드·layer·띠 모두 닫힘', lambda: bool(
+            page.wait_for_function(closed_js, timeout=1000))):
+        return
+    checks.ok(page.evaluate("""async () => {
+      const closed=(""" + closed_js + """), end=performance.now()+500;
+      do {
+        if (!closed()) return false;
+        await new Promise(r=>requestAnimationFrame(r));
+      } while (performance.now()<end);
+      return true;
+    }"""), label + ' W4c 3절 펼친 뒤 Esc: 카드·layer·띠 완전 닫힘, 500ms 재표시 0')
+
+
 def seeded_fixtures():
     helper = Path(__file__).with_name('fx_event_seeds.js')
     result = subprocess.run(['node', str(helper), '--json'], check=True,
@@ -471,6 +588,7 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
               for key in ('forecastOpen', 'mood', 'cardsOpen')),
               f'{label} fxTurn 공개 상태와 buildGame.setMapMood 존재')
     saw_forecast, saw_result, saw_empty, saw_range = False, False, False, False
+    strip_click, strip_expand = False, False
     for month in range(1, 13):
         state = wait_state(page, month, ['plan'])
         prefix = f'{label} {month}월'
@@ -534,19 +652,60 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
         if result['resultEvents']:
             page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen === true',
                                    timeout=WAIT)
+            if mobile:
+                # 결과 서랍이 열린 채 카드가 떠 있는 상황을 만든다. 마우스 클릭은 W4 계약상
+                # '카드 밖 누름 = 닫힘'이라 카드를 닫으므로, 결과 탭을 키보드(Enter)로 연다.
+                # 서랍이 열리면 W4c 1·2절에 따라 카드가 띠로 바뀌어야 한다.
+                wait_unfolded(page)
+                panel = page.locator('#lg-panel')
+                if not panel.is_visible() or panel.get_attribute('data-tab') != 'result':
+                    page.locator('#lg-bar [data-panel="result"]').focus()
+                    page.keyboard.press('Enter')
+                page.wait_for_function("""() => {
+                  const p=document.querySelector('#lg-panel');
+                  return p && !p.hidden && p.dataset.tab==='result' && p.dataset.folded!=='true';
+                }""", timeout=WAIT)
+                checks.ok(page.evaluate('() => KCP.fxTurn?.state?.().cardsOpen === true'),
+                          f'{prefix} 키보드로 서랍을 연 뒤에도 사건 카드 유지')
             wait_unfolded(page)
             names = [e['name'] for e in result['events'] if e['id'] in result['resultEvents']]
             if mine:
                 checks.ok(all(name in names for name in mine),
                           f'{prefix} 예보한 내 도시 사건이 같은 달 결과에도 존재')
-            inspect_cards(checks, page, names, False, prefix + ' 확정', mobile, reduced,
-                          forecast_names=forecast_names,
-                          forecast_range_names=forecast_range_names)
-            if not saw_result:
-                screenshot(checks, page, f'fx-event-{label}-confirmed.png')
-                outside_click(checks, page, prefix)
+            if mobile:
+                page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+                strip_ready = strip_geometry(checks, page, prefix + ' 자동 결과', reduced)
+                if not saw_result:
+                    screenshot(checks, page, f'fx-event-{label}-confirmed.png')
+                if strip_ready and strip_expand and not strip_click:
+                    # 펼치기·완전 닫힘을 먼저 한 자연 사건에서 확인하고, 이후
+                    # 자연 사건의 띠에서 클릭 전달을 확인한다. 서랍 클릭 자체가
+                    # 카드 밖 클릭으로 닫는 것은 기존 W4 계약이 허용한다.
+                    strip_click = strip_drawer_click(checks, page, prefix, reduced)
+                expanded = False
+                if strip_ready and (observe(page)['fx'] or {}).get('cardsOpen') is True:
+                    expanded = expand_strip(checks, page, prefix)
+                if expanded:
+                    strip_expand = True
+                    if not saw_result:
+                        screenshot(checks, page, f'fx-event-{label}-expanded.png')
+                    # 명시적 펼치기 뒤에는 W4c 3절이 data-over를 허용한다.
+                    inspect_cards(checks, page, names, False, prefix + ' 펼친 확정', mobile, reduced,
+                                  forecast_names=forecast_names,
+                                  forecast_range_names=forecast_range_names, strip_expanded=True)
+                    close_expanded_strip(checks, page, prefix)
+                else:
+                    page.keyboard.press('Escape')
             else:
-                page.keyboard.press('Escape')
+                # W4c 6절: 1280×900의 기존 카드·겹침·바깥 클릭 단언은 그대로.
+                inspect_cards(checks, page, names, False, prefix + ' 확정', mobile, reduced,
+                              forecast_names=forecast_names,
+                              forecast_range_names=forecast_range_names)
+                if not saw_result:
+                    screenshot(checks, page, f'fx-event-{label}-confirmed.png')
+                    outside_click(checks, page, prefix)
+                else:
+                    page.keyboard.press('Escape')
             saw_result = True
         else:
             checks.ok((observe(page)['fx'] or {}).get('cardsOpen') is False,
@@ -559,6 +718,9 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
               f'{label} 자연 사건 예보·확정·Esc·중복·새로고침·클릭 전달 실행')
     checks.ok(saw_range, f'{label} 실제 범위 예보→확정 문장 검사 실행')
     checks.ok(saw_empty, f'{label} 사건 없는 달 mood null 검사 실행')
+    if mobile:
+        checks.ok(strip_expand, f'{label} W4c 결과 띠 펼치기·Esc 검사 실행')
+        checks.ok(strip_click, f'{label} W4c 결과 띠 열린 채 S8 유지 단추 클릭 전달 검사 실행')
 
 
 class MotionBrowser:

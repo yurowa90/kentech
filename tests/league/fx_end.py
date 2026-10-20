@@ -357,12 +357,19 @@ def reset_scroll(page):
 def layout(checks, page, label, mobile):
     reset_scroll(page)
     data = page.evaluate("""() => {
-      const body=document.querySelector('#lg-panel .lg-pbody'), summary=body.querySelector('#lg-final-summary');
-      const line=summary.querySelector('p'), graph=body.querySelector('.lg-fx-end');
+      const body=document.querySelector('#lg-panel .lg-pbody');
+      const selectors=['#lg-final-summary', '#lg-decisions', '.lg-fx-end'];
+      const missing=selectors.filter(s=>!body?.querySelector(s));
+      if (missing.length) return {missing};
+      const [summary, decisions, graph]=selectors.map(s=>body.querySelector(s));
+      const line=summary.querySelector('p');
+      if (!line) return {missing:['#lg-final-summary p (내 최종 순위·점수 줄)']};
       const r=line.getBoundingClientRect(), b=body.getBoundingClientRect(), p=body.parentElement.getBoundingClientRect();
       const x=(Math.max(r.left,b.left)+Math.min(r.right,b.right))/2, y=(r.top+r.bottom)/2;
       const hit=document.elementFromPoint(x,y);
-      return {first:body.firstElementChild===summary, adjacent:summary.nextElementSibling===graph,
+      const before=(a,b)=>!!(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING);
+      return {missing:[], first:body.firstElementChild===summary,
+        ordered:before(summary,decisions) && before(decisions,graph),
         top:body.scrollTop, panelTop:body.parentElement.scrollTop, text:line.innerText,
         visible:r.top>=Math.max(0,b.top,p.top) && r.bottom<=Math.min(innerHeight,b.bottom,p.bottom) &&
           r.right>r.left && !!hit && line.contains(hit),
@@ -373,14 +380,18 @@ def layout(checks, page, label, mobile):
         boxes:[...graph.querySelectorAll('[data-fx-metric]')].map(n=>{
           const r=n.getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};})};
     }""")
+    if not checks.ok(not data['missing'],
+                     f'{label} (a) 끝 화면 필수 요소 존재, 못 찾은 선택자: {data["missing"]}'):
+        return
     state = page.evaluate(PUBLIC_JS)
     # 누락 점수는 순위 관측의 실패로 남긴다. 원래 KeyError가 다른 단언까지 막지 않도록 한다.
     score = (state['V'].get('econ', {}).get('score') or {}).get('by', {})
     own = score.get(state.get('team')) or {}
     match = re.search(rf'(\d+)위\s*·\s*({NUMBER})점', data['text'])
-    checks.ok(data['first'] and data['adjacent'] and bool(match) and
+    # 총괄 결정·리그 기준 2 V3A 5: 요약 → 결정과 결과 → 끝 그래프.
+    checks.ok(data['first'] and data['ordered'] and bool(match) and
               int(match[1]) == own.get('rank') and near(number(match[2] + '점', '점'), own.get('score')),
-              label + ' (a) 첫 블록 내 최종 순위·점수, 바로 아래 그래프')
+              label + ' (a) 첫 블록 내 최종 순위·점수, DOM 순서 요약 < 결정과 결과 < 끝 그래프')
     checks.ok(data['top'] == data['panelTop'] == 0 and data['visible'],
               label + ' (a) 서랍 스크롤 0 첫 화면에 내 순위 줄 표시')
     if mobile:
@@ -566,7 +577,50 @@ def crosscheck(checks, page, rows, label):
     reset_scroll(page)
 
 
-def host_end(checks, context, base, pages, label):
+def host_mobile_strip(checks, page, label):
+    """진행자 allCities 띠와 낭독용 문구가 문서 가로 폭으로 새지 않아야 한다."""
+    data = page.evaluate("""() => {
+      const root=document.documentElement;
+      const strip=document.querySelector('#lg-host-rank .lg-fx-end .lg-fx-strip');
+      if (!strip) return null;
+      const previous=strip.scrollLeft, pageX=window.scrollX;
+      const sample=()=>{
+        const sr=[...strip.querySelectorAll('.lg-sr')].map(el=>{
+          const r=el.getBoundingClientRect(); let left=r.left, right=r.right;
+          // 내부 스크롤·클리핑 후 실제로 페이지에 드러날 수 있는 가로 범위.
+          for (let n=el.parentElement;n && n!==root;n=n.parentElement) {
+            if (['auto','scroll','hidden','clip'].includes(getComputedStyle(n).overflowX)) {
+              const b=n.getBoundingClientRect();
+              left=Math.max(left,b.left); right=Math.min(right,b.right);
+            }
+          }
+          return {left,right,contained:right<=left || left>=0 && right<=root.clientWidth};
+        });
+        return {excess:root.scrollWidth-root.clientWidth, width:root.scrollWidth,
+          x:window.scrollX, sr};
+      };
+      strip.scrollLeft=0; const first=sample();
+      strip.scrollLeft=strip.scrollWidth; const last=sample(), moved=strip.scrollLeft;
+      strip.scrollLeft=previous;
+      return {first,last,pageX,moved,overflow:strip.scrollWidth>strip.clientWidth,
+        inside:['auto','scroll'].includes(getComputedStyle(strip).overflowX),
+        months:strip.querySelectorAll('[data-fx-month]').length};
+    }""")
+    if not checks.ok(data is not None, label + ' 진행자 #lg-host-rank 안 연대기 띠 존재'):
+        return
+    samples = (data['first'], data['last'])
+    checks.ok(all(s['excess'] <= 0 for s in samples),
+              f'{label} 390 진행자 documentElement.scrollWidth - clientWidth <= 0: {samples}')
+    checks.ok(data['months'] == 12 and data['overflow'] and data['inside'] and data['moved'] > 0 and
+              all(s['x'] == data['pageX'] for s in samples) and
+              data['first']['width'] == data['last']['width'],
+              f'{label} 390 진행자 12달 띠 내부에서만 가로 스크롤: {data}')
+    checks.ok(all(len(s['sr']) == 12 and all(r['contained'] for r in s['sr']) and
+                        s['excess'] <= 0 for s in samples),
+              f'{label} 띠 처음·끝의 .lg-sr 12개가 페이지 폭을 넓히지 않음: {samples}')
+
+
+def host_end(checks, context, base, pages, label, mobile=False):
     host, events = monitored_page(context)
     pages.append((host, events, label))
     host.goto(base + '#league')
@@ -613,6 +667,8 @@ def host_end(checks, context, base, pages, label):
     host.wait_for_selector('#lg-host-rank .lg-fx-end')
     checks.test(label + ' 움직임·순위 막대 관측 실행', lambda: motion(checks, host, label, False) is None)
     graphs(checks, host, label, host=True)
+    if mobile:
+        host_mobile_strip(checks, host, label)
     overflow(checks, host, label + ' 끝')
     host.locator('#lg-host-rank .lg-fx-end').scroll_into_view_if_needed()
     screenshot(checks, host, f'fx-end-{label}.png')
@@ -663,22 +719,24 @@ def main():
                         overflow(checks, page, label + ' 마지막')
                         checks.ok(not external, f'{label} 외부 연결 시도 0: {external}')
                         context.close()
-                label = 'host-1280x900-light-motion'
-                context, external = context_for(MotionBrowser(browser, False), base, 1280, 900, 'light')
-                context.add_init_script(PROBE_JS)
-                pages = []
-                try:
-                    host_end(checks, context, base, pages, label)
-                except Exception as exc:
-                    checks.ok(False, f'{label} 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}')
-                    if pages:
-                        screenshot(checks, pages[0][0], f'fx-end-{label}-failure.png')
-                finally:
-                    for page, events, page_label in pages:
-                        diagnostics(checks, events, page_label)
-                        overflow(checks, page, page_label + ' 마지막')
-                    checks.ok(not external, f'{label} 외부 연결 시도 0: {external}')
-                    context.close()
+                for width, height in ((1280, 900), (390, 844)):
+                    label = f'host-{width}x{height}-light-motion'
+                    context, external = context_for(MotionBrowser(browser, False), base, width, height, 'light')
+                    context.add_init_script(PROBE_JS)
+                    pages = []
+                    try:
+                        host_end(checks, context, base, pages, label, mobile=width == 390)
+                    except Exception as exc:
+                        checks.ok(False, f'{label} 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}')
+                        if pages:
+                            screenshot(checks, pages[0][0], f'fx-end-{label}-failure.png')
+                    finally:
+                        for page, events, page_label in pages:
+                            # monitored_page가 수집한 console error·warning 및 pageerror 모두 0.
+                            diagnostics(checks, events, page_label)
+                            overflow(checks, page, page_label + ' 마지막')
+                        checks.ok(not external, f'{label} 외부 연결 시도 0: {external}')
+                        context.close()
             finally:
                 browser.close()
     except Exception as exc:

@@ -4,9 +4,10 @@
   const KCP = window.KCP;
   if (!KCP) return;
   let status = { playing: false, skipped: false, ms: 0, replayed: false, cardsOpen: false,
-    source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
+    source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
   let layer = null, toast = null, deck = null, timers = [], off = [], raf = 0, layoutRaf = 0, epoch = 0;
   let lastMonth = null, advanceSummary = null, syncCardSounds = null;
+  let stripBar = null, expanded = false, armCards = null;
   // 사건의 종류만 읽는다. 효과 크기·예보 범위로 농도나 입자 수를 바꾸지 않는다(D-65).
   const EVENT_MOOD = Object.freeze({ heatwave_peak: "heat", evening_peak_tropical_night: "heat",
     coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
@@ -119,10 +120,18 @@
   function closeCards() {
     if (status.forecastOpen) { removeLayer(); return; }
     deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
+    stripBar = armCards = null; expanded = status.strip = status.deferred = false;
+    if (layer) layer.dataset.strip = layer.dataset.chip = layer.dataset.over = "false";
+    syncLayerVisibility();
   }
   function hideSummary() {
     toast?.remove(); toast = null; advanceSummary = null;
     if (raf) cancelAnimationFrame(raf); raf = 0;
+    syncLayerVisibility();
+  }
+  function syncLayerVisibility() {
+    const hidden = !toast && (!deck || status.deferred);
+    if (layer && layer.hidden !== hidden) layer.hidden = hidden;
   }
   // 분위기와 재생은 유지하고, 예보를 닫은 뒤 빈 덧층과 관찰·리스너만 해제한다.
   function removeLayer() {
@@ -134,6 +143,7 @@
     layer?.remove(); layer = toast = deck = null;
     activeMonth = activePhase = null;
     syncCardSounds = null;
+    stripBar = armCards = null; expanded = status.strip = status.deferred = false;
     advanceSummary = null;
     status.cardsOpen = status.forecastOpen = false;
   }
@@ -184,23 +194,44 @@
       const el = root.querySelector(sel);
       if (el && !el.hidden && el.getClientRects().length) box.bottom = Math.min(box.bottom, el.getBoundingClientRect().top - 8);
     }
+    const mapBox = { ...box }, panels = [];
+    let guidanceBox = null;
+    const overlaps = (b, p) => p.left < b.right && p.right > b.left && p.top < b.bottom && p.bottom > b.top;
+    const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
+    const spacesAround = (b, p, gap = 8) => [
+      { ...b, right: Math.min(b.right, p.left - gap) }, { ...b, left: Math.max(b.left, p.right + gap) },
+      { ...b, bottom: Math.min(b.bottom, p.top - gap) }, { ...b, top: Math.max(b.top, p.bottom + gap) }
+    ].filter(b => area(b) > 0);
     for (const sel of [".lg-map-guidance", "#lg-plan-issues", "#lg-issue", "#lg-issue-check", "#lg-coach", "#lg-panel", "#bd-drawer"]) {
       const panel = root.querySelector(sel);
       if (!panel || panel.hidden || !panel.getClientRects().length) continue;
+      const style = window.getComputedStyle?.(panel);
+      if (style?.visibility === "hidden" || style?.display === "none") continue;
       const p = panel.getBoundingClientRect();
-      if (p.left < box.right && p.right > box.left && p.top < box.bottom && p.bottom > box.top) {
-        const spaces = [{ ...box, right: Math.min(box.right, p.left - 8) }, { ...box, left: Math.max(box.left, p.right + 8) },
-          { ...box, bottom: Math.min(box.bottom, p.top - 8) }, { ...box, top: Math.max(box.top, p.bottom + 8) }];
-        const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
-        box = spaces.sort((a, b) => area(b) - area(a))[0];
+      if (p.right <= p.left || p.bottom <= p.top) continue;
+      panels.push(p);
+      if (sel === ".lg-map-guidance") guidanceBox = p;
+      if (overlaps(box, p)) {
+        box = spacesAround(box, p).sort((a, b) => area(b) - area(a))[0] ||
+          { ...box, right: box.left, bottom: box.top };
       }
     }
-    // 좁은 화면에서 결과 서랍 등이 지도를 거의 다 덮으면 남은 틈(예: 390px에서 오른쪽 44px)에 카드가 끼어
-    // 누를 수 없게 된다. 카드가 떠 있을 때 남은 틈이 카드 한 장보다 작으면 위쪽 막대와 도구 막대 사이 전체를
-    // 쓰고 서랍 위에 띄운다(data-over). 카드는 닫기·Esc로 바로 걷을 수 있다.
+    // 이전의 넉넉한 배치는 유지한다. 부족할 때만 모든 빈 사각형을 남겨 큰 틈을 놓치지 않는다.
+    const freeSpaces = (bounds, gap = 8, obstacles = panels) => obstacles.reduce((spaces, p) => spaces.flatMap(b =>
+      overlaps(b, p) ? spacesAround(b, p, gap) : [b]), [bounds]).sort((a, b) => area(b) - area(a));
     const fits = b => b.right - b.left >= 280 && b.bottom - b.top >= 240;
+    let spaces = null;
+    if (deck && panels.length && !expanded && !fits(box)) {
+      spaces = freeSpaces(mapBox);
+      box = spaces.find(fits) || spaces[0] || { ...mapBox, right: mapBox.left, bottom: mapBox.top };
+    }
+    const wasStrip = status.strip, wasDeferred = status.deferred;
+    status.deferred = false;
+    status.strip = !!(deck && panels.length && !expanded && !fits(box));
+    layer.dataset.strip = String(status.strip);
+    layer.dataset.chip = "false";
     layer.dataset.over = "false";
-    if (deck && !fits(box)) {
+    if (deck && (expanded || (!panels.length && !fits(box)))) {
       const over = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8), top: Math.max(8, stage.top + 8), bottom: 0 };
       for (const sel of ["#bd-hud", ".lg-bar", "#bd-mapbar"]) {
         const el = root.querySelector(sel);
@@ -208,7 +239,7 @@
       }
       const dock = root.querySelector("#bd-dock");
       over.bottom = Math.min(window.innerHeight - 8, stage.bottom - 8, dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top - 8 : Infinity);
-      if (fits(over)) { box = over; layer.dataset.over = "true"; }
+      if (expanded || fits(over)) { box = over; layer.dataset.over = "true"; }
     }
     const run = root.querySelector("#bd-run");
     if (root.classList.contains("bd-replaying") && run && !run.hidden) {
@@ -218,9 +249,66 @@
     } else if (run) {
       ["left", "width", "bottom"].forEach(k => run.style.removeProperty(k));
     }
+    if (status.strip) {
+      // 지도 틈과 대체 자리 모두 실제 조작 사각형을 제외한다. 덧층 자신의 단추는 제외 대상이 아니다.
+      const rectOf = el => {
+        if (!el || el.hidden || !el.getClientRects().length) return null;
+        const style = window.getComputedStyle?.(el), p = el.getBoundingClientRect();
+        return style?.visibility === "hidden" || style?.display === "none" || !area(p) ? null : p;
+      };
+      const controls = [...root.querySelectorAll("button, a, [role=button]")]
+        .filter(el => !layer.contains(el)).map(rectOf).filter(Boolean);
+      if (run && root.classList.contains("bd-replaying") && !run.hidden) {
+        const p = rectOf(run);
+        if (p) controls.push(p);
+      }
+      const choose = candidates => candidates.find(b => b.right - b.left >= 180 && b.bottom - b.top >= 44) ||
+        candidates.filter(b => b.right - b.left >= 44 && b.bottom - b.top >= 44)
+          .sort((a, b) => a.top - b.top || a.left - b.left)[0];
+      const obstacles = [...panels, ...controls];
+      const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
+      const inSlot = (bounds, blocked = obstacles) => bounds && choose(freeSpaces({
+        left: Math.max(viewport.left, bounds.left), right: Math.min(viewport.right, bounds.right),
+        top: Math.max(viewport.top, bounds.top), bottom: Math.min(viewport.bottom, bounds.bottom)
+      }, 0, blocked));
+      let slot = choose((spaces || freeSpaces(mapBox)).flatMap(b => freeSpaces(b, 0, controls)));
+      const mapbar = root.querySelector("#bd-mapbar"), bar = rectOf(mapbar);
+      if (!slot && bar) {
+        const buttons = [...mapbar.querySelectorAll("button, a, [role=button]")].map(rectOf).filter(Boolean);
+        const last = buttons.at(-1);
+        if (last) slot = inSlot({ left: Math.max(...buttons.filter(p => p.top < last.bottom && p.bottom > last.top).map(p => p.right)),
+          right: viewport.right, top: last.top, bottom: Math.min(bar.bottom, last.top + 44) });
+      }
+      if (!slot && bar) {
+        const leagueBar = rectOf(root.querySelector(".lg-bar"));
+        if (leagueBar) slot = inSlot({ ...viewport, top: leagueBar.bottom, bottom: bar.top });
+      }
+      if (!slot) {
+        const result = rectOf(root.querySelector("#lg-map-result"));
+        // 안내 묶음의 투명한 여백은 쓸 수 있지만 실제 결산 글과 다른 패널은 덮지 않는다.
+        if (result) slot = inSlot({ left: viewport.right - 44, right: viewport.right,
+          top: result.top, bottom: result.top + 44 }, [...obstacles.filter(p => p !== guidanceBox), result]);
+      }
+      status.deferred = !slot;
+      const chip = !slot || slot.right - slot.left < 180;
+      layer.dataset.chip = String(chip);
+      box = slot ? { ...slot, right: chip ? slot.left + 44 : slot.right,
+        bottom: slot.top + (chip ? 44 : Math.min(52, slot.bottom - slot.top)) } :
+        { left: mapBox.left, right: mapBox.left, top: mapBox.top, bottom: mapBox.top };
+    }
+    if (stripBar) {
+      // hidden은 실제 전환 때만 쓴다(MutationObserver가 재배치를 예약하므로).
+      if (stripBar.hidden !== !status.strip) stripBar.hidden = !status.strip;
+      for (const el of [deck.querySelector(".fx-turn-card-row"), deck.querySelector(".fx-turn-close")]) {
+        if (el.hidden !== status.strip) el.hidden = status.strip;
+      }
+      stripBar.querySelector("button").setAttribute("aria-expanded", String(expanded));
+    }
     const width = Math.max(0, box.right - box.left), height = Math.max(0, box.bottom - box.top);
     Object.assign(layer.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${width}px`, height: `${height}px` });
     layer.dataset.compact = String(width < 600);
+    syncLayerVisibility();
+    if (wasStrip !== status.strip || wasDeferred !== status.deferred) armCards?.();
     syncCardSounds?.();
   }
   function showCards(cards, sound, root, forecast = false, summary = null) {
@@ -237,8 +325,17 @@
     const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
     close.addEventListener("click", closeCards); deck.append(close);
     const row = node("div", "fx-turn-card-row"); deck.append(row);
+    stripBar = node("div", "fx-turn-strip"); stripBar.setAttribute("role", "status");
+    const icon = node("span", "fx-turn-strip-icon", "◆"); icon.setAttribute("aria-hidden", "true");
+    stripBar.append(icon, node("span", "fx-turn-strip-title", cards[0].title),
+      node("span", "fx-turn-strip-count", `외 ${cards.length - 1}장`));
+    const expand = node("button", "fx-turn-expand", "펼치기"); expand.type = "button";
+    expand.setAttribute("aria-expanded", "false");
+    expand.setAttribute("aria-label", `${cards[0].title} 외 ${cards.length - 1}장 펼치기`);
+    expand.addEventListener("click", () => { expanded = true; place(root); close.focus?.({ preventScroll: true }); });
+    stripBar.append(expand); deck.append(stripBar);
     const sounded = new WeakSet(), ready = new WeakSet();
-    const visible = article => !((layer?.dataset.compact === "true" || layer?.dataset.paged === "true") && article.dataset.active !== "true");
+    const visible = article => !status.strip && !((layer?.dataset.compact === "true" || layer?.dataset.paged === "true") && article.dataset.active !== "true");
     const cardSound = article => {
       if (sounded.has(article) || !article.classList.contains("fx-revealed") || !visible(article)) return;
       sounded.add(article); sound?.("card");
@@ -293,12 +390,15 @@
     });
     // 자동 닫힘: 카드를 넘기거나 누르는 동안에는 다시 센다. 좁은 화면에서 서랍 접힘·펼침(UX U10, 최대 6초)과
     // 겹쳐 읽는 도중에 닫히는 일을 막는다. 덧층이 걷히면(clear) 타이머도 함께 무시된다(epoch).
-    const wait = forecast ? 8000 : 10000, owner = deck;
+    const owner = deck;
     let closeAt = 0;
     const arm = () => {
+      if (status.deferred) { closeAt = 0; return; }
+      const wait = status.strip ? 10000 : forecast ? 8000 : 10000;
       const at = closeAt = performance.now() + wait;
       later(wait, () => { if (deck === owner && closeAt === at) closeCards(); });
     };
+    armCards = arm;
     deck.addEventListener("pointerdown", arm);
     deck.addEventListener("keydown", arm);
     arm();
@@ -405,7 +505,7 @@
     clear();
     const token = epoch, root = document.querySelector(".lg-team-map");
     status = { playing: false, skipped: false, ms: reduced() ? 0 : opts.round === 1 ? 4000 : 2000,
-      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
+      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
     if (!root) return false;
     lastMonth = { round: opts.round, room, salt, sid, team: opts.team };
     setMood(moodOf(opts.cards.filter(card => card.id)), root);
@@ -419,7 +519,7 @@
     listen(document, "pointerdown", e => {
       if (status.playing || pending) { pointerSkipped = true; skip(); return; }
       pointerSkipped = false;
-      if (status.cardsOpen && !deck?.contains(e.target)) closeCards();
+      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target)) closeCards();
       if (toast) { pointerSkipped = true; advanceSummary?.(); }
     }, true);
     // 키보드로 발생한 클릭도 기존 동작을 유지하면서 재생을 끝낸다.

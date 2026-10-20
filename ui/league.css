@@ -1272,7 +1272,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 
 /* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
 .fx-turn-layer { position: fixed; z-index: 35; pointer-events: none; overflow: hidden; color: var(--ui-text); font-family: var(--body); }
-/* 좁은 화면에서 남은 지도 틈이 카드보다 작을 때는 결과 서랍(#lg-panel z 46) 위에 띄운다. */
+/* 서랍 위 배치는 명시적인 펼치기 또는 열린 패널이 없는 경우에만 쓴다. */
 .fx-turn-layer[data-over="true"] { z-index: 47; }
 .fx-turn-summary { width: max-content; max-width: calc(100% - 8px); box-sizing: border-box; margin: 4px auto; padding: 10px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow); animation: fx-toast-in .35s ease-out; }
 .fx-turn-summary-values { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px 12px; font-size: 14px; }
@@ -1284,6 +1284,23 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-turn-cards button { pointer-events: auto; min-width: 44px; min-height: 44px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); font: inherit; cursor: pointer; }
 .fx-turn-cards button:disabled { opacity: .4; cursor: default; }
 .fx-turn-cards button:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: -3px; }
+.fx-turn-strip { display: none; animation: none; transition: none; }
+.fx-turn-layer[data-strip="true"] { animation: none; transition: none; }
+.fx-turn-layer[data-strip="true"] .fx-turn-cards { inset: 0; display: block; }
+.fx-turn-layer[data-strip="true"] :is(.fx-turn-card-row, .fx-turn-close) { display: none; }
+.fx-turn-layer[data-strip="true"] .fx-turn-strip {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 100%; min-width: 0;
+  box-sizing: border-box; padding: 0 4px 0 8px; border-radius: 12px;
+  background: var(--ui-panel); box-shadow: inset 0 0 0 1px var(--ui-border); pointer-events: auto;
+}
+.fx-turn-strip-icon { flex: none; color: var(--ui-gold); }
+.fx-turn-strip-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.fx-turn-strip-count { flex: none; white-space: nowrap; color: var(--ui-muted); font-size: 12px; }
+.fx-turn-strip .fx-turn-expand { flex: none; height: 44px; padding: 0 8px; font-size: 12px; }
+.fx-turn-layer[data-chip="true"] .fx-turn-strip { padding: 0; }
+.fx-turn-layer[data-chip="true"] :is(.fx-turn-strip-icon, .fx-turn-strip-title, .fx-turn-strip-count) { display: none; }
+.fx-turn-layer[data-chip="true"] .fx-turn-expand { width: 44px; padding: 0; font-size: 0; }
+.fx-turn-layer[data-chip="true"] .fx-turn-expand::before { content: "◆"; color: var(--ui-gold); font-size: 18px; }
 .fx-turn-card-row { align-self: center; width: min(100%, 794px); height: min(100%, 330px); min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; perspective: 1200px; }
 .fx-turn-card-row:has(.fx-turn-card:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 520px; }
 .fx-turn-card-row:has(.fx-turn-card:only-child) { grid-template-columns: minmax(0, 1fr); max-width: 280px; }
