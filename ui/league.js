@@ -1024,6 +1024,7 @@
       if (Object.is(value, -0)) { this[key] = 0; return 0; }
       return value;
     })) soloSaveFailed = true;
+    else { soloSaveFailed = false; soloSaveWarned = false; }
     warnSoloSave();
   }
   function saveSolo() {
@@ -3042,7 +3043,7 @@
   function connectionWarning() {
     if (Date.now() - L.lastHostAt <= 10000) return;
     L.hostWarning = true;
-    const text = "진행자 화면과 연결을 확인하는 중";
+    const text = "진행자 화면과 연결을 확인하는 중 · 새로고침하면 다시 연결됩니다";
     const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
     if (el) { el.textContent = text; el.dataset.s = "connecting"; }
   }
@@ -3132,8 +3133,8 @@
     return text.replace(/([+−-]?\d+(?:\.\d+)?)%p/g, (_, value) => `${signed(Number(value.replace("−", "-")), 1)}%p`);
   }
   function onSnap(V) {
-    if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
     V = NET.expandSnapshot(V);
+    if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();

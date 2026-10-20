@@ -8,12 +8,13 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 import ast
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 from league_flow import confirm_seat, select_mode
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
@@ -21,6 +22,12 @@ SCORES = {"pop": "주민", "ind": "산업", "fin": "재정", "co2": "탄소",
           "appr": "지지", "rel": "전력 신뢰"}
 POLICIES = ("taxRes", "taxInd", "service", "incentive")
 WAIT = 12000  # 실행기 대기 한도. 경제 모형 계수가 아니다.
+# 2026-10-13: 결과 서랍 0.43~0.69초, CPU 4배 감속 2.1~2.8초. 그리기 여유 포함.
+# 2026-10-17: CPU 4배 감속 전체 실행에서는 도시·도움말 서랍이 5초를 넘는 경우가 있었다(부하 116→46, 실패 5).
+# 감속 실행에서는 KCP_UI_WAIT로 늘린다. 기본은 감속 없는 실행 기준이다.
+UI_WAIT = int(os.environ.get("KCP_UI_WAIT", "5000"))
+# 같은 측정의 새로고침→#lg-bar 최대 8.1초(4배 감속)에 부하 순간 상승 여유를 둔다.
+RELOAD_WAIT = 30000
 
 BOOT_JS = "() => !!(window.KCP && KCP.leagueCore && KCP.league && KCP.buildGame)"
 HIDDEN_JS = r"""el => {
@@ -177,15 +184,58 @@ def absent_or_hidden(page, selector):
     return all(nodes.nth(i).evaluate(HIDDEN_JS) for i in range(nodes.count()))
 
 
+def wait_ui(page, condition, arg=None):
+    """조건이 참이면 즉시 진행한다. 시간 초과 뒤에도 기존 이름·기대값으로 판정한다."""
+    try:
+        page.wait_for_function(condition, arg=arg, timeout=UI_WAIT)
+    except PlaywrightTimeoutError:
+        return False
+    return True
+
+
+def wait_shown(page, selector):
+    # shown의 숨김·폭 조건을 그대로 기다린다. 부재 검사는 기존 shown을 사용한다.
+    wait_ui(page, "selector => [...document.querySelectorAll(selector)].some(el => "
+            "!(" + HIDDEN_JS + ")(el) && el.getBoundingClientRect().width > 0 && "
+            "el.getBoundingClientRect().height > 0)", selector)
+    return shown(page, selector)
+
+
+def wait_count(page, selector, count):
+    wait_ui(page, "([selector, count]) => document.querySelectorAll(selector).length === count",
+            [selector, count])
+    return page.locator(selector).count()
+
+
+def wait_text(page, selector, text):
+    try:
+        expect(page.locator(selector)).to_contain_text(text, timeout=UI_WAIT)
+    except AssertionError:
+        pass  # 시간 초과 뒤 기존 판정이 실패를 기록한다.
+    return page.locator(selector).inner_text()
+
+
 def open_panel(page, name):
     button = page.locator(f'#lg-bar [data-panel="{name}"]')
+    wait_count(page, f'#lg-bar [data-panel="{name}"]', 1)
     if button.count() != 1:
         raise AssertionError(f"{name} 서랍 버튼 1개 필요")
     if button.get_attribute("aria-expanded") != "true":
         button.click()
-    page.wait_for_timeout(200)
+    # 서랍 종류·제목·본문이 함께 그려진 뒤 검사한다.
+    title = {"deal": "이웃·거래", "result": "결과", "journal": "일지", "city": "도시",
+             "rank": "순위", "tech": "연구", "help": "도움말"}[name]
+    page.wait_for_function("""([name, title]) => {
+      const panel = document.querySelector('#lg-panel');
+      const heading = panel?.querySelector('.lg-ptabs strong');
+      const body = panel?.querySelector('.lg-pbody');
+      return panel?.dataset.tab === name && heading?.textContent === title &&
+        body?.checkVisibility({visibilityProperty:true}) && !!body.textContent.trim();
+    }""", arg=[name, title], timeout=UI_WAIT)
+    # 서랍을 열면 지도 배치가 requestAnimationFrame으로 미뤄진다(build.js resize → request). 두 프레임을 기다린다.
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
     if name == "result":
-        # Keep all old numeric assertions: explicitly expand the new three layers.
+        # 기존 숫자 기대값을 유지하며 세 단계의 결과 내용을 명시적으로 펼친다.
         for key in ("lg-last-month", "lg-result-reasons", "lg-result-details"):
             detail = page.locator("#" + key)
             if detail.count() and not detail.evaluate("el => el.open"):
@@ -220,15 +270,16 @@ def automatic_plan():
 def setup_pair(context, base, turns, pages, seed_js=SEED_JS):
     host, events_h = monitored_page(context)
     pages.append((host, events_h, "진행자"))
-    host.goto(base + "#home")
-    host.wait_for_function(BOOT_JS)
+    host.goto(base + "#home", timeout=RELOAD_WAIT)
+    host.wait_for_function(BOOT_JS, timeout=RELOAD_WAIT)
     fixture = host.evaluate(seed_js, turns)
-    host.goto(base + "#league/host")
-    host.wait_for_selector("#lg-roomcode")
+    host.goto(base + "#league/host", timeout=RELOAD_WAIT)
+    host.wait_for_selector("#lg-roomcode", timeout=RELOAD_WAIT)
     fixture["room"] = host.inner_text("#lg-roomcode").replace("-", "").strip()
     team, events_t = monitored_page(context)
     pages.append((team, events_t, "팀"))
-    team.goto(base + "#league")
+    team.goto(base + "#league", timeout=RELOAD_WAIT)
+    team.wait_for_selector('.lg-modes [data-mode="join"]', timeout=RELOAD_WAIT)
     select_mode(team, "join")
     team.fill("#lg-code", fixture["room"])
     team.click("#lg-join")
@@ -240,9 +291,18 @@ def advance(host, team, round_number, phase):
     host.evaluate(NEXT_JS)
     host.wait_for_function(SYNC_JS, arg=[round_number, phase])
     team.wait_for_function(SYNC_JS, arg=[round_number, phase])
+    # 상태 수신 뒤 현재 단계가 화면에도 그려져야 부재 검사가 이전 화면에서 통과하지 않는다.
+    phase_text = {"plan": "계획·협상", "review": "결과·일지", "end": "끝"}[phase]
+    expect(team.locator('#lg-bphase')).to_have_text(phase_text, timeout=UI_WAIT)
+    if host.evaluate('() => !!KCP.league.state().S.econ'):
+        expect(host.locator('.lg-phase-chip')).to_have_text(phase_text, timeout=UI_WAIT)
 
 
 def disabled_policies(page):
+    wait_ui(page, """keys => keys.every(key => {
+      const nodes = [...document.querySelectorAll(`#lg-city [data-pol="${key}"]`)];
+      return nodes.length > 0 && nodes.every(el => el.disabled);
+    })""", list(POLICIES))
     return all(page.locator(f'#lg-city [data-pol="{key}"]').count() > 0 and
                all(page.locator(f'#lg-city [data-pol="{key}"]').nth(i).is_disabled()
                    for i in range(page.locator(f'#lg-city [data-pol="{key}"]').count()))
@@ -288,7 +348,8 @@ def change_policy(team, host, team_id, key):
 
 def rank_checks(checks, page, ids, label):
     # // ECON-UI v1.1: 익명 표시 여부와 무관하게 data-team으로 활성 도시를 식별한다.
-    checks.test(f"{label} U2 #lg-rank 표시", lambda: shown(page, "#lg-rank"))
+    checks.test(f"{label} U2 #lg-rank 표시", lambda: wait_shown(page, "#lg-rank"))
+    wait_count(page, '#lg-rank [data-team]', len(ids))
     snapshot = page.evaluate(RANK_JS)
     checks.ok(len(snapshot["rows"]) == len(ids), f"{label} U2 순위 행 = 활성 팀 {len(ids)}개")
     for team_id in ids:
@@ -350,6 +411,7 @@ def choose_crit(team, host, team_id):
     if not chip.count():
         return False
     chip.first.click()
+    wait_shown(team, '#lg-crit input[type="number"], #lg-crit input[type="range"]')
     number = root.locator('input[type="number"], input[type="range"]').first
     if not number.count():
         return False
@@ -373,10 +435,14 @@ def migration_caption(host, flows):
     if not details.evaluate("el => el.open"):
         details.locator(":scope > summary").click()
     host.wait_for_selector("#lg-mapcap")
-    text = host.locator("#lg-mapcap").inner_text()
     names = host.evaluate("() => Object.fromEntries(Object.entries(KCP.ECON_DATA.start).map(([k,v]) => [k,v.name]))")
     top = sorted(flows, key=lambda flow: flow["n"], reverse=True)[:3]
-    return shown(host, "#lg-mapcap") and all(re.search(
+    for flow in top:
+        wait_text(host, '#lg-mapcap', re.compile(
+            re.escape(names[flow['from']]) + r'\s*→\s*' + re.escape(names[flow['to']]) +
+            r'\s+[\d,.]+\s*명\s*[:：]\s*\S'))
+    text = host.locator("#lg-mapcap").inner_text()
+    return wait_shown(host, "#lg-mapcap") and all(re.search(
         re.escape(names[flow["from"]]) + r"\s*→\s*" + re.escape(names[flow["to"]]) +
         r"\s+[\d,.]+\s*명\s*[:：]\s*\S", text) for flow in top)
 
@@ -384,38 +450,38 @@ def migration_caption(host, flows):
 def u_plan_contract(checks, team, host, tid, label):
     checks.ok(not shown(team, '#lg-panel'), f'{label} U1 첫 달 지도 앞에 일지 자동 열림 없음')
     team.locator('#bd-help').focus(); team.locator('#bd-help').press('Enter')
-    checks.ok(shown(team, '#lg-help') and all(word in team.locator('#lg-help').inner_text()
+    wait_text(team, '#lg-help', '순위')
+    checks.ok(wait_shown(team, '#lg-help') and all(word in team.locator('#lg-help').inner_text()
               for word in ('배치', '송전', '시험 운전', '준비', '이웃·거래', '지역 지도', '연구', '결과', '일지', '도시', '순위')),
               f'{label} U1 리그 전용 도움말·네 단계·막대 설명')
     team.locator('#lg-panel').press('Escape')
+    wait_ui(team, "() => document.querySelector('#bd-help') === document.activeElement")
     checks.ok(not shown(team, '#lg-panel') and team.locator('#bd-help').evaluate('el => el === document.activeElement'),
               f'{label} U1 도움말 Escape 닫기·포커스 복귀')
     team.locator('#bd-help').click()
+    team.locator('#lg-help').wait_for(state='visible', timeout=UI_WAIT)  # 본문 뒤 금지 문구 검사.
     checks.ok('처음부터' not in team.locator('#lg-help').inner_text(), f'{label} U2 멀티 도움말에 혼자 다시 시작 설명 없음')
     team.locator('#lg-build-help').click()
+    wait_text(team, '#bd-help-dlg', '자료와 가정')
     checks.ok(team.locator('#bd-help-dlg').is_visible() and '자료와 가정' in team.locator('#bd-help-dlg').inner_text(), f'{label} U2 원래 자료·모형 도움말 경로 유지')
     team.locator('#bd-help-dlg').press('Escape')
     team.locator('[data-cap="budget"]').focus(); team.locator('[data-cap="budget"]').press('Enter')
-    # 서랍은 열리지만 진행자 재전송 렌더와 겹치면 Enter 직후 한 번의 판정보다 늦게 보일 수 있다
-    # (2026-10-13 재현: 390폭 24회 중 1회, 300ms 뒤 열림). 2초 안에 보이는지로 판정한다.
-    try:
-        team.locator('.lg-left').first.wait_for(state='visible', timeout=2000)
-    except Exception:
-        pass
-    checks.ok(shown(team, '.lg-left'), f'{label} U5 HUD 남은 돈 키보드로 거래 서랍')
+    # 2026-10-13: 390폭 24회 중 1회 Enter 직후에는 없고 300ms 뒤에 열렸다.
+    checks.ok(wait_shown(team, '.lg-left'), f'{label} U5 HUD 남은 돈 키보드로 거래 서랍')
     team.locator('.lg-px').click()
     group = team.locator('#bd-root [data-group="ren"]')
     if group.count(): group.click()
     tool = team.locator('#bd-root [data-tool="solar"]:visible').first
     tool.focus(); tool.press('Enter')
+    wait_ui(team, """() => ['complaints', 'grid'].every(key =>
+      document.querySelector(`[data-lens="${key}"]`)?.getAttribute('aria-pressed') === 'true')""")
     checks.ok(all(team.locator(f'[data-lens="{key}"]').get_attribute('aria-pressed') == 'true'
               for key in ('complaints', 'grid')), f'{label} U3 설비 선택 시 민원·전력망 자동 렌즈')
-    try:  # 렌즈 글은 다음 그리기 때 채워진다.
-        team.wait_for_function("() => { const g = document.querySelector('#lg-lens-grid'); return g && !g.hidden && g.textContent.trim() }", timeout=3000)
-    except Exception:
-        pass
-    checks.ok(shown(team, '#lg-lens-grid'), f'{label} U3 계산한 접속 여유 미리보기')
+    # 렌즈 글은 다음 그리기 때 채워진다.
+    wait_ui(team, "() => { const g = document.querySelector('#lg-lens-grid'); return g && !g.hidden && g.textContent.trim() }")
+    checks.ok(wait_shown(team, '#lg-lens-grid'), f'{label} U3 계산한 접속 여유 미리보기')
     team.locator('[data-lens="complaints"]').focus(); team.locator('[data-lens="complaints"]').press('Enter')
+    wait_ui(team, "() => document.querySelector('[data-lens=complaints]')?.getAttribute('aria-pressed') === 'false'")
     checks.ok(team.locator('[data-lens="complaints"]').get_attribute('aria-pressed') == 'false',
               f'{label} U3 민원 렌즈 키보드 끄기')
     if group.count(): group.click()
@@ -424,13 +490,15 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U2 도구 재선택에도 학생이 끈 렌즈 유지')
     checks.ok(all(team.locator('[data-run]').nth(i).inner_text().startswith('시험 ') for i in range(team.locator('[data-run]').count())),
               f'{label} U2 시험 단추 실제 글자')
-    checks.ok(team.locator('#lg-watch button').count() <= 3 and team.locator('#lg-hud-chips button').count() == 2,
+    checks.ok(team.locator('#lg-watch button').count() <= 3 and wait_count(team, '#lg-hud-chips button', 2) == 2,
               f'{label} U4 이번 달 배지 최대 셋·지지·주민 칩')
     checks.ok(not shown(team, '.lg-bmoney') and not shown(team, '[data-tab="mission"]'),
               f'{label} U4·U7 남은 돈 중복·리그 미션 0/2 숨김')
     team.locator('#bd-help').click()
+    wait_shown(team, '#lg-sound')
     checks.ok(team.locator('#lg-sound').get_attribute('aria-pressed') == 'false', f'{label} U7 소리 기본 꺼짐')
     team.locator('#lg-sound').click()
+    wait_ui(team, "() => localStorage.getItem('kcp-league-sound-v1') === 'true'")
     checks.ok(team.evaluate("localStorage.getItem('kcp-league-sound-v1') === 'true'"), f'{label} U7 소리 켜기는 기기에만 저장')
     team.locator('#lg-sound').click()
     team.locator('#lg-panel [data-pclose]').click()
@@ -439,8 +507,8 @@ def u_plan_contract(checks, team, host, tid, label):
     open_panel(team, 'result')
     checks.ok(team.locator('#lg-panel').evaluate('el => el.scrollTop===0'), f'{label} U2 새 결과 서랍은 위에서 시작')
     open_panel(team, 'city')
-    checks.ok(team.locator('#lg-trends [data-trend]').count() == 4, f'{label} U5 도시 추이 네 줄')
-    checks.ok('주민·기업 이동 시간 ×' in team.locator('#lg-city').inner_text(), f'{label} U9 배속 대상·현실 달 문구')
+    checks.ok(wait_count(team, '#lg-trends [data-trend]', 4) == 4, f'{label} U5 도시 추이 네 줄')
+    checks.ok('주민·기업 이동 시간 ×' in wait_text(team, '#lg-city', '주민·기업 이동 시간 ×'), f'{label} U9 배속 대상·현실 달 문구')
     # Missing recalibration fields add no false zeros or warnings; injected report stays on this device.
     checks.ok(team.evaluate("""() => {
       const V=KCP.league.state().snap, id=KCP.league.state().team;
@@ -467,11 +535,20 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
+    wait_shown(team, '#lg-predict')
+    wait_ui(team, """() => {
+      const card = document.querySelector('#lg-predict'), panel = document.querySelector('#lg-panel');
+      if (!card || !panel) return false;
+      const r = card.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      return r.top >= p.top && r.top < p.bottom;
+    }""")
+    wait_ui(team, "() => document.querySelector('#lg-ready-confirm')?.disabled === true")
+    wait_ui(team, "() => document.querySelector('#lg-predict [data-evidence]') === document.activeElement")
     checks.ok(team.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 근거 없는 약속 제출 금지')
     checks.ok(team.locator('#lg-predict').evaluate("el => {const r=el.getBoundingClientRect(),p=document.querySelector('#lg-panel').getBoundingClientRect();return r.top>=p.top && r.top<p.bottom;}"), f'{label} U2 준비 직후 약속 카드가 서랍 안에 보임')
     checks.ok(team.locator('#lg-predict [data-evidence]').first.evaluate("el => el === document.activeElement"),
               f'{label} U2 준비 관문은 약속 근거에 바로 포커스')
-    checks.ok(team.locator('[data-confidence]').count() == 3 and team.locator('#lg-predict-skip').count() == 0,
+    checks.ok(wait_count(team, '[data-confidence]', 3) == 3 and team.locator('#lg-predict-skip').count() == 0,
               f'{label} U8 확신 세 단계·멀티 건너뛰기 없음')
     team.locator('.lg-px').click()
     overflow(checks, team, label + ' U 새 화면')
@@ -483,7 +560,7 @@ def u_plan_contract(checks, team, host, tid, label):
       const bottom=document.querySelector('#bd-dock').getBoundingClientRect().top;
       return bottom-top >= innerHeight*.6;
     }"""), f'{label} U1 서랍 닫으면 지도 높이 60% 이상')
-    checks.ok(shown(host, '#lg-download'), f'{label} U6 진행자 기록 내려받기')
+    checks.ok(wait_shown(host, '#lg-download'), f'{label} U6 진행자 기록 내려받기')
     csv = host.evaluate('() => KCP.league.uiMath.publicCSV(KCP.leagueCore.publicView(KCP.league.state().S,Date.now()))')
     import csv as csv_module
     import io
@@ -499,15 +576,15 @@ def economic(checks, context, base, label, pages):
     host, team, fixture = setup_pair(context, base, 12, pages)
     tid, ids = fixture["team"], fixture["ids"]
     checks.test(f"{label} 진행자 상세 지도·도시 카드 기본 접힘", lambda:
-                shown(host, "#lg-host-details > summary") and
+                wait_shown(host, "#lg-host-details > summary") and
                 not host.locator("#lg-host-details").evaluate("el => el.open") and
                 absent_or_hidden(host, "#lg-mapcap"))
     checks.test(f"{label} U1 로비 단계 정책 disabled", lambda:
                 (open_panel(team, "city"), disabled_policies(team))[1])
     advance(host, team, 1, "plan")
     u_plan_contract(checks, team, host, tid, label)
-    checks.test(f"{label} U1 #lg-bar 도시 버튼", lambda: shown(team, '#lg-bar [data-panel="city"]'))
-    checks.test(f"{label} U1 도시 서랍 열기", lambda: (open_panel(team, "city"), shown(team, "#lg-city"))[1])
+    checks.test(f"{label} U1 #lg-bar 도시 버튼", lambda: wait_shown(team, '#lg-bar [data-panel="city"]'))
+    checks.test(f"{label} U1 도시 서랍 열기", lambda: (open_panel(team, "city"), wait_shown(team, "#lg-city"))[1])
     # ECON-UI v1.2: 탐색 버튼은 막대 한 곳. 서랍은 제목·접기·닫기만 둔다.
     checks.test(f"{label} 팀 탐색 버튼 중복 없음", lambda:
                 team.locator('#lg-bar [data-panel="city"]').count() == 1 and
@@ -516,7 +593,7 @@ def economic(checks, context, base, label, pages):
     checks.test(f"{label} 팀 서랍 접기", lambda:
                 (team.locator('#lg-panel-fold').click(), absent_or_hidden(team, '#lg-panel .lg-pbody'))[1])
     checks.test(f"{label} 팀 서랍 펼치기", lambda:
-                (team.locator('#lg-panel-fold').click(), shown(team, '#lg-city'))[1])
+                (team.locator('#lg-panel-fold').click(), wait_shown(team, '#lg-city'))[1])
     checks.test(f"{label} HUD·도시 남은 돈 = 공개 left", lambda: team.evaluate("""() => {
       const V = KCP.league.state().snap, id = KCP.league.state().team;
       const expected = V.teams[id].left.toLocaleString('ko-KR', {maximumFractionDigits:1}) + '억';
@@ -533,30 +610,31 @@ def economic(checks, context, base, label, pages):
                 '억 = 게임 단위' in team.locator('#lg-city').inner_text())
     groups = team.evaluate("() => Object.keys(KCP.ECON_DATA.groups)")
     checks.test(f"{label} U1 .lg-grp[data-g] 정확히 6개", lambda:
-                team.locator('#lg-city .lg-grp[data-g]').count() == 6 and
+                wait_count(team, '#lg-city .lg-grp[data-g]', 6) == 6 and
                 sorted(team.locator('#lg-city .lg-grp[data-g]').evaluate_all(
                     "nodes => nodes.map(n => n.dataset.g)")) == sorted(groups) and
-                all(shown(team, f'#lg-city .lg-grp[data-g="{key}"]') for key in groups))
+                all(wait_shown(team, f'#lg-city .lg-grp[data-g="{key}"]') for key in groups))
     checks.test(f"{label} U1 기본 정책 4종과 RE100 지정", lambda:
                 sorted(team.locator('#lg-city [data-pol]').evaluate_all(
                     "nodes => [...new Set(nodes.map(n => n.dataset.pol))]")) == sorted((*POLICIES, "re100")))
     for key in POLICIES:
+        wait_ui(team, "key => {const el = document.querySelector(`#lg-city [data-pol=\"${key}\"]`); return el && !el.disabled;}", key)
         checks.test(f"{label} U1 정책 {key} 표시·활성", lambda key=key:
-                    shown(team, f'#lg-city [data-pol="{key}"]') and
+                    wait_shown(team, f'#lg-city [data-pol="{key}"]') and
                     not team.locator(f'#lg-city [data-pol="{key}"]').first.is_disabled())
         checks.test(f"{label} U1 정책 {key} → 진행자 econPol", lambda key=key:
                     change_policy(team, host, tid, key))
     speed = host.evaluate("() => KCP.leagueCore.publicView(KCP.league.state().S, Date.now()).econ.eduSpeed")
-    checks.test(f"{label} U1 배속 ×{speed}", lambda: shown(team, "#lg-city") and bool(re.search(
+    checks.test(f"{label} U1 배속 ×{speed}", lambda: wait_shown(team, "#lg-city") and bool(re.search(
         r"×\s*" + re.escape(str(speed)) + r"(?![\d.])", team.locator("#lg-city").inner_text())))
     # // ECON-UI v1.1: 기준 카드는 일지 탭 안에 있으므로 확인 전에 직접 연다.
     checks.test(f"{label} U4 첫 달 #lg-crit", lambda:
-                (open_panel(team, "journal"), shown(team, "#lg-crit"))[1])
+                (open_panel(team, "journal"), wait_shown(team, "#lg-crit"))[1])
     checks.test(f"{label} U4 crit 객체 키·칩·숫자만 전송", lambda: choose_crit(team, host, tid))
     # ECON-NEXT §2 피드백③: 근거→예측은 기기에 저장하며 서술을 전송하지 않는다.
     team.locator('[data-evidence="grid"]').click()
     team.locator('[data-pred="uns"]').select_option('down')
-    checks.ok(team.locator('[data-pred]').count() == 1, f'{label} U8 한 달 주제 지표 하나만 예측')
+    checks.ok(wait_count(team, '[data-pred]', 1) == 1, f'{label} U8 한 달 주제 지표 하나만 예측')
     team.locator('[data-confidence="fairly"]').click()
     team.locator('[data-note="decision"]').fill('가상 도시의 접속 여유를 먼저 확인한다')
     team.locator('[data-note="decision"]').press('Tab')
@@ -568,12 +646,15 @@ def economic(checks, context, base, label, pages):
     for visit in range(2):
         team.locator('#lg-bar [data-panel="region"]').click()
         team.locator(f'[data-region-city="{other}"]').click()
-        team.wait_for_selector('#lg-peek-back')
+        team.wait_for_selector('#lg-peek-back', timeout=WAIT)  # 지도 전체를 다시 그린다(서랍 열기보다 무겁다)
+        wait_ui(team, "selectors => selectors.every(s => document.querySelectorAll(s).length === 1)",
+                ['#bd-root', '#lg-peek', '#lg-peek-region', '#lg-peek-back', '#lg-ready'])
         checks.ok(all(team.locator(selector).count() == 1 for selector in
                       ('#bd-root', '#lg-peek', '#lg-peek-region', '#lg-peek-back', '#lg-ready')),
                   f"{label} 관전 {visit + 1}회 지도·id 중복 0")
         team.locator('#lg-peek-region').click()
         team.locator('#lg-region-back').click()
+        team.locator('#lg-bar:not(.lg-awaybar)').wait_for(state='visible', timeout=WAIT)  # 지역 막대도 id가 lg-bar다
         checks.ok(team.locator('#bd-root').count() == 1 and team.locator('#lg-ready').count() == 1,
                   f"{label} 관전 {visit + 1}회 복귀 지도·준비 id 중복 0")
     open_panel(team, 'journal')
@@ -596,23 +677,22 @@ def economic(checks, context, base, label, pages):
                 checks.ok(team.locator('#lg-map-result').get_attribute('data-faded') == 'true', f'{label} U2 다음 달 계획에 지난 결과 흐리게 유지')
         advance(host, team, month, "review")
         if month == 1:
-            checks.ok(team.locator('#lg-result-deltas > div').count() == 3 and
+            team.locator('#lg-result-heading').wait_for(state='visible', timeout=WAIT)
+            checks.ok(wait_count(team, '#lg-result-deltas > div', 3) == 3 and
                       team.locator('#lg-result-reasons').count() == 1 and team.locator('#lg-result-details').count() == 1 and
                       not team.locator('#lg-result-details').evaluate('el => el.open'), f'{label} U2 결과 숫자 셋·원인·자세히 접힘')
-            checks.ok(shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
+            checks.ok(wait_shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
             checks.ok('[object Object]' not in team.locator('#lg-panel').inner_text(), f'{label} U2 결과 서랍에 객체 문자열 없음')
             # 서랍은 한 번에 하나: 모바일에서는 결과 서랍이 지도 렌즈를 덮으므로 닫고 렌즈를 누른다.
             if team.locator('#lg-panel [data-pclose]').count():
                 team.locator('#lg-panel [data-pclose]').click()
             team.locator('[data-lens="result"]').click()
-            try:  # 렌즈는 다음 그리기 때 요약 카드를 숨긴다.
-                team.wait_for_function("() => document.querySelector('#lg-map-result')?.hidden === true", timeout=3000)
-            except Exception:
-                pass
+            # 기존 숨김 완료 조건을 유지하며 다음 그리기를 기다린다.
+            wait_ui(team, "() => document.querySelector('#lg-map-result')?.hidden === true")
             checks.ok(not shown(team, '#lg-map-result'), f'{label} U2 운영 결과 렌즈 끄기')
             team.locator('[data-lens="result"]').click()
             open_panel(team, 'result')
-            checks.ok(shown(team, '#lg-promise-result') and shown(team, '#lg-evidence-direction'),
+            checks.ok(wait_shown(team, '#lg-promise-result') and wait_shown(team, '#lg-evidence-direction'),
                       f'{label} U8 예측 대 실제·근거 방향 비교')
             checks.ok(team.locator('#lg-calibration').count() == 0, f'{label} U8 멀티 확신 보정 숫자 없음')
         alignment = team.evaluate("""() => {
@@ -652,7 +732,7 @@ def economic(checks, context, base, label, pages):
                       f"{label} 일반 유지 이유·다음 달 변경 없음은 미달성 [S8N:11]")
             team.locator('[data-note="askReason"]').fill('정전 결과를 확인하여 다음 달에도 유지한다')
             team.locator('[data-note="askReason"]').press('Tab')
-            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() == '학습 미션: 달성',
+            checks.ok(wait_text(team, '#lg-learning-mission', re.compile(r'^학습 미션: 달성\s*$')).strip() == '학습 미션: 달성',
                       f"{label} 결과 원인 단어를 인용한 유지 이유는 달성 [S8N:11]")
             team.locator('#lg-panel [data-answer="revise"]').click()
             checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
@@ -669,12 +749,12 @@ def economic(checks, context, base, label, pages):
         if month == 1:
             # // ECON-UI v1.1: 지난달 돈 표도 도시 탭을 열고 기존 세입·세출 조건을 확인한다.
             checks.test(f"{label} U1 지난달 #lg-fiscal", lambda:
-                        (open_panel(team, "city"), shown(team, '#lg-fiscal') and
+                        (open_panel(team, "city"), wait_shown(team, '#lg-fiscal') and
                          all(word in team.locator('#lg-fiscal').inner_text() for word in ('세입', '세출')))[1])
             rank_checks(checks, host, ids, label)
-            checks.test(f"{label} U2 #lg-ticker 표시", lambda: shown(host, '#lg-ticker'))
+            checks.test(f"{label} U2 #lg-ticker 표시", lambda: wait_shown(host, '#lg-ticker'))
             for title in ("LNG", "환율", "수출", "해운"):
-                checks.test(f"{label} U2 국제 지수 {title}", lambda title=title: shown(host, '#lg-ticker') and bool(re.search(
+                checks.test(f"{label} U2 국제 지수 {title}", lambda title=title: wait_shown(host, '#lg-ticker') and bool(re.search(
                     re.escape(title) + r"[^\d]{0,30}\d+(?:\.\d+)?", host.locator('#lg-ticker').inner_text())))
             overflow(checks, host, label + " 결과 진행자")
             overflow(checks, team, label + " 결과 도시 서랍")
@@ -683,7 +763,7 @@ def economic(checks, context, base, label, pages):
     checks.ok(migration_months > 0, f"{label} U2 이주 있는 달을 실제로 검사")
     advance(host, team, 12, "end")
     for selector in ('#lg-debrief', '#lg-wsim'):
-        checks.test(f"{label} U4 끝 {selector}", lambda selector=selector: shown(host, selector))
+        checks.test(f"{label} U4 끝 {selector}", lambda selector=selector: wait_shown(host, selector))
     # // ECON-UI v1.1: 끝 단계도 결과 탭으로 바뀌므로 도시 탭을 직접 연다.
     checks.test(f"{label} U1 끝 정책 disabled", lambda:
                 (open_panel(team, "city"), disabled_policies(team))[1])
@@ -693,7 +773,7 @@ def economic(checks, context, base, label, pages):
         host.locator('#lg-download').click()
     checks.ok(downloaded.value.suggested_filename.endswith('.csv'), f'{label} U6 실제 CSV 파일 저장')
     open_panel(team, 'result')
-    checks.ok(team.locator('#lg-timeline [data-trend]').count() == 4, f'{label} U5 끝 화면 같은 시간축 네 추이')
+    checks.ok(wait_count(team, '#lg-timeline [data-trend]', 4) == 4, f'{label} U5 끝 화면 같은 시간축 네 추이')
     screenshot(checks, host, f"econui-{label}-host-end.png")
 
 
@@ -767,24 +847,26 @@ def ui_fixes(checks, context, base, label, pages):
     # Both refresh and lobby's 이어서 must wait before mounting the first map.
     for route in ('새로고침', '이어서'):
         if route == '이어서':
-            team.goto(base + '#league')
+            team.goto(base + '#league', timeout=RELOAD_WAIT)
+            team.wait_for_selector('.lg-lobby .v2-kicker', timeout=RELOAD_WAIT)
             contrast(checks, team, '.lg-lobby .v2-kicker', label + ' 로비')
         team.evaluate("sessionStorage.setItem('hu-hold-first-snap','yes')")
         if route == '새로고침':
-            team.reload()
+            team.reload(timeout=RELOAD_WAIT)
         else:
             # add_init_script runs on navigation; reload the lobby before 이어서.
-            team.reload()
+            team.reload(timeout=RELOAD_WAIT)
+            team.wait_for_selector('.lg-modes [data-mode="join"]', timeout=RELOAD_WAIT)
             select_mode(team, "join")
             team.locator('#lg-rejoin').click()
-        team.wait_for_selector('#lg-team-wait')
+        team.wait_for_selector('#lg-team-wait', timeout=RELOAD_WAIT)
         checks.ok(team.locator('#bd-root').count() == 0 and
                   team.evaluate('() => KCP.league.state().snap === null'),
                   f'{label} #27 {route}: 첫 상태 전 대기·지도 없음')
-        team.wait_for_function('() => window.__huQueued.length > 0')
+        team.wait_for_function('() => window.__huQueued.length > 0', timeout=RELOAD_WAIT)
         team.evaluate('window.__huRelease()')
-        team.wait_for_selector('#lg-bar')
-        checks.ok(team.locator('#bd-root').count() == 1 and
+        team.wait_for_selector('#lg-bar', timeout=RELOAD_WAIT)
+        checks.ok(wait_count(team, '#bd-root', 1) == 1 and
                   team.evaluate('id => KCP.league.state().team === id', tid),
                   f'{label} #27 {route}: 첫 상태 뒤 내 도시 지도 하나')
     checks.ok(team.locator('.bd-maps').count() == 0, f'{label} #38 지도 하나일 때 선택 상자 없음')
@@ -806,7 +888,7 @@ def ui_fixes(checks, context, base, label, pages):
         button = team.locator(f'[data-tech-card="{card}"]')
         button.focus()
         button.press('Space')
-        team.wait_for_selector(f'[data-tech-detail="{card}"]')
+        team.wait_for_selector(f'[data-tech-detail="{card}"]', timeout=UI_WAIT)
         detail = team.locator('#lg-tech-detail')
         checks.ok(detail.locator('[data-tech-source] a[href^="http"]').count() > 0 and
                   '기준연도' in detail.inner_text() and
@@ -830,8 +912,9 @@ def ui_fixes(checks, context, base, label, pages):
         team.evaluate('([key,v]) => {KCP.TECH_DATA.params[key].v=v}', [param, value])
         try:
             team.locator(f'[data-tech-card="{card}"]').click()
+            team.locator(f'[data-tech-detail="{card}"]').wait_for(state='visible', timeout=UI_WAIT)
             expected = '1.73%' if card == 'hvdc' else str(value)
-            checks.ok(expected in team.locator('.lg-tech-effect').inner_text(),
+            checks.ok(expected in wait_text(team, '.lg-tech-effect', expected),
                       f'{label} #23 {card} 변경된 자료 값으로 효과 표시')
         finally:
             team.evaluate('([key,v]) => {KCP.TECH_DATA.params[key].v=v}', [param, before])
@@ -839,7 +922,8 @@ def ui_fixes(checks, context, base, label, pages):
     team.evaluate('() => {KCP.buildGame.M.batEff=.79}')
     try:
         team.locator('[data-tech-card="bms"]').click()
-        checks.ok(bool(re.search(r'79(?:\.0+)?%', team.locator('.lg-tech-effect').inner_text())), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
+        team.locator('[data-tech-detail="bms"]').wait_for(state='visible', timeout=UI_WAIT)
+        checks.ok(bool(re.search(r'79(?:\.0+)?%', wait_text(team, '.lg-tech-effect', re.compile(r'79(?:\.0+)?%')))), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
     finally:
         team.evaluate('v => {KCP.buildGame.M.batEff=v}', before)
     contrast(checks, team, '.lg-tech-effect [class^="tag-"]', label + ' 기술')
@@ -867,6 +951,11 @@ def ui_fixes(checks, context, base, label, pages):
     checks.ok(True, f'{label} #11 키보드 RE100 켜기 → econ re100:true')
     # Refresh handles deferred drawer updates after server acknowledgement.
     open_panel(team, 'deal'); open_panel(team, 'city')
+    # 서버 확인 뒤 미뤄진 서랍 갱신이 끝나기 전에 끄면 그 갱신이 조작을 덮는다(2026-10-17 재현: 고정 200ms를 뺀 뒤
+    # 3/4환경에서 re100:false 요청 없음). 팀 기기가 켜짐을 받아 상자에 반영할 때까지 조건 대기한다.
+    team.wait_for_function('''id => { const L = KCP.league.state();
+      return L.snap?.teams?.[id]?.econPol?.re100 === true &&
+        document.querySelector('[data-pol="re100"]')?.checked === true; }''', arg=tid, timeout=UI_WAIT)
     team.locator('[data-pol="re100"]').uncheck()
     team.locator('[data-pol="re100"]').press('Tab')
     host.wait_for_function(POLICY_JS, arg=[tid, 're100', False])
@@ -874,6 +963,10 @@ def ui_fixes(checks, context, base, label, pages):
               not team.locator('[data-pol="re100"]').is_checked(), f'{label} #11 RE100 끄기 → econ re100:false')
     open_panel(team, 'deal')
     proposal = team.locator(f'[data-kind="hvdc"][data-other="{other}"][data-cap="2"]')
+    wait_ui(team, """other => {
+      const nodes = document.querySelectorAll(`[data-kind="hvdc"][data-other="${other}"][data-cap="2"]`);
+      return nodes.length === 1 && !nodes[0].disabled;
+    }""", other)
     checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
     box = proposal.bounding_box()
     checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
@@ -894,6 +987,7 @@ def ui_fixes(checks, context, base, label, pages):
       window.__huCompleted=r.completed; r.completed=['mass','re100'];
     }""")
     open_panel(team, 'city'); open_panel(team, 'result')
+    wait_ui(team, "() => document.querySelectorAll('.lg-tech-complete .tag-mine').length >= 2")
     checks.ok(team.locator('.lg-tech-complete .tag-mine').count() >= 2 and
               '켄텍 융합전공' in team.locator('.lg-tech-results').inner_text(),
               f'{label} #10·22 완료 소식도 융합전공·G 등급 표시')
@@ -944,7 +1038,7 @@ def ui_fixes(checks, context, base, label, pages):
     # All rebuttal types must display two side-by-side measures, including unavailable baselines.
     for key in ('co2', 'outage', 'tax', 'free', 'tie', 'tie-accept'):
         set_question(team, 'lg-r-' + key, other)
-        checks.ok(team.locator('.lg-ask .lg-rebuttal-metrics > div').count() == 2 and
+        checks.ok(wait_count(team, '.lg-ask .lg-rebuttal-metrics > div', 2) == 2 and
                   team.locator('.lg-ask .lg-rebuttal-metrics').evaluate("""el => {
                     const [a,b]=el.children, x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
                     return Math.abs(x.top-y.top)<1 && x.right <= y.left;
@@ -954,7 +1048,7 @@ def ui_fixes(checks, context, base, label, pages):
       const L=KCP.league.state(); L.snap.teams[L.team].crit={chips:['rel'],line:60,choice:'keep'};
     }""")
     set_question(team, 'lg-p-line')
-    checks.ok('지킬 선(전력 신뢰 60점 이상) 아래로 내려갔어요' in team.locator('.lg-ask').inner_text(), f'{label} #20 하한 항목·숫자·미달 문구')
+    checks.ok('지킬 선(전력 신뢰 60점 이상) 아래로 내려갔어요' in wait_text(team, '.lg-ask', '지킬 선(전력 신뢰 60점 이상) 아래로 내려갔어요'), f'{label} #20 하한 항목·숫자·미달 문구')
     team.evaluate("""() => {
       const L=KCP.league.state(), k=`kcp-league-data-v1:${L.room}:${L.team}`;
       const d=JSON.parse(localStorage.getItem(k));
@@ -983,7 +1077,7 @@ def ui_fixes(checks, context, base, label, pages):
     # Check every actual month, including representative-weather months and end state.
     for month in range(2, 13):
         advance(host, team, month, 'plan')
-        season = team.locator('#bd-season-t').inner_text()
+        season = wait_text(team, '#bd-season-t', f'· {month}월 (날씨는 ')
         checks.ok(f'· {month}월 (날씨는 ' in season and '기준)' in season, f'{label} #32 {month}월·날씨 기준월')
         overflow(checks, team, f'{label} H-U {month}월')
         advance(host, team, month, 'review')
@@ -992,21 +1086,21 @@ def ui_fixes(checks, context, base, label, pages):
               f'{label} #37 끝 준비 표시 없음')
     # U5는 시간 제목과 값을 별도 칸에 둔다. 제목의 유무 대신 제한 없음이
     # 한 번 보이고 실제 카운트다운으로 오인할 숫자가 없는지 확인한다.
+    time_text = wait_text(host, '#lg-host-time', '시간 제한 없음')
     board = host.locator('.lg-host-board').inner_text()
-    time_text = host.locator('#lg-host-time').inner_text()
-    checks.ok(shown(host, '#lg-host-time') and board.count('시간 제한 없음') == 1 and
+    checks.ok(wait_shown(host, '#lg-host-time') and board.count('시간 제한 없음') == 1 and
               '시간 제한 없음' in time_text and not re.search(r'\d+\s*:\s*\d+', time_text),
               f'{label} #39 시간 제한 없음 한 번 표시·카운트다운 없음')
     overflow(checks, host, label + ' H-U 끝 진행자')
     screenshot(checks, team, f'econui-{label}-hu-end.png')
     # D-58: map picker heading must track renamed regional data, then restore.
     build, events = monitored_page(context); pages.append((build, events, '자유 건설'))
-    build.goto(base + '#home'); build.wait_for_function(BOOT_JS)
+    build.goto(base + '#home', timeout=RELOAD_WAIT); build.wait_for_function(BOOT_JS, timeout=RELOAD_WAIT)
     name = build.evaluate('() => KCP.LEAGUE_REGIONS.south.name')
     build.evaluate("() => {KCP.LEAGUE_REGIONS.south.name='가상 연습 지역';location.hash='#build'}")
-    build.wait_for_selector('#bd-mapcur')
+    build.wait_for_selector('#bd-mapcur', timeout=RELOAD_WAIT)
     build.locator('#bd-mapcur').click()
-    checks.ok('가상 연습 지역' in build.locator('#bd-mappop').inner_text(), f'{label} #25 지도 제목은 지역 자료에서 읽음')
+    checks.ok('가상 연습 지역' in wait_text(build, '#bd-mappop', '가상 연습 지역'), f'{label} #25 지도 제목은 지역 자료에서 읽음')
     build.evaluate('name => {KCP.LEAGUE_REGIONS.south.name=name}', name)
 
 def feature_hiding(checks, context, base, label, pages):
@@ -1018,6 +1112,8 @@ def feature_hiding(checks, context, base, label, pages):
     advance(host, team, 1, 'plan')
     team.locator('#lg-guide-close').click()
     team.locator('#bd-pm').click()
+    expect(team.locator('#bd-pm')).to_have_attribute('aria-expanded', 'true', timeout=UI_WAIT)
+    team.locator('#bd-drawer-body').wait_for(state='visible', timeout=UI_WAIT)
     checks.ok(all(absent_or_hidden(team, sel) for sel in
                   ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')),
               f'{label} E G11·G12·D03 리그 옛 연구·시험 일지·증설 카드 숨김')
@@ -1033,19 +1129,19 @@ def feature_hiding(checks, context, base, label, pages):
     team.evaluate('() => KCP.league.plan(st => {st.fab2=true; st.rq=["bms"];})')
     host.wait_for_function('id => KCP.league.state().S.teams[id].plan?.fab2 === true', arg=fixture['team'])
     team.wait_for_timeout(600)
-    team.reload(); team.wait_for_selector('#lg-bar')
+    team.reload(timeout=RELOAD_WAIT); team.wait_for_selector('#lg-bar', timeout=RELOAD_WAIT)
     checks.ok(team.evaluate('() => KCP.buildGame.current().fab2 === true && KCP.buildGame.current().rq.includes("bms")'),
               f'{label} E D03·G11 새로고침 뒤 fab2·옛 연구 큐 보존')
     open_panel(team, 'city')
     checks.ok('반도체 증설 시나리오 적용 중' in team.locator('#lg-city').inner_text(),
               f'{label} E D03 저장된 증설 판 도시 안내')
     open_panel(team, 'tech')
-    checks.ok(team.locator('[data-tech-card]').count() == 15,
+    checks.ok(wait_count(team, '[data-tech-card]', 15) == 15,
               f'{label} E G11 리그 연구는 15장 트리 유지')
     team.locator('.lg-px').click()
     team.locator('[data-run="7"]').click(); team.wait_for_selector('#bd-skip')
     team.locator('#bd-skip').click(); team.wait_for_selector('#bd-res-title')
-    checks.ok(shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내')
+    checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내')
     checks.ok(all(absent_or_hidden(team, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
               f'{label} E G12 시험 결과의 일지 쓰기·대화상자·타이머 숨김')
     saved = team.evaluate('''() => {
@@ -1055,12 +1151,12 @@ def feature_hiding(checks, context, base, label, pages):
       const data=JSON.parse(localStorage.getItem(key)); data.docs[map]=doc;
       localStorage.setItem(key, JSON.stringify(data)); return doc.journal;
     }''')
-    team.reload(); team.wait_for_selector('#lg-bar')
+    team.reload(timeout=RELOAD_WAIT); team.wait_for_selector('#lg-bar', timeout=RELOAD_WAIT)
     checks.ok(team.evaluate('''() => {const L=KCP.league.state();
       return JSON.parse(localStorage.getItem(`kcp-league-data-v1:${L.room}:${L.team}`)).docs[KCP.buildGame.saveView().map].journal;}''') == saved,
               f'{label} E G12 기존 시험 기록·자유 서술 보존')
     open_panel(team, 'journal')
-    checks.ok(shown(team, '#lg-crit') and shown(team, '#lg-jcopy'),
+    checks.ok(wait_shown(team, '#lg-crit') and wait_shown(team, '#lg-jcopy'),
               f'{label} E G12 월 일지·S8 활동지 경로 유지')
     advance(host, team, 1, 'review')
     checks.ok(team.evaluate("() => typeof window.__huRelease === 'function'"), f'{label} E 바이오 사례 스냅숏 보류 장치 적용')
@@ -1074,6 +1170,8 @@ def feature_hiding(checks, context, base, label, pages):
           V.econ.report=JSON.parse(JSON.stringify(rep)); V.econ.report.cities[L.team].bioCo2=99;
         }''', value)
         open_panel(team, 'city'); open_panel(team, 'result')
+        if value is not None and value > 0:
+            wait_shown(team, '#lg-result-bio-co2')
         checks.ok(shown(team, '#lg-result-bio-co2') == (value is not None and value > 0),
                   f'{label} E 바이오 CO₂ 값 {value}: 양수일 때만 결과 줄')
         if value and value > 0:
@@ -1092,15 +1190,18 @@ def feature_hiding(checks, context, base, label, pages):
     team.evaluate('() => window.__huRelease()')
 
     build, events = monitored_page(context); pages.append((build, events, 'E 자유 건설'))
-    build.goto(base + '#home'); build.wait_for_function(BOOT_JS)
+    build.goto(base + '#home', timeout=RELOAD_WAIT); build.wait_for_function(BOOT_JS, timeout=RELOAD_WAIT)
     build.evaluate('''() => localStorage.setItem('kcp-build-v1',
       JSON.stringify(KCP.buildGame.sanitizeDoc({map:'pyeongtaek'})))''')
-    build.goto(base + '#build'); build.wait_for_selector('#bd-mapcur')
+    build.goto(base + '#build', timeout=RELOAD_WAIT); build.wait_for_selector('#bd-mapcur', timeout=RELOAD_WAIT)
     build.locator('#bd-pm').click()
-    checks.ok(all(shown(build, sel) for sel in ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')) and
+    expect(build.locator('#bd-pm')).to_have_attribute('aria-expanded', 'true', timeout=UI_WAIT)
+    build.locator('#bd-drawer-body').wait_for(state='visible', timeout=UI_WAIT)
+    checks.ok(all(wait_shown(build, sel) for sel in ('[data-tab="research"]', '[data-tab="journal"]', '[data-fab2]')) and
               [n.get_attribute('data-run') for n in build.locator('[data-run]:visible').all()] == ['7', '30', '90'],
               f'{label} E #build 옛 연구·일지·증설·세 기간 유지')
     build.locator('[data-tab="mission"]').click()
+    build.locator('[data-mis]').first.wait_for(state='visible', timeout=UI_WAIT)
     for node in build.locator('[data-mis]').all()[:2]: node.click()
     # 390 폭에서는 열린 서랍이 실행 막대를 덮는다(숨김 작업 전 9babc7d에도 있던 #build 모바일 겹침, 별도 결함).
     # 사람이 하는 순서대로 서랍을 닫고 실행한다.
@@ -1108,13 +1209,13 @@ def feature_hiding(checks, context, base, label, pages):
         build.locator('#bd-drawer-x').click()
     build.locator('[data-run="7"]').click(); build.wait_for_selector('#bd-skip'); build.locator('#bd-skip').click()
     build.wait_for_selector('#bd-j-dlg[open]')
-    checks.ok(shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
+    checks.ok(wait_shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
     build.locator('#bd-speak').click()
     build.wait_for_function('document.querySelector("#bd-speak-t").textContent !== "0:00"')
     checks.ok(build.locator('#bd-speak').get_attribute('aria-pressed') == 'true',
               f'{label} E #build 말하기 타이머 실제 진행')
     build.locator('#bd-j-dlg').press('Escape')
-    checks.ok(shown(build, '#bd-jopen'), f'{label} E #build 결과의 일지 쓰기 유지')
+    checks.ok(wait_shown(build, '#bd-jopen'), f'{label} E #build 결과의 일지 쓰기 유지')
     overflow(checks, build, label + ' E #build 결과')
     screenshot(checks, build, f'econui-{label}-hide-build.png')
 
