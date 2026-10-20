@@ -17,8 +17,9 @@ DOM 관찰자는 앱 상태를 바꾸지 않고 첫 등장/180ms 뒤의 사각�
 기록한다. reduce는 두 시각 모두 움직임이 없고 처음부터 확정 면만 보여야
 한다. 위치 변화는 배치 기준 요소의 크기 변화가 없을 때만 실패로 센다.
 일반 동작의 겹침은 등장 애니메이션 후, reduce는 최초 표본에서도 검사한다.
-390 결과 서랍은 w4c-card-strip.md 1~5절에 따라 자동 표시 띠의 교차 0,
-서랍 단추 클릭 전달, 명시적 펼치기와 Esc 뒤 완전 닫힘을 검사한다.
+390은 has_touch 컨텍스트에서 카드 전/후 결과 탭 터치, 서랍 안 터치·스크롤,
+유지 선택 뒤 띠 유지, 지도 터치·Esc·10초 닫힘, 제목·초점·보류·예보를 검사한다.
+기대값은 W4c와 총괄 추가 명세 1~9항(열린 서랍 안 누름은 닫지 않음)이다.
 캡처는 econui 형식(tests/results/fx-event-*.png), 마지막 줄은 checks N fail M.
 """
 
@@ -132,7 +133,14 @@ OBSERVE_JS = r"""() => {
 PROBE_JS = r"""(() => {
   const seen = new WeakSet();
   window.__fxEventProbe = [];
+  window.__fxPlanTransitions = [];
   const scan = () => {
+    const live=window.KCP?.league?.state?.(), state=live?.S || live?.snap;
+    if(state?.phase==='plan' && !window.__fxPlanTransitions.some(r=>r.round===state.round)) {
+      const dom=(""" + DOM_JS + r""");
+      window.__fxPlanTransitions.push({round:state.round, fx:{...KCP.fxTurn?.state?.()},
+        oldCards:dom.cards().filter(c=>c.tag==='사건' || c.tag==='지난달 결산')});
+    }
     for (const deck of document.querySelectorAll('.fx-turn-cards')) {
       if (seen.has(deck)) continue;
       seen.add(deck);
@@ -141,7 +149,10 @@ PROBE_JS = r"""(() => {
       const sample=() => ({at:performance.now(), cards:dom.cards(), layout:dom.layout()});
       const record={round:S?.round, phase:S?.phase,
         forecast:KCP.fxTurn?.state?.().forecastOpen, first:sample(), later:null,
-        layoutChanges:[]};
+        firstVisibleAt:null, layoutChanges:[]};
+      const displayed=()=>dom.visible(deck.closest('.fx-turn-layer')) &&
+        (dom.cards().some(c=>c.visible) || dom.visible(deck.querySelector('.fx-turn-strip')));
+      if(displayed()) record.firstVisibleAt=performance.now();
       window.__fxEventProbe.push(record);
       let previous=record.first.layout;
       const trackLayout = current => {
@@ -150,8 +161,10 @@ PROBE_JS = r"""(() => {
         previous=current;
       };
       const frame = () => {
-        if (record.later || !deck.isConnected) return;
-        trackLayout(dom.layout()); requestAnimationFrame(frame);
+        if (!deck.isConnected) return;
+        if (!record.firstVisibleAt && displayed()) record.firstVisibleAt=performance.now();
+        if (!record.later) trackLayout(dom.layout());
+        if (!record.later || (record.forecast && !record.firstVisibleAt)) requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
       setTimeout(() => {
@@ -175,9 +188,10 @@ def wait_state(page, round_number, phases):
     }""", arg=[round_number, phases], timeout=WAIT, polling='raf').json_value()
 
 
-def click_progress(page, before):
+def click_progress(page, before, preserve_drawer=False, after_progress=None):
     """fx_replay.py와 같은 준비→문제 확인→약속→결과의 화면 조작."""
-    close_drawer(page)
+    if not preserve_drawer:
+        close_drawer(page)
     previous = [before['round'], before['phase'], before['count']]
     candidates = [page.locator('#lg-ready'), page.locator('#lg-next'),
                   page.get_by_role('button', name=re.compile(
@@ -208,6 +222,8 @@ def click_progress(page, before):
                         page.locator('[data-confidence="fairly"]').click()
                         page.locator('#lg-ready-confirm').click()
                 return wait_state(page, before['round'], ['review', 'end'])
+            if after_progress:
+                after_progress()
             page.wait_for_function(CHANGED_JS, arg=previous)
             return observe(page)
     raise AssertionError(f"{before['round']}월 {before['phase']}: 진행 단추 없음")
@@ -502,12 +518,176 @@ def strip_drawer_click(checks, page, label, reduced):
                       page.locator('.fx-turn-layer[data-strip="true"]:visible').count() == 1,
                       f'{label} 띠 열린 채 유지 단추 미선택·elementFromPoint가 단추/자손: {hit}')
     # 실제 좌표 클릭. force/dispatch_event로 덧층의 가로채기를 우회하지 않는다.
-    page.mouse.click(hit['x'], hit['y'])
+    page.touchscreen.tap(hit['x'], hit['y'])
     pressed = checks.test(f'{label} 유지 단추 실제 동작: aria-pressed false → true',
                          lambda: bool(page.wait_for_function("""() =>
                            document.querySelector('#lg-panel [data-answer="keep"]')?.
                              getAttribute('aria-pressed') === 'true'""", timeout=1000)))
-    return clear and pressed
+    kept = strip_stays_open(checks, page, label + ' 유지 터치 뒤')
+    return clear and pressed and kept
+
+
+def pointer_press(page, target, touch=True):
+    """실제 hit-test를 거친 좌표 입력. 덧층을 우회하지 않는다."""
+    target.scroll_into_view_if_needed()
+    hit = target.evaluate("""el => {
+      const r=el.getBoundingClientRect(), x=(r.left+r.right)/2, y=(r.top+r.bottom)/2;
+      const hit=document.elementFromPoint(x,y);
+      return {x,y,own:!!hit && (hit===el || el.contains(hit))};
+    }""")
+    if not hit['own']:
+        raise AssertionError(f'포인터 대상이 덧층에 가려짐: {hit}')
+    if touch:
+        page.touchscreen.tap(hit['x'], hit['y'])
+    else:
+        page.mouse.click(hit['x'], hit['y'])
+
+
+def strip_stays_open(checks, page, label):
+    return checks.ok(page.evaluate("""() => {
+      const dom=(""" + DOM_JS + """);
+      const s=KCP.fxTurn?.state?.();
+      return s?.strip===true && s.cardsOpen===true &&
+        [...document.querySelectorAll('.fx-turn-layer[data-strip="true"]')].some(dom.visible);
+    }"""), label + ' strip true·cardsOpen true·띠 실제 표시')
+
+
+def strip_title(checks, page, label, forecast=False):
+    # 총괄 추가 6항: 결산을 제외한 첫 사건 제목. DOM 순서는 표시 자료 순서이다.
+    data = page.evaluate("""forecast => {
+      const dom=(""" + DOM_JS + """);
+      const events=dom.cards().filter(c=>c.tag===(forecast?'사건 예보':'사건'));
+      const strip=document.querySelector('.fx-turn-strip');
+      return {title:strip?.querySelector('.fx-turn-strip-title')?.textContent.trim(),
+        text:strip?.textContent, events:events.map(c=>c.title)};
+    }""", forecast)
+    checks.ok(bool(data['events']) and bool(data['title']) and data['title'] == data['events'][0] and
+              '결산' not in data['title'] and not re.fullmatch(r'\d+월', data['title']),
+              f'{label} 띠 제목=첫 사건 제목(결산·월 아님): {data}')
+    if len(data['events']) == 1:
+        checks.ok('외 0장' not in (data['text'] or ''),
+                  f'{label} 남은 사건 0장일 때 외 0장 표기 없음: {data}')
+
+
+def drawer_blank_touch(checks, page, label):
+    # 총괄 추가 2(a)항과 최종 결정: 열린 서랍 본문은 띠 닫기 영역이 아니다.
+    # 본문 여백/글자 중 조작 요소가 없는 실제 지점만 선택한다.
+    point = page.evaluate("""() => {
+      const body=document.querySelector('#lg-panel .lg-pbody');
+      if (!body) return null;
+      const r=body.getBoundingClientRect();
+      for(let y=Math.max(0,r.top)+6;y<Math.min(innerHeight,r.bottom)-6;y+=12)
+        for(let x=Math.max(0,r.left)+6;x<Math.min(innerWidth,r.right)-6;x+=12) {
+          const el=document.elementFromPoint(x,y);
+          if(el && body.contains(el) && !el.closest(
+            'button,a,input,select,textarea,summary,[role="button"],[contenteditable]')) return {x,y};
+        }
+      return null;
+    }""")
+    if not checks.ok(point is not None, label + ' 서랍 본문의 비조작 지점 존재'):
+        return False
+    page.touchscreen.tap(point['x'], point['y'])
+    touched = strip_stays_open(checks, page, label + ' 서랍 본문 첫 터치 뒤')
+    page.mouse.move(point['x'], point['y'])
+    page.mouse.wheel(0, 180)
+    page.wait_for_timeout(100)
+    scrolled = strip_stays_open(checks, page, label + ' 서랍 본문 wheel 뒤')
+    return touched and scrolled
+
+
+def result_closed(checks, page, label, milliseconds=500):
+    # 재표시는 끝 표본만으로 판정하지 않고 매 프레임 상태·DOM을 관찰한다.
+    checks.test(label + ' cardsOpen false·카드/띠 닫힘', lambda: bool(
+        page.wait_for_function("""() => {
+          const dom=(""" + DOM_JS + """);
+          return KCP.fxTurn?.state?.().cardsOpen===false && !dom.cards().some(c=>c.visible) &&
+            ![...document.querySelectorAll('.fx-turn-layer')].some(dom.visible);
+        }""", timeout=1000)))
+    checks.ok(page.evaluate("""async ms => {
+      const dom=(""" + DOM_JS + """), end=performance.now()+ms;
+      do {
+        if(KCP.fxTurn?.state?.().cardsOpen!==false ||
+          document.querySelector('.fx-turn-cards article') ||
+          [...document.querySelectorAll('.fx-turn-layer')].some(dom.visible)) return false;
+        await new Promise(r=>requestAnimationFrame(r));
+      } while(performance.now()<end);
+      return true;
+    }""", milliseconds), label + f' {milliseconds}ms 재표시 0·사건 카드 DOM 0')
+
+
+def map_touch(checks, page, label):
+    # 총괄 추가 3항: 조작 단추를 대신 누르는 검사는 지도 터치 검사가 아니다.
+    point = page.evaluate("""() => {
+      const canvas=document.querySelector('#bd-canvas');
+      if(!canvas) return null;
+      const r=canvas.getBoundingClientRect();
+      for(let y=Math.max(0,r.top)+8;y<Math.min(innerHeight,r.bottom)-8;y+=16)
+        for(let x=Math.max(0,r.left)+8;x<Math.min(innerWidth,r.right)-8;x+=16)
+          if(document.elementFromPoint(x,y)===canvas) return {x,y};
+      return null;
+    }""")
+    if checks.ok(point is not None, label + ' 서랍·조작 단추 밖 지도 캔버스 hit-test'):
+        page.touchscreen.tap(point['x'], point['y'])
+        result_closed(checks, page, label + ' 지도 터치')
+
+
+def deferred_probe(checks, page, label, recover=True):
+    """총괄 추가 8항: 화면 크기만 변경하고 fx/리그 상태는 주입하지 않는다."""
+    for width, height in ((320, 640), (390, 360), (320, 240)):
+        page.set_viewport_size({'width': width, 'height': height})
+        page.wait_for_timeout(200)
+        fx = observe(page)['fx'] or {}
+        if fx.get('deferred') is not True:
+            continue
+        checks.ok(fx.get('cardsOpen') is True,
+                  f'{label} 보류 중 cardsOpen true: {fx}')
+        checks.ok(page.evaluate("""() => {
+          const dom=(""" + DOM_JS + """);
+          return !dom.cards().some(c=>c.visible) &&
+            ![...document.querySelectorAll('.fx-turn-layer')].some(dom.visible);
+        }"""), label + ' 보류 중 덧층·카드 화면 표시 0')
+        if not recover:
+            return True  # 보류를 유지한 채 화면 '다음 달' 단추로 진행한다.
+        fold = page.locator('#lg-panel-fold')
+        reachable = fold.evaluate("""el => { const r=el.getBoundingClientRect();
+          return r.top>=0 && r.left>=0 && r.bottom<=innerHeight && r.right<=innerWidth; }""")
+        if reachable:
+            pointer_press(page, fold)
+            how = '화면 접기'
+        else:
+            # 아주 작은 창에서는 접기 단추도 화면 밖이다. w4c2 1절 '자리 확보 뒤 재표시'를
+            # 창 크기 복원으로 확인한다(서랍은 열린 채이므로 띠·칩으로 돌아와야 한다).
+            page.set_viewport_size({'width': 390, 'height': 844})
+            how = '창 크기 복원'
+        checks.test(f'{label} {how} 뒤 카드·띠 표시 복귀', lambda: bool(
+            page.wait_for_function("""() => {
+              const dom=(""" + DOM_JS + """);
+              return KCP.fxTurn?.state?.().cardsOpen===true &&
+                (dom.cards().some(c=>c.visible) ||
+                 [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible));
+            }""", timeout=2000)))
+        page.set_viewport_size({'width': 390, 'height': 844})
+        return True
+    page.set_viewport_size({'width': 390, 'height': 844})
+    print(f'INFO {label} 보류 재현 실패: 320×640/390×360/320×240; '
+          '일반 띠에서 다음 달 지난 카드 제거를 검사', flush=True)
+    return False
+
+
+def plan_cleanup(checks, page, month, label):
+    sample = page.wait_for_function("""month =>
+      window.__fxPlanTransitions.find(r=>r.round===month) || false""",
+                                    arg=month, timeout=WAIT).json_value()
+    checks.ok((sample['fx'] or {}).get('cardsOpen') is False and not sample['oldCards'],
+              f'{label} 다음 달 계획 진입 때 cardsOpen false·지난달 사건/결산 DOM 0: {sample}')
+    checks.ok(page.evaluate("""async () => {
+      const dom=(""" + DOM_JS + """), end=performance.now()+500;
+      do {
+        if(dom.cards().some(c=>c.tag==='사건' || c.tag==='지난달 결산')) return false;
+        await new Promise(r=>requestAnimationFrame(r));
+      } while(performance.now()<end);
+      return true;
+    }"""), label + ' 계획 진입 뒤 500ms 지난달 카드 재표시 0(새달 예보는 별도)')
 
 
 def expand_strip(checks, page, label):
@@ -550,6 +730,122 @@ def close_expanded_strip(checks, page, label):
       } while (performance.now()<end);
       return true;
     }"""), label + ' W4c 3절 펼친 뒤 Esc: 카드·layer·띠 완전 닫힘, 500ms 재표시 0')
+    checks.ok(page.evaluate("""() => !!document.activeElement &&
+      document.activeElement!==document.body && document.activeElement.isConnected"""),
+              label + ' 펼치기→Esc 뒤 초점이 body가 아닌 연결된 요소에 복귀')
+
+
+def strip_timeout(checks, page, label, shown_at):
+    # 총괄 추가 4항: 띠는 motion/reduce 모두 최초 표시부터 10초.
+    # 7초에 다시 누른 뒤 최초 시각+10초(실행기 여유 1초) 안에 닫혀야 한다.
+    elapsed = page.evaluate('() => performance.now()') - shown_at
+    page.wait_for_timeout(max(0, 7000 - elapsed))
+    strip_stays_open(checks, page, label + ' 최초 표시 7초 뒤')
+    drawer_blank_touch(checks, page, label + ' 7초 시점 재누름')
+    elapsed = page.evaluate('() => performance.now()') - shown_at
+    page.wait_for_timeout(max(0, 9500 - elapsed))
+    strip_stays_open(checks, page, label + ' 10초 전(9.5초) 아직 표시')
+    remaining = max(1, 11000 - (page.evaluate('() => performance.now()') - shown_at))
+    checks.test(label + ' 서랍 안 재누름으로 연장 없이 최초 표시 10초 뒤 자동 닫힘 '
+                '(실행기 대기 여유 1초)', lambda: bool(page.wait_for_function(
+                    '() => KCP.fxTurn?.state?.().cardsOpen===false', timeout=remaining)))
+    result_closed(checks, page, label + ' 자동 닫힘 뒤')
+
+
+def open_result_by_pointer(checks, page, label, late=False, touch=True):
+    # 총괄 추가 1·5항: 같은 결과 탭도 카드 등장 전/후의 기대 동작이 다르다.
+    # 결과 단계는 자동으로 결과 서랍을 연다. Enter는 닫기 준비에만 쓰고,
+    # 검사 대상인 열기는 반드시 mouse/touch로 한다. 키보드 열기로 우회하지 않는다.
+    close = page.locator('#lg-panel .lg-px')
+    if close.is_visible():
+        close.press('Enter')
+    checks.ok(not page.locator('#lg-panel').is_visible(), label + ' 결과 탭 입력 전 서랍 닫힘')
+    if late:
+        page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen===true', timeout=WAIT)
+    else:
+        checks.ok((observe(page)['fx'] or {}).get('cardsOpen') is False,
+                  label + ' 결과 탭 입력 직전 아직 카드 미표시')
+    pointer_press(page, page.locator('#lg-bar [data-panel="result"]'), touch=touch)
+    checks.test(label + ' 실제 포인터로 결과 서랍 열림', lambda: bool(
+        page.wait_for_function("""() => {
+          const p=document.querySelector('#lg-panel');
+          return p && !p.hidden && p.dataset.tab==='result' && p.dataset.folded!=='true';
+        }""", timeout=WAIT)))
+    if late:
+        result_closed(checks, page, label + ' 카드 표시 후 막대 결과 탭 터치')
+        drawer_blank_touch_after_close(checks, page, label)
+
+
+def drawer_blank_touch_after_close(checks, page, label):
+    # 단추가 있는 서랍을 실제로 다시 조작해도 닫힌 카드가 재마운트되면 안 된다.
+    pointer_press(page, page.locator('#lg-panel-fold'))
+    pointer_press(page, page.locator('#lg-panel-fold'))
+    result_closed(checks, page, label + ' 서랍 접기·펼치기 뒤')
+
+
+def forecast_marks(page):
+    # 키가 추가되는 형식과 같은 키의 값이 갱신되는 형식을 모두 관찰한다.
+    return page.evaluate("""() => Object.fromEntries(Object.keys(sessionStorage)
+      .filter(k=>k.startsWith('kcp-fx-forecast-v1:')).sort()
+      .map(k=>[k,sessionStorage.getItem(k)]))""")
+
+
+def forecast_before_visible(checks, page, label, month, previous_marks):
+    """총괄 추가 9항: 숨은 예보는 소비하지 않고 같은 달 새로고침 뒤 다시 표시."""
+    data = page.evaluate("""month => {
+      const dom=(""" + DOM_JS + """);
+      const record=window.__fxEventProbe.find(r=>r.round===month && r.forecast);
+      return {fx:KCP.fxTurn?.state?.(), record,
+        visible:dom.cards().some(c=>c.visible) ||
+          [...document.querySelectorAll('.fx-turn-layer')].some(dom.visible)};
+    }""", month)
+    if (not data['record'] or data['record']['firstVisibleAt'] is not None or data['visible']):
+        print(f'INFO {label} 예보 표시 전 닫힘 재현 불가(미표시 예보 표본 없음)', flush=True)
+        return False
+    checks.ok(forecast_marks(page) == previous_marks,
+              label + ' 실제 표시 전 sessionStorage 예보 소비 기록 추가 0')
+    if (data['fx'] or {}).get('forecastOpen'):
+        page.keyboard.press('Escape')
+    checks.test(label + ' 미표시 예보 Esc 닫힘', lambda: bool(page.wait_for_function(
+        '() => KCP.fxTurn?.state?.().forecastOpen===false', timeout=1000)))
+    page.wait_for_timeout(400)
+    page.reload()
+    page.wait_for_function(BOOT_JS)
+    page.locator('#lg-bar').wait_for(state='visible', timeout=30000)
+    wait_state(page, month, ['plan'])
+    page.set_viewport_size({'width': 390, 'height': 844})
+    checks.test(label + ' 표시 전에 닫은 예보가 같은 달 새로고침 뒤 실제 표시',
+                lambda: bool(page.wait_for_function("""() => {
+                  const dom=(""" + DOM_JS + """);
+                  return KCP.fxTurn?.state?.().forecastOpen===true &&
+                    (dom.cards().some(c=>c.visible) ||
+                    [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible));
+                }""", timeout=WAIT)))
+    marks = forecast_marks(page)
+    checks.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
+              label + ' 실제 예보 표시 뒤 sessionStorage 예보 소비 기록 생성')
+    return True
+
+
+def inspect_forecast_strip(checks, page, label, reduced):
+    fx = observe(page)['fx'] or {}
+    if fx.get('forecastOpen') is not True or not page.locator('#lg-panel').is_visible():
+        return False
+    strip = strip_geometry(checks, page, label + ' 예보', reduced)
+    checks.ok(fx.get('strip') is True, label + ' 열린 서랍 앞 예보 state.strip true')
+    if not strip:
+        return False
+    strip_title(checks, page, label + ' 예보', forecast=True)
+    # 서랍 안 단추 터치가 예보를 닫는 회귀를 검출한다.
+    pointer_press(page, page.locator('#lg-panel-fold'))
+    checks.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
+              label + ' 서랍 접기 단추 터치 뒤 예보 유지')
+    pointer_press(page, page.locator('#lg-panel-fold'))
+    checks.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
+              label + ' 서랍 펼치기 단추 터치 뒤 예보 유지')
+    if (observe(page)['fx'] or {}).get('strip'):
+        return expand_strip(checks, page, label + ' 예보')
+    return True
 
 
 def seeded_fixtures():
@@ -563,7 +859,7 @@ def seeded_fixtures():
     return fixtures
 
 
-def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
+def restore_fixture(checks, page, base, label, fixture):
     page.goto(base + '#league')
     page.wait_for_function(BOOT_JS)
     checks.ok(page.evaluate('() => localStorage.length') == 0, f'{label} 빈 저장소')
@@ -587,30 +883,50 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
     checks.ok(state['setMapMood'] and all(key in (state['fx'] or {})
               for key in ('forecastOpen', 'mood', 'cardsOpen')),
               f'{label} fxTurn 공개 상태와 buildGame.setMapMood 존재')
+    return state
+
+
+def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
+    restore_fixture(checks, page, base, label, fixture)
     saw_forecast, saw_result, saw_empty, saw_range = False, False, False, False
     strip_click, strip_expand = False, False
+    small_viewport = False  # 직전 달 보류 재현으로 작은 창인 채 넘어왔는지
     for month in range(1, 13):
+        small_carry = small_viewport
         state = wait_state(page, month, ['plan'])
         prefix = f'{label} {month}월'
         checks.ok([e['id'] for e in state['events']] ==
                   [e['id'] for e in fixture['months'][month - 1]['events']],
                   f'{prefix} Node 정상 운영과 자연 사건 목록·순서 일치')
         mine = [e['name'] for e in state['events'] if e['mine']]
+        forecast_expanded = False
         if mine:
             # forecastStart는 배치 뒤 두 RAF에 실행된다. 단계 변경만 기다려
             # 이전 mood를 읽지 않고, 실제 예보가 열린 뒤 표를 검사한다.
             page.wait_for_function('() => KCP.fxTurn?.state?.().forecastOpen === true',
                                    timeout=WAIT)
             state = observe(page)
+            if mobile:
+                forecast_expanded = inspect_forecast_strip(checks, page, prefix, reduced)
+                if forecast_expanded:
+                    coverage['paths'].add('forecast-strip')
         forecast_names = set()
         forecast_range_names = set()
         selected = mood(checks, state, prefix + ' 계획', coverage['plan'])
         for key, target in fixture['targets'].items():
             if target == month:
                 checks.ok(selected == key, f'{prefix} 필수 표 항목 {key}가 내 도시 우선 사건')
-        if mine:
+        if mine and small_carry:
+            # 직전 달 보류 재현(deferred-next)으로 작은 창인 채 이 달 예보가 처음 떴다. w4c4 3에 따라
+            # 그때는 일반 카드 대신 띠·칩이 맞으므로 '최초 카드' 기하 단언을 이 달에는 적용하지 않는다.
+            print(f'INFO {prefix} 작은 창에서 처음 뜬 예보: 최초 카드 기하 단언 생략(띠·칩 규칙)', flush=True)
+            forecast_names = set(mine)  # 띠로 예보는 실제로 표시됐다: 결과 카드 앞·뒷면 단언은 그대로 적용
+            dismiss_forecast(checks, page, state, prefix, False)
+            mood(checks, observe(page), prefix + ' 예보 닫은 뒤', set())
+        elif mine:
             forecast_names, forecast_range_names = inspect_cards(
-                checks, page, mine, True, prefix + ' 예보', mobile, reduced)
+                checks, page, mine, True, prefix + ' 예보', mobile, reduced,
+                strip_expanded=forecast_expanded)
             if selected and any(e['id'] == selected and e['name'] in forecast_names
                                 for e in state['events'] if e['mine']):
                 coverage['forecast'].add(selected)
@@ -646,44 +962,58 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
             f'{prefix} ' + ('reduce 재생 없이 결과 표시' if reduced else '실제 결과 재생 중 표본'))
         mood(checks, result, prefix + ' 결과/재생',
              coverage['result'] if replay_valid else set())
+        next_with_cards = False
+        small_viewport = False
+        action = 'expand'
+        if mobile and result['resultEvents']:
+            # 첫 사건은 기존 펼치기 검사를 유지하고 이후 서로 다른 달을 배정한다.
+            if strip_expand:
+                action = next((name for name in
+                               ('map', 'esc', 'timeout', 'late-tab', 'deferred-recover', 'deferred-next')
+                               if name not in coverage['paths'] and
+                               (month < 12 or not name.startswith('deferred'))), 'expand')
+            if reduced and action != 'late-tab' and (observe(page)['fx'] or {}).get('cardsOpen'):
+                # 움직임 줄이기는 재생·결산 없이 카드가 즉시 뜬다(W4 reduce 계약). '카드가 뜨기 전에
+                # 서랍 열기' 창이 없으므로, 결과 단계가 자동으로 연 결과 서랍 그대로 띠를 검사한다.
+                # 마우스·터치로 여는 경로(총괄 지시)는 움직임 있음 경우에서 필수로 남긴다.
+                checks.ok(page.locator('#lg-panel').is_visible(),
+                          prefix + ' reduce: 결과 단계 자동 결과 서랍 열림')
+                coverage['paths'].add('auto-open')
+            else:
+                open_result_by_pointer(checks, page, prefix, late=action == 'late-tab',
+                                       touch=strip_expand)
+                # 첫 달은 page.mouse, 다음 달부터 page.touchscreen 경로로 연다.
+                coverage['paths'].add('mouse-open' if not strip_expand else 'touch-open')
         # 일반 재생은 Esc 한 번으로 끝내고 요약→카드는 자연 타이머로 기다린다.
-        if (result['fx'] or {}).get('playing'):
+        if not mobile and (result['fx'] or {}).get('playing'):
             page.keyboard.press('Escape')
         if result['resultEvents']:
-            page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen === true',
-                                   timeout=WAIT)
-            if mobile:
-                # 결과 서랍이 열린 채 카드가 떠 있는 상황을 만든다. 마우스 클릭은 W4 계약상
-                # '카드 밖 누름 = 닫힘'이라 카드를 닫으므로, 결과 탭을 키보드(Enter)로 연다.
-                # 서랍이 열리면 W4c 1·2절에 따라 카드가 띠로 바뀌어야 한다.
-                wait_unfolded(page)
-                panel = page.locator('#lg-panel')
-                if not panel.is_visible() or panel.get_attribute('data-tab') != 'result':
-                    page.locator('#lg-bar [data-panel="result"]').focus()
-                    page.keyboard.press('Enter')
-                page.wait_for_function("""() => {
-                  const p=document.querySelector('#lg-panel');
-                  return p && !p.hidden && p.dataset.tab==='result' && p.dataset.folded!=='true';
-                }""", timeout=WAIT)
-                checks.ok(page.evaluate('() => KCP.fxTurn?.state?.().cardsOpen === true'),
-                          f'{prefix} 키보드로 서랍을 연 뒤에도 사건 카드 유지')
+            if action != 'late-tab':
+                page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen === true',
+                                       timeout=WAIT)
+            shown_at = page.evaluate("""month => {
+              const record=window.__fxEventProbe.find(r=>r.round===month && !r.forecast);
+              return record?.firstVisibleAt ?? performance.now();
+            }""", month)
             wait_unfolded(page)
             names = [e['name'] for e in result['events'] if e['id'] in result['resultEvents']]
             if mine:
                 checks.ok(all(name in names for name in mine),
                           f'{prefix} 예보한 내 도시 사건이 같은 달 결과에도 존재')
-            if mobile:
+            if mobile and action == 'late-tab':
+                coverage['paths'].add(action)
+            elif mobile:
                 page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
                 strip_ready = strip_geometry(checks, page, prefix + ' 자동 결과', reduced)
+                strip_title(checks, page, prefix)
                 if not saw_result:
                     screenshot(checks, page, f'fx-event-{label}-confirmed.png')
-                if strip_ready and strip_expand and not strip_click:
-                    # 펼치기·완전 닫힘을 먼저 한 자연 사건에서 확인하고, 이후
-                    # 자연 사건의 띠에서 클릭 전달을 확인한다. 서랍 클릭 자체가
-                    # 카드 밖 클릭으로 닫는 것은 기존 W4 계약이 허용한다.
-                    strip_click = strip_drawer_click(checks, page, prefix, reduced)
+                if strip_ready:
+                    drawer_blank_touch(checks, page, prefix)
+                    if not strip_click:
+                        strip_click = strip_drawer_click(checks, page, prefix, reduced)
                 expanded = False
-                if strip_ready and (observe(page)['fx'] or {}).get('cardsOpen') is True:
+                if strip_ready and action == 'expand' and (observe(page)['fx'] or {}).get('cardsOpen') is True:
                     expanded = expand_strip(checks, page, prefix)
                 if expanded:
                     strip_expand = True
@@ -694,6 +1024,27 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                                   forecast_names=forecast_names,
                                   forecast_range_names=forecast_range_names, strip_expanded=True)
                     close_expanded_strip(checks, page, prefix)
+                elif strip_ready and action == 'map':
+                    map_touch(checks, page, prefix)
+                    coverage['paths'].add(action)
+                elif strip_ready and action == 'esc':
+                    page.keyboard.press('Escape')
+                    result_closed(checks, page, prefix + ' 별도 달 Esc')
+                    coverage['paths'].add(action)
+                elif strip_ready and action == 'timeout':
+                    strip_timeout(checks, page, prefix, shown_at)
+                    coverage['paths'].add(action)
+                elif strip_ready and action.startswith('deferred'):
+                    reproduced = deferred_probe(checks, page, prefix,
+                                                recover=action == 'deferred-recover')
+                    coverage['paths'].add(action)
+                    if reproduced:
+                        coverage['paths'].add('deferred-observed')
+                    small_viewport = reproduced and action == 'deferred-next'
+                    next_with_cards = True
+                    if not reproduced:
+                        page.wait_for_timeout(200)
+                        strip_stays_open(checks, page, prefix + ' 보류 미재현 대체 경로')
                 else:
                     page.keyboard.press('Escape')
             else:
@@ -711,9 +1062,21 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
             checks.ok((observe(page)['fx'] or {}).get('cardsOpen') is False,
                       f'{prefix} 사건 없는 결과 cardsOpen false')
             page.keyboard.press('Escape')
-        overflow(checks, page, prefix + ' 결과')
+        if not small_viewport:
+            overflow(checks, page, prefix + ' 결과')
         if month < 12:
-            click_progress(page, observe(page))
+            previous_marks = forecast_marks(page) if mobile else {}
+            if next_with_cards:
+                checks.ok((observe(page)['fx'] or {}).get('cardsOpen') is True,
+                          prefix + ' 다음 달 단추 입력 직전 지난달 카드 열린 상태')
+            click_progress(page, observe(page), preserve_drawer=next_with_cards)
+            if next_with_cards:
+                plan_cleanup(checks, page, month + 1, prefix)
+                coverage['paths'].add('plan-cleanup')
+            if small_viewport:
+                if forecast_before_visible(checks, page, prefix, month + 1, previous_marks):
+                    coverage['paths'].add('forecast-reload')
+                page.set_viewport_size({'width': 390, 'height': 844})
     checks.ok(saw_forecast and saw_result,
               f'{label} 자연 사건 예보·확정·Esc·중복·새로고침·클릭 전달 실행')
     checks.ok(saw_range, f'{label} 실제 범위 예보→확정 문장 검사 실행')
@@ -721,6 +1084,53 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
     if mobile:
         checks.ok(strip_expand, f'{label} W4c 결과 띠 펼치기·Esc 검사 실행')
         checks.ok(strip_click, f'{label} W4c 결과 띠 열린 채 S8 유지 단추 클릭 전달 검사 실행')
+
+
+def run_forecast_case(checks, page, base, label, reduced, fixture, coverage):
+    """예보의 짧은 대기 창은 별도 저장소에서 시도해 기존 8종 검사를 보존한다."""
+    restore_fixture(checks, page, base, label, fixture)
+    coach = page.locator('#lg-guide-close')
+    if coach.count() and coach.is_visible():
+        coach.click()
+    for month in (1, 2):
+        # 이 보조 판의 사건·달도 화면 단추로만 진행한다.
+        page.keyboard.press('Escape')
+        result = click_progress(page, observe(page))
+        if not reduced:
+            page.wait_for_function('() => KCP.fxTurn?.state?.().playing===true', timeout=WAIT)
+            page.keyboard.press('Escape')
+        if result['resultEvents']:
+            page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen===true', timeout=WAIT)
+            page.keyboard.press('Escape')
+        else:
+            page.keyboard.press('Escape')
+        previous_marks = forecast_marks(page)
+        # 다음 달은 forecastStart 두 RAF 전에 도시 탭을 실제 터치로 연다.
+        # 시각을 놓쳐 이미 보인 예보를 닫았다면 INFO이며 성공으로 세지 않는다.
+        state = click_progress(
+            page, observe(page), after_progress=lambda: pointer_press(
+                page, page.locator('#lg-bar [data-panel="city"]')))
+        page.wait_for_timeout(200)
+        prefix = f'{label} {month + 1}월'
+        if not any(e['mine'] for e in state['events']):
+            print(f'INFO {prefix} 예보 띠 재현 불가: 내 도시 예보 없음', flush=True)
+            continue
+        record = page.evaluate("""month => window.__fxEventProbe.find(
+          r=>r.round===month && r.forecast) || null""", month + 1)
+        fx = observe(page)['fx'] or {}
+        if fx.get('forecastOpen') and page.locator('#lg-panel').is_visible():
+            if inspect_forecast_strip(checks, page, prefix, reduced):
+                coverage['paths'].add('forecast-strip')
+            marks = forecast_marks(page)
+            checks.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
+                      prefix + ' 예보 실제 표시 뒤 sessionStorage 소비 기록 있음')
+        elif record and record['firstVisibleAt'] is None:
+            if forecast_before_visible(checks, page, prefix, month + 1, previous_marks):
+                coverage['paths'].add('forecast-reload')
+        else:
+            print(f'INFO {prefix} 예보 띠 재현 불가: 서랍 열기보다 예보 표시가 먼저였음',
+                  flush=True)
+        page.keyboard.press('Escape')
 
 
 class MotionBrowser:
@@ -731,6 +1141,8 @@ class MotionBrowser:
         self.reduced = reduced
 
     def new_context(self, **options):
+        if options.get('viewport', {}).get('width') == 390:
+            options['has_touch'] = True
         return self.browser.new_context(
             reduced_motion='reduce' if self.reduced else 'no-preference', **options)
 
@@ -747,6 +1159,7 @@ def main():
                     for reduced in (False, True):
                         label = f'{width}x{height}-light-' + ('reduce' if reduced else 'motion')
                         coverage = {stage: set() for stage in ('plan', 'forecast', 'result')}
+                        coverage['paths'] = set()
                         for fixture in fixtures:
                             case_label = f"{label}-{fixture['room']}"
                             print(f"INFO {case_label} room 씨앗 {fixture['salt']} 자연 사건 12달",
@@ -767,12 +1180,42 @@ def main():
                                 diagnostics(checks, events, case_label)
                                 checks.ok(not external, f'{case_label} 외부 연결 시도 0: {external}')
                                 context.close()
+                        if width == 390:
+                            probe_label = label + '-forecast-probe'
+                            context, external = context_for(MotionBrowser(browser, reduced),
+                                                            base, width, height, 'light')
+                            context.add_init_script(PROBE_JS)
+                            page, events = monitored_page(context)
+                            try:
+                                run_forecast_case(checks, page, base, probe_label, reduced,
+                                                  fixtures[0], coverage)
+                            except Exception as exc:
+                                checks.ok(False, f'{probe_label} 진행 예외 {type(exc).__name__}: '
+                                          f'{str(exc).splitlines()[0][:200]}')
+                            finally:
+                                diagnostics(checks, events, probe_label)
+                                checks.ok(not external, f'{probe_label} 외부 연결 시도 0: {external}')
+                                context.close()
                         # 한 판에서 우연히 본 id나 결과만 본 id로 표 실행을 세지 않는다.
                         # 화면 크기·motion 각각에서 8종×3단계가 모두 실행돼야 한다.
                         for key in EVENT_MOOD:
-                            for stage in coverage:
+                            for stage in ('plan', 'forecast', 'result'):
                                 checks.ok(key in coverage[stage],
                                           f'{label} 필수 분위기 표 {key} {stage} 실행')
+                        if width == 390:
+                            opens = ('auto-open',) if reduced else ('mouse-open', 'touch-open')
+                            for path in opens + ('map', 'esc', 'timeout',
+                                         'late-tab', 'deferred-recover', 'deferred-next', 'plan-cleanup'):
+                                checks.ok(path in coverage['paths'], f'{label} {path} 경로 실행')
+                            if 'deferred-observed' not in coverage['paths']:
+                                print(f'INFO {label} 보류 재현 실패; 다음 달 제거는 일반 띠에서 단언',
+                                      flush=True)
+                            if 'forecast-strip' not in coverage['paths']:
+                                print(f'INFO {label} 예보 띠 재현 불가: 예보 전 서랍 터치 시각 미확보',
+                                      flush=True)
+                            if 'forecast-reload' not in coverage['paths']:
+                                print(f'INFO {label} 예보 표시 전 닫힘·같은 달 재로딩 재현 불가',
+                                      flush=True)
             finally:
                 browser.close()
     except Exception as exc:

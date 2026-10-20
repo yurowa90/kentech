@@ -3917,6 +3917,7 @@
     }));
   }
   function phaseChanged(V) {
+    KCP.fxTurn?.phase?.(V.phase, V.round);
     if (matchMedia("(max-width: 760px)").matches) BG.closeDrawer?.();
     const live = document.getElementById("lg-live");
     const evn = (V.events || []).filter(x => x.round === V.round).map(x => (C.eventDef(R(), x.id) || {}).name).filter(Boolean);
