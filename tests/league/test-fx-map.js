@@ -10,7 +10,7 @@ for (const name of ["build-maps.js", "build.js"]) {
   let source = fs.readFileSync(path.resolve(__dirname, "../../ui", name), "utf8");
   // 비공개 그리기 함수의 Canvas 경계만 대체한다. 제품에는 검사 전용 API를 넣지 않는다.
   if (name === "build.js") source = source.replace(/\}\)\(\);\s*$/, `
-    window.mapPaintTest = { paintPowerFlow, useState(state) { S = state; } };
+    window.mapPaintTest = { paintPowerFlow, paintMapMood: typeof paintMapMood === "function" ? paintMapMood : null, useView(view) { Object.assign(V, view); }, useState(state) { S = state; } };
   })();`);
   vm.runInContext(source, context);
 }
@@ -192,4 +192,65 @@ test("기존 망 경로에서 live 경로·부족 마을·선 소속을 찾고 �
   assert.equal(fx.flowMarks(res, 0, routes, false, 0.05)[0].outage, true);
   res.flow[1] = -1;
   assert.equal(fx.flowMarks(res, 0, routes, false, 0.05)[0].outage, false);
+});
+
+
+// 실 Canvas 대신 명령 경계만 기록해 전체 합성 상한과 입자·reduced 동작을 확인한다.
+test("사건 분위기는 0.06 이하로 한 번 합성하고 눈 60개·빗줄기 80개를 넘지 않는다", () => {
+  const { paintMapMood, useState, useView } = context.window.mapPaintTest;
+  const commands = [];
+  const gradient = { addColorStop() {} };
+  const ink = { clearRect() {}, beginPath() {}, fillRect() {}, fill() {}, stroke() {},
+    moveTo() { commands.push("rain"); }, lineTo() {},
+    arc() { commands.push("snow"); }, ellipse() {},
+    createRadialGradient: () => gradient, createLinearGradient: () => gradient };
+  context.document.createElement = () => ({ width: 0, height: 0, getContext: () => ink });
+  useView({ W: 390, H: 800, area: { l: 0, r: 390, t: 0, b: 800 } });
+  const state = { alive: true, raf: 1 }; useState(state);
+  const composites = [];
+  const g = { save() {}, restore() {}, drawImage() { composites.push(this.globalAlpha); } };
+  const bg = context.window.KCP.buildGame;
+  assert.equal(typeof bg.setMapMood, "function");
+  bg.setMapMood("snow"); paintMapMood(g, 3, false);
+  assert.equal(commands.filter(c => c === "snow").length, 60);
+  commands.length = 0;
+  bg.setMapMood("storm"); paintMapMood(g, 3, false);
+  assert.equal(commands.filter(c => c === "rain").length, 80);
+  commands.length = 0;
+  for (const mood of ["heat", "cold", "snow", "storm", "cloud", "haze"]) {
+    bg.setMapMood(mood); paintMapMood(g, 50, true);
+    assert.equal(commands.length, 0, `${mood}: reduced에서는 물결·입자·구름을 그리지 않는다`);
+  }
+  assert.ok(composites.every(a => a <= 0.06));
+  const count = composites.length;
+  bg.setMapMood(null); paintMapMood(g, 3, false);
+  bg.setMapMood("invalid"); paintMapMood(g, 3, false);
+  assert.equal(composites.length, count, "null과 잘못된 분위기는 그리지 않는다");
+});
+
+test("분위기 동기화 예외 뒤에도 프레임을 그리고 정지 상태에서 다시 예약할 수 있다", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../../ui/build.js"), "utf8");
+  // 실제 frame/request를 실행하고 Canvas 그리기 경계만 대체한다.
+  const frameSource = source.slice(source.indexOf("  function frame(now) {"), source.indexOf("\n  /* =====================================================================\n   * 6. 조작"));
+  for (const [moving, fail] of [[false, true], [true, true], [false, false], [true, false]]) {
+    let scheduled = 0, painted = 0;
+    const state = { alive: true, raf: 1, opts: { league: true }, root: {}, mapFx: [], floaters: [], born: 0,
+      base: {}, g: { setTransform() {}, drawImage() { painted++; } } };
+    const boundary = { S: state, V: { W: 390, H: 800 }, document: { hidden: false },
+      KCP: { fxTurn: { syncMapMood() {
+        if (fail) throw new Error("가상 동기화 실패");
+        // setMapMood의 재그리기 요청도 현재 프레임과 중복 예약하지 않는다.
+        boundary.request();
+      } } },
+      mapMotion: { active: list => list, needsFrame: () => moving }, reduced: () => false, dprOf: () => 1,
+      curHour() {}, paintSea() {}, paintDynamic() {}, paintCursor() {}, paintLeagueLayers() {}, paintMapMood() {}, placeBanners() {},
+      requestAnimationFrame() { return ++scheduled; } };
+    vm.createContext(boundary);
+    vm.runInContext(frameSource, boundary);
+    assert.doesNotThrow(() => vm.runInContext("frame(100)", boundary));
+    assert.equal(painted, 1);
+    assert.equal(state.raf, moving ? 1 : 0);
+    vm.runInContext("request()", boundary);
+    assert.equal(scheduled, 1, "다음 프레임은 한 번만 예약한다");
+  }
 });

@@ -2193,8 +2193,82 @@
     });
   }
 
+  // 사건 표시 전용 층. 모형·날씨·효과 크기와 독립적이며 배너·라벨 DOM 아래에 그린다.
+  function setMapMood(mood) {
+    if (!S?.alive) return;
+    const next = ["heat", "cold", "snow", "storm", "cloud", "haze"].includes(mood) ? mood : null;
+    if (S.mapMood === next) return;
+    S.mapMood = next;
+    request();
+  }
+  function paintMapMood(g, t, rm) {
+    const mood = S.mapMood;
+    if (!mood) return;
+    // 전체 투명도 상한 0.06: 별도 캔버스를 한 번 합성하므로 입자가 겹쳐도 상한이 유지된다.
+    const canvas = S.moodCanvas ||= document.createElement("canvas");
+    if (canvas.width !== V.W) canvas.width = V.W;
+    if (canvas.height !== V.H) canvas.height = V.H;
+    const ink = canvas.getContext("2d"), a = V.area, w = Math.max(0, a.r - a.l), h = Math.max(0, a.b - a.t);
+    ink.clearRect(0, 0, V.W, V.H);
+    const anim = rm ? 0 : t;
+    if (mood === "heat") {
+      const tint = ink.createLinearGradient(0, a.t, 0, a.b);
+      tint.addColorStop(0, "rgba(240,146,63,0)"); tint.addColorStop(1, "#f0923f");
+      ink.fillStyle = tint; ink.fillRect(a.l, a.t, w, h);
+      if (!rm) {
+        ink.strokeStyle = "#ffb768"; ink.lineWidth = 2;
+        for (let k = 0; k < 6; k++) {
+          ink.beginPath();
+          for (let x = 0; x <= w; x += 12) {
+            const y = a.t + h * (.55 + k * .065) + Math.sin(x / 75 + anim * .6 + k) * 5;
+            if (!x) ink.moveTo(a.l + x, y); else ink.lineTo(a.l + x, y);
+          }
+          ink.stroke();
+        }
+      }
+    } else if (mood === "cold" || mood === "snow") {
+      const frost = ink.createRadialGradient((a.l + a.r) / 2, (a.t + a.b) / 2, 0,
+        (a.l + a.r) / 2, (a.t + a.b) / 2, Math.max(w, h) * .6);
+      frost.addColorStop(0, "rgba(166,220,250,0)"); frost.addColorStop(.55, "rgba(166,220,250,0.15)"); frost.addColorStop(1, "#a6dcfa");
+      ink.fillStyle = frost; ink.fillRect(a.l, a.t, w, h);
+      if (mood === "snow" && !rm) {
+        ink.fillStyle = "#f1f8ff";
+        for (let k = 0; k < 60; k++) {
+          const x = a.l + (hash(k, 1, 71) * w + Math.sin(anim * .3 + k) * 8 + w) % Math.max(1, w);
+          const y = a.t + (hash(k, 2, 71) * h + anim * (9 + k % 5)) % Math.max(1, h);
+          ink.beginPath(); ink.arc(x, y, 1 + k % 3 * .35, 0, Math.PI * 2); ink.fill();
+        }
+      }
+    } else {
+      ink.fillStyle = mood === "haze" ? "#a89c87" : "rgba(38,58,80,0.45)";
+      ink.fillRect(a.l, a.t, w, h);
+      if ((mood === "storm" || mood === "cloud") && !rm) {
+        ink.fillStyle = "#263a50";
+        for (let k = 0; k < 7; k++) {
+          const x = a.l - 160 + (hash(k, 3, 71) * (w + 320) + anim * (mood === "storm" ? 85 : 12)) % (w + 320);
+          const y = a.t + hash(k, 4, 71) * h;
+          ink.beginPath(); ink.ellipse(x, y, 100 + k * 7, 18 + k * 2, -.15, 0, Math.PI * 2); ink.fill();
+        }
+      }
+      if (mood === "storm" && !rm) {
+        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        for (let k = 0; k < 80; k++) {
+          const x = a.l + (hash(k, 5, 71) * w + anim * 100) % Math.max(1, w);
+          const y = a.t + (hash(k, 6, 71) * h + anim * 290) % Math.max(1, h);
+          ink.moveTo(x, y); ink.lineTo(x - 6, y + 12);
+        }
+        ink.stroke();
+      }
+    }
+    g.save(); g.globalAlpha = 0.06;
+    g.drawImage(canvas, 0, 0, V.W, V.H); g.restore();
+  }
+
   function frame(now) {
     if (!S || !S.alive) return;
+    // raf를 비우기 전에 동기화해 setMapMood의 request와 다음 프레임을 중복 예약하지 않는다.
+    try { if (S.opts.league) KCP.fxTurn?.syncMapMood?.(S.root); }
+    catch (_) { /* 사건 표시 실패가 지도 프레임 예약을 막지 않게 한다. */ }
     S.raf = 0;
     if (S.dirtyLayout) layout();
     const active = mapMotion.active(S.mapFx, now, reduced());
@@ -2212,6 +2286,7 @@
     paintCursor(g, t);
     if (S.opts.league) paintLeagueLayers(g);
     if (S.floaters.length) paintFloaters(g, now);
+    paintMapMood(g, t, reduced());
     placeBanners();
     const keep = mapMotion.needsFrame(S, reduced(), document.hidden);
     if (keep) S.raf = requestAnimationFrame(frame);
@@ -3789,7 +3864,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay, mapMotion,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues,
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
