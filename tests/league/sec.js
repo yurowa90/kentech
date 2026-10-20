@@ -36,9 +36,11 @@ const mutations = {
   snap_order: ["league-net.js", 'if (snap && waitingSnap && waitingSnap.incoming.n >= incoming.n) {', 'if (false) {', "Q8 늦게 온 옛 순번 snap은 기다리던 새 snap을 밀어내지 못함"],
   snap_candidate: ["league-net.js", 'if (!waitingSnap.prev || waitingSnap.prev.incoming.n < incoming.n) waitingSnap.prev = { incoming };', '', "Q8 순번만 큰 위조 snap 뒤의 정상 snap도 예비로 남음"],
   snap_fallback: ["league-net.js", 'if (!back) return false;', 'return false;', "Q8 최신 snap이 위조면 밀려난 정상 snap을 대신 반영"],
-  warn_snap20: ["league.js", ' && now - (L.lastSnapAt ?? L.lastHostAt) <= 20000', '', "Q8 공개 상태 20초 없음 안내"],
-  warn_snap10: ["league.js", '(L.lastSnapAt ?? L.lastHostAt) <= 20000', '(L.lastSnapAt ?? L.lastHostAt) <= 10000', "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음"],
-  warn_host10: ["league.js", 'if (now - L.lastHostAt <= 10000 && ', 'if (', "Q8 진행자 메시지 10초 없음 안내"],
+  warn_snap20: ["league.js", ' && snapAge <= 20000', '', "Q8 공개 상태 20초 없음 안내"],
+  warn_snap10: ["league.js", 'snapAge <= 20000', 'snapAge <= 10000', "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음"],
+  warn_refresh30: ["league.js", 'Math.max(hostAge, snapAge) > 30000', 'Math.max(hostAge, snapAge) > 10000', "Q8 30초 전 안내에는 새로고침 권유 없음"],
+  warn_refresh_snap: ["league.js", 'Math.max(hostAge, snapAge) > 30000', 'hostAge > 30000', "Q8 공개 상태만 30초 넘게 없어도"],
+  warn_host10: ["league.js", 'if (hostAge <= 10000 && ', 'if (', "Q8 진행자 메시지 10초 없음 안내"],
   snap_cap: ["league-net.js", 'if (!snap && queued >= 16 ||', 'if (queued >= 16 ||', "Q8 대기열이 차도 최신 snap은 남음"],
   host_queue: ["league-net.js", 'queued >= 16', 'false', "F3-5 팀 검증 대기열"],
   compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams[Object.keys(view.teams)[0]].hist.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
@@ -496,6 +498,11 @@ async function uiProtocol() {
   ok(!warnAt(5000, 15000), "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음");
   ok(warnAt(5000, 21000), "Q8 공개 상태 20초 없음 안내(형식이 안 맞는 snap만 오는 판본 혼재)");
   ok(warnAt(11000, 1000), "Q8 진행자 메시지 10초 없음 안내");
+  // 새로고침 권유는 30초부터(짧은 밀림에 새로고침을 부추기지 않는다).
+  const REFRESH = " · 새로고침하면 다시 연결됩니다";
+  ok(warnAt(29000, 29000) && dom["lg-conn"].textContent === "진행자 화면과 연결을 확인하는 중", "Q8 30초 전 안내에는 새로고침 권유 없음");
+  ok(warnAt(31000, 1000) && dom["lg-conn"].textContent.endsWith(REFRESH), "Q8 진행자 메시지 30초 넘게 없으면 새로고침 권유");
+  ok(warnAt(5000, 31000) && dom["lg-conn"].textContent.endsWith(REFRESH), "Q8 공개 상태만 30초 넘게 없어도(판본 혼재) 새로고침 권유");
   await ui.get().sending; ui.get().lastSnapAt = Date.now(); ui.get().stateRequests = {};
   ui.get().lastHostAt = Date.now() - 11000; ui.get().hostWarning = true; pending.sentAt = Date.now() - 6000;
   ui.get().rev = ui.get().snap.teams[team].rev + 1;

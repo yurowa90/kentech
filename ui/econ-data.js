@@ -149,6 +149,9 @@
       koreaOutageHours2019: p(0.04, "O", "World Bank Doing Business SAIDI, 한국 연 0.04시간(2019, 최대 상업도시 기준) [S27]; 배속표 표시만"),
       islandLineLoss: p(3, "G", "섬 연습 지도 1.5%/칸 / 리그 0.5%/칸 = 3배; 손실 관찰용 교육 확대 · REF 8.9 [S20][S25]; 배속표 표시만"),
       researchYears: p([10, 30], "P", "IEA Clean Energy Innovation(2020): 시제품→대량 시장 10~30년 [I09] · REF 12.8; 게임 수 달로의 압축은 G, 배속표 표시만"),
+      // D-81: 배속표 표시만. 게임 규칙(SMR만 공사 12달, 나머지 즉시 건설·접속 대기)은 바꾸지 않는다.
+      buildLeadYears: p({ solar: 2, wind: 3, ess: 1, biomass: 4, diesel: 2, smr: 6 }, "P", "착공~가동 lead time(년) · EIA AEO2022 EMM 가정 Table 3, 원문 확인 2026-10-21(인허가 포함 여부 정의 미확인) · 디젤은 21MW 내연기관 값 · SMR 600MW · 배속표 표시만 · _briefs/lanes/q8/W6-report.md"),
+      buildLeadKorea: p({ lngMonths: [27, 32], windPermitYears: 10, gridYears: [5, 15] }, "O*", "등급은 한국 사례 기준(송전망 값은 IEA라 P, 화면에 따로 표기) · 한국 LNG 복합 착공→운전 27~32개월(포천·안동 2호기 보도 날짜 계산), 육상풍력 계측~준공 약 10년(기후부 발표 보도 2025-12-03), 송전망 계획·인허가·완공 5~15년(IEA 2023, P) · 배속표 표시만"),
       complaintPoliticalEffect: p([50, 200], "G", "민원 정치 효과 약 50~200배: 인구 비례 환산 어림, 실증 계수 없음 · 근거 문서: docs/ECON-REFERENCES.md §10.8; 배속표 표시만", ["docs/ECON-REFERENCES.md"]),
       debtWarnRatio: p(0.55, "M", "채무 주의 문턱 · 지방재정법 시행령 예산 대비 25% · 계산: 2.2×0.25 · 배속: 없음 · REF 6.12", ["L07"]),
       fiscalTargetRev: p(0.3, "G", "설계 선택: 보통 조건 연 운영 수지 / 시작 연 세입 0.3 · G4: 판매가 정상화 뒤 2차 값 복원 · REF 6.10", []),
