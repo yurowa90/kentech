@@ -1338,7 +1338,7 @@
   function warnSoloSave() {
     if (!soloSaveFailed || soloSaveWarned || !document.getElementById("lg-bar")) return;
     soloSaveWarned = true;
-    BG.toast("진행을 저장하지 못했어요. 브라우저 저장 공간·설정을 확인해요.");
+    BG.toast("진행을 저장하지 못했어요. 브라우저 저장 공간·설정을 확인해요.", { warn: true });
   }
   function writeSolo(save) {
     // JSON은 -0을 0으로 쓴다. 경제 보고서의 원본 값도 맞춰 저장·복원 비교가 같게 한다.
@@ -3336,18 +3336,20 @@
     if (!save || !validRoom(save.room)) { location.hash = "#league"; return; }
     if (!L || L.role !== "team" || L.room !== save.room) {
       close();
-      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, migrationFrom: save.migrationFrom, lastHostAt: Date.now(), pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
+      L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, migrationFrom: save.migrationFrom, lastHostAt: Date.now(), lastSnapAt: Date.now(), pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, L.net, {
         canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(NET.requestBody(m)?.type)
       }));
       const session = L;
       const receiveHost = NET.hostReceiver(session, async (event, data) => {
         if (L !== session) return;
-        session.lastHostAt = Date.now(); session.hostWarning = false;
-        const status = document.getElementById("lg-conn");
-        if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); }
+        session.lastHostAt = Date.now();
+        // '연결됨'은 받아들인 공개 상태가 있을 때만: 형식이 맞지 않아 버린 상태로는 연결 확인 안내를 끄지 않는다(D-77).
+        const seq = session.snapSeq;
         if (event === "snap") onSnap(data);
         else await response(event, data);
+        const status = document.getElementById("lg-conn");
+        if (event === "snap" && session.snapSeq !== seq) { session.hostWarning = false; if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); } }
         if (L === session) teamSave();
       }, event => { if (L === session && event === "snap") connectionWarning(); });
       for (const event of ["snap", "nack", "ack"]) L.conn.on(event, wire => receiveHost(event, wire));
@@ -3489,7 +3491,7 @@
     else if (confirmFocus) app.querySelector("#lg-seat-confirm").focus({ preventScroll: true });
   }
   function connectionWarning() {
-    if (Date.now() - L.lastHostAt <= 10000) return;
+    if (Date.now() - (L.lastSnapAt ?? L.lastHostAt) <= 10000) return;
     L.hostWarning = true;
     const text = "진행자 화면과 연결을 확인하는 중 · 새로고침하면 다시 연결됩니다";
     const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
@@ -3586,12 +3588,22 @@
   function onSnap(V) {
     V = NET.expandSnapshot(V);
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
+    L.lastSnapAt = Date.now(); L.snapSeq = (L.snapSeq || 0) + 1;
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();
       if (!L.team) { if (L.app && L.app.isConnected && L.app.querySelector(".lg-seats")) seatPicker(L.app); return; }
       const me = V.teams[L.team];
-      if (!me) return;
+      // 탭 저장의 팀이 이 방에 없으면 기다림 화면에서 멈추지 않고 자리 선택으로 돌아간다.
+      if (!me) {
+        if (L.role === "team") {
+          // '이어서 하기' 저장에 같은 방·없는 팀이 남으면 누를 때마다 다시 돌아오므로 함께 지운다.
+          const last = store.get(K_TEAM);
+          if (last?.room === L.room && last?.team === L.team) store.del(K_TEAM);
+          releaseSeat(); KCP.toast("이 방에 그 도시 자리가 없어 자리 선택으로 돌아왔어요.");
+        }
+        return;
+      }
       if (L.role === "team") {
         const previousSeat = L.seat;
         if (previousSeat != null && me.seatVersion !== previousSeat) { releaseSeat(); return; }

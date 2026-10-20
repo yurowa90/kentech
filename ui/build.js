@@ -3185,9 +3185,15 @@
   }
 
   let toastTimer = 0;
-  function toast(msg) {
+  // 경고 토스트(opts.warn)가 떠 있는 동안에는 일반 토스트가 덮지 못한다: 같은 동작 안의 '결과가 나왔어요'가
+  // 저장 실패 경고를 75ms 만에 지우던 문제(2026-10-20 재현).
+  let toastWarnUntil = 0;
+  function toast(msg, opts) {
     const el = $("#bd-toast");
     if (!el) return;
+    const warn = !!opts?.warn, now = Date.now();
+    if (!warn && now < toastWarnUntil) return;
+    if (warn) toastWarnUntil = now + 2200;
     el.textContent = msg;
     el.dataset.show = "true";
     clearTimeout(toastTimer);
@@ -3788,6 +3794,6 @@
     current: () => (S ? S.st : null), planIssues,
     refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
-    toast: msg => { if (S) toast(msg); }
+    toast: (msg, opts) => { if (S) toast(msg, opts); }
   });
 })();
