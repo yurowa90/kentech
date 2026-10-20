@@ -1986,7 +1986,7 @@
       L.channelMissed = missed ? m.bytes : 0; hostWarning();
     });
     watch("undelivered", true);
-    // 다음 상태의 전달 확인까지 실패 경고를 유지한다. 단순 send 성공은 확인이 아니다.
+    // 다음 상태의 서버 수신 확인까지 경고를 유지한다. 단순 send 성공은 확인이 아니다.
     watch("delivered", false);
     hostWarning();
   }
@@ -1994,7 +1994,8 @@
     const el = document.getElementById("lg-host-warning");
     let channel = "";
     if (L?.role === "host" && L.conn?.kind === "supabase" && L.channelMissed)
-      channel = `방금 상태(${Math.round(L.channelMissed / 1000)}KB)가 팀 기기에 전달되지 않았어요. 연결을 확인해요.`;
+      // ack는 Supabase 서버가 받아 중계했다는 확인일 뿐 팀 기기별 도착 확인이 아니다(D-77). 사실 범위만 말한다.
+      channel = `방금 상태(${Math.round(L.channelMissed / 1000)}KB)의 전달 확인을 서버에서 받지 못했어요. 팀 화면이 멈췄으면 연결을 확인해요.`;
     if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인해요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || "", channel].filter(Boolean).join(" ");
   }
   function hostSend(event, data) {

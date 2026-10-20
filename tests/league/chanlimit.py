@@ -127,7 +127,7 @@ def run(browser, cap):
             host.wait_for_function("""cap => window.chanFixture.missed.some(m =>
                 m.bytes > cap && m.reason === 'timeout')""", arg=cap, timeout=15000)
             expect(warning).to_contain_text("방금 상태(")
-            expect(warning).to_contain_text("KB)가 팀 기기에 전달되지 않았어요. 연결을 확인해요.")
+            expect(warning).to_contain_text("KB)의 전달 확인을 서버에서 받지 못했어요. 팀 화면이 멈췄으면 연결을 확인해요.")
             expect(warning).not_to_contain_text("256KB")
             expect(warning).not_to_contain_text("한도")
             assert host.evaluate("() => document.getElementById('lg-conn').dataset.s") == "open"
