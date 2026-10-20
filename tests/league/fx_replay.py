@@ -57,7 +57,7 @@ from playwright.sync_api import sync_playwright
 
 from econui import (Checks, WAIT, context_for, diagnostics, local_address,
                     monitored_page, overflow)
-from league_flow import confirm_seat, select_mode, start_solo
+from league_flow import confirm_seat, select_mode, start_solo, pass_issue_check
 from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer
 
 
@@ -343,6 +343,9 @@ def click_progress(page, before):
                 continue
             ready = button.get_attribute('id') == 'lg-ready'
             button.click()
+            if ready:
+                # 품질8 UX U3: 준비 전 확인 카드(#lg-issue-check)는 공용 도우미로 '그대로 진행'.
+                pass_issue_check(page)
             if ready and before['phase'] == 'plan':
                 # 약속 방식/자유 실험 모두 화면에서 확정한다.
                 page.wait_for_function("""args => {
@@ -579,6 +582,7 @@ def prepare_team(page):
         guide.click()
     close_drawer(page)
     page.locator('#lg-ready').click()
+    pass_issue_check(page)  # 품질8 UX U3 준비 전 확인 카드
     page.wait_for_selector('#lg-ready-confirm')
     page.locator('[data-evidence="evening"]').click()
     page.locator('[data-pred]').select_option('down')

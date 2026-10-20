@@ -15,20 +15,24 @@
     if (!Number.isFinite(U) || U < 0 || !Number.isInteger(N) || N < 0 || N > u.length) return null;
     const count = r => r.reduce((n, value, k) => n + (value > threshold(dem[k]) ? 1 : 0), 0);
     if (Math.abs(U - sum(u)) <= 0.01 && count(u) === N) return u.slice();
-    const O = Array.from(u.keys()).filter(k => u[k] > 0).sort((a, b) => u[b] - u[a] || a - b).slice(0, N);
-    if (O.length !== N) return null;
-    const r = new Float64Array(u.length), selectedSum = O.reduce((s, k) => s + u[k], 0);
-    const floor = k => threshold(dem[k]) * 1.001;
-    O.forEach(k => { r[k] = u[k] * U / selectedSum; });
-    for (let pass = 0; pass < 20; pass++) {
-      const low = O.filter(k => r[k] <= threshold(dem[k]));
-      if (!low.length) break;
-      let extra = 0;
-      low.forEach(k => { extra += floor(k) - r[k]; r[k] = floor(k); });
-      const donors = O.filter(k => r[k] > threshold(dem[k]));
-      const slack = donors.reduce((s, k) => s + r[k] - threshold(dem[k]), 0);
-      if (slack <= extra) return null;
-      donors.forEach(k => { r[k] -= (r[k] - threshold(dem[k])) * extra / slack; });
+    // 부족이 큰 순서로 공개 정전 시간 N개를 고른다(O). 나머지 부족 시간(P)은 문턱 아래에 둔다.
+    // N = 0이어도(문턱 아래 작은 부족만 남은 달) 합계 U는 P 시간에 나눠 담는다.
+    const order = Array.from(u.keys()).filter(k => u[k] > 0).sort((a, b) => u[b] - u[a] || a - b);
+    if (order.length < N) return null;
+    const inO = new Uint8Array(u.length); order.slice(0, N).forEach(k => { inO[k] = 1; });
+    const lo = k => inO[k] ? threshold(dem[k]) * 1.001 : 0;
+    const hi = k => inO[k] ? Infinity : threshold(dem[k]) * 0.999;
+    const total = sum(u), r = new Float64Array(u.length);
+    if (total <= 0) return U <= 0.01 && N === 0 ? r : null;
+    order.forEach(k => { r[k] = Math.min(hi(k), Math.max(lo(k), u[k] * U / total)); });
+    // 경계 안에서 남는 차이를 움직일 수 있는 시간에 부족 크기 비율로 다시 나눈다(최대 50회).
+    for (let pass = 0; pass < 50; pass++) {
+      const diff = U - sum(r);
+      if (Math.abs(diff) <= 1e-9) break;
+      const free = order.filter(k => diff > 0 ? r[k] < hi(k) : r[k] > lo(k));
+      const weight = free.reduce((a, k) => a + u[k], 0);
+      if (!free.length || weight <= 0) break;
+      free.forEach(k => { r[k] = Math.min(hi(k), Math.max(lo(k), r[k] + diff * u[k] / weight)); });
     }
     return Math.abs(sum(r) - U) <= 0.01 && count(r) === N ? r : null;
   }
