@@ -10,7 +10,7 @@ const mutations = {
   events: ["league-core.js", 'const rnd = rng(hashStr((S.seedKey ?? S.room) + ":" + S.round)), out = [];', 'const rnd = rng(hashStr("constant:" + S.round)), out = [];', "room 모드: 실제로 뽑힌 사건"],
   replay: ["league.js", 'state: structuredClone(L.initial), initial:', 'state: structuredClone(L.S), initial:', "실제 같은 조건으로 다시"],
   host_sig: ["league-net.js", 'if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig)', 'if (false && !await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig)', "진행자 서명 뒤 내용 변조"],
-  canonical: ["league-net.js", 'json = canonical(data);', 'json = JSON.stringify(data);', "정규 JSON: 재귀 키 섞기"],
+  canonical: ["league-net.js", 'const json = canonical(data),', 'const json = JSON.stringify(data),', "정규 JSON: 재귀 키 섞기"],
   code_binding: ["league-net.js", 'binding.room !== trust.room || ', '', "첫 키도 방 코드와 다르면"],
   link_binding: ["league-net.js", 'trust.fingerprint && binding.fingerprint !== trust.fingerprint ||', 'false ||', "링크 지문 불일치"],
   kid: ["league.js", 'm.kid !== await NET.fingerprint(L.identity.publicKey)', 'false', "위조 nack·다른 kid"],
@@ -31,11 +31,19 @@ const mutations = {
   claim_reject: ["league.js", '      releaseSeat();\n      BG.toast(msg);', '      BG.toast(msg);', "F3-4 taken 자리 선택"],
   early_request: ["league-net.js", 'if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : lastN(), T.retired?.[m.kid] || 0)) return reject("replay");', '', "F3-5 진행자 sid·순번·크기"],
   request_queue: ["league-net.js", '(queued.get(team) || 0) >= 16', 'false', "F3-5 진행자 검증 대기열"],
-  early_host: ["league-net.js", 'if (queued >= 16 || !cheap(incoming) || incoming.event !== event)', 'if (queued >= 16 || incoming.event !== event)', "F3-5 팀 sid·순번·크기"],
+  early_host: ["league-net.js", 'if (!snap && queued >= 16 || !cheap(incoming) || incoming.event !== event)', 'if (!snap && queued >= 16 || incoming.event !== event)', "F3-5 팀 sid·순번·크기"],
+  snap_skip: ["league-net.js", 'waitingSnap.skip = true; ', '', "Q8 밀린 옛 snap은 검증 없이 건너뜀"],
+  snap_order: ["league-net.js", 'if (snap && waitingSnap && waitingSnap.incoming.n >= incoming.n) {', 'if (false) {', "Q8 늦게 온 옛 순번 snap은 기다리던 새 snap을 밀어내지 못함"],
+  snap_candidate: ["league-net.js", 'if (!waitingSnap.prev || waitingSnap.prev.incoming.n < incoming.n) waitingSnap.prev = { incoming };', '', "Q8 순번만 큰 위조 snap 뒤의 정상 snap도 예비로 남음"],
+  snap_fallback: ["league-net.js", 'if (!back) return false;', 'return false;', "Q8 최신 snap이 위조면 밀려난 정상 snap을 대신 반영"],
+  warn_snap20: ["league.js", ' && now - (L.lastSnapAt ?? L.lastHostAt) <= 20000', '', "Q8 공개 상태 20초 없음 안내"],
+  warn_snap10: ["league.js", '(L.lastSnapAt ?? L.lastHostAt) <= 20000', '(L.lastSnapAt ?? L.lastHostAt) <= 10000', "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음"],
+  warn_host10: ["league.js", 'if (now - L.lastHostAt <= 10000 && ', 'if (', "Q8 진행자 메시지 10초 없음 안내"],
+  snap_cap: ["league-net.js", 'if (!snap && queued >= 16 ||', 'if (queued >= 16 ||', "Q8 대기열이 차도 최신 snap은 남음"],
   host_queue: ["league-net.js", 'queued >= 16', 'false', "F3-5 팀 검증 대기열"],
   compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams[Object.keys(view.teams)[0]].hist.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
   compact_summary: ["league-net.js", 'if (i >= t.hist.length - 2 || !row.plan)', 'if (true)', "F3-6 오래된 계획 전문"],
-  apply_json: ["league-net.js", 'await apply(event, signed.data);', 'await apply(event, incoming.data);', "F3-7 검증한 정규 JSON"],
+  apply_json: ["league-net.js", 'await apply(event, signed.data);', 'await apply(event, it.incoming.data);', "F3-7 검증한 정규 JSON"],
   json_values: ["league-net.js", 'return encode(value);', 'return encode(JSON.parse(JSON.stringify(value)));', "F3-7 JSON 밖 값 거절"],
   room_bits: ["league-net.js", 'length: 8', 'length: 6', "F3-8 기존 ALPHA 40비트 고정 벡터"],
   room_alphabet: ["league-net.js", '"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"', '"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"', "F3-8 기존 ALPHA 40비트 고정 벡터"],
@@ -69,7 +77,7 @@ if (process.env.F2_MUTATION) {
     if (typeof value === "string" && String(name).endsWith("/ui/" + file)) {
       assert.ok(value.includes(from), "변형 대상 없음: " + file);
       let changed = value.replaceAll(from, to);
-      if (process.env.F2_MUTATION === "early_host") changed = changed.replace('if (!cheap(wire)) return false;', '').replace('          if (event === "snap" &&', '          if (!cheap(wire)) return false;\n          if (event === "snap" &&');
+      if (process.env.F2_MUTATION === "early_host") changed = changed.replace('if (!cheap(wire)) return false;', '').replace('        if (event === "snap" &&', '        if (!cheap(wire)) return false;\n        if (event === "snap" &&');
       return changed;
     }
     return value;
@@ -483,6 +491,12 @@ async function uiProtocol() {
   ui.get().snap = originalSnap; ui.get().stateRequests = {}; uiNow = null;
   ui.send("price", { price: 0.4 }); await ui.get().sending;
   const timeoutBody = N.requestBody(conn.sent.at(-1).payload), pending = ui.get().pendingRequests.get(timeoutBody.id);
+  // Q8 연결 안내 문턱 둘(D-77): 진행자 메시지(ack 포함) 10초, 받아들인 공개 상태 20초.
+  const warnAt = (host, snapAgo) => { const L = ui.get(); L.hostWarning = false; L.lastHostAt = Date.now() - host; L.lastSnapAt = Date.now() - snapAgo; tick(); return L.hostWarning; };
+  ok(!warnAt(5000, 15000), "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음");
+  ok(warnAt(5000, 21000), "Q8 공개 상태 20초 없음 안내(형식이 안 맞는 snap만 오는 판본 혼재)");
+  ok(warnAt(11000, 1000), "Q8 진행자 메시지 10초 없음 안내");
+  await ui.get().sending; ui.get().lastSnapAt = Date.now(); ui.get().stateRequests = {};
   ui.get().lastHostAt = Date.now() - 11000; ui.get().hostWarning = true; pending.sentAt = Date.now() - 6000;
   ui.get().rev = ui.get().snap.teams[team].rev + 1;
   for (let i = 0; i < 20; i++) await conn.emit("snap", { ...await hostWire("snap", fake), sig: "invalid" });
@@ -949,9 +963,51 @@ async function floor3Network() {
     const crowded = N.hostReceiver({ room: S.room }, () => { hostCalls++; });
     // 서명 불일치 봉투는 hostN을 올리지 않는다. 따라서 큐 상한 자체를 측정한다.
     const start = expensive;
-    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("snap", { ...wire, n: wire.n + i + 1 })));
+    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("ack", { ...wire, event: "ack", n: wire.n + i + 1 })));
     ok(expensive - start <= 32 && hostCalls === 0, "F3-5 팀 검증 대기열 상한 16");
+    // snap은 상한을 세지 않는 대신 최신 하나와 예비 하나만 남긴다. 서명이 안 맞는 snap 60개도 검증은 두 번뿐이다.
+    const snapStart = expensive;
+    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("snap", { ...wire, n: wire.n + i + 1 })));
+    ok(expensive - snapStart <= 4 && hostCalls === 0, "Q8 밀린 옛 snap은 검증 없이 건너뜀(서명 불일치 60개 → 최신·예비 검증 2회)");
   } finally { subtle.verify = originalVerify; subtle.digest = originalDigest; }
+  {
+    // Q8: 진짜 서명 snap이 밀려 와도 마지막 것만 반영하고, ack는 건너뛰지 않으며 순서도 지킨다.
+    const signed = (event, data) => N.signHost(host, event, S.room, S.sid, data);
+    const s1 = await signed("snap", { ...view, probe: 1 }), a1 = await signed("ack", { id: "a1" });
+    const s2 = await signed("snap", { ...view, probe: 2 }), a2 = await signed("ack", { id: "a2" });
+    const s3 = await signed("snap", { ...view, probe: 3 });
+    const seen = [], t = { room: S.room }, r = N.hostReceiver(t, (event, data) => { seen.push(event === "snap" ? "snap" + data.body.probe : data.id); });
+    await Promise.all([r("snap", s1), r("ack", a1), r("snap", s2), r("ack", a2), r("snap", s3)]);
+    ok(seen.join() === "a1,a2,snap3", "Q8 밀린 snap은 최신만 반영, ack는 모두 순서대로: " + seen.join());
+    ok(t.hostN === s3.n && !await r("snap", s1) && !await r("snap", s2), "Q8 건너뛴 옛 snap은 최신 반영 뒤 순번 재사용으로 거절");
+    // 도착 순서가 뒤바뀌어도(또는 옛 snap 재방송) 기다리던 더 새 snap이 남는다.
+    const seenO = [], tO = { room: S.room }, rO = N.hostReceiver(tO, (_, data) => { seenO.push(data.body.probe); });
+    await Promise.all([rO("snap", s1), rO("snap", s3), rO("snap", s2)]);
+    ok(seenO.join() === "3" && tO.hostN === s3.n, "Q8 늦게 온 옛 순번 snap은 기다리던 새 snap을 밀어내지 못함: " + seenO.join());
+    // 최신 snap이 위조면 바로 앞에서 밀려난 정상 snap 하나를 대신 검증한다.
+    const forged = structuredClone(s2); forged.n = s3.n + 10; forged.data.body.phase = "end";
+    const seen2 = [], r2 = N.hostReceiver({ room: S.room }, (_, data) => { seen2.push(data.body.probe); });
+    await Promise.all([r2("snap", s1), r2("snap", forged)]);
+    ok(seen2.join() === "1", "Q8 최신 snap이 위조면 밀려난 정상 snap을 대신 반영: " + seen2.join());
+    // 순번만 큰 위조가 기다리는 자리를 차지해도, 그 뒤 들어오지 못한 정상 snap 가운데 가장 새것이 예비로 남는다.
+    const huge = structuredClone(s2); huge.n = Number.MAX_SAFE_INTEGER; huge.data.body.phase = "end";
+    const seenC = [], tC = { room: S.room }, rC = N.hostReceiver(tC, (_, data) => { seenC.push(data.body.probe); });
+    await Promise.all([rC("snap", s1), rC("snap", huge), rC("snap", s2), rC("snap", s3)]);
+    ok(seenC.join() === "3" && tC.hostN === s3.n, "Q8 순번만 큰 위조 snap 뒤의 정상 snap도 예비로 남음: " + seenC.join());
+    // 건너뜀은 '처리하지 않음'이다: 뒤의 snap이 모두 위조로 거절되면 순번은 오르지 않고, 건너뛴 snap은 아직 받을 수 있다.
+    const forged2 = structuredClone(forged); forged2.n = forged.n + 1;
+    const seen3n = [], t3 = { room: S.room }, r3n = N.hostReceiver(t3, (_, data) => { seen3n.push(data.body.probe); });
+    await Promise.all([r3n("snap", s1), r3n("snap", forged), r3n("snap", forged2)]);
+    ok(seen3n.length === 0 && t3.hostN === undefined, "Q8 건너뛴 snap은 순번을 올리지 않음");
+    ok(await r3n("snap", s1) && seen3n.join() === "1", "Q8 처리하지 않은 snap은 나중에 정상 반영 가능");
+    // 대기열이 ack로 가득 차도 최신 snap은 버리지 않는다.
+    const acks = [];
+    for (let i = 0; i < 20; i++) acks.push(await signed("ack", { id: "q" + i }));
+    const s4 = await signed("snap", { ...view, probe: 4 });
+    const seen3 = [], r3 = N.hostReceiver({ room: S.room }, (event, data) => { seen3.push(event === "snap" ? "snap" + data.body.probe : data.id); });
+    await Promise.all([...acks.map(a => r3("ack", a)), r3("snap", s4)]);
+    ok(seen3.filter(x => x.startsWith("q")).length === 16 && seen3.at(-1) === "snap4", "Q8 대기열이 차도 최신 snap은 남음(ack 16개 + snap)");
+  }
   for (const value of [Infinity, undefined, new String("plan"), NaN]) {
     const valid = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: value === undefined ? 1 : null });
     valid.data.body.probe = value;

@@ -514,7 +514,12 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#lg-build-help').click()
     wait_text(team, '#bd-help-dlg', '자료와 가정')
     checks.ok(team.locator('#bd-help-dlg').is_visible() and '자료와 가정' in team.locator('#bd-help-dlg').inner_text(), f'{label} U2 원래 자료·모형 도움말 경로 유지')
+    # <dialog>의 close 이벤트는 닫힌 뒤 따로 온다. 그 처리기가 초점을 도움말 버튼으로 되돌리므로,
+    # 기다리지 않으면 아래 Enter가 남은 돈 칩이 아니라 도움말 버튼에 갈 수 있다(2026-10-21 4회 중 3회 close 전 Enter).
+    team.evaluate("""() => { window.__helpClosed = false;
+      document.getElementById('bd-help-dlg').addEventListener('close', () => { window.__helpClosed = true; }, { once: true }); }""")
     team.locator('#bd-help-dlg').press('Escape')
+    wait_ui(team, "() => window.__helpClosed === true")
     team.locator('[data-cap="budget"]').focus(); team.locator('[data-cap="budget"]').press('Enter')
     # 2026-10-13: 390폭 24회 중 1회 Enter 직후에는 없고 300ms 뒤에 열렸다.
     checks.ok(wait_shown(team, '.lg-left'), f'{label} U5 HUD 남은 돈 키보드로 거래 서랍')
