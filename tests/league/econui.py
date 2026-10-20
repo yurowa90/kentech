@@ -262,6 +262,54 @@ def diagnostics(checks, events, label):
                   f"{label} {kind} 0" + (f": {events[kind][:2]}" if events[kind] else ""))
 
 
+def mission_status(checks, page, expected, label, selector='#lg-learning-mission', preview=False):
+    """대기·계획 미리보기·확정 판정을 구분하며 달성과 미달성을 혼동하지 않는다."""
+    text = page.locator(selector).inner_text()
+    marker = '(지금 계획 기준, 준비하면 확정)'
+    if selector == '#lg-previous-mission':
+        checks.ok(text == '지난달 학습 미션: ' + expected + (marker if preview else ''),
+                  label + f' 지난달 판정 문구·꼬리 완전 일치 [V3A-fix4] (실제: {text})')
+    checks.ok(text.endswith(marker) if preview else marker not in text,
+              label + ' 계획 미리보기 표지 구분 [V3A-fix3]')
+    if preview:
+        text = text.replace(marker, '')
+    text = text.split(':', 1)[-1].strip(' \n·:—-')
+    # 어긋남 설명이 같은 문단/다음 줄 어디에 있든 상태 자체는 미달성이어야 한다.
+    valid = text == expected or (expected == '미달성' and bool(re.fullmatch(
+        r'미달성\s*[·:—-]?\s*말과 실제 변경이 달라요', text)))
+    checks.ok(valid, f'{label} 학습 미션 = {expected} (실제: {text})')
+
+
+def learning_note(page, month):
+    return page.evaluate("""month => {
+      const l=KCP.league.state();
+      const d=l.role==='solo' ? JSON.parse(localStorage.getItem('kcp-league-solo-v1')).interview :
+        JSON.parse(localStorage.getItem(`kcp-league-data-v1:${l.room}:${l.team}`));
+      return d?.interview?.months?.[month] || {};
+    }""", month)
+
+
+def confirmed_plan(checks, page, month, changed, basis, label):
+    note = learning_note(page, month)
+    checks.ok(note.get('followingPlanChanged', 'missing') is changed,
+              label + f' followingPlanChanged = {changed} [V3A-fix3]')
+    checks.ok(note.get('followingPlanBasis') == basis,
+              label + f' 확정 시점 = {basis} [V3A-fix3]')
+    checks.ok('followingPlanConfirmedChanged' not in note,
+              label + ' 별도 확정 필드 없음 [V3A-fix3]')
+
+
+def pending_mission(checks, page, month, label, final=False, check_text=True):
+    note = learning_note(page, month)
+    checks.ok('followingPlanChanged' in note and note['followingPlanChanged'] is None,
+              label + ' 새 기록 followingPlanChanged:null [V3A A1]')
+    confirmed_plan(checks, page, month, None, None, label)
+    if final:
+        checks.ok(note.get('finalMonth') is True, label + ' 마지막 달 기록 finalMonth:true')
+    if check_text:
+        mission_status(checks, page, '마지막 달이라 판정 없음' if final else '다음 달 계획에서 확인해요', label)
+
+
 def automatic_plan():
     module = ast.parse(Path(__file__).with_name("calib.py").read_text())
     return next(ast.literal_eval(node.value) for node in module.body
@@ -683,7 +731,15 @@ def economic(checks, context, base, label, pages):
             if month == 2:
                 team.wait_for_function("() => document.querySelector('#lg-map-result')?.dataset.faded === 'true'")
                 checks.ok(team.locator('#lg-map-result').get_attribute('data-faded') == 'true', f'{label} U2 다음 달 계획에 지난 결과 흐리게 유지')
+                open_panel(team, 'journal')
+                mission_status(checks, team, '달성', label + ' 다음 달 유지·변경 없음',
+                               '#lg-previous-mission', preview=True)
+                checks.ok(learning_note(team, 1).get('followingPlanChanged', 'missing') is None,
+                          label + ' 유지·변경 없음 미리보기는 준비 전 미확정 [V3A-fix2]')
+                confirmed_plan(checks, team, 1, None, None, label + ' 계획 미리보기')
         advance(host, team, month, "review")
+        if month == 2:
+            confirmed_plan(checks, team, 1, False, 'result', label + ' 유지·변경 없음 운영 뒤')
         if month == 1:
             team.locator('#lg-result-heading').wait_for(state='visible', timeout=WAIT)
             checks.ok(wait_count(team, '#lg-result-deltas > div', 3) == 3 and
@@ -728,23 +784,24 @@ def economic(checks, context, base, label, pages):
             (/^lg-[rpf]-/.test(ask.dataset.question) ? 2 : 0));
         }"""))
         if month == 1:
-            checks.test(f"{label} 학습 미션은 비교 전 미달성", lambda:
-                        '달성' != team.locator('#lg-learning-mission').inner_text().split(':')[-1].strip())
+            pending_mission(checks, team, month, label + ' 비교 전')
             team.locator('[data-compared]').check()
+            for choice, reason in (
+                    ('keep', '실제 결과와 비교했고 다음 달에도 근거를 확인한다'),
+                    ('keep', '정전 결과를 확인하여 다음 달에도 유지한다'),
+                    ('revise', '정전 결과를 확인하여 다음 달에는 고친다')):
+                team.locator(f'#lg-panel [data-answer="{choice}"]').click()
+                team.locator('[data-note="askReason"]').fill(reason)
+                team.locator('[data-note="askReason"]').press('Tab')
+                pending_mission(checks, team, month, label + ' ' + choice + ' 응답 직후')
+            # 다음 달 실제 변경이 없는 경우와 대조할 유지 약속을 남긴다.
             team.locator('#lg-panel [data-answer="keep"]').click()
-            team.locator('[data-note="askReason"]').fill('실제 결과와 비교했고 다음 달에도 근거를 확인한다')
-            team.locator('[data-note="askReason"]').press('Tab')
-            # S8N-next.md:11 — 일반 이유만으로는 달성이 아니다. 실제 다음 달
-            # 계획 변경 분기는 s8n.py에서 설비 1기를 추가하여 별도로 검증한다.
-            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
-                      f"{label} 일반 유지 이유·다음 달 변경 없음은 미달성 [S8N:11]")
             team.locator('[data-note="askReason"]').fill('정전 결과를 확인하여 다음 달에도 유지한다')
             team.locator('[data-note="askReason"]').press('Tab')
-            checks.ok(wait_text(team, '#lg-learning-mission', re.compile(r'^학습 미션: 달성\s*$')).strip() == '학습 미션: 달성',
-                      f"{label} 결과 원인 단어를 인용한 유지 이유는 달성 [S8N:11]")
-            team.locator('#lg-panel [data-answer="revise"]').click()
-            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
-                      f"{label} 결과를 인용해도 수정 약속만 하고 실제 변경 전이면 미달성 [S8N:11]")
+        if month == 12:
+            # 이 달에는 근거·예측 약속이 없으므로 미션 UI를 기다리지 않는다.
+            # 마지막 달의 확정 제외는 기기 기록으로 검증한다.
+            pending_mission(checks, team, month, label + ' 마지막 달', final=True, check_text=False)
         # // ECON-UI v1.1: 결과로 자동 전환된 서랍에서 도시 탭을 직접 열어 검사한다.
         checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda:
                     (open_panel(team, "city"), disabled_policies(team))[1])
@@ -1264,8 +1321,9 @@ def main():
                             for page, _, role in pages:
                                 screenshot(checks, page, f"econui-{label}-{name}-{role}-failure.png")
                         finally:
-                            for _, events, role in pages:
+                            for page, events, role in pages:
                                 diagnostics(checks, events, f"{label} {name} {role}")
+                                overflow(checks, page, f"{label} {name} {role}")
                             checks.ok(not external, f"{label} {name} 외부 연결 시도 0: {external}")
                             context.close()
             browser.close()

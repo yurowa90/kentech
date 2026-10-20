@@ -472,6 +472,7 @@
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
+      // D-75: 판정은 진행자의 전체 상태에만 남기고 팀 기기에 공개하지 않는다.
       const left = KCP.buildGame ? preserveMap(KCP.buildGame, () => r2(budget(S, id) - spendOf(KCP.buildGame, S, regionOf(S.region), id, T.plan || {}))) : null;
       teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
@@ -510,10 +511,21 @@
     }
     if (T.token !== m.token) return err("seat");
     // 식별자가 없는 옛 클라이언트와 claim·hello는 기존 규약을 유지한다.
-    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price"].includes(m.type) &&
+    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price", "verdict"].includes(m.type) &&
         ((Object.hasOwn(m, "rd") && m.rd !== S.round) || (Object.hasOwn(m, "ph") && m.ph !== S.phase))) return err("stale");
     T.online = now;
     if (m.type === "hello") return { ok: true, quiet: true };
+    if (m.type === "verdict") {
+      // 봉투 필드 외에는 round·hit만 허용한다. 학생 글은 저장하거나 재방송하지 않는다.
+      const allowed = ["type", "team", "token", "kid", "n", "sid", "seat", "id", "born", "rd", "ph", "round", "hit"];
+      if (Object.keys(m).some(k => !allowed.includes(k)) || !Number.isInteger(m.round) || typeof m.hit !== "boolean") return err("verdict");
+      if (!["review", "end"].includes(S.phase)) return err("phase");
+      if (m.round !== S.round || m.round !== S.results.at(-1)?.round) return err("stale");
+      // 최초 판정 고정: 재접속·ack 유실의 같은 값 재전송은 성공, 뒤늦은 변경은 거부해 집계를 보존한다.
+      if (Object.hasOwn(T.verdicts || {}, m.round)) return T.verdicts[m.round] === m.hit ? { ok: true, quiet: true } : err("verdict");
+      T.verdicts ||= {}; T.verdicts[m.round] = m.hit; S.rev++;
+      return { ok: true };
+    }
     if (m.type === "ready") {
       const ready = m.ready === true;
       if (T.ready === ready) return { ok: true, quiet: true };
