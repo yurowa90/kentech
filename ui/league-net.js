@@ -370,28 +370,31 @@
     return base.replace(/^https/, "wss").replace(/\/$/, "") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(key) + "&vsn=1.0.0";
   }
 
-  function supabase(room, url, key, canSend = () => true) {
+  function supabase(room, url, key, canSend = () => true, ack = false) {
     const H = hub(), topic = "realtime:kcp-league-" + room, addr = publicKeyProblem(key) ? null : wsUrl(url, key);
-    let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
-    const queue = [], pending = new Map();
+    let ws = null, ref = 0, seq = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
+    const queue = [], pending = ack ? new Map() : null;
     // 미확인(ack 없음)은 크기 때문인지 일시 끊김 때문인지 가를 수 없다. 그래서 미확인 기록으로 보내기를 막지 않는다:
     // 교실 와이파이가 한 번 흔들려 100KB 상태의 ack가 늦으면 이후 100KB 넘는 상태를 영영 못 보내게 되기 때문이다.
     // 미확인 결과는 진행자 경고에만 쓴다.
     const cap = () => SEND_CAP;
     function reset() {
-      pending.forEach(p => clearTimeout(p.timer)); pending.clear();
+      pending?.forEach(p => clearTimeout(p.timer)); pending?.clear();
     }
     function settle(id, success, reason) {
-      const p = pending.get(id);
+      const p = pending?.get(id);
       if (!p) return;
       pending.delete(id); clearTimeout(p.timer);
-      H.fire(success ? "delivered" : "undelivered", { ev: p.ev, bytes: p.bytes, ...(reason ? { reason } : {}) });
+      H.fire(success ? "delivered" : "undelivered", { ev: p.ev, bytes: p.bytes, seq: p.seq, ...(reason ? { reason } : {}) });
     }
     function transmit(m) {
       const size = bytes(m).length, ev = m.payload.event;
       if (size > cap()) { H.fire("oversize", { ev, bytes: size }); return false; }
-      if (pending.size >= 64) settle(pending.keys().next().value, false, "pending-limit");
-      pending.set(m.ref, { ev, bytes: size, timer: setTimeout(() => settle(m.ref, false, "timeout"), ACK_WAIT) });
+      seq++; // 재연결 뒤에도 연결 객체 안의 전송 순서를 유지한다.
+      if (ack) {
+        if (pending.size >= 64) settle(pending.keys().next().value, false, "pending-limit");
+        pending.set(m.ref, { ev, bytes: size, seq, timer: setTimeout(() => settle(m.ref, false, "timeout"), ACK_WAIT) });
+      }
       raw(m);
       return true;
     }
@@ -423,7 +426,7 @@
       if (closed || !ws || ws.readyState !== 1) return;
       reset(); joined = false;
       joinRef = String(++ref);
-      const payload = { config: { broadcast: { self: false, ack: true }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
+      const payload = { config: { broadcast: { self: false, ack }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
       if (/^eyJ/.test(key)) payload.access_token = key; // 예전 anon 키(JWT)만. 새 publishable 키는 주소의 apikey로 충분하다.
       raw({ topic, event: "phx_join", payload, ref: joinRef, join_ref: joinRef });
     }
@@ -469,7 +472,7 @@
   }
 
   KCP.leagueNet = {
-    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend) : local(o.room); },
+    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend, o.ack) : local(o.room); },
     replyGate, compactSnapshot, expandSnapshot, canonical, sessionId, hostBinding, signHost, hostReceiver,
     publicKeyProblem, wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
   };

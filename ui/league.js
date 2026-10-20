@@ -1932,7 +1932,7 @@
       const ok = S && S.region === REGION && S.teams && actT(S).length >= 2 && actT(S).every(t => S.teams[t.id]);
       L = { role: "host", room: save.room, net: save.net, identity: save.identity, fingerprint: save.fingerprint, migration: save.migration, S: ok ? S : C.newState(save.room, REGION, Date.now()), timers: [], pending: 0 };
       L.S.sid = NET.sessionId(); // 실행마다 새 세션: 저장 실패 전 봉투도 다시 적용하지 않는다.
-      L.conn = NET.open(Object.assign({ room: save.room }, save.net));
+      L.conn = NET.open(Object.assign({ room: save.room }, save.net, { ack: true }));
       const session = L;
       const replyFor = NET.replyGate();
       const receive = NET.receiver(L.S, m => L === session ? C.reduce(session.S, m, Date.now(), BG) : { ok: false, err: "closed" });
@@ -1981,8 +1981,11 @@
     if (L?.role !== "host" || L.conn.kind !== "supabase" || L.channelWatching) return;
     const session = L;
     L.channelWatching = true;
+    // 전달 결과는 순서가 뒤섞여 올 수 있다. 더 새 상태의 결과만 경고를 켜고 끈다.
+    let lastSeq = 0;
     const watch = (event, missed) => L.conn.on(event, m => {
-      if (L !== session || m.ev !== "snap") return;
+      if (L !== session || m.ev !== "snap" || m.seq < lastSeq) return;
+      lastSeq = m.seq;
       L.channelMissed = missed ? m.bytes : 0; hostWarning();
     });
     watch("undelivered", true);
@@ -3355,6 +3358,7 @@
       close();
       L = { role: "team", room: save.room, net: save.net || { kind: "local" }, team: save.team || null, identity: save.identity || null, fingerprint: save.fingerprint, hostKey: save.hostKey, hostN: save.hostN || 0, sid: save.sid, seat: save.seat, migrationFrom: save.migrationFrom, lastHostAt: Date.now(), lastSnapAt: Date.now(), pendingRequests: new Map(), snap: null, timers: [], rev: 0, planT: 0, skew: 0, lastPhase: null, lastRound: 0 };
       L.conn = NET.open(Object.assign({ room: save.room }, L.net, {
+        ack: false, // 전달 확인은 진행자만 쓴다(D-77). 저장값 형식이 바뀌어도 팀은 켜지 않는다.
         canSend: (ev, m) => !L?.away || ev !== "req" || ["hello", "claim"].includes(NET.requestBody(m)?.type)
       }));
       const session = L;
