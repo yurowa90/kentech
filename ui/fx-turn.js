@@ -1,12 +1,45 @@
-/* 달 끝 연출: 엔진 자료 또는 기기 안 재계산을 재생한다. 저장·전송 없음(D-65). */
+/* 달 시작 예보·달 끝 연출: 엔진 자료 또는 기기 안 재계산을 재생한다. 저장·전송 없음(D-65). */
 (function () {
   "use strict";
   const KCP = window.KCP;
   if (!KCP) return;
   let status = { playing: false, skipped: false, ms: 0, replayed: false, cardsOpen: false,
-    source: null, fallback: null, recomputeMs: 0 };
+    source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
   let layer = null, toast = null, deck = null, timers = [], off = [], raf = 0, layoutRaf = 0, epoch = 0;
   let lastMonth = null, advanceSummary = null, syncCardSounds = null;
+  // 사건의 종류만 읽는다. 효과 크기·예보 범위로 농도나 입자 수를 바꾸지 않는다(D-65).
+  const EVENT_MOOD = Object.freeze({ heatwave_peak: "heat", evening_peak_tropical_night: "heat",
+    coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
+    spring_dust_haze: "haze", finedust_coal_cap: "haze" });
+  const moodOf = cards => cards.map(c => Object.hasOwn(EVENT_MOOD, c.id) ? EVENT_MOOD[c.id] : null).find(Boolean) || null;
+  const forecastMonths = new Set();
+  // 예보 카드를 이미 본 달: 새로고침 뒤에도 다시 띄우지 않으려고 이 탭의 sessionStorage에만 적는다(리그 상태·전송 아님, D-65).
+  const SEEN = "kcp-fx-forecast-v1:";
+  const seenForecast = key => { try { return sessionStorage.getItem(SEEN + key) === "1"; } catch (_) { return false; } };
+  const markForecast = key => { try { sessionStorage.setItem(SEEN + key, "1"); } catch (_) {} };
+  let moodRoot = null, forecastCards = new Map(), forecastMonth = null, activeMonth = null, activePhase = null;
+  // review → end는 W1과 같이 같은 결과 연출이다.
+  const phaseOf = phase => phase === "end" ? "review" : phase;
+  const moodNote = "지도 분위기는 사건 표시용(효과 크기와 무관)";
+  function setMood(mood, root) {
+    if (moodRoot !== root || status.mood !== mood) KCP.buildGame?.setMapMood?.(mood);
+    moodRoot = root; status.mood = mood;
+  }
+  // 재마운트·새로고침 때는 카드를 다시 열지 않고 지도 분위기만 복원한다.
+  // league.state에는 away가 없으므로 실제 지도 DOM으로 관전을 구별한다.
+  function syncMapMood(root) {
+    const session = KCP.league?.state?.(), V = session?.snap || session?.S, C = KCP.leagueCore;
+    if (!V || !C?.regionOf) return;
+    const own = root.isConnected && !root.hidden && root.classList.contains("lg-team-map") &&
+      !root.classList.contains("lg-peek") && !root.querySelector(".lg-awaybar");
+    const round = ["review", "end"].includes(V.phase) ? V.results?.at(-1)?.round : V.round;
+    if (layer && (!own || activeMonth !== monthKey({ round, team: session.team, view: V }) ||
+        activePhase !== phaseOf(V.phase))) clear();
+    const reg = C.regionOf(V.region);
+    const cards = own && ["plan", "run", "review", "end"].includes(V.phase) ? (V.events || [])
+      .filter(ev => ev.round === round && C.eventDef(reg, ev.id) && C.hits(reg, C.eventDef(reg, ev.id), session.team)) : [];
+    setMood(moodOf(cards), root);
+  }
   const reduced = () => KCP.v2?.reduced?.() ?? !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const threshold = dem => Math.max(0.005, 0.02 * dem);
   const sum = values => values.reduce((total, value) => total + value, 0);
@@ -74,24 +107,34 @@
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards() { deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = false; }
+  function closeCards() {
+    if (status.forecastOpen) { removeLayer(); return; }
+    deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
+  }
   function hideSummary() {
     toast?.remove(); toast = null; advanceSummary = null;
     if (raf) cancelAnimationFrame(raf); raf = 0;
   }
-  function clear() {
+  // 분위기와 재생은 유지하고, 예보를 닫은 뒤 빈 덧층과 관찰·리스너만 해제한다.
+  function removeLayer() {
     epoch++;
-    // onDone는 이전 달 연출을 다시 열지 못한다.
-    KCP.buildGame?.skipReplay?.();
     timers.forEach(clearTimeout); timers = [];
     off.forEach(fn => fn()); off = [];
     if (raf) cancelAnimationFrame(raf); raf = 0;
     if (layoutRaf) cancelAnimationFrame(layoutRaf); layoutRaf = 0;
     layer?.remove(); layer = toast = deck = null;
+    activeMonth = activePhase = null;
     syncCardSounds = null;
     advanceSummary = null;
+    status.cardsOpen = status.forecastOpen = false;
+  }
+  function clear() {
+    removeLayer();
+    // onDone는 이전 달 연출을 다시 열지 못한다.
+    KCP.buildGame?.skipReplay?.();
     const cut = status.playing;
-    status.playing = false; status.cardsOpen = false;
+    status.playing = false; status.cardsOpen = status.forecastOpen = false;
+    setMood(null, null);
     if (cut) emitReplay("end", replayOpts, true);
   }
   // 재생 시작·끝을 알린다(UX 갈래가 좁은 화면에서 재생 동안 결과 서랍을 접는 데 쓴다).
@@ -101,7 +144,7 @@
     KCP.emit?.("fx:replay", { state, round: o?.round ?? null, team: o?.team ?? null, ms: status.ms,
       source: status.source, skipped: status.skipped, cancelled });
   }
-  function clearForMap(root) { if (layer && root.contains(layer)) clear(); }
+  function clearForMap(root) { if ((layer && root.contains(layer)) || moodRoot === root) clear(); }
   function schedulePlace(root) {
     if (layoutRaf) return;
     const token = epoch;
@@ -132,7 +175,7 @@
       const el = root.querySelector(sel);
       if (el && !el.hidden && el.getClientRects().length) box.bottom = Math.min(box.bottom, el.getBoundingClientRect().top - 8);
     }
-    for (const sel of ["#lg-panel", "#bd-drawer"]) {
+    for (const sel of [".lg-map-guidance", "#lg-plan-issues", "#lg-issue", "#lg-issue-check", "#lg-coach", "#lg-panel", "#bd-drawer"]) {
       const panel = root.querySelector(sel);
       if (!panel || panel.hidden || !panel.getClientRects().length) continue;
       const p = panel.getBoundingClientRect();
@@ -142,6 +185,21 @@
         const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
         box = spaces.sort((a, b) => area(b) - area(a))[0];
       }
+    }
+    // 좁은 화면에서 결과 서랍 등이 지도를 거의 다 덮으면 남은 틈(예: 390px에서 오른쪽 44px)에 카드가 끼어
+    // 누를 수 없게 된다. 카드가 떠 있을 때 남은 틈이 카드 한 장보다 작으면 위쪽 막대와 도구 막대 사이 전체를
+    // 쓰고 서랍 위에 띄운다(data-over). 카드는 닫기·Esc로 바로 걷을 수 있다.
+    const fits = b => b.right - b.left >= 280 && b.bottom - b.top >= 240;
+    layer.dataset.over = "false";
+    if (deck && !fits(box)) {
+      const over = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8), top: Math.max(8, stage.top + 8), bottom: 0 };
+      for (const sel of ["#bd-hud", ".lg-bar", "#bd-mapbar"]) {
+        const el = root.querySelector(sel);
+        if (el && el.getClientRects().length) over.top = Math.max(over.top, el.getBoundingClientRect().bottom + 8);
+      }
+      const dock = root.querySelector("#bd-dock");
+      over.bottom = Math.min(window.innerHeight - 8, stage.bottom - 8, dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top - 8 : Infinity);
+      if (fits(over)) { box = over; layer.dataset.over = "true"; }
     }
     const run = root.querySelector("#bd-run");
     if (root.classList.contains("bd-replaying") && run && !run.hidden) {
@@ -156,45 +214,127 @@
     layer.dataset.compact = String(width < 600);
     syncCardSounds?.();
   }
-  function showCards(cards, sound, root) {
+  function showCards(cards, sound, root, forecast = false, summary = null) {
     if (!cards.length || !layer?.isConnected || !root.isConnected) return;
     hideSummary();
     deck = node("section", "fx-turn-cards");
     deck.setAttribute("aria-label", "이번 달 사건 카드");
+    if (summary != null) {
+      const live = node("span", "bd-sr");
+      live.setAttribute("aria-live", "polite"); live.setAttribute("aria-atomic", "true");
+      deck.append(live);
+      later(0, () => { if (live.isConnected) live.textContent = summary; });
+    }
     const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
     close.addEventListener("click", closeCards); deck.append(close);
     const row = node("div", "fx-turn-card-row"); deck.append(row);
-    const sounded = new WeakSet();
+    const sounded = new WeakSet(), ready = new WeakSet();
+    const visible = article => !((layer?.dataset.compact === "true" || layer?.dataset.paged === "true") && article.dataset.active !== "true");
     const cardSound = article => {
-      if (sounded.has(article) || !article.classList.contains("fx-revealed") ||
-          (layer?.dataset.compact === "true" && article.dataset.active !== "true")) return;
+      if (sounded.has(article) || !article.classList.contains("fx-revealed") || !visible(article)) return;
       sounded.add(article); sound?.("card");
     };
-    const articles = cards.slice(0, 3).map((card, i) => {
+    const revealCard = article => {
+      if (!ready.has(article) || !visible(article)) return;
+      if (!article.classList.contains("fx-revealed")) article.classList.add("fx-revealed");
+      cardSound(article);
+    };
+    const articles = cards.map((card, i) => {
       const article = node("article", "fx-turn-card");
+      article.dataset.forecast = String(forecast);
+      article.dataset.still = String(reduced());
       article.dataset.active = String(i === 0);
-      article.append(node("span", "fx-turn-tag", card.tag), node("h3", "", card.title),
-        node("p", "", card.body), node("strong", "fx-turn-big", card.big));
+      const face = (data, cls) => {
+        const el = node("div", `fx-turn-face ${cls}`);
+        el.append(node("span", "fx-turn-tag", data.tag), node("h3", "", data.title),
+          node("p", "", data.body), node("strong", "fx-turn-big", data.big));
+        return el;
+      };
+      if (!forecast && card.forecast) {
+        article.classList.add("fx-turn-flip");
+        const rotor = node("div", "fx-turn-rotor");
+        const front = face(card.forecast, "fx-turn-front"), back = face(card, "fx-turn-back");
+        front.hidden = reduced(); back.hidden = false;
+        front.setAttribute("aria-hidden", "true");
+        // 확정 면을 DOM 앞에 둔다: 화면 낭독·문서 순서로는 확정 내용이 먼저 읽히고, 뒤집힌 예보 면은 aria-hidden.
+        rotor.append(back, front); article.append(rotor);
+      } else article.append(face(card, ""));
+      if (Object.hasOwn(EVENT_MOOD, card.id) && EVENT_MOOD[card.id] === status.mood)
+        article.append(node("small", "fx-turn-mood-note", moodNote));
       const nav = node("div", "fx-turn-card-nav");
       const prev = node("button", "", "이전"), next = node("button", "", "다음");
-      prev.type = next.type = "button"; prev.disabled = i === 0; next.disabled = i === Math.min(cards.length, 3) - 1;
-      const select = n => articles.forEach((a, k) => { a.dataset.active = String(k === n); if (k === n) cardSound(a); });
+      prev.type = next.type = "button"; prev.disabled = i === 0; next.disabled = i === cards.length - 1;
+      const select = n => articles.forEach((a, k) => { a.dataset.active = String(k === n); if (k === n) revealCard(a); });
       prev.addEventListener("click", () => select(i - 1)); next.addEventListener("click", () => select(i + 1));
-      nav.append(prev, node("span", "", `${i + 1} / ${Math.min(cards.length, 3)}`), next);
+      nav.append(prev, node("span", "", `${i + 1} / ${cards.length}`), next);
+      if (forecast) article.addEventListener("click", e => { if (!nav.contains(e.target)) closeCards(); });
       article.append(nav); row.append(article); return article;
     });
-    layer.append(deck); status.cardsOpen = true;
-    syncCardSounds = () => articles.forEach(cardSound);
-    articles.forEach((article, i) => later(reduced() ? 0 : 80 + i * 260, () => {
-      if (!deck) return;
-      article.classList.add("fx-revealed");
-      cardSound(article);
-    }));
-    later(10000, closeCards);
+    layer.append(deck); status.cardsOpen = true; status.forecastOpen = forecast;
+    layer.dataset.paged = String(cards.length > 3);
+    syncCardSounds = () => articles.forEach(revealCard);
+    // 삽입으로 바뀐 영역을 같은 틱에 확정한 뒤 카드를 공개한다.
+    place(root);
+    articles.forEach((article, i) => {
+      const reveal = () => {
+        if (!deck) return;
+        ready.add(article); revealCard(article);
+      };
+      if (reduced()) reveal(); else later(80 + i * 260, reveal);
+    });
+    // 자동 닫힘: 카드를 넘기거나 누르는 동안에는 다시 센다. 좁은 화면에서 서랍 접힘·펼침(UX U10, 최대 6초)과
+    // 겹쳐 읽는 도중에 닫히는 일을 막는다. 덧층이 걷히면(clear) 타이머도 함께 무시된다(epoch).
+    const wait = forecast ? 8000 : 10000, owner = deck;
+    let closeAt = 0;
+    const arm = () => {
+      const at = closeAt = performance.now() + wait;
+      later(wait, () => { if (deck === owner && closeAt === at) closeCards(); });
+    };
+    deck.addEventListener("pointerdown", arm);
+    deck.addEventListener("keydown", arm);
+    arm();
+  }
+  const monthKey = opts => {
+    const session = KCP.league?.state?.(), V = opts.view || session?.snap || session?.S;
+    return JSON.stringify([opts.round, opts.team, V?.room ?? session?.room ?? null]);
+  };
+  function mountLayer(root, key, phase) {
+    activeMonth = key; activePhase = phaseOf(phase);
+    layer = node("div", "fx-turn-layer"); root.querySelector(".bd-stage").append(layer); place(root);
+    listen(window, "resize", () => schedulePlace(root));
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => schedulePlace(root));
+      // place가 크기를 쓰는 #bd-run과 덧층은 관찰하지 않는다.
+      [root, ...root.querySelectorAll("#lg-panel, #bd-drawer, .lg-bar, #bd-hud, #bd-mapbar, #bd-dock, .lg-map-guidance, #lg-issue-check")].forEach(el => ro.observe(el));
+      off.push(() => ro.disconnect());
+    }
+    if (window.MutationObserver) {
+      const mo = new MutationObserver(() => schedulePlace(root));
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+      // 새 문제 칩·서랍과 접힘·펼침도 다시 배치한다. style 쓰기는 관찰하지 않는다.
+      mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class", "data-folded"] });
+      off.push(() => mo.disconnect());
+    }
+  }
+  function monthStart(opts) {
+    const root = document.querySelector(".lg-team-map"), session = KCP.league?.state?.();
+    if (!root || root.hidden || root.classList.contains("lg-peek") || root.querySelector(".lg-awaybar")) return false;
+    const cards = opts.cards || [], key = monthKey(opts);
+    setMood(moodOf(cards), root);
+    if (forecastMonths.has(key) || seenForecast(key)) return false;
+    clear(); setMood(moodOf(cards), root);
+    if (!cards.length) return false;
+    forecastMonths.add(key); markForecast(key); forecastMonth = key;
+    forecastCards = new Map(cards.map(card => [card.id, { ...card }]));
+    mountLayer(root, key, opts.view?.phase || session?.snap?.phase || session?.S?.phase || "plan");
+    showCards(cards, opts.sound, root, true);
+    // 어느 클릭도 막지 않고 카드만 닫는다. 이전·다음은 카드 안에서 처리한다.
+    listen(document, "click", e => { if (!deck?.contains(e.target)) closeCards(); }, true);
+    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(); }, true);
+    return true;
   }
   function showSummary(opts, root) {
     if (!layer?.isConnected || !root.isConnected) return;
-    place(root);
     toast = node("div", "fx-turn-summary");
     const visual = node("div", "fx-turn-summary-values"); visual.setAttribute("aria-hidden", "true");
     visual.append(node("span", "fx-turn-tag", `${opts.monthLabel} 운영`));
@@ -205,6 +345,7 @@
     });
     const live = node("span", "bd-sr"); live.setAttribute("aria-live", "polite"); live.setAttribute("aria-atomic", "true");
     toast.append(visual, live); layer.append(toast);
+    place(root);
     for (const { el, direction } of opts.hud || []) {
       if (!el || !["up", "down"].includes(direction)) continue;
       const cls = `fx-flash-${direction}`; el.classList.add(cls);
@@ -219,7 +360,7 @@
     const final = () => {
       if (token !== epoch) return;
       fields.forEach(({ item, value }) => { value.textContent = item.format(item.value); });
-      live.textContent = `${opts.monthLabel} 운영: ${(opts.summary || []).map(s => `${s.label} ${s.format(s.value)}${s.unit}`).join(" · ")}`;
+      if (!reduced() || !opts.cards?.length) live.textContent = summaryText(opts);
     };
     if (reduced()) final();
     else {
@@ -236,11 +377,15 @@
     advanceSummary = () => {
       if (token !== epoch || !toast) return;
       hideSummary();
-      if (opts.cards?.length && currentMonth()) showCards(opts.cards, opts.sound, root);
+      if (opts.cards?.length && currentMonth()) showCards(opts.cards, opts.sound, root, false, reduced() ? summaryText(opts) : null);
     };
-    later(6000, () => advanceSummary?.());
+    if (reduced() && opts.cards?.length) advanceSummary();
+    else later(6000, () => advanceSummary?.());
   }
+  const summaryText = opts => `${opts.monthLabel} 운영: ${(opts.summary || []).map(s => `${s.label} ${s.format(s.value)}${s.unit}`).join(" · ")}`;
   function monthEnd(opts) {
+    opts = { ...opts, cards: (opts.cards || []).map(card => ({ ...card,
+      forecast: forecastMonth === monthKey(opts) && forecastCards.get(card.id) || card.forecast })) };
     const session = KCP.league?.state?.();
     const room = opts.view?.room ?? session?.room ?? null;
     const salt = opts.view?.salt ?? (session?.S ? session.S.salt ?? 0 : null);
@@ -251,23 +396,12 @@
     clear();
     const token = epoch, root = document.querySelector(".lg-team-map");
     status = { playing: false, skipped: false, ms: reduced() ? 0 : opts.round === 1 ? 4000 : 2000,
-      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0 };
+      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
     if (!root) return false;
     lastMonth = { round: opts.round, room, salt, sid, team: opts.team };
-    layer = node("div", "fx-turn-layer"); root.querySelector(".bd-stage").append(layer); place(root);
-    listen(window, "resize", () => schedulePlace(root));
-    if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => schedulePlace(root));
-      // place가 크기를 쓰는 #bd-run과 덧층은 관찰하지 않는다. 쓰기는 다음 프레임에 모은다.
-      [root, ...root.querySelectorAll("#lg-panel, #bd-drawer, .lg-bar, #bd-hud, #bd-mapbar, #bd-dock")].forEach(el => ro.observe(el));
-      off.push(() => ro.disconnect());
-    }
-    if (window.MutationObserver) {
-      const mo = new MutationObserver(() => schedulePlace(root));
-      [document.documentElement, root, ...root.querySelectorAll("#lg-panel, #bd-drawer, #bd-run")]
-        .forEach(el => mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] }));
-      off.push(() => mo.disconnect());
-    }
+    setMood(moodOf(opts.cards.filter(card => card.id)), root);
+    syncMapMood(root);
+    mountLayer(root, monthKey(opts), opts.view?.phase || session?.snap?.phase || session?.S?.phase || "review");
     let pointerSkipped = false, pending = false, deferred = false;
     const skip = () => {
       if (pending) { pending = false; status.skipped = true; status.ms = 0; done(); }
@@ -303,7 +437,7 @@
       status.playing = true; status.replayed = true;
       const started = KCP.buildGame?.replayMonth(replay.res, { ms: status.ms, label: `${opts.monthLabel} 실제 운영 · 재생`,
         del: replay.del, r: replay.r, outHour: replay.outHour, onDone: done,
-        note: replay.source === "device" ? "이 기기에서 다시 계산한 재생 · 합계는 실제 결과와 같음" : "",
+        note: [replay.source === "device" ? "이 기기에서 다시 계산한 재생 · 합계는 실제 결과와 같음" : "", status.mood ? moodNote : ""].filter(Boolean).join(" · "),
         onDay: () => { if (token === epoch) opts.sound?.("tick"); }, onOutage: () => { if (token === epoch) opts.sound?.("outage"); } });
       if (started) { place(root); replayOpts = opts; emitReplay("start", opts); return true; }
       status.playing = false; status.replayed = false;
@@ -335,5 +469,5 @@
     return false;
   }
   KCP.on?.("route:change", clear);
-  KCP.fxTurn = { monthEnd, recomputeReplay, clearForMap, state: () => ({ ...status }) };
+  KCP.fxTurn = { monthStart, monthEnd, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
 })();

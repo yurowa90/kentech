@@ -473,8 +473,18 @@ def t_D12_recommended_time(c: Ctx):
     _view(c, "D12")
     c.expect(c.page.locator("#pv-time").is_visible(), "D12 권장 시간이 있는 질문은 시간 안내를 보인다")
     c.eq(c.page.locator("#pv-time").inner_text(), "권장 답변 시간: 약 2~4분", "D12 질문 객체의 권장 시간을 표시한다")
-    c.page.locator('[data-pv-go="3"]').click()
-    _hidden(c, "#pv-time", "D12")
+    # D-76(2024 공통 4 시간)으로 2024 질문은 모두 권장 시간을 갖게 됐다. 시간이 없는 질문은 질문 객체에서 찾아 확인한다.
+    for year in ("2024", "2025", "2023", "2022", "2026"):
+        if year != "2024":
+            _room(c, year, "D12")
+            _view(c, "D12")
+        qs = _questions(c, year)
+        blank = [i for i, question in enumerate(qs) if not question.get("time")]
+        if blank:
+            c.page.locator(f'[data-pv-go="{blank[0]}"]').click()
+            _hidden(c, "#pv-time", "D12")
+            break
+    c.expect(bool(blank), "D12 권장 시간이 없는 질문이 적어도 하나 있다")
     c.check("D12 권장 시간 없는 질문")
 
 

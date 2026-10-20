@@ -1960,7 +1960,7 @@
         if (r.ok && !r.quiet) changed();
         else if (r.ok && m.type === "claim") pushSnap();
       });
-      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } });
+      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L === session && !L.channelWatching) hostChannelWatch(); });
       L.timers.push(setInterval(() => { pushSnap(); renderHost(); }, 4000));
       L.timers.push(setInterval(tickTimer, 1000));
       flushHost();
@@ -1978,9 +1978,26 @@
     L.saveWarning = !store.set(K_HOST, { room: L.room, net: L.net, identity: L.identity, fingerprint: L.fingerprint, migration: L.migration, state: L.S });
     hostWarning();
   }
+  function hostChannelWatch() {
+    if (L?.role !== "host" || L.conn.kind !== "supabase" || L.channelWatching) return;
+    const session = L;
+    L.channelWatching = true;
+    const watch = (event, missed) => L.conn.on(event, m => {
+      if (L !== session || m.ev !== "snap") return;
+      L.channelMissed = missed ? m.bytes : 0; hostWarning();
+    });
+    watch("undelivered", true);
+    // 다음 상태의 서버 수신 확인까지 경고를 유지한다. 단순 send 성공은 확인이 아니다.
+    watch("delivered", false);
+    hostWarning();
+  }
   function hostWarning() {
     const el = document.getElementById("lg-host-warning");
-    if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인해요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || ""].filter(Boolean).join(" ");
+    let channel = "";
+    if (L?.role === "host" && L.conn?.kind === "supabase" && L.channelMissed)
+      // ack는 Supabase 서버가 받아 중계했다는 확인일 뿐 팀 기기별 도착 확인이 아니다(D-77). 사실 범위만 말한다.
+      channel = `방금 상태(${Math.round(L.channelMissed / 1000)}KB)의 전달 확인을 서버에서 받지 못했어요. 팀 화면이 멈췄으면 연결을 확인해요.`;
+    if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인해요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || "", channel].filter(Boolean).join(" ");
   }
   function hostSend(event, data) {
     const session = L, copy = structuredClone(data);
@@ -3367,13 +3384,15 @@
         // '연결됨'은 받아들인 공개 상태가 있을 때만: 형식이 맞지 않아 버린 상태로는 연결 확인 안내를 끄지 않는다(D-77).
         const seq = session.snapSeq;
         if (event === "snap") onSnap(data);
-        else await response(event, data);
+        // 이른 claim 거절은 첫 snap 뒤 정상 claim의 자리 해제·30초 지연을 일으키지 않는다.
+        else if (!(event === "nack" && data?.type === "claim" && data.n === session.earlyClaimN)) await response(event, data);
         const status = document.getElementById("lg-conn");
         if (event === "snap" && session.snapSeq !== seq) { session.hostWarning = false; if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); } }
         if (L === session) teamSave();
       }, event => { if (L === session && event === "snap") connectionWarning(); });
       for (const event of ["snap", "nack", "ack"]) L.conn.on(event, wire => receiveHost(event, wire));
-      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team && !L.claimAccepted) send("claim"); });
+      // 소켓이 다시 열려도 받아들인 공개 상태가 오기 전에는 연결 확인 안내를 '연결됨'으로 덮지 않는다(D-77 판본 혼재).
+      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el && !(s === "open" && L.hostWarning)) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team && !L.claimAccepted) send("claim"); });
       // 교실 와이파이에서 요청 하나가 사라져도 5초 안에 복구한다: 계획·정책·기준·준비를 진행자에 반영될 때까지 다시 보낸다.
       // 진행자는 같은 값을 조용히 넘기므로(reduce의 quiet) 중복 전송은 해가 없다. 준비는 토글이 아니라 원하는 값을 보낸다.
       L.timers.push(setInterval(() => {
@@ -3405,7 +3424,7 @@
     if (!L.team) seatPicker(app);
     else if (L.claimAccepted && L.snap?.teams[L.team]) mountCity(app);
     else {
-      app.innerHTML = `<main class="lg-lobby" id="lg-team-wait"><a class="lg-back" href="#league">← 로비</a><h1>${esc(teamName(L.team))} 팀</h1><p role="status">진행자에게 첫 도시 상태를 받는 중이에요.</p></main>`;
+      app.innerHTML = `<main class="lg-lobby" id="lg-team-wait"><a class="lg-back" href="#league">← 로비</a><h1>${esc(teamName(L.team))} 팀</h1><p role="status" id="lg-wait">진행자에게 첫 도시 상태를 받는 중이에요.</p></main>`;
       send("hello"); send("claim");
     }
   }
@@ -3423,13 +3442,15 @@
       L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}, stamp));
       return;
     }
-    if (!L.snap?.sid || !L.team) return;
+    const earlyClaim = !L.snap && type === "claim" && !L.earlyClaimSent && L.hostKey && L.sid && tab.get()?.room === L.room;
+    if ((!L.snap?.sid && !earlyClaim) || !L.team) return;
     if (type === "claim" && Date.now() < (L.claimAfter || 0)) return;
+    if (earlyClaim) L.earlyClaimSent = true;
     const session = L, team = L.team;
     const oneShot = ["tie", "respond", "price", "research", "license", "joint", "verdict"].includes(type);
     if (oneShot && !retry && L.pendingRequests.size >= 32) { BG.toast("응답을 기다리는 요청이 많아요. 잠시 뒤 다시 요청해요."); return; }
     const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
-    const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
+    const request = { ...extra, ...(pending?.stamp || stamp), type, sid: earlyClaim ? L.sid : L.snap.sid, seat: (earlyClaim ? L.seat : L.snap.teams[team]?.seatVersion) || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
     if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); rememberVerdictRequest(pending); }
     // 대기열에 넣을 때 최신 요청을 표시해 이전 ack가 새 편집을 지우지 못하게 한다.
     const stateRequest = ["hello", "plan", "econ", "crit", "ready"].includes(type)
@@ -3448,7 +3469,9 @@
       if (!teamSave()) throw new Error("seat-save");
       if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; rememberVerdictRequest(pending); }
       if (stateRequest) { stateRequest.n = NET.requestBody(envelope).n; stateRequest.sentAt = Date.now(); }
-      if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = Date.now() + 5000; }
+      // 첫 snap의 정상 claim은 이른 claim의 5초 재시도 대기에도 막히지 않아야 한다.
+      if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = earlyClaim ? 0 : Date.now() + 5000; }
+      if (earlyClaim) session.earlyClaimN = session.claimN;
       session.conn.send("req", envelope);
     }).catch(() => {
       if (L === session) BG.toast("안전한 연결을 만들지 못했어요. 다시 접속해 줘요.");
@@ -3562,7 +3585,7 @@
           if (oldS7 && !store.get(s7Key())) store.set(s7Key(), oldS7);
           s7data(); // 옛 방 자료에 들어 있던 분리 전 사본도 정리한다.
         }
-        if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap);
+        if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap, true);
       }
       return;
     }
@@ -3605,10 +3628,11 @@
     const text = typeof why === "string" ? why : why?.text || g?.approvalChangeCause?.text || "";
     return text.replace(/([+−-]?\d+(?:\.\d+)?)%p/g, (_, value) => `${signed(Number(value.replace("−", "-")), 1)}%p`);
   }
-  function onSnap(V) {
+  function onSnap(V, replay) {
     V = NET.expandSnapshot(V);
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
-    L.lastSnapAt = Date.now(); L.snapSeq = (L.snapSeq || 0) + 1;
+    // 이미 받은 상태를 다시 그리는 호출(replay)은 새 진행자 상태가 아니므로 연결 판정 시각을 바꾸지 않는다.
+    if (!replay) { L.lastSnapAt = Date.now(); L.snapSeq = (L.snapSeq || 0) + 1; }
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();
@@ -3699,6 +3723,20 @@
     L.rev = me.rev;
     mountCity(L.app);
   }
+  // 연출 훅: 계획 단계에 들어오면(달이 바뀔 때·처음 도시에 들어올 때) 내 도시 사건 예보 카드를 띄운다.
+  // 문장은 결과 서랍과 같은 evSize를 쓴다. 같은 달 재표시는 fx-turn이 막는다.
+  function forecastStart(V) {
+    if (!L || L.away || !V || V.phase !== "plan") return;
+    const cards = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(({ E }) => E && C.hits(R(), E, L.team)).map(({ ev, E }) => ({ id: ev.id, tag: "사건 예보", title: E.name, body: turnText(E.text, V), big: evSize(E, { id: ev.id, round: V.round }, V.teams[L.team]?.fcx?.[ev.id]) }));
+    if (!cards.length) return;
+    // 계획 단계의 코치 띠·문제 칩이 같은 틱에 그려지므로 두 프레임 뒤(배치가 자리 잡은 뒤)에 띄운다.
+    // 그래야 움직임 줄이기에서도 카드가 처음부터 최종 위치에 나타난다.
+    const round = V.round, team = L.team;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!L || L.away || L.team !== team || L.snap?.round !== round || L.snap?.phase !== "plan") return;
+      KCP.fxTurn?.monthStart({ round, team, view: L.snap, cards, sound: kind => signal(kind) });
+    }));
+  }
   function phaseChanged(V) {
     if (matchMedia("(max-width: 760px)").matches) BG.closeDrawer?.();
     const live = document.getElementById("lg-live");
@@ -3731,8 +3769,9 @@
         ...events.map(ev => {
           const E = C.eventDef(R(), ev.id);
           if (!E) return null;
-          const nx = C.hits(R(), E, L.team) ? V.teams[L.team]?.fcx?.[ev.id] : null;
-          return { tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정" };
+          const hit = C.hits(R(), E, L.team), nx = hit ? V.teams[L.team]?.fcx?.[ev.id] : null;
+          return { id: ev.id, tag: "사건", title: E.name, body: evReveal(E, ev, nx) || turnText(E.text || "", V), big: evSize(E, ev, nx) || "확정",
+            ...(hit ? { forecast: { id: ev.id, tag: "사건 예보", title: E.name, body: turnText(E.text, V), big: evSize(E, { id: ev.id, round: ev.round }, nx) } } : {}) };
         }).filter(Boolean)] : [];
       const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
       const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
@@ -3740,7 +3779,7 @@
       foldResultDuringReplay(replayed);
       if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
     }
-    else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); }
+    else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); forecastStart(V); }
   }
   function foldResultDuringReplay(replayed) {
     if (!replayed || !matchMedia("(max-width: 760px)").matches ||
@@ -3878,11 +3917,13 @@
     });
     if (resume) {
       if (L.coach) showFirstGuide(document.getElementById("bd-root"));
+      forecastStart(L.snap);
       return;
     }
     send("claim");
     sendPlan();
     showFirstGuide(document.getElementById("bd-root"));
+    forecastStart(L.snap);
   }
   function warnUnsentPlan() {
     const V = L?.snap;

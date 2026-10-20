@@ -1243,6 +1243,11 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     host.wait_for_function(SYNC, arg=[1, "review"])
     actual = team.evaluate(STATE)["results"][-1]["team"]["pyeongtaek"]["unsPct"]
     # 정기 공개 갱신 한 주기(4초)도 지나서 읽는다. now만 제외, 새 필드는 모두 비교.
+    # '전' 값은 팀이 진행자의 최신 공개 상태를 받은 뒤에 찍는다. 운영 직후 진행자가 상태를 한 번 더 바꾸면
+    # (S.rev 증가) 그 전송은 150ms 지연·서명 뒤에 도착하므로, 단계(review)만 맞춰 찍으면 팀 쪽 rev만 '후'에
+    # 오른 것처럼 보인다(2026-10-20 재현: 진행자 diff 0, 팀 diff rev 7→8, 팀 요청 증가 0). 비교 대상은 그대로다.
+    host_rev = host.evaluate("() => KCP.league.state().S.rev")
+    team.wait_for_function("rev => KCP.league.state().snap?.rev === rev", arg=host_rev, timeout=12000)
     before_h, before_t = public_state(host), public_state(team)
     before_dom = json.dumps(host.locator("body").evaluate(SURFACE), ensure_ascii=False)
     snapshot_contract(checks, team, label + "-team-jan")
