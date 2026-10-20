@@ -10,9 +10,11 @@ import os
 import re
 import secrets
 import statistics
+import subprocess
 import sys
 import time
 from collections import Counter
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from league_flow import confirm_seat, select_mode
 
@@ -67,6 +69,29 @@ PLAN_JS = """ids => {
 }"""
 OVERFLOW_JS = """() => Math.max(document.documentElement.scrollWidth,
   document.body.scrollWidth) - document.documentElement.clientWidth"""
+BIGSNAP_CONNECT_JS = """({room, project, key}) => {
+  const N = KCP.leagueNet;
+  const probe = window.liveBigsnap = {room, expected: null, received: null};
+  // 앱과 같은 join 설정(self:false, ack:false 등)과 송신 상한을 사용한다.
+  probe.conn = N.open({kind:'supabase', room, url:project, key});
+  probe.conn.on('snap', signed => {
+    const expected = probe.expected;
+    if (!expected || !signed || signed.n !== expected.n) return;
+    const bytes = N.byteLength(signed);
+    const rev = N.expandSnapshot(signed.data)?.rev;
+    if (bytes === expected.signedBytes && rev === expected.rev) {
+      probe.received = {bytes, rev, at:Date.now()};
+    }
+  });
+}"""
+BIGSNAP_SEND_JS = """signed => {
+  const probe = window.liveBigsnap, N = KCP.leagueNet;
+  // 봉투의 가상 room·sid·서명은 보존하고 채널 topic만 일회용 방으로 지정한다.
+  // 첫 두 send의 ref와 join_ref는 한 글자다. 원문 대신 프레임 크기만 반환한다.
+  const bytes = N.byteLength(N.broadcastMessage(probe.room, 'snap', signed, '2', '1'));
+  const at = Date.now(), sent = probe.conn.send('snap', signed);
+  return {bytes, at, sent};
+}"""
 
 
 class ConfigError(Exception):
@@ -129,9 +154,10 @@ def settings():
 
 
 def local_base():
-    if len(sys.argv) > 2:
-        raise ConfigError("사용법: live.py [로컬 index.html 주소]; 연결 설정은 환경 변수만 사용")
-    base = sys.argv[1] if len(sys.argv) == 2 else "http://127.0.0.1:9430/index.html"
+    args = [a for a in sys.argv[1:] if a != "--bigsnap-only"]
+    if len(args) > 1:
+        raise ConfigError("사용법: live.py [로컬 index.html 주소] [--bigsnap-only]; 연결 설정은 환경 변수만 사용")
+    base = args[0] if args else "http://127.0.0.1:9430/index.html"
     u = urlsplit(base)
     if (u.scheme not in ("http", "https") or
             u.hostname not in ("localhost", "127.0.0.1", "::1") or
@@ -585,8 +611,78 @@ def check_verdict_monitor(checks):
                   f"D75 감시 자체 검사 escaped={escaped} 추가 필드={','.join(extra) or '없음'}")
 
 
+def bigsnap_scenario(checks, browser, base, project, key):
+    """서명 검증 이전의 실제 채널 크기 계약. 일회용 방, 진행자·팀 각 1페이지.
+
+    실제 채널 상한은 256KB다(2026-10-20 실측: 256KB까지 도착, 300KB부터 ack error — 공식 무료
+    요금제 상한과 같음). 6팀 36달 최대 스냅(약 159KB)이 실제로 도착하는지 본다.
+    전송 성공 반환만으로 통과시키거나 도착 단언을 완화하지 않는다.
+    --bigsnap-only로 이 단계만 실행할 수 있다. 원문/주소/키는 저장하지 않는다.
+    """
+    checks.stage = "6팀 최대 스냅 생성"
+    result = subprocess.run(["node", str(Path(__file__).with_name("live_bigsnap.js"))],
+                            capture_output=True, text=True, timeout=600)
+    checks.require(result.returncode == 0, "6팀 12·36달 최대 스냅 생성")
+    fixtures = json.loads(result.stdout)
+    checks.require([f["turns"] for f in fixtures] == [12, 36], "6팀 12·36달 스냅 각각 존재")
+    contexts, probes = [], []
+    room = secrets.token_hex(4).upper()  # topic realtime:kcp-league-<8글자 무작위>
+    try:
+        checks.stage = "큰 스냅 일회용 실제 채널 연결"
+        for label in ("진행자", "팀"):
+            context, page, wire = make_page(browser, base, project, key, (), mobile=label == "팀")
+            contexts.append(context)
+            probes.append((label, page, wire))
+            page.goto(base + "#league")
+            page.wait_for_function(BOOT_JS)
+            page.evaluate(BIGSNAP_CONNECT_JS, {"room": room, "project": project, "key": key})
+            page.wait_for_function("() => window.liveBigsnap.conn.status() === 'open'")
+        host, team = probes[0][1], probes[1][1]
+        for fixture in fixtures:
+            checks.stage = f"6팀 {fixture['turns']}달 최대 스냅 실제 채널 도착"
+            expected = {k: fixture[k] for k in ("rev", "signedBytes")}
+            expected["n"] = fixture["signed"]["n"]
+            team.evaluate("expected => { liveBigsnap.expected = expected; liveBigsnap.received = null; }", expected)
+            sent = host.evaluate(BIGSNAP_SEND_JS, fixture["signed"])
+            checks.ok(sent["sent"] is True and sent["bytes"] == fixture["frameBytes"] and
+                      sent["bytes"] < 200000,
+                      f"6팀 {fixture['turns']}달 최대 스냅 앱 send·프레임 크기·상한")
+            deadline = time.monotonic() + WAIT / 1000
+            received = None
+            while time.monotonic() < deadline:
+                received = team.evaluate("() => liveBigsnap.received")
+                if received:
+                    break
+                team.wait_for_timeout(25)
+            arrived = bool(received and received["bytes"] == fixture["signedBytes"] and
+                           received["rev"] == fixture["rev"])
+            ms = f"{received['at'] - sent['at']:.1f}" if arrived else "N/A"
+            print(f"bigsnap {fixture['turns']}달 bytes={sent['bytes']} "
+                  f"arrived={arrived} latency={ms} ms", flush=True)
+            # 한 크기가 실패해도 다음 크기의 도착 단언을 반드시 실행한다.
+            checks.ok(arrived, f"6팀 {fixture['turns']}달 최대 스냅({sent['bytes']}B) 실제 채널 도착")
+    finally:
+        for label, page, _ in probes:
+            try:
+                page.evaluate("() => window.liveBigsnap?.conn.close()")
+            except Exception as exc:
+                checks.ok(False, f"큰 스냅 {label} 연결 정리 {type(exc).__name__} (원문 출력 생략)")
+        for context in contexts:
+            try:
+                context.close()
+            except Exception as exc:
+                checks.ok(False, f"큰 스냅 컨텍스트 정리 {type(exc).__name__} (원문 출력 생략)")
+        for label, _, wire in probes:
+            checks.ok(wire.sockets > 0 and wire.bad_sockets == 0,
+                      f"큰 스냅 {label} 실제 프로젝트 WSS만 연결")
+            checks.ok(not any(wire.errors.values()) and wire.callback_errors == 0 and
+                      wire.blocked == 0 and wire.leaks == 0,
+                      f"큰 스냅 {label} 콘솔·페이지·프레임 검사·외부 HTTP 오류 0")
+
+
 def main():
     checks, contexts, pages = Checks(), [], []
+    bigsnap_only = "--bigsnap-only" in sys.argv[1:]
     try:
         config = settings()
         base = local_base() if config else None
@@ -599,7 +695,8 @@ def main():
     if config is None:
         print("SKIP KCP_SB_URL 또는 KCP_SB_KEY 없음: 실제 Supabase 검사 건너뜀", flush=True)
         return checks.finish()
-    check_verdict_monitor(checks)
+    if not bigsnap_only:
+        check_verdict_monitor(checks)
     project, key = config
     print(f"공개 키: {key[:6]}…", flush=True)
     markers = tuple(f"LIVE_PRIVATE_{kind}_{secrets.token_hex(16)}"
@@ -609,14 +706,15 @@ def main():
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
             try:
-                for label in ("진행자", *IDS):
-                    context, page, wire = make_page(browser, base, project, key, markers,
-                                                    mobile=label != "진행자")
-                    contexts.append(context)
-                    pages.append((label, page, wire))
-                host = pages[0][1]
-                teams = {label: (page, wire) for label, page, wire in pages[1:]}
-                scenario(checks, host, teams, base, project, key, markers)
+                if not bigsnap_only:
+                    for label in ("진행자", *IDS):
+                        context, page, wire = make_page(browser, base, project, key, markers,
+                                                        mobile=label != "진행자")
+                        contexts.append(context)
+                        pages.append((label, page, wire))
+                    host = pages[0][1]
+                    teams = {label: (page, wire) for label, page, wire in pages[1:]}
+                    scenario(checks, host, teams, base, project, key, markers)
             except StopScenario:
                 pass
             except Exception as exc:
@@ -628,6 +726,13 @@ def main():
                         context.close()
                     except Exception as exc:
                         checks.ok(False, f"컨텍스트 정리 {type(exc).__name__} (원문 출력 생략)")
+            try:
+                bigsnap_scenario(checks, browser, base, project, key)
+            except StopScenario:
+                pass
+            except Exception as exc:
+                checks.ok(False, f"{checks.stage}: {type(exc).__name__} (원문/호출 인자 출력 생략)")
+            finally:
                 browser.close()
     except Exception as exc:
         checks.ok(False, f"{checks.stage}: 실행 예외 {type(exc).__name__} (원문 출력 생략)")
