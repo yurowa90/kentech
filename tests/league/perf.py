@@ -2,7 +2,8 @@
 
 실행: tests/.venv/bin/python tests/league/perf.py http://127.0.0.1:9430/index.html
 선택: --rate 4 --budget. 서버는 python3 tests/srv.py 9430 . 을 사용한다.
-기본은 측정만 하며 측정 실패·예외만 problems에 센다. 예산은 총괄 확정 전 잠정값이다.
+기본은 측정만 하며 측정 실패·예외만 problems에 센다. --budget이면 확정 예산(2026-10-20)으로 판정한다.
+4배 감속은 교실 태블릿의 대리값이다. 실제 태블릿 측정은 시범 수업 때 따로 한다.
 """
 
 import argparse
@@ -29,9 +30,10 @@ LOAD_LIMIT = 150
 # 2026-10-13 CPU 4배: 달 넘김 0.23~1.28초, 결과 서랍 2.1~2.8초,
 # 새로고침 3.3~8.1초. 교실 기준은 측정 뒤 총괄이 정한다(--budget 때만 사용).
 # M3는 총괄 확정(2026-10-20): 새로고침→첫 도시 화면 중앙 ≤ 1초(4배 감속). 이른 claim 수정 뒤 실측 0.51~0.65초.
-# M1·M2는 잠정값 그대로(교실 기준 미확정).
-BUDGETS = {"M1": 1.5, "M2": 3.0, "M3": 1.0}
-LONG_BUDGET = 0  # 잠정: 표본 구간마다 200ms 넘는 주 스레드 작업 0개. 측정 뒤 총괄 확정.
+# M1·M2·긴 작업도 총괄 확정(2026-10-20): 달 넘김 ≤ 1.0초, 서랍 ≤ 1.5초(중앙), 표본마다 200ms 넘는
+# 주 스레드 작업 0개. 확정 직전 실측: 달 넘김 0.17~0.42초, 서랍 0.51~0.64초, 긴 작업 0개(최장 124ms).
+BUDGETS = {"M1": 1.0, "M2": 1.5, "M3": 1.0}
+LONG_BUDGET = 0
 LABELS = {"M1-plan-review": "M1 계획→결과", "M1-review-plan": "M1 결과→계획",
           "M2-result": "M2 결과 서랍", "M2-city": "M2 도시 서랍",
           "M2-deal": "M2 거래 서랍", "M3": "M3 새로고침→첫 화면"}
@@ -434,7 +436,7 @@ def output(report):
     print(f"CPU {report['rate']:g}배 감속 · 1280×900 · 같은 컨텍스트 진행자+팀 · 로컬 · 12달")
     start, end = report["load_start_1m"], report["load_end_1m"]
     print(f"1분 부하: 시작 {start:.2f} / 끝 {end:.2f} (무효 기준 ≥ {LOAD_LIMIT})")
-    print("기본은 측정만. 예산: " + ("잠정 예산 적용" if report["budget_enabled"] else "적용 안 함"))
+    print("기본은 측정만. 예산: " + ("확정 예산 적용(4배 감속 = 교실 태블릿 대리값)" if report["budget_enabled"] else "적용 안 함"))
     print("클릭 표본은 실제 click 호출·동기화 대기를 포함한다. M2는 두 프레임 뒤까지 잰다.")
     print("M3는 세 표본 모두 함수 후킹, 2회차만 100µs 프로파일을 켜므로 계측 부하가 포함된다.")
     print(f"긴 작업: 표본 구간 안 렌더러 주 스레드 RunTask > {LONG_TASK_MS}ms 개수(추적 기준, 표본 중 최대).")
@@ -503,7 +505,7 @@ def main():
     parser = argparse.ArgumentParser(description="교실 태블릿 체감 응답 측정(실행은 총괄 담당)")
     parser.add_argument("url", nargs="?", default="http://127.0.0.1:9430/index.html", help="loopback 주소")
     parser.add_argument("--rate", type=float, default=4, help="CPU 감속 배수(기본 4, 최소 1)")
-    parser.add_argument("--budget", action="store_true", help="잠정 중앙값 예산으로 초과 수를 셈")
+    parser.add_argument("--budget", action="store_true", help="확정 중앙값·긴 작업 예산으로 초과 수를 셈")
     args = parser.parse_args()
     report = {"timestamp": datetime.now(timezone.utc).isoformat(), "rate": args.rate,
               "budget_enabled": args.budget, "load_start_1m": os.getloadavg()[0],
