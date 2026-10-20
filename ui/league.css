@@ -1123,7 +1123,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .lg-team-map #lg-panel #lg-predict { margin: 0 0 4px; padding: 8px; }
 .lg-team-map #lg-panel #lg-predict h3 { margin: 0 0 4px; }
 .lg-team-map #lg-panel #lg-predict h4 { margin: 0 0 4px; }
-.lg-team-map #lg-panel #lg-evidence { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.lg-team-map #lg-panel #lg-evidence { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; }
 .lg-team-map #lg-panel #lg-evidence button { min-width: 44px; min-height: 44px; padding: 2px 4px; white-space: normal; }
 .lg-team-map #lg-panel #lg-promise-baseline { margin: 4px 0; }
 .lg-team-map #lg-panel #lg-predict .lg-field {
@@ -1134,7 +1134,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .lg-team-map #lg-panel .lg-promise-confidence .lg-acts { flex-wrap: nowrap; gap: 4px; }
 .lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
 @media (min-width: 768px) {
-  .lg-team-map:has(#lg-panel[data-stage="plan"][data-tab="journal"]:not([hidden])) { --lg-drawer-width: 440px; }
+  /* 계획 서랍 폭은 기존 360px 유지(s8n [17]). 약속 카드는 근거 칩 격자를 폭에 맞춰 접는다. */
 }
 
 /* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
@@ -1189,7 +1189,8 @@ html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
-.lg-map-guidance { position: fixed; z-index: 47; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+/* 안내 묶음은 build.js가 잡는 지도 정보 시작선(--lg-map-info-top: 다음 달 이유 띠 아래)부터 — 띠와 겹치던 결함. */
+.lg-map-guidance { position: fixed; z-index: 47; top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); left: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
 .lg-map-guidance .lg-map-result { position: static; }
 #lg-plan-issues { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; pointer-events: auto; }
 #lg-plan-issues button { flex: none; min-height: 44px; border: 1px solid var(--ui-border); background: var(--ui-panel); color: var(--ui-text); }
@@ -1224,3 +1225,6 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 @media (max-width: 760px) {
   .lg-team-map .lg-map-views { display: none; }
 }
+
+/* '지도 보기'를 펼친 동안은 안내 묶음(문제 칩·코치)을 지도 막대(z 25) 아래로 내려 펼친 선택지가 깔리지 않게 한다. */
+#bd-root:has(.lg-map-views[open]) .lg-map-guidance { z-index: 24; }

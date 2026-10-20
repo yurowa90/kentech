@@ -31,7 +31,9 @@ def mobile_header(checks, page, label):
     close_drawer(page)
     geometry = page.locator('#lg-bar').evaluate("""bar => {
       const visible=e=>e.checkVisibility()&&e.getBoundingClientRect().width>0;
-      const items=[...bar.children].filter(e=>!e.matches('.lg-actions')&&visible(e));
+      // 품질8 UX U2(docs/QUALITY-ux.md 6절): #lg-ready는 막대 직계 자식이지만 행동 줄의 고정 칸(grid 2행)에 놓인다.
+      // 상태 띠 한 줄 판정에서는 행동 줄 요소로 센다(요구 '여러 줄이 되지 않음'은 그대로, 총괄 승인).
+      const items=[...bar.children].filter(e=>!e.matches('.lg-actions, #lg-ready')&&visible(e));
       const watch=bar.querySelector('#lg-watch'), actions=bar.querySelector('.lg-actions');
       const buttons=[...watch.querySelectorAll('button')].filter(visible);
       const px=x=>parseFloat(x)||0;
