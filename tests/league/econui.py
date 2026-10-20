@@ -5,6 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
+from league_flow import pass_issue_check, wait_unfolded
 import ast
 import json
 import math
@@ -216,6 +217,7 @@ def wait_text(page, selector, text):
 
 
 def open_panel(page, name):
+    wait_unfolded(page)
     button = page.locator(f'#lg-bar [data-panel="{name}"]')
     wait_count(page, f'#lg-bar [data-panel="{name}"]', 1)
     if button.count() != 1:
@@ -490,7 +492,8 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U2 도구 재선택에도 학생이 끈 렌즈 유지')
     checks.ok(all(team.locator('[data-run]').nth(i).inner_text().startswith('시험 ') for i in range(team.locator('[data-run]').count())),
               f'{label} U2 시험 단추 실제 글자')
-    checks.ok(team.locator('#lg-watch button').count() <= 3 and wait_count(team, '#lg-hud-chips button', 2) == 2,
+    # 품질8 UX ③(docs/QUALITY-ux.md 8.5): 지지·주민 변화 칩은 '도시' 서랍과 같은 곳을 여는 중복 단추라 글자 표시로 바꿨다.
+    checks.ok(team.locator('#lg-watch button').count() <= 3 and wait_count(team, '#lg-hud-chips > span', 2) == 2,
               f'{label} U4 이번 달 배지 최대 셋·지지·주민 칩')
     checks.ok(not shown(team, '.lg-bmoney') and not shown(team, '[data-tab="mission"]'),
               f'{label} U4·U7 남은 돈 중복·리그 미션 0/2 숨김')
@@ -503,9 +506,10 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#lg-sound').click()
     team.locator('#lg-panel [data-pclose]').click()
     open_panel(team, 'city')
-    team.locator('#lg-panel').evaluate('el => {el.scrollTop=500}')
+    # 품질8 UX U1(docs/QUALITY-ux.md 6절): 스크롤은 서랍 본문 .lg-pbody가 맡는다(없으면 서랍 자체).
+    team.locator('#lg-panel').evaluate("el => {(el.querySelector('.lg-pbody')||el).scrollTop=500}")
     open_panel(team, 'result')
-    checks.ok(team.locator('#lg-panel').evaluate('el => el.scrollTop===0'), f'{label} U2 새 결과 서랍은 위에서 시작')
+    checks.ok(team.locator('#lg-panel').evaluate("el => (el.querySelector('.lg-pbody')||el).scrollTop===0"), f'{label} U2 새 결과 서랍은 위에서 시작')
     open_panel(team, 'city')
     checks.ok(wait_count(team, '#lg-trends [data-trend]', 4) == 4, f'{label} U5 도시 추이 네 줄')
     checks.ok('주민·기업 이동 시간 ×' in wait_text(team, '#lg-city', '주민·기업 이동 시간 ×'), f'{label} U9 배속 대상·현실 달 문구')
@@ -528,13 +532,17 @@ def u_plan_contract(checks, team, host, tid, label):
     }""")
     checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
-    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes('(G)')"),
-              f'{label} U2 이전 엔진 이주 이유 G 표시 유지')
+    # D-72(품질8 UX U9): 학생 기본 화면의 등급 글자는 학생 말(KCP.gradeWords)로 보인다.
+    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes(KCP.gradeWords('G'))"),
+              f'{label} U2 이전 엔진 이주 이유 게임 가정 표시 유지')
     checks.ok('정수 반올림' not in team.locator('#lg-city').inner_text(), f'{label} U2 내부 용어 숨김')
-    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('(M)') == 1 and '(추정·G)' not in ui['reason'],
+    # D-72: '(M)'·'(추정·G)' 대신 학생 말. 근거 표시가 한 번만 붙고 추정·게임 가정 겹침이 없는지 본다.
+    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('모형 계산') == 1 and '(추정' not in ui['reason']
+              and '(M)' not in ui['reason'] and '(G)' not in ui['speed'],
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     wait_shown(team, '#lg-predict')
     wait_ui(team, """() => {
       const card = document.querySelector('#lg-predict'), panel = document.querySelector('#lg-panel');
@@ -923,7 +931,8 @@ def ui_fixes(checks, context, base, label, pages):
     try:
         team.locator('[data-tech-card="bms"]').click()
         team.locator('[data-tech-detail="bms"]').wait_for(state='visible', timeout=UI_WAIT)
-        checks.ok(bool(re.search(r'79(?:\.0+)?%', wait_text(team, '.lg-tech-effect', re.compile(r'79(?:\.0+)?%')))), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
+        # 품질8 UX U7c: BMS 효율은 왕복 효율로 보인다(한 방향 0.79 → 왕복 0.79² ≈ 62.4%).
+        checks.ok(bool(re.search(r'왕복 효율 62(?:\.4\d*)?%', wait_text(team, '.lg-tech-effect', re.compile(r'왕복 효율 62(?:\.4\d*)?%')))), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
     finally:
         team.evaluate('v => {KCP.buildGame.M.batEff=v}', before)
     contrast(checks, team, '.lg-tech-effect [class^="tag-"]', label + ' 기술')

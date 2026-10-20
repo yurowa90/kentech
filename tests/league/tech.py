@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+sys.path.insert(0, str(Path(__file__).parent))
+from league_flow import wait_unfolded  # noqa: E402
+
 HELPERS = Path(__file__).with_suffix(".js").read_text(encoding="utf-8")
 WAIT = 12000  # 실행기 대기 한도, 게임의 계수가 아님
 BOOT = "() => !!(window.KCP?.leagueCore && KCP.buildGame && KCP.econ && KCP.league)"
@@ -312,7 +315,7 @@ def completion_element(team):
       const found = [...result.querySelectorAll('*')].find(el => {
         const text = el.textContent;
         return el.getBoundingClientRect().height > 0 && text.length < 1500 &&
-          text.includes(card.name) && text.includes(card.field) && text.includes('근거 ' + card.evidenceGrade.replaceAll('·', ' · ')) && text.includes('효과 크기 ' + card.effectGrade.replaceAll('·', ' · ')) &&
+          text.includes(card.name) && text.includes(card.field) && text.includes('근거 ' + KCP.gradeWords(card.evidenceGrade)) && text.includes('효과 크기 ' + KCP.gradeWords(card.effectGrade)) &&
           (typeof card.eff !== 'string' || text.includes(card.eff));
       });
       if (!found) return null;
@@ -343,6 +346,7 @@ def completion_flow(checks, host, team, label, state):
         completed = host.evaluate("id => KCP.league.state().S.results.at(-1)?.team[id]?.research?.completed || []", state["team"])
         if "grid" in completed:
             observed = True
+            wait_unfolded(team)  # 품질8 UX U10: 폭 760px 이하에서는 재생 동안 결과 서랍이 접혀 있다.
             element = completion_element(team)
             checks.ok(bool(element) and element["top"] <= 100, f"{label} T2 연구 완료 달(다음 달 도입) 결과 맨 위 완료 카드·효과·분야·등급")
             checks.ok(bool(element) and any(abs(d - 800) < 5 for d in element["durations"]),
@@ -385,14 +389,17 @@ def ui_block(checks, browser, base, scheme, width=390):
             panel = card_detail(team, "tandem")
             card = team.evaluate("() => KCPTechChecks.cardsOf().find(c=>c.id==='tandem')")
             body = panel.inner_text()
-            return (card["field"] in body and ("근거 " + card["evidenceGrade"].replace("·", " · ")) in body and
-                    ("효과 크기 " + card["effectGrade"].replace("·", " · ")) in body and
+            # D-72(품질8 UX U9): 연구 상세의 근거·효과 크기 등급은 학생 말로 보인다.
+            words = team.evaluate("g => [KCP.gradeWords(g[0]), KCP.gradeWords(g[1])]", [card["evidenceGrade"], card["effectGrade"]])
+            return (card["field"] in body and ("근거 " + words[0]) in body and
+                    ("효과 크기 " + words[1]) in body and
                     "유레카" in body and "출처" in body and "배속" in body)
 
         checks.test(f"{label} T4 상세 분야·등급·출처·유레카·배속", detail)
         for card_id in team.evaluate("() => KCP.TECH_DATA.cards.map(c=>c.id)"):
             card_detail(team, card_id)
-            checks.ok(bool(re.search(r"교육용 배속 (?:×[\d.]+\(G\)|: 비교값 없음\(G\))|교육용 배속: 비교값 없음\(G\)", team.locator(".lg-tech-scale").inner_text())),
+            # D-72(품질8 UX U9): 연구 상세 기본 화면의 등급 글자 '(G)'는 학생 말 '· 게임 가정'으로 보인다.
+            checks.ok(bool(re.search(r"교육용 배속(?: ×[\d.]+|: 비교값 없음) · 게임 가정", team.locator(".lg-tech-scale").inner_text())),
                       f"{label} U2 {card_id} 구조화 배속 표시")
         checks.test(f"{label} T3 화면 연구 요청 서버 반영", lambda: queue_from_ui(host, team, state))
         for name in ("탠덤 태양광", "탠덤 지붕 태양광", "차세대 배터리", "수소 탱크", "SMR"):

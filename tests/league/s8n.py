@@ -7,6 +7,7 @@
 AUTO 문자열을 평가하지 않는다. 계획 변경은 공개 검사 API를 사용한다.
 """
 
+from league_flow import pass_issue_check
 import re
 import sys
 
@@ -90,6 +91,7 @@ def trial(page):
 def ready(page, submit=True):
     close_drawer(page)
     page.locator('#lg-ready').click()
+    pass_issue_check(page)
     page.wait_for_selector('#lg-ready-confirm')
     if submit:
         page.locator('[data-evidence="grid"]').click()
@@ -144,6 +146,10 @@ def plan(page, kind):
 
 def followup(checks, page, added, mission, reason, label):
     ready(page, submit=False)
+    # 품질8 UX ②(docs/QUALITY-ux.md 8.5): 약속 카드를 한 화면에 넣으려고 지난달 말·실제 변경·판정 규칙을
+    # 펼치기(details)로 접었다. 내용은 그대로이므로 펼친 뒤 확인한다.
+    if not page.locator('#lg-plan-followup').evaluate('el => el.tagName !== "DETAILS" || el.open'):
+        page.locator('#lg-plan-followup > summary').click()
     text = page.locator('#lg-plan-followup').inner_text()
     checks.ok(all(s in text for s in ('말한 변경', '이번 달 실제 변경', reason)), label + ' 말·실제 변경 나란히 [10]')
     actual = page.locator('#lg-actual-change').inner_text()
@@ -407,6 +413,8 @@ def multiplayer(checks, context, base, width, label, pages):
     team.reload()
     team.wait_for_function(SYNC, arg=[2, 'plan'])
     ready(team, submit=False)
+    if not team.locator('#lg-plan-followup').evaluate('el => el.tagName !== "DETAILS" || el.open'):
+        team.locator('#lg-plan-followup > summary').click()  # 품질8 UX ②: 접힌 지난달 기록을 펼쳐 확인
     checks.ok(team.locator('#lg-actual-change').inner_text() == '지난달 계획 기록 없음', label + ' 없는 기기 계획 추측 금지 [10]')
     team.evaluate('({key,raw})=>localStorage.setItem(key,raw)', stored)
     team.reload()
