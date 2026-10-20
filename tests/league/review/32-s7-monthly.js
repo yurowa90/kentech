@@ -1,5 +1,5 @@
 'use strict';
-// 기준: ../_briefs/lanes/league/V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix3.md + V3B-s7.md(영상 3차), 여섯 단계·호출 상한·0.005%p 재현 문턱.
+// 기준: ../_briefs/lanes/league/V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix3.md + V3B-s7.md(영상 3차), 일곱 단계·호출 상한·0.005%p 재현 문턱.
 // 예상값은 S7 반환값/사본/호출 로그가 아니라 운영 직전 상태와 build/core 모델로 만든다.
 // 잡는 회귀: 시험 기준 회귀, 단계 교환/입력 조기 변경, 재현의 합계/후보 혼입,
 // 크기순 카드, 사본 공개/보관 누락, 캐시 재계산, 열기 전 기록 유출.
@@ -10,7 +10,20 @@ const ROOT = path.resolve(__dirname, '../../..'), clone = x => JSON.parse(JSON.s
 let id = 'pyeongtaek';
 const ids = [id, 'dangjin'];
 const names = { choice: '내 선택', weather: '날씨·계절·운전 기간', event: '사건·대응',
-  progress: '접속·공사·기술 진행', growth: '도시 성장·연료 값', trade: '이웃 거래' };
+  progress: '접속·공사·기술 진행', growth: '도시 성장·연료 값', trade: '이웃 거래', gridImport: '계통 수입' };
+// D-74: 옛 실제−고립(이웃+계통) → 이웃 부족 보충과 계통 부족 보충으로 분리.
+// flow는 손실 후 도착량, sub는 부족 보충이 아닌 자체 화력 대체량(MWh)이다.
+function neighbor(res, city, isolated) {
+  let delivered = 0;
+  for (const [edge, flow] of Object.entries(res.flow || {})) {
+    const [from, to] = edge.split('~');
+    if (to === city) delivered += flow.ab;
+    if (from === city) delivered += flow.ba;
+  }
+  const replacedShortage = Math.max(0, delivered - res.team[city].sub);
+  return { delivered, rate: Math.max(0, isolated - 100 * replacedShortage / res.team[city].dem) };
+}
+
 const causes = Object.keys(names);
 const storage = new Map(), session = { room: 'S7MONTHLY', team: id, role: 'fixture', rev: 0 };
 const ctx = vm.createContext({ console, performance, structuredClone, __session: session,
@@ -344,9 +357,10 @@ function oracle(old, current, { legacyTies = false } = {}) {
   ];
   const results = stages.map(args => simulation(...args)), values = results.map(uns);
   const parts = values.slice(1).map((v, i) => ({ key: causes[i], value: v - values[i] }));
-  // ⑥ 지난달은 조건 재계산 고립값을 사용한다. 저장 고립값의 변조는 진단만 바꾼다.
-  parts.push({ key: 'trade', value: (now.team[id].unsPct - values.at(-1)) -
-    (prev.team[id].unsPct - values[0]) });
+  // D-74: 옛 ⑥ 이웃+계통 → ⑥ 이웃 거래 / ⑦ 계통 수입의 두 달 효과 변화.
+  const oldNeighbor = neighbor(prev, id, values[0]).rate, currentNeighbor = neighbor(now, id, values.at(-1)).rate;
+  parts.push({ key: 'trade', value: currentNeighbor - values.at(-1) - (oldNeighbor - values[0]) });
+  parts.push({ key: 'gridImport', value: now.team[id].unsPct - currentNeighbor - (prev.team[id].unsPct - oldNeighbor) });
   return { stages, values, parts, weather: results.slice(1, 3).map((s, i) => weatherMetrics(s, stages[i + 1][0], stages[i + 1][4])) };
 }
 function rows(html) {
@@ -375,10 +389,10 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   near(a.total, res.team[id].unsPct - old.res.team[id].unsPct, '지난달 → 이번 달 차이');
   ok(!Object.hasOwn(a, 'priorTrade'), 'priorTrade 필드 폐기');
   near(a.replay, -replayOffset, '동일조건 독립 재현 − 사본 고립 값');
-  eq(a.parts.map(p => p.key), causes, '①~⑥ 순서, 재현은 후보 밖');
+  eq(a.parts.map(p => p.key), causes, '①~⑦ 순서, 재현은 후보 밖');
   expected.parts.forEach(p => near(a.parts.find(actual => actual.key === p.key)?.value, p.value, `${p.key} 독립 모델 몫`));
   eq(a.replayOutsideSum, true, '월간 재현은 합계 밖 진단');
-  near(a.parts.reduce((sum, p) => sum + p.value, 0), a.total, '여섯 원인만의 합계 1e-9');
+  near(a.parts.reduce((sum, p) => sum + p.value, 0), a.total, '일곱 원인만의 합계 1e-9');
   const waiting = model.grid.waitingMW > 0;
   eq(calls.length, waiting ? 6 : 5, '월간 사본 재사용: 접속 대기 없으면 5회·있으면 6회');
   eq(a.simulations, calls.length, '보고된 호출 수 = 실제');
@@ -442,16 +456,17 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
   eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= .005, '월간 재현 설명 문턱 0.005%p');
   ok(html.includes(`이번 달 계산 순서: ${causes.map(k => names[k]).join(' → ')}`) &&
-    html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), '실제 여섯 단계 계산 순서·순서 의존 안내');
+    html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), '실제 일곱 단계 계산 순서·순서 의존 안내');
   for (const m of html.matchAll(/data-missed="([^"]+)"[^>]*><strong>([^<]+)<\/strong>/g))
     eq(m[2], names[m[1]], '카드 이름 = 월간 기준');
   const eventClue = html.match(/data-missed="event"[^>]*>[\s\S]*?<span class="lg-out-clue">([^<]+)<\/span>/)?.[1];
   if (eventClue) eq(eventClue, a.clues.event, '사건 카드에는 짧은 지난달→이번달 단서');
   const monthlyMWh = (result, kind) => {
     const days = C.roundsOf(V)[result.round - 1]?.mdays || result.days;
-    return (result.team[id][kind] * days / result.days).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+    const amount = kind === 'imp' ? neighbor(result, id, 100).delivered : result.team[id][kind];
+    return (amount * days / result.days).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
   };
-  eq(a.clues.trade, `구매 ${monthlyMWh(old.res, 'imp')} → ${monthlyMWh(res, 'imp')} / 판매 ${monthlyMWh(old.res, 'exp')} → ${monthlyMWh(res, 'exp')} MWh(월 환산)`,
+  eq(a.clues.trade, `이웃 구매 ${monthlyMWh(old.res, 'imp')} → ${monthlyMWh(res, 'imp')} / 판매 ${monthlyMWh(old.res, 'exp')} → ${monthlyMWh(res, 'exp')} MWh(월 환산)`,
     '거래 단서는 두 달의 실제 구매·판매를 월 환산');
   ok(/^지난달 .+ → 이번 달 .+$/.test(a.clues.event) && html.includes(a.clueMore.event), '사건 전체 단서는 단서 더 보기');
   const candidates = [...html.matchAll(/data-(?:missed|out-other)="([^"]+)"/g)].map(m => m[1]);
@@ -459,7 +474,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   if (!model.grid.waitingMW) ok(!html.includes('접속 대기'), '0 MW 달 접속 대기 문장 없음');
   note.outageFrozen = clone(session.outShownPending.frozen);
   eq(session.outShownPending.largest?.key || null, Math.abs(ranked[0].value) < .05 ? null : ranked[0].key,
-    '기기 저장 최대도 여섯 후보만(재현 제외)');
+    '기기 저장 최대도 일곱 후보만(재현 제외)');
   if (session.outShownPending.largest) note.outageLargest = clone(session.outShownPending.largest);
   const frozenData = teamData(); frozenData.interview ||= {}; frozenData.interview.months ||= {};
   frozenData.interview.months[res.round] = note; saveTeam(frozenData);
@@ -510,6 +525,7 @@ test('실제 수신·사본 저장·2달 보관', () => {
 test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () => {
   // 계산은 위 oracle로 검사했다. 여기서는 정확한 양/음 경계를 저장 분해로 렌더링한다.
   const { V, res } = months.at(-1), base = clone(U.uiMath.outageAttribution(V, res, id));
+  // D-74: 여섯 값의 옛 렌더링 픽스처 → 일곱 번째 계통 몫0(경계 검사 의도 유지).
   for (const values of [
     [.049999, -.049999, 0, 0, 0, 0],
     [-3.5, .049999, 0, 0, 0, 0],
@@ -517,7 +533,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
     [-3.5, -.05, .050001, 0, 0, 0],
     [-3.5, 1.25, -.05, .050001, .8, 0]
   ]) {
-    const frozen = { ...clone(base), parts: causes.map((key, i) => ({ key, value: values[i] })) };
+    const frozen = { ...clone(base), parts: causes.map((key, i) => ({ key, value: values[i] ?? 0 })) };
     const html = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
     cards(html, frozen.parts);
     for (const m of html.matchAll(/data-missed="([^"]+)"[^>]*>[\s\S]*?<b class="lg-out-size">([^<]+)<\/b>/g)) {
@@ -525,7 +541,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
       eq(m[2], `${number(p.value, true)}%p`, `${p.key}: 카드 숫자 형식`);
     }
   }
-  const parts = causes.map((key, i) => ({ key, value: [-3.5, 1.25, 0, 0, 0, 0][i] }));
+  const parts = causes.map((key, i) => ({ key, value: [-3.5, 1.25, 0, 0, 0, 0, 0][i] }));
   for (const waitingMW of [0, 2]) for (const value of [0, .049999, .05, .050001, -.049999, -.05, -.050001, -8.76, NaN, Infinity, -Infinity]) {
     const frozen = { ...clone(base), parts, trial: 6.65, actual: 4.4, total: -2.25,
       grid: { waitingMW, value } };
@@ -663,12 +679,12 @@ test('큰 재현 차이도 후보 밖·합계 밖', () => {
   S.teams[id].plan.policies = ['save']; const second = operate(S);
   const baseline = clone(U.uiMath.outageAttributionMonthly(second.V, second.res, id));
   const changed = validate(first, second, 25);
-  eq(changed.parts, baseline.parts, '재현 −25에도 거래·성장 포함 여섯 몫 불변');
+  eq(changed.parts, baseline.parts, '재현 −25에도 거래·성장 포함 일곱 몫 불변');
   console.log(JSON.stringify({ regression: '재현 −25', manipulated: '지난달 사본 isolatedUnsPct +25',
     replay: changed.replay, trade: changed.parts.find(p => p.key === 'trade').value,
     growth: changed.parts.find(p => p.key === 'growth').value }));
 });
-test('이웃 거래 = 이번 달 실제−고립 효과에서 지난달 효과를 뺀 변화량', () => {
+test('이웃 거래 = 두 달의 계통 수입 전 이웃 보충 효과 변화', () => {
   const S = game();
   S.ties = R.ties.filter(t => ids.includes(t.a) && ids.includes(t.b))
     .map(t => ({ ...clone(t), id: C.tieId(t), st: 'built', cap: 4 }));
@@ -676,8 +692,10 @@ test('이웃 거래 = 이번 달 실제−고립 효과에서 지난달 효과�
   S.teams.dangjin.price = .005;
   const first = operate(S); C.host(S, 'next', 0);
   S.teams[id].plan.policies = ['save']; const second = operate(S);
-  ok(first.res.team[id].imp > 0 || first.res.team[id].exp > 0, '지난달 실제 구매/판매 MWh >0');
-  ok(Math.abs(first.model.isolated - first.res.team[id].unsPct) > .05, '반올림보다 큰 지난달 거래 효과');
+  // D-74: imp/실제−고립에는 계통도 포함된다. 옛 혼합 효과 → 이웃 flow만의 양성 대조.
+  const firstNeighbor = neighbor(first.res, id, first.model.isolated);
+  ok(firstNeighbor.delivered > 0 || first.res.team[id].exp > 0, '지난달 이웃 구매/판매 MWh >0');
+  ok(Math.abs(first.model.isolated - firstNeighbor.rate) > .05, '반올림보다 큰 지난달 이웃 거래 효과');
   validate(first, second);
 });
 test('계획 국제 지수 미수신: 지난달 nextIntl 대체 사본 표시·독립 재현', () => {
@@ -729,10 +747,14 @@ test('월간 높은 정전 차이 원인 없음·고르기 생략', () => {
   validate(first, second);
   const html = U.uiMath.outageCardsHTML(second.V, second.res, id, {});
   ok(html.includes(noCauseLabel(first.model.isolated, second.model.isolated)) && html.includes('data-single="true"'),
-    '미미한 여섯 몫은 두 정전율에 맞는 한줄 요약');
+    '미미한 일곱 몫은 두 정전율에 맞는 한줄 요약');
   near(first.model.isolated, 100, '빈 설비 지난달 독립 미공급/수요 100%');
   near(second.model.isolated, 100, '빈 설비 이번 달 독립 미공급/수요 100%');
-  ok(html.includes(`지난달 ${number(first.model.isolated)}% → 이번 달 ${number(second.model.isolated)}%로 거의 같아요`),
+  // D-74: 표시 고립100→100 → 계통 포함 실제50→50. 표시값은 거래 없는 C1의 독립 기대값.
+  const filledEmpty = 100 * (1 - D.params.gridImportShare.v);
+  near(first.res.team[id].unsPct, filledEmpty, '지난달 계통 반영 정전');
+  near(second.res.team[id].unsPct, filledEmpty, '이번 달 계통 반영 정전');
+  ok(html.includes(`지난달 ${number(filledEmpty)}% → 이번 달 ${number(filledEmpty)}%로 거의 같아요`),
     '월간 요약 숫자 = 독립 계산, 시험 → 실제로 되돌아가지 않음');
   ok(html.includes('정전 자체는 큼') && html.includes('지금 설비·접속이 수요를 못 따라가는 상태') &&
     html.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), '월간 높은 정전 부족·재점검 안내');
@@ -959,9 +981,19 @@ function noFalseCancellation(a, label) {
   const part = k => a.parts.find(p => p.key === k).value;
   const magnitude = Math.abs(part('choice')) + Math.abs(part('growth'));
   // 검토자 결함의 수십 배 상쇄를 잡는 보수적인 상한. 수치 자체를 결과에서 복사하지 않는다.
-  const ratio = magnitude / Math.abs(a.total);
-  ok(Math.abs(a.total) > .05 && Number.isFinite(ratio), `${label} 0에 가까운 분모가 아닌 실제 변화`);
-  ok(ratio <= 2, `${label} (|choice|+|growth|)/|total| ≤2: ${ratio}`);
+  // D-74: |실제 변화|>0 고정 → 계통이 부족을 다 메우면 실제 변화=0도 정상.
+  // 이때 비율 상한 적용은 부적절하다. ①/⑤ 사이의 거짓 상쇄는 계속 금지하고,
+  // 자체 원인 전체를 계통 효과가 정확히 상쇄하는지 검사한다(대상 제외 아님).
+  const ratio = Math.abs(a.total) > .05 ? magnitude / Math.abs(a.total) : null;
+  if (ratio === null) {
+    near(a.total, 0, `${label} 계통 보충으로 실제 변화0`);
+    ok(part('choice') * part('growth') >= -1e-9, `${label} choice/growth 거짓 역방향 상쇄 없음`);
+    near(a.parts.filter(p => p.key !== 'gridImport').reduce((sum, p) => sum + p.value, 0),
+      -part('gridImport'), `${label} 자체 원인과 계통의 상쇄 항등식`);
+  } else {
+    ok(Number.isFinite(ratio), `${label} 유한 비율`);
+    ok(ratio <= 2, `${label} (|choice|+|growth|)/|total| ≤2: ${ratio}`);
+  }
   console.log(JSON.stringify({ regression: label, total: a.total, choice: part('choice'),
     progress: part('progress'), growth: part('growth'), ratio }));
 }
@@ -1251,7 +1283,7 @@ test('큰 재현 차이만으로 거래 후보·최대·고르기 분기가 바�
   const beforeTrade = baseline.parts.find(p => p.key === 'trade').value;
   const afterTrade = changed.parts.find(p => p.key === 'trade').value;
   near(afterTrade, beforeTrade, '재현 진단만 달라질 때 거래 후보 불변');
-  eq(changed.parts, baseline.parts, '재현 진단만 달라질 때 성장 포함 여섯 몫 불변');
+  eq(changed.parts, baseline.parts, '재현 진단만 달라질 때 성장 포함 일곱 몫 불변');
   const html = U.uiMath.outageCardsHTML(second.V, second.res, id, {});
   ok(html.includes(noCauseLabel(first.model.isolated, second.model.isolated)),
     '큰 재현 보정만으로 거래가 최대 후보가 되지 않음(재현은 후보 밖)');
@@ -1276,7 +1308,7 @@ test('분리 전 저장: S7 사본만 옮기고 일지·답변과 월간 분해 
   const S = game(); operate(S); C.host(S, 'next', 0); const { V, res } = operate(S);
   resetCache();
   const before = U.uiMath.outageAttributionMonthly(V, res, id);
-  ok(before?.basis === 'monthly' && before.parts.length === 6, '이전 비교용 월간 분해 실제 생성');
+  ok(before?.basis === 'monthly' && before.parts.length === 7, '이전 비교용 월간 분해 실제 생성');
   const beforeHTML = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true });
   const snapshots = data();
   snapshots.outageOperatingIntl = { round: res.round, intl: clone(V.econ.intl.cur || V.econ.intl) };
