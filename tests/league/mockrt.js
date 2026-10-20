@@ -1,10 +1,12 @@
 // 검사용 가짜 Supabase Realtime(Phoenix vsn 1.0.0) 서버. 의존성 없이 RFC 6455 텍스트 프레임만.
-// node mockrt.js <port>  → ws://127.0.0.1:<port>/realtime/v1/websocket
+// node mockrt.js <port> [--max-bytes N]  → ws://127.0.0.1:<port>/realtime/v1/websocket
 // phx_join → ok 답, broadcast → 같은 topic의 다른 소켓에 전달(self:false), heartbeat → ok 답. 받은 메시지 수를 /stats로.
 const http = require("http"), crypto = require("crypto");
 const port = +process.argv[2] || 9310;
+const sizeArg = process.argv.indexOf("--max-bytes");
+const maxBytes = Number(sizeArg >= 0 ? process.argv[sizeArg + 1] : process.env.MOCK_MAX_BYTES) || Infinity;
 const socks = new Set();
-const stats = { joins: 0, broadcasts: 0, heartbeats: 0, badJoin: 0, keys: [] };
+const stats = { joins: 0, broadcasts: 0, heartbeats: 0, badJoin: 0, dropped: 0, keys: [] };
 const srv = http.createServer((req, res) => { res.setHeader("access-control-allow-origin", "*"); res.end(JSON.stringify(stats)); });
 srv.on("upgrade", (req, sock) => {
   const u = new URL(req.url, "http://x");
@@ -12,7 +14,7 @@ srv.on("upgrade", (req, sock) => {
   stats.keys.push(u.searchParams.get("apikey"));
   const acc = crypto.createHash("sha1").update(req.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
   sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acc}\r\n\r\n`);
-  const S = { sock, topics: new Set(), buf: Buffer.alloc(0) };
+  const S = { sock, topics: new Set(), ack: new Set(), buf: Buffer.alloc(0) };
   socks.add(S);
   const send = obj => {
     const data = Buffer.from(JSON.stringify(obj));
@@ -46,12 +48,15 @@ srv.on("upgrade", (req, sock) => {
         const c = msg.payload && msg.payload.config;
         const ok = c && c.broadcast && c.broadcast.self === false && /^realtime:/.test(msg.topic);
         if (!ok) stats.badJoin++;
-        else { S.topics.add(msg.topic); stats.joins++; }
+        else { S.topics.add(msg.topic); if (c.broadcast.ack === true) S.ack.add(msg.topic); else S.ack.delete(msg.topic); stats.joins++; }
         send({ topic: msg.topic, event: "phx_reply", payload: ok ? { status: "ok", response: { postgres_changes: [] } } : { status: "error", response: { reason: "bad join" } }, ref: msg.ref, join_ref: msg.join_ref });
         continue;
       }
       if (msg.event === "broadcast" && S.topics.has(msg.topic) && msg.payload && msg.payload.type === "broadcast") {
         stats.broadcasts++;
+        // 검사 장치: 크기 초과 시 연결은 유지한 채 전달과 ack를 모두 생략한다.
+        if (payload.length > maxBytes) { stats.dropped++; continue; }
+        if (S.ack.has(msg.topic)) send({ topic: msg.topic, event: "phx_reply", payload: { status: "ok" }, ref: msg.ref, join_ref: msg.join_ref });
         socks.forEach(o => { if (o !== S && o.topics.has(msg.topic)) o.send({ topic: msg.topic, event: "broadcast", payload: msg.payload, ref: null }); });
       }
     }
