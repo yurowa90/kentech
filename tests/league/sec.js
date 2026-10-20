@@ -43,7 +43,7 @@ const mutations = {
   warn_host10: ["league.js", 'if (hostAge <= 10000 && ', 'if (', "Q8 진행자 메시지 10초 없음 안내"],
   snap_cap: ["league-net.js", 'if (!snap && queued >= 16 ||', 'if (queued >= 16 ||', "Q8 대기열이 차도 최신 snap은 남음"],
   host_queue: ["league-net.js", 'queued >= 16', 'false', "F3-5 팀 검증 대기열"],
-  compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams[Object.keys(view.teams)[0]].hist.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
+  compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams?.[Object.keys(view.teams)[0]]?.hist?.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
   compact_summary: ["league-net.js", 'if (i >= t.hist.length - 2 || !row.plan)', 'if (true)', "F3-6 오래된 계획 전문"],
   apply_json: ["league-net.js", 'await apply(event, signed.data);', 'await apply(event, it.incoming.data);', "F3-7 검증한 정규 JSON"],
   json_values: ["league-net.js", 'return encode(value);', 'return encode(JSON.parse(JSON.stringify(value)));', "F3-7 JSON 밖 값 거절"],
@@ -56,8 +56,8 @@ const mutations = {
   born_floor: ["league-net.js", 'm.born <= (T.receiptFloor || 0)', 'false', "F3-10 퇴거한 born"],
   pending_limit: ["league.js", 'L.pendingRequests.size >= 32', 'false', "F3-10 팀 대기 요청 상한"],
   restart_sid: ["league.js", 'L.S.sid = NET.sessionId();', 'L.S.sid ||= NET.sessionId();', "F3-11 진행자 시작마다"],
-  restore_base: ["league-net.js", '([k, c]) => ({ k, c })', '([k, c]) => ({ k, c: c + 1 })', "F3-12 운영 자료 축약 복원"],
-  restore_grid: ["league-net.js", '([key, allocatedMW]) => ({ key, allocatedMW })', '([key, allocatedMW]) => ({ key, allocatedMW: 0 })', "F3-12 운영 자료 축약 복원"],
+  restore_base: ["league-net.js", '([k, c]) => ({ k, c })', '([k, c]) => ({ k, c: c + 1 })', "F3-6 두 차례 축약 뒤 현재 base 보존"], // 89d4d0d부터 F3-12보다 먼저 잡는다
+  restore_grid: ["league-net.js", '([key, allocatedMW]) => ({ key, allocatedMW })', '([key, allocatedMW]) => ({ key, allocatedMW: 0 })', "F3-6 두 차례 축약 뒤 현재 trialGrid 보존"], // 같은 사유
   state_crit_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "crit" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 ready(568) → crit(567)"],
   state_plan_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "plan" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 준비 → 계획"],
   state_replay: ["league-net.js", 'stateNs?.values[m.type] || 0', 'm.type === "crit" ? 0 : stateNs?.values[m.type] || 0', "F4 같은 type 옛 n"],
