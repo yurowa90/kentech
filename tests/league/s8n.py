@@ -304,7 +304,8 @@ def end_checks(checks, page, width, label, missions):
         if note.get('evidence'):
             checks.ok(note['evidence']['text'] in text, label + f' {month}달 근거=기기 기록 [12]')
         for topic, direction in note.get('pred', {}).items():
-            checks.ok(('정전' if topic == 'uns' else '현금') + ' ' + DIRECTIONS[direction] in text,
+            # D-80 B-6: 정전 0인 달의 약속 주제 'grid'는 결정 목록에 '예측 계통 <방향>'으로 쓴다.
+            checks.ok({'uns': '정전', 'grid': '계통'}.get(topic, '현금') + ' ' + DIRECTIONS[direction] in text,
                       label + f' {month}달 예측=기기 기록 [12]')
         outcome = note.get('outcome')
         if outcome:
