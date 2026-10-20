@@ -1133,6 +1133,33 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .lg-team-map #lg-panel .lg-promise-confidence h4 { flex: none; margin: 0; }
 .lg-team-map #lg-panel .lg-promise-confidence .lg-acts { flex-wrap: nowrap; gap: 4px; }
 .lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
+@media (max-width: 760px) {
+  /* 폰: 지난달 두 줄·근거 세 줄 뒤에도 방향과 확신이 본문 첫 화면에 들어가게 한다. */
+  .lg-team-map #lg-panel .lg-promise-carry > p {
+    display: block; -webkit-line-clamp: unset; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 0 8px; }
+  .lg-team-map #lg-panel #lg-predict { display: grid; grid-template-columns: minmax(0, 1fr) 140px; column-gap: 8px; }
+  .lg-team-map #lg-panel #lg-predict > * { grid-column: 1 / -1; min-width: 0; }
+  .lg-team-map #lg-panel .lg-promise-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .lg-team-map #lg-panel .lg-promise-heading > * { white-space: nowrap; }
+  .lg-team-map #lg-panel #lg-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg-team-map #lg-panel #lg-evidence button {
+    display: block; min-width: 0; height: 44px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* 비교 기준은 한 줄로 조작 아래에 둔다. 상세 설명은 기존 약속 비교 기준 펼침을 쓴다. */
+  .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel #lg-predict > .lg-field {
+    grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
+  }
+  .lg-team-map #lg-panel .lg-promise-direction { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel #lg-predict select { width: 100%; height: 44px; }
+  .lg-team-map #lg-panel #lg-predict > .lg-promise-confidence {
+    grid-column: 2; grid-row: 3; display: grid; align-self: end; gap: 4px;
+  }
+  .lg-team-map #lg-panel #lg-predict .lg-promise-confidence h4 { margin: 0; }
+  .lg-team-map #lg-panel .lg-promise-confidence button { flex: 0 0 44px; width: 44px; height: 44px; padding: 4px; }
+}
 @media (min-width: 768px) {
   /* 계획 서랍 폭은 기존 360px 유지(s8n [17]). 약속 카드는 근거 칩 격자를 폭에 맞춰 접는다. */
 }
