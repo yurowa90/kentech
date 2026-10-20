@@ -526,9 +526,9 @@
     const pol = L.pendingPol || V.teams[L.team].econPol || c.policy || {}, open = V.phase === "plan";
     const every = params("reviewEvery"), remaining = every - E.t % every;
     const grid = c.grid || V.grid?.[L.team];
-    const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", tariff: "전기요금 차익", trade: "전력 판매", royalty: "기술 사용료", bonus: "사건 지원금", salvage: "철거 회수" };
+    const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", facility: `지역자원시설세(${gradeWords("O·M·G")})`, tariff: "전기요금 차익", trade: "전력 판매", royalty: "기술 사용료", bonus: "사건 지원금", salvage: "철거 회수" };
     const expenses = { capex: "건설", fuel: "연료", opex: "운영", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
-    const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k)).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
+    const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k) && !(k === "facility" && !vals[k])).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시</h3>${sourceHTML(L.team)}${lossHTML(V)}
       ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <p class="lg-left">남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b></p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 예약·지원금·연계선 정산을 반영해요. 억 = 게임 단위(실제 시 예산 아님) · ${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤 · 통과: 참가 도시 평균 지지율 변화 대비 −${esc(fmt(params("approvalDrop"), 1))}%p 이내</small></div></dl>
@@ -2999,6 +2999,15 @@
     const demand = city.pop > 0 ? inflow / city.pop * 100 : null;
     return `<p id="lg-migration-benefit">이주 유입 ${esc(fmt(inflow))}명(순이동 ${esc(signed(net.pop))}명): 편익은 주민세 +${esc(fmt(tax, 2))}억/달, 부담은 주민 수요 +${esc(fmt(demand, 2))}%·서비스 +${esc(fmt(service, 2))}억/달(다음 운영, 정책 유지 가정·추정).</p>`;
   }
+  function outageDamageHTML(V, res, id) {
+    const r = res.team[id], share = r.residentDemandShare, scale = C.regionOf(V.region).mwScale;
+    // H04: 공개된 대표 기간 미공급량을 월로 환산. 기기 안 표시뿐이며 현금·공개 상태를 바꾸지 않는다.
+    if (![r.uns, share, scale].every(Number.isFinite) || share < 0 || share > 1) return '<p id="lg-outage-damage">정전 피해 추정: 자료 없음(미공급량·수요 몫 필요)</p>';
+    if (r.uns <= 0) return '<p id="lg-outage-damage">정전 피해 추정: 이번 달 미공급 없음</p>';
+    const kwh = Math.max(0, r.uns) * resultPeriod(V, res).mul * scale * params("mwhToKwh");
+    const range = params("outageIndustryUsd").map(usd => kwh * (share * params("outageHomeWon") + (1 - share) * usd * params("outageFx")) / params("wonPerEok"));
+    return `<p id="lg-outage-damage">정전 피해 추정 ${range.map(v => esc(fmt(v, v >= 10 ? 0 : 1))).join("~")}억 원(실제 돈, 현금에는 안 들어감, 추정) · 주거 몫 ${esc(fmt(share * 100, 1))}%·산업 몫 ${esc(fmt((1 - share) * 100, 1))}%: 비산업 수요를 주거로, 미공급을 수요 비례로 근사(${esc(gradeWords("M"))}) · 가구 대상 지불의사 설문 Jin(2025)·제조업 조사 Jin 외(2024)(${esc(gradeWords("P"))}), 문헌 환율·단위 환산(${esc(gradeWords("M"))}), 지도 축척(${esc(gradeWords("G"))})</p>`;
+  }
   function resultHTML(V, res) {
     const id = L.team, r = res.team[id], rep = resultReport(V, res), { days, mul } = resultPeriod(V, res);
     const previous = V.results.find(x => x.round === res.round - 1), p = previous?.team[id];
@@ -3011,10 +3020,12 @@
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
       <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
+      ${outageDamageHTML(V, res, id)}
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
       <p id="lg-result-ledger">장부(억): ${ledger ? `달 초 ${esc(fmt(ledger.open, 2))} + 수입 ${esc(fmt(ledger.income, 2))} − 신규 투자 ${esc(fmt(ledger.invest, 2))} − 운영비 ${esc(fmt(ledger.opex, 2))} = 달 말 ${esc(fmt(ledger.close, 2))} · 이번 ${V.econ ? "달" : "턴"} 총지출 ${esc(fmt(ledger.invest + ledger.opex, 2))}` : "자료 없음"}</p><p class="lg-hint">억 = 게임 단위 · 장부는 이미 월 기준이에요.</p>
+      ${rep?.fiscal?.[id]?.rev?.facility > 0 ? `<p id="lg-result-facility">지역자원시설세 ${esc(fmt(rep.fiscal[id].rev.facility, 3))}억(게임 단위, 세입에 포함) · 지방세법 제146조·지방재정법 제29조, 2026년 세율(${esc(gradeWords("O"))}) · 징수교부금 차감 전·돈 환산(${esc(gradeWords("M"))}), 지도 축척(${esc(gradeWords("G"))})</p>` : ""}
       ${co2AttributionHTML(V, res, id)}${coopHTML(V, res, id)}${migrationBenefitHTML(V, res, id)}
       <p>병원 정전 ${esc(fmt(r.hospH * mul, 1))}시간 · CO₂ 소비 기준 ${esc(fmt(r.co2Cons * mul))} t · 민원(지금 지도 기준) ${esc(fmt(complaintsNow))}건 · 운영 당시 ${esc(fmt(r.cp))}건</p>
       ${curtailHTML(V, res, id)}${res.events?.length ? `<div class="lg-evres">${evCards(V, res.round, id)}</div>` : ""}
