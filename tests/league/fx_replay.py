@@ -40,6 +40,9 @@
   공개 plan API로 보낸다. 평택은 태양광 1기, 당진은 태양광 4기·배터리 2기와
   기존 발전소를 연결한다. 실제 공개 imp가 0이면 진단을 출력하고 FAIL한다.
 - 부분 거래는 평택 무설비·2 MW 연계선·당진 소규모 태양광으로 시작한다.
+  평택 연결점 옆 기존 LNG도 전선과 접촉하지 않게 한다. 무설비만으로는
+  기존 발전을 막지 못한다. 자체 발전 0·작은 거래로 시간별 부족을 수요의
+  50%보다 크게 남겨 D-74 계통 수입 뒤에도 정전이 생기도록 한다.
   공개 imp/uns/outH > 0, isolated.uns−uns > 0.01을 먼저 확인하고, 미충족이면
   별도 빈 방에서 설비 구성을 바꿔 최대 3번 재시도한다. 진행자 정확값과
   기기 r의 합계·정전 시간은 단언하되 시간별 최대 차이는 INFO로만 출력한다.
@@ -165,8 +168,35 @@ BUILD_TRADE_PLAN_JS = r"""options => {
   const targets = BG.SITES.filter(s =>
     (s.dem && (!demandIds || demandIds.includes(s.id))) ||
     (supplier && connectPlants && s.kind === 'plant'));
-  const connected = new Set([gate.tile]), lines = [];
-  // 기존 자동 건설 시연과 같은 최단 경로로 수요 시설과 이웃 연결점을 잇는다.
+  // network는 선의 인접 칸도 자동 접속한다. 특히 평택 LNG는 당진 연결점
+  // 바로 옆이므로, connectPlants=false일 때 발전소와 이웃 칸까지 우회한다.
+  const blocked = new Set(connectPlants ? [] : BG.SITES.filter(s => s.kind === 'plant')
+    .flatMap(s => [s.tile, ...BG.TILES[s.tile].nb]));
+  const start = blocked.has(gate.tile) ? BG.TILES[gate.tile].nb.find(i =>
+    !blocked.has(i) && !BG.TILES[i].out) : gate.tile;
+  if (start == null) throw new Error('발전소를 피해 연결점에 접속할 칸 없음');
+  const connected = new Set([start]), lines = [];
+  const route = (a, b) => {
+    if (connectPlants) return BG.routePath(a, b);
+    // 수요 시설 자체가 금지 칸이면 안전한 이웃 칸에서 자동 접속한다.
+    const goals = new Set((blocked.has(b) ? BG.TILES[b].nb : [b])
+      .filter(i => !blocked.has(i) && !BG.TILES[i].out));
+    const queue = [a], prev = new Map([[a, null]]);
+    for (let k = 0; k < queue.length; k++) {
+      const u = queue[k];
+      if (goals.has(u)) {
+        const p = [];
+        for (let v = u; v != null; v = prev.get(v)) p.unshift(v);
+        return p;
+      }
+      for (const v of BG.TILES[u].nb) {
+        if (blocked.has(v) || BG.TILES[v].out || prev.has(v)) continue;
+        prev.set(v, u); queue.push(v);
+      }
+    }
+    return null;
+  };
+  // 일반 건설은 기존 최소 비용 경로, 무발전 사례는 발전소를 피한 최단 칸 경로다.
   while (targets.length) {
     let best = null;
     for (const s of targets) for (const c of connected) {
@@ -174,7 +204,7 @@ BUILD_TRADE_PLAN_JS = r"""options => {
       const distance = Math.hypot(a.X - b.X, a.Y - b.Y);
       if (!best || distance < best.distance) best = {s, c, distance};
     }
-    const p = BG.routePath(best.c, best.s.tile);
+    const p = route(best.c, best.s.tile);
     if (!p) throw new Error('수요 시설 연결 경로 없음: ' + best.s.id);
     if (p.length > 1) lines.push({p});
     p.forEach(i => connected.add(i));
@@ -184,7 +214,8 @@ BUILD_TRADE_PLAN_JS = r"""options => {
   const equipment = types ?? (supplier ?
     ['solar', 'solar', 'solar', 'solar', 'battery', 'battery'] : ['solar']);
   for (const t of equipment) {
-    const candidates = BG.TILES.filter(x => !x.out && x.site < 0 && !used.has(x.i) && !BG.siteRule(t, x));
+    const candidates = BG.TILES.filter(x => !x.out && !blocked.has(x.i) &&
+      x.site < 0 && !used.has(x.i) && !BG.siteRule(t, x));
     candidates.sort((a, b) => Number(connected.has(b.i)) - Number(connected.has(a.i)) ||
       Math.min(...[...connected].map(i => Math.hypot(BG.TILES[i].X - a.X, BG.TILES[i].Y - a.Y))) -
       Math.min(...[...connected].map(i => Math.hypot(BG.TILES[i].X - b.X, BG.TILES[i].Y - b.Y))));
@@ -194,7 +225,7 @@ BUILD_TRADE_PLAN_JS = r"""options => {
       const nearest = [...connected].sort((a, b) =>
         Math.hypot(BG.TILES[a].X - tile.X, BG.TILES[a].Y - tile.Y) -
         Math.hypot(BG.TILES[b].X - tile.X, BG.TILES[b].Y - tile.Y))[0];
-      const p = BG.routePath(nearest, tile.i);
+      const p = route(nearest, tile.i);
       if (!p) throw new Error('설비 연결 경로 없음: ' + t);
       lines.push({p}); p.forEach(i => connected.add(i));
     }
@@ -206,7 +237,9 @@ BUILD_TRADE_PLAN_JS = r"""options => {
   const net = BG.network(BG.sanitize(BG.current(), 1e9));
   const linked = net.nodes.some(n => n.kind === 'import' && n.live &&
     n.comp >= 0 && BG.SITES[n.si].to?.includes(other));
-  return {accepted, linked, builds, lines, cost:BG.capex(BG.current()),
+  const plants = net.nodes.filter(n => ['coal', 'lng'].includes(n.kind) &&
+    n.live && n.comp >= 0).map(n => BG.SITES[n.si].id);
+  return {accepted, linked, plants, builds, lines, cost:BG.capex(BG.current()),
     budget:L.snap.teams[L.team].budget};
 }"""
 
@@ -787,6 +820,9 @@ def built_trade_multiplayer(checks, context, base, pages, partial=None):
                           (['solar'] * 4 + ['battery'] * 2 if supplier else ['solar']))
         checks.ok([b['t'] for b in plan['builds']] == expected_types,
                   f'{case} {city} 진행자 수신 설비 {count}개: 기대={expected_types}')
+        if partial is not None and partial[city].get('connectPlants') is False:
+            checks.ok(not plan['plants'],
+                      f'{case} {city} 기존 발전소 자동 접속 없음: {plan["plants"]}')
 
     for city, page in teams.items():
         prepare_team(page).click()
@@ -819,8 +855,11 @@ def built_trade_multiplayer(checks, context, base, pages, partial=None):
             (traded, 'imp > 0 미충족'), (positive(uns), 'uns > 0 미충족'),
             (positive(out_h), 'outH > 0 미충족'),
             (reduced, 'isolated.uns−uns > 0.01 미충족')) if not ok]
-        print(f'INFO {case} 후보 공개 결과: imp={imports}, uns={uns}, outH={out_h}, '
+        # 공개 uns·outH는 gridSupply 적용 뒤 값이며 imp는 이웃 거래만 센다.
+        print(f'INFO {case} 후보 공개 결과(계통 수입 후에도 남은 부족): '
+              f'imp={imports}, uns={uns}, outH={out_h}, '
               f'isolated.uns={isolated}, '
+              f'공개 수요 dem={deficit.get("dem")}, '
               f'사유={" / ".join(reasons) if reasons else "네 조건 충족"}, '
               f'설비={partial}, 당진={public["team"]["dangjin"]}, '
               f'ties={public["ties"]}, flow={public.get("flow")}, '
@@ -910,9 +949,12 @@ def partial_trade_multiplayer(checks, browser, base):
         {'types':[], 'connectPlants':True},
     )
     for attempt, supplier in enumerate(suppliers, 1):
-        partial = {'pyeongtaek':{'types':[]}, 'dangjin':supplier}
+        # D-74는 이웃 거래 후 시간별 수요의 50%까지만 메운다. 평택의
+        # 새 설비·기존 LNG를 모두 끄고 최소 연계선으로 거래량을 제한한다.
+        partial = {'pyeongtaek':{'types':[], 'connectPlants':False}, 'dangjin':supplier}
         print(f'INFO 부분 거래 시도 {attempt}/{len(suppliers)}: '
-              f'2 MW 연계선, 설비·연결={partial}', flush=True)
+              f'2 MW 연계선, 평택 자체 발전 0·시간별 수요 50% 초과 부족 설계, '
+              f'설비·연결={partial}', flush=True)
         context, external = context_for(MotionBrowser(browser, False),
                                         base, 1280, 900, 'light')
         pages = []

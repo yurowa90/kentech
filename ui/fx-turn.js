@@ -4,9 +4,11 @@
   const KCP = window.KCP;
   if (!KCP) return;
   let status = { playing: false, skipped: false, ms: 0, replayed: false, cardsOpen: false,
-    source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
+    source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
   let layer = null, toast = null, deck = null, timers = [], off = [], raf = 0, layoutRaf = 0, epoch = 0;
   let lastMonth = null, advanceSummary = null, syncCardSounds = null;
+  let stripBar = null, expanded = false, armCards = null;
+  let expandFocus = null, currentResult = null, currentForecast = null, forecastVisible = null, deferredNotice = null;
   // 사건의 종류만 읽는다. 효과 크기·예보 범위로 농도나 입자 수를 바꾸지 않는다(D-65).
   const EVENT_MOOD = Object.freeze({ heatwave_peak: "heat", evening_peak_tropical_night: "heat",
     coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
@@ -91,8 +93,17 @@
         status.fallback = "mismatch"; return null;
       }
       const dem = raw.hrDem;
-      const r = dem?.length === u.length && dem.every(v => Number.isFinite(v) && v >= 0) &&
-        calibrate(u, dem, team.uns, team.outH);
+      if (!(dem?.length === u.length && dem.every(v => Number.isFinite(v) && v >= 0))) { status.fallback = "calibrate"; return null; }
+      // D-74 계통 수입: 엔진은 이웃 거래 정산 뒤 남은 부족을 시간마다 수요×gridImportShare까지 메운다
+      // (league-core gridSupply). 같은 식·같은 32비트 저장 순서로 적용한 뒤 보정한다. 이웃 거래가 없는 달은
+      // 이것만으로 엔진의 시간별 남은 부족(uns−del)과 같다. 거래가 있는 달의 시간별 순서는 보정 규칙(G).
+      const share = V.econ ? KCP.ECON_DATA?.params?.gridImportShare?.v : null, g = new Float64Array(u.length);
+      for (let k = 0; k < u.length; k++) {
+        const uF = Math.fround(u[k]);
+        const fill = Number.isFinite(share) ? Math.fround(Math.min(Math.max(0, uF), dem[k] * share)) : 0;
+        g[k] = uF - fill;
+      }
+      const r = calibrate(g, dem, team.uns, team.outH);
       if (!r) { status.fallback = "calibrate"; return null; }
       const data = { r, outH: team.outH, sum: sum(r), source: "device" };
       return inspect ? data : { ...data, res: raw, outHour: k => r[k] > threshold(dem[k]) };
@@ -102,18 +113,57 @@
       status.recomputeMs = performance.now() - started;
     }
   }
-  const later = (ms, fn) => { const token = epoch; timers.push(setTimeout(() => { if (token === epoch) fn(); }, ms)); };
+  const later = (ms, fn) => { const token = epoch; timers.push(setTimeout(() => {
+    if (token === epoch && keepCurrentCards()) fn();
+  }, ms)); };
   const listen = (target, name, fn, opts) => {
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards() {
-    if (status.forecastOpen) { removeLayer(); return; }
-    deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
+  function closeCards(restoreFocus = false) {
+    const target = restoreFocus && expanded ? expandFocus : null;
+    const fallback = restoreFocus && expanded ? document.querySelector('#lg-bar [data-panel="result"]') : null;
+    // 띠의 펼치기 단추는 덱과 함께 사라지므로, 연결된 외부 초점 또는 결과 탭으로 돌아간다.
+    const focus = target?.isConnected && target !== document.body && !deck?.contains(target) && visibleRect(target) ? target : fallback;
+    if (status.forecastOpen) removeLayer();
+    else {
+      deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
+      stripBar = armCards = null; expanded = status.strip = status.deferred = false;
+      expandFocus = forecastVisible = deferredNotice = null;
+      if (layer) layer.dataset.strip = layer.dataset.chip = layer.dataset.over = "false";
+      syncLayerVisibility();
+    }
+    focus?.focus?.({ preventScroll: true });
   }
+  function currentMonth(opts) {
+    const session = KCP.league?.state?.(), state = session?.snap || session?.S;
+    return !session || (!session.away && session.team === opts.team &&
+      ["review", "end"].includes(state?.phase) && state?.results?.at(-1)?.round === opts.round);
+  }
+  function keepCurrentCards() {
+    if (currentResult && !currentResult()) { closeCards(); hideSummary(); return false; }
+    if (currentForecast && !currentForecast()) { removeLayer(); return false; }
+    return true;
+  }
+  // 보류 중에는 타이머·배치가 돌지 않아도 단계 전환에서 결과 연출을 즉시 걷는다.
+  function phase(nextPhase, round) {
+    if (currentResult && (phaseOf(nextPhase) !== "review" || lastMonth?.round !== round)) clear();
+  }
+  const visibleRect = el => {
+    if (!el || el.hidden || !el.getClientRects().length) return null;
+    const style = window.getComputedStyle?.(el), p = el.getBoundingClientRect();
+    return style?.visibility === "hidden" || style?.display === "none" || p.right <= p.left || p.bottom <= p.top ? null : p;
+  };
+  const openDrawers = root => [root.querySelector("#lg-panel"), root.querySelector("#bd-drawer")].filter(el => visibleRect(el));
+  const insideStripDrawer = (root, target) => status.strip && !expanded && openDrawers(root).some(el => el.contains(target));
   function hideSummary() {
     toast?.remove(); toast = null; advanceSummary = null;
     if (raf) cancelAnimationFrame(raf); raf = 0;
+    syncLayerVisibility();
+  }
+  function syncLayerVisibility() {
+    const hidden = !toast && (!deck || status.deferred);
+    if (layer && layer.hidden !== hidden) layer.hidden = hidden;
   }
   // 분위기와 재생은 유지하고, 예보를 닫은 뒤 빈 덧층과 관찰·리스너만 해제한다.
   function removeLayer() {
@@ -125,6 +175,8 @@
     layer?.remove(); layer = toast = deck = null;
     activeMonth = activePhase = null;
     syncCardSounds = null;
+    stripBar = armCards = null; expanded = status.strip = status.deferred = false;
+    expandFocus = currentResult = currentForecast = forecastVisible = deferredNotice = null;
     advanceSummary = null;
     status.cardsOpen = status.forecastOpen = false;
   }
@@ -162,6 +214,7 @@
   function place(root) {
     if (!root.isConnected) { clear(); return; }
     if (!layer) return;
+    if (!keepCurrentCards()) return;
     const stage = root.querySelector(".bd-stage")?.getBoundingClientRect();
     if (!stage) return;
     let box = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8),
@@ -175,23 +228,40 @@
       const el = root.querySelector(sel);
       if (el && !el.hidden && el.getClientRects().length) box.bottom = Math.min(box.bottom, el.getBoundingClientRect().top - 8);
     }
+    const mapBox = { ...box }, panels = [], drawers = openDrawers(root);
+    if (expanded && !drawers.length) { expanded = false; expandFocus = null; }
+    let guidanceBox = null;
+    const overlaps = (b, p) => p.left < b.right && p.right > b.left && p.top < b.bottom && p.bottom > b.top;
+    const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
+    const spacesAround = (b, p, gap = 8) => [
+      { ...b, right: Math.min(b.right, p.left - gap) }, { ...b, left: Math.max(b.left, p.right + gap) },
+      { ...b, bottom: Math.min(b.bottom, p.top - gap) }, { ...b, top: Math.max(b.top, p.bottom + gap) }
+    ].filter(b => area(b) > 0);
     for (const sel of [".lg-map-guidance", "#lg-plan-issues", "#lg-issue", "#lg-issue-check", "#lg-coach", "#lg-panel", "#bd-drawer"]) {
-      const panel = root.querySelector(sel);
-      if (!panel || panel.hidden || !panel.getClientRects().length) continue;
-      const p = panel.getBoundingClientRect();
-      if (p.left < box.right && p.right > box.left && p.top < box.bottom && p.bottom > box.top) {
-        const spaces = [{ ...box, right: Math.min(box.right, p.left - 8) }, { ...box, left: Math.max(box.left, p.right + 8) },
-          { ...box, bottom: Math.min(box.bottom, p.top - 8) }, { ...box, top: Math.max(box.top, p.bottom + 8) }];
-        const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
-        box = spaces.sort((a, b) => area(b) - area(a))[0];
+      const p = visibleRect(root.querySelector(sel));
+      if (!p) continue;
+      panels.push(p);
+      if (sel === ".lg-map-guidance") guidanceBox = p;
+      if (overlaps(box, p)) {
+        box = spacesAround(box, p).sort((a, b) => area(b) - area(a))[0] ||
+          { ...box, right: box.left, bottom: box.top };
       }
     }
-    // 좁은 화면에서 결과 서랍 등이 지도를 거의 다 덮으면 남은 틈(예: 390px에서 오른쪽 44px)에 카드가 끼어
-    // 누를 수 없게 된다. 카드가 떠 있을 때 남은 틈이 카드 한 장보다 작으면 위쪽 막대와 도구 막대 사이 전체를
-    // 쓰고 서랍 위에 띄운다(data-over). 카드는 닫기·Esc로 바로 걷을 수 있다.
-    const fits = b => b.right - b.left >= 280 && b.bottom - b.top >= 240;
+    // 이전의 넉넉한 배치는 유지한다. 부족할 때만 모든 빈 사각형을 남겨 큰 틈을 놓치지 않는다.
+    const freeSpaces = (bounds, gap = 8, obstacles = panels) => obstacles.reduce((spaces, p) => spaces.flatMap(b =>
+      overlaps(b, p) ? spacesAround(b, p, gap) : [b]), [bounds]).sort((a, b) => area(b) - area(a));
+    // 카드 240px 외에 덱 inset(8)·닫기(44)·간격(6)을 확보한다.
+    const fits = b => b.right - b.left >= 280 && b.bottom - b.top >= 298;
+    let spaces = null;
+    if (deck && drawers.length && !expanded && !fits(box)) {
+      spaces = freeSpaces(mapBox);
+      box = spaces.find(fits) || spaces[0] || { ...mapBox, right: mapBox.left, bottom: mapBox.top };
+    }
+    const wasStrip = status.strip, wasDeferred = status.deferred;
+    status.deferred = false;
+    layer.dataset.chip = "false";
     layer.dataset.over = "false";
-    if (deck && !fits(box)) {
+    if (deck && (expanded || (!drawers.length && !fits(box)))) {
       const over = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8), top: Math.max(8, stage.top + 8), bottom: 0 };
       for (const sel of ["#bd-hud", ".lg-bar", "#bd-mapbar"]) {
         const el = root.querySelector(sel);
@@ -209,10 +279,70 @@
     } else if (run) {
       ["left", "width", "bottom"].forEach(k => run.style.removeProperty(k));
     }
+    status.strip = !!(deck && !fits(box));
+    layer.dataset.strip = String(status.strip);
+    if (status.strip) { expanded = false; layer.dataset.over = "false"; }
+    if (status.strip) {
+      // 지도 틈과 대체 자리 모두 실제 조작 사각형을 제외한다. 덧층 자신의 단추는 제외 대상이 아니다.
+      const rectOf = visibleRect;
+      const controls = [...root.querySelectorAll("button, a, [role=button]")]
+        .filter(el => !layer.contains(el) && !drawers.some(drawer => drawer.contains(el))).map(rectOf).filter(Boolean);
+      if (run && root.classList.contains("bd-replaying") && !run.hidden) {
+        const p = rectOf(run);
+        if (p) controls.push(p);
+      }
+      const choose = candidates => candidates.find(b => b.right - b.left >= 180 && b.bottom - b.top >= 44) ||
+        candidates.filter(b => b.right - b.left >= 44 && b.bottom - b.top >= 44)
+          .sort((a, b) => a.top - b.top || a.left - b.left)[0];
+      const obstacles = [...panels, ...controls];
+      const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
+      const inSlot = (bounds, blocked = obstacles) => bounds && choose(freeSpaces({
+        left: Math.max(viewport.left, bounds.left), right: Math.min(viewport.right, bounds.right),
+        top: Math.max(viewport.top, bounds.top), bottom: Math.min(viewport.bottom, bounds.bottom)
+      }, 0, blocked));
+      let slot = choose((spaces || freeSpaces(mapBox)).flatMap(b => freeSpaces(b, 0, controls)));
+      const mapbar = root.querySelector("#bd-mapbar"), bar = rectOf(mapbar);
+      if (!slot && bar) {
+        const buttons = [...mapbar.querySelectorAll("button, a, [role=button]")].map(rectOf).filter(Boolean);
+        const last = buttons.at(-1);
+        if (last) slot = inSlot({ left: Math.max(...buttons.filter(p => p.top < last.bottom && p.bottom > last.top).map(p => p.right)),
+          right: viewport.right, top: last.top, bottom: Math.min(bar.bottom, last.top + 44) });
+      }
+      if (!slot && bar) {
+        const leagueBar = rectOf(root.querySelector(".lg-bar"));
+        if (leagueBar) slot = inSlot({ ...viewport, top: leagueBar.bottom, bottom: bar.top });
+      }
+      if (!slot) {
+        const result = rectOf(root.querySelector("#lg-map-result"));
+        // 안내 묶음의 투명한 여백은 쓸 수 있지만 실제 결산 글과 다른 패널은 덮지 않는다.
+        if (result) slot = inSlot({ left: viewport.right - 44, right: viewport.right,
+          top: result.top, bottom: result.top + 44 }, [...obstacles.filter(p => p !== guidanceBox), result]);
+      }
+      status.deferred = !slot;
+      const chip = !slot || slot.right - slot.left < 180;
+      layer.dataset.chip = String(chip);
+      box = slot ? { ...slot, right: chip ? slot.left + 44 : slot.right,
+        bottom: slot.top + (chip ? 44 : Math.min(52, slot.bottom - slot.top)) } :
+        { left: mapBox.left, right: mapBox.left, top: mapBox.top, bottom: mapBox.top };
+    }
+    if (stripBar) {
+      // hidden은 실제 전환 때만 쓴다(MutationObserver가 재배치를 예약하므로).
+      if (stripBar.hidden !== !status.strip) stripBar.hidden = !status.strip;
+      for (const el of [deck.querySelector(".fx-turn-card-row"), deck.querySelector(".fx-turn-close")]) {
+        if (el.hidden !== status.strip) el.hidden = status.strip;
+      }
+      stripBar.querySelector("button").setAttribute("aria-expanded", String(expanded));
+      const stripClose = stripBar.querySelector(".fx-turn-strip-close"), chip = layer.dataset.chip === "true";
+      if (stripClose.hidden !== chip) stripClose.hidden = chip;
+    }
     const width = Math.max(0, box.right - box.left), height = Math.max(0, box.bottom - box.top);
     Object.assign(layer.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${width}px`, height: `${height}px` });
     layer.dataset.compact = String(width < 600);
+    syncLayerVisibility();
+    if (status.deferred && !wasDeferred) deferredNotice?.();
+    if (wasStrip !== status.strip || wasDeferred !== status.deferred) armCards?.();
     syncCardSounds?.();
+    forecastVisible?.();
   }
   function showCards(cards, sound, root, forecast = false, summary = null) {
     if (!cards.length || !layer?.isConnected || !root.isConnected) return;
@@ -226,10 +356,27 @@
       later(0, () => { if (live.isConnected) live.textContent = summary; });
     }
     const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
-    close.addEventListener("click", closeCards); deck.append(close);
+    close.addEventListener("click", () => closeCards(true)); deck.append(close);
     const row = node("div", "fx-turn-card-row"); deck.append(row);
+    stripBar = node("div", "fx-turn-strip"); stripBar.setAttribute("role", "status");
+    const events = cards.filter(c => c.id), first = events[0] || cards[0];
+    const rest = events.length > 1 ? ` 외 ${events.length - 1}장` : "";
+    const icon = node("span", "fx-turn-strip-icon", first.icon || "◆"); icon.setAttribute("aria-hidden", "true");
+    stripBar.append(icon, node("span", "fx-turn-strip-title", first.title),
+      node("span", "fx-turn-strip-count", rest.trim()));
+    const expand = node("button", "fx-turn-expand", "펼치기"); expand.type = "button";
+    expand.setAttribute("aria-expanded", "false");
+    expand.setAttribute("aria-label", `${first.title}${rest} 펼치기`);
+    expand.addEventListener("click", () => {
+      expandFocus = document.activeElement; expanded = true;
+      place(root); if (deck && expanded) close.focus?.({ preventScroll: true });
+    });
+    const stripClose = node("button", "fx-turn-strip-close", "×"); stripClose.type = "button";
+    stripClose.setAttribute("aria-label", "사건 카드 닫기");
+    stripClose.addEventListener("click", () => closeCards(true));
+    stripBar.append(expand, stripClose); deck.append(stripBar);
     const sounded = new WeakSet(), ready = new WeakSet();
-    const visible = article => !((layer?.dataset.compact === "true" || layer?.dataset.paged === "true") && article.dataset.active !== "true");
+    const visible = article => !status.strip && !((layer?.dataset.compact === "true" || layer?.dataset.paged === "true") && article.dataset.active !== "true");
     const cardSound = article => {
       if (sounded.has(article) || !article.classList.contains("fx-revealed") || !visible(article)) return;
       sounded.add(article); sound?.("card");
@@ -238,6 +385,7 @@
       if (!ready.has(article) || !visible(article)) return;
       if (!article.classList.contains("fx-revealed")) article.classList.add("fx-revealed");
       cardSound(article);
+      forecastVisible?.();
     };
     const articles = cards.map((card, i) => {
       const article = node("article", "fx-turn-card");
@@ -273,8 +421,16 @@
     layer.append(deck); status.cardsOpen = true; status.forecastOpen = forecast;
     layer.dataset.paged = String(cards.length > 3);
     syncCardSounds = () => articles.forEach(revealCard);
+    let announced = false;
+    deferredNotice = () => {
+      const live = root.querySelector("#bd-live");
+      if (announced || !live) return;
+      announced = true;
+      live.textContent = `사건 카드 ${events.length}장 — 서랍을 접으면 보여요`;
+    };
     // 삽입으로 바뀐 영역을 같은 틱에 확정한 뒤 카드를 공개한다.
     place(root);
+    if (!deck?.isConnected) return;
     articles.forEach((article, i) => {
       const reveal = () => {
         if (!deck) return;
@@ -284,12 +440,15 @@
     });
     // 자동 닫힘: 카드를 넘기거나 누르는 동안에는 다시 센다. 좁은 화면에서 서랍 접힘·펼침(UX U10, 최대 6초)과
     // 겹쳐 읽는 도중에 닫히는 일을 막는다. 덧층이 걷히면(clear) 타이머도 함께 무시된다(epoch).
-    const wait = forecast ? 8000 : 10000, owner = deck;
+    const owner = deck;
     let closeAt = 0;
     const arm = () => {
+      if (status.deferred) { closeAt = 0; return; }
+      const wait = status.strip ? 10000 : forecast ? 8000 : 10000;
       const at = closeAt = performance.now() + wait;
       later(wait, () => { if (deck === owner && closeAt === at) closeCards(); });
     };
+    armCards = arm;
     deck.addEventListener("pointerdown", arm);
     deck.addEventListener("keydown", arm);
     arm();
@@ -302,6 +461,7 @@
     activeMonth = key; activePhase = phaseOf(phase);
     layer = node("div", "fx-turn-layer"); root.querySelector(".bd-stage").append(layer); place(root);
     listen(window, "resize", () => schedulePlace(root));
+    if (window.visualViewport) listen(window.visualViewport, "resize", () => schedulePlace(root));
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(() => schedulePlace(root));
       // place가 크기를 쓰는 #bd-run과 덧층은 관찰하지 않는다.
@@ -309,7 +469,7 @@
       off.push(() => ro.disconnect());
     }
     if (window.MutationObserver) {
-      const mo = new MutationObserver(() => schedulePlace(root));
+      const mo = new MutationObserver(() => { if (keepCurrentCards()) schedulePlace(root); });
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
       // 새 문제 칩·서랍과 접힘·펼침도 다시 배치한다. style 쓰기는 관찰하지 않는다.
       mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class", "data-folded"] });
@@ -321,16 +481,36 @@
     if (!root || root.hidden || root.classList.contains("lg-peek") || root.querySelector(".lg-awaybar")) return false;
     const cards = opts.cards || [], key = monthKey(opts);
     setMood(moodOf(cards), root);
-    if (forecastMonths.has(key) || seenForecast(key)) return false;
+    if (forecastMonths.has(key) || seenForecast(key) || (activeMonth === key && status.forecastOpen)) return false;
     clear(); setMood(moodOf(cards), root);
     if (!cards.length) return false;
-    forecastMonths.add(key); markForecast(key); forecastMonth = key;
+    forecastMonth = key;
     forecastCards = new Map(cards.map(card => [card.id, { ...card }]));
     mountLayer(root, key, opts.view?.phase || session?.snap?.phase || session?.S?.phase || "plan");
+    currentForecast = () => {
+      const session = KCP.league?.state?.(), view = session?.snap || session?.S;
+      return !session || (!session.away && session.team === opts.team && phaseOf(view?.phase) === activePhase &&
+        monthKey({ round: view?.round, team: session.team, view }) === key);
+    };
+    forecastVisible = () => {
+      if (forecastMonths.has(key) || !layer?.isConnected || layer.hidden !== false || status.deferred || !deck) return;
+      const target = status.strip ? stripBar : [...deck.querySelectorAll(".fx-turn-card")].find(article =>
+        article.classList.contains("fx-revealed") &&
+        (!(layer.dataset.compact === "true" || layer.dataset.paged === "true") || article.dataset.active === "true"));
+      const rect = visibleRect(target);
+      if (!rect || (rect.width ?? rect.right - rect.left) <= 0 || (rect.height ?? rect.bottom - rect.top) <= 0 ||
+          rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) return;
+      // 등장 직후 opacity 0인 프레임에서는 저장하지 않고, 다음 배치 프레임에 다시 확인한다.
+      if (window.getComputedStyle?.(target).opacity === "0") { schedulePlace(root); return; }
+      forecastMonths.add(key); markForecast(key);
+    };
     showCards(cards, opts.sound, root, true);
+    if (!status.forecastOpen) return false;
     // 어느 클릭도 막지 않고 카드만 닫는다. 이전·다음은 카드 안에서 처리한다.
-    listen(document, "click", e => { if (!deck?.contains(e.target)) closeCards(); }, true);
-    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(); }, true);
+    listen(document, "click", e => {
+      if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
+    }, true);
+    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(true); }, true);
     return true;
   }
   function showSummary(opts, root) {
@@ -352,13 +532,8 @@
       const remove = () => el.classList.remove(cls); off.push(remove); later(1000, remove);
     }
     const token = epoch;
-    const currentMonth = () => {
-      const session = KCP.league?.state?.(), state = session?.snap || session?.S;
-      return !session || (!session.away && session.team === opts.team &&
-        ["review", "end"].includes(state?.phase) && state?.results?.at(-1)?.round === opts.round);
-    };
     const final = () => {
-      if (token !== epoch) return;
+      if (token !== epoch || !keepCurrentCards()) return;
       fields.forEach(({ item, value }) => { value.textContent = item.format(item.value); });
       if (!reduced() || !opts.cards?.length) live.textContent = summaryText(opts);
     };
@@ -366,7 +541,7 @@
     else {
       const t0 = performance.now();
       const count = now => {
-        if (token !== epoch) return;
+        if (token !== epoch || !keepCurrentCards()) return;
         const p = Math.min(1, (now - t0) / 600), eased = 1 - Math.pow(1 - p, 3);
         fields.forEach(({ item, value }) => { value.textContent = item.format(item.value * eased); });
         if (p < 1) raf = requestAnimationFrame(count); else { raf = 0; final(); }
@@ -375,9 +550,9 @@
     }
     // 타임아웃과 사용자 클릭은 같은 한 번의 전환을 쓴다.
     advanceSummary = () => {
-      if (token !== epoch || !toast) return;
+      if (token !== epoch || !keepCurrentCards() || !toast) return;
       hideSummary();
-      if (opts.cards?.length && currentMonth()) showCards(opts.cards, opts.sound, root, false, reduced() ? summaryText(opts) : null);
+      if (opts.cards?.length && currentMonth(opts)) showCards(opts.cards, opts.sound, root, false, reduced() ? summaryText(opts) : null);
     };
     if (reduced() && opts.cards?.length) advanceSummary();
     else later(6000, () => advanceSummary?.());
@@ -396,8 +571,9 @@
     clear();
     const token = epoch, root = document.querySelector(".lg-team-map");
     status = { playing: false, skipped: false, ms: reduced() ? 0 : opts.round === 1 ? 4000 : 2000,
-      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null };
+      replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
     if (!root) return false;
+    currentResult = () => currentMonth(opts);
     lastMonth = { round: opts.round, room, salt, sid, team: opts.team };
     setMood(moodOf(opts.cards.filter(card => card.id)), root);
     syncMapMood(root);
@@ -410,19 +586,20 @@
     listen(document, "pointerdown", e => {
       if (status.playing || pending) { pointerSkipped = true; skip(); return; }
       pointerSkipped = false;
-      if (status.cardsOpen && !deck?.contains(e.target)) closeCards();
+      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
       if (toast) { pointerSkipped = true; advanceSummary?.(); }
     }, true);
     // 키보드로 발생한 클릭도 기존 동작을 유지하면서 재생을 끝낸다.
     listen(document, "click", e => {
       if (pointerSkipped) { pointerSkipped = false; return; }
       if ((status.playing || pending) && e.target.closest("button, a, [role=button]")) { skip(); return; }
+      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
-    listen(document, "keydown", e => { if (e.key === "Escape") { if (status.playing || pending) skip(); else { closeCards(); hideSummary(); } } }, true);
+    listen(document, "keydown", e => { if (e.key === "Escape") { if (status.playing || pending) skip(); else { closeCards(true); hideSummary(); } } }, true);
     let finished = false;
     const done = info => {
-      if (token !== epoch) return;
+      if (token !== epoch || !keepCurrentCards()) return;
       if (info?.cancelled || !root.isConnected) { clear(); return; }
       if (finished) return;
       finished = true;
@@ -469,5 +646,5 @@
     return false;
   }
   KCP.on?.("route:change", clear);
-  KCP.fxTurn = { eventMood: EVENT_MOOD, monthStart, monthEnd, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
+  KCP.fxTurn = { eventMood: EVENT_MOOD, monthStart, monthEnd, phase, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
 })();
