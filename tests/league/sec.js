@@ -659,6 +659,136 @@ async function uiProtocol() {
       "F3-9 " + scenario.label + " 옛 방 팀 자료·S7 키 원본 보존");
     ui.close();
   }
+  // 단위3-C: 실제 팀 부팅·서명·진행자 수신기를 기존 메모리 송수신 장치로 잇는다.
+  const resumeKey = await N.createIdentity(), resumeState = state(room);
+  C.host(resumeState, "kick", 1, team);
+  const seat = resumeState.teams[team].seatVersion;
+  ok(seat > 0, "3-C 저장 seat 검사는 0이 아닌 자리 버전 사용");
+  await N.receiver(resumeState, m => C.reduce(resumeState, m, 2, BG))(
+    await N.signEnvelope(resumeKey, team, { type: "claim", publicKey: resumeKey.publicKey, sid: resumeState.sid, seat }));
+  localStorage.setItem("kcp-league-host-v1", JSON.stringify({
+    room, net: { kind: "local" }, state: resumeState, identity: hostIdentity, fingerprint: binding.fingerprint
+  }));
+  await ui.hostInit();
+  const resumeHost = ui.get(), resumeHostConn = connections.at(-1);
+  const resumeSave = { room, team, net: { kind: "local" }, identity: resumeKey,
+    hostKey: hostIdentity.publicKey, sid: resumeHost.S.sid, seat };
+  const bootResume = save => {
+    sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify(save));
+    ui.teamView(teamApp);
+    return connections.at(-1);
+  };
+  const sendBeforeSnap = () => {
+    for (const type of ["hello", "claim", "plan", "econ", "crit", "ready", "price", "verdict"])
+      ui.send(type, type === "crit" ? { chips: ["rel"], line: 57, choice: "keep" } : {});
+  };
+  ui.set(null);
+  const earlyConn = bootResume(resumeSave), earlySession = ui.get();
+  ui.teamView(teamApp); sendBeforeSnap(); await earlySession.sending;
+  ok(!earlySession.snap && earlyConn.sent.length === 1 && N.requestBody(earlyConn.sent[0].payload).type === "claim",
+    "3-C 첫 상태 전에는 동시 호출·재렌더에도 claim 한 번만 송신");
+  const earlyEnvelope = earlyConn.sent[0].payload, earlyBody = N.requestBody(earlyEnvelope);
+  ok(earlyBody.sid === resumeSave.sid && earlyBody.seat === seat &&
+    await N.verifyEnvelope(earlyEnvelope, resumeKey.publicKey), "3-C 탭 저장 sid·seat를 실제 서명에 사용");
+  uiNow = Date.now() + 35000; tick(); sendBeforeSnap(); await earlySession.sending; uiNow = null;
+  ok(earlyConn.sent.length === 1, "3-C 무응답 35초·주기 재시도에도 첫 상태 전 추가 요청 없음");
+  ui.set(resumeHost);
+  const beforeEarly = resumeHostConn.sent.length;
+  await resumeHostConn.emit("req", earlyEnvelope); await resumeHost.hostSending;
+  const immediate = resumeHostConn.sent.slice(beforeEarly);
+  ok(immediate.some(x => x.event === "ack" && x.payload.data.n === earlyBody.n) &&
+    immediate.some(x => x.event === "snap") && !resumeHost.pending,
+    "3-C 같은 세션 이른 claim 승인 뒤 4초 타이머 실행 없이 즉시 snap 송신");
+  const afterAccepted = N.canonical(resumeHost.S), beforeDuplicate = resumeHostConn.sent.length;
+  await resumeHostConn.emit("req", earlyEnvelope); await resumeHost.hostSending;
+  ok(N.canonical(resumeHost.S) === afterAccepted &&
+    resumeHostConn.sent.slice(beforeDuplicate).every(x => x.event === "nack" && x.payload.data.err === "replay"),
+    "3-C 같은 세션에서 동일 claim 봉투 두 번째는 순번 거절·상태와 토큰 불변");
+  ui.set(earlySession);
+  const mountsBeforeEarly = uiK.mounts || 0;
+  for (const message of immediate) await earlyConn.emit(message.event, message.payload);
+  await earlySession.sending;
+  ok(earlySession.claimAccepted && uiK.mounts > mountsBeforeEarly, "3-C 이른 claim ack·즉시 snap으로 도시 화면 진입");
+  const oldSave = JSON.parse(sessionStorage.getItem("kcp-league-tab-v1"));
+  ui.close(); ui.set(resumeHost); ui.close(); await ui.hostInit();
+  const newHost = ui.get(), newHostConn = connections.at(-1);
+  ok(newHost.S.sid !== oldSave.sid, "3-C 실제 진행자 재시작은 저장 sid 교체");
+  const beforeReplayState = N.canonical(newHost.S), beforeReplay = newHostConn.sent.length;
+  await newHostConn.emit("req", earlyEnvelope); await newHost.hostSending;
+  ok(N.canonical(newHost.S) === beforeReplayState &&
+    newHostConn.sent.slice(beforeReplay).every(x => x.event === "nack" && x.payload.data.err === "session"),
+    "3-C 옛 세션에서 승인된 claim 원본을 새 수신기에 replay해도 teams·seatVersion·토큰 불변");
+  ui.set(null);
+  const staleConn = bootResume(oldSave), staleSession = ui.get();
+  await staleSession.sending;
+  ok(staleConn.sent.length === 1 && N.requestBody(staleConn.sent[0].payload).sid === oldSave.sid,
+    "3-C 진행자 재시작을 모르는 팀은 옛 sid로 이른 claim 한 번만 서명");
+  ui.set(newHost);
+  const beforeStaleClaim = newHostConn.sent.length;
+  await newHostConn.emit("req", staleConn.sent[0].payload); await newHost.hostSending;
+  const staleReplies = newHostConn.sent.slice(beforeStaleClaim);
+  ok(N.canonical(newHost.S) === beforeReplayState &&
+    staleReplies.every(x => x.event === "nack" && x.payload.data.err === "session"),
+    "3-C 재시작 뒤 옛 sid 이른 claim 거절·teams·seatVersion·토큰 불변");
+  ui.set(staleSession);
+  for (const message of staleReplies) await staleConn.emit(message.event, message.payload);
+  sendBeforeSnap(); tick(); await staleSession.sending;
+  ok(staleConn.sent.length === 1 && staleSession.team === team && !staleSession.snap,
+    "3-C 새 sid의 거절을 받거나 무시해도 주기 snap 전 이른 claim 재전송 없음");
+  ui.set(newHost);
+  // nack 한도가 찬 경우에도 정상 claim의 ack·snap은 제한하지 않는다.
+  for (let i = 0; i < 3; i++) await newHostConn.emit("req", staleConn.sent[0].payload);
+  await newHost.hostSending;
+  const beforePeriodic = newHostConn.sent.length;
+  [...timers.values()].find(t => t.interval && t.ms === 4000).fn(); await newHost.hostSending;
+  const periodic = newHostConn.sent.slice(beforePeriodic).find(x => x.event === "snap");
+  ui.set(staleSession);
+  await staleConn.emit("snap", periodic.payload); await staleSession.sending;
+  ok(staleConn.sent.length === 2 && N.requestBody(staleConn.sent[1].payload).sid === newHost.S.sid,
+    "3-C 재시작 뒤 첫 주기 snap에서 5초·30초 지연 없이 정상 claim 전송");
+  ui.set(newHost);
+  const beforeRecovery = newHostConn.sent.length;
+  await newHostConn.emit("req", staleConn.sent[1].payload); await newHost.hostSending;
+  ok(newHostConn.sent.slice(beforeRecovery).some(x => x.event === "ack") &&
+    newHostConn.sent.slice(beforeRecovery).some(x => x.event === "snap"),
+    "3-C nack 제한 뒤에도 정상 claim의 ack·즉시 snap 복구");
+  ui.set(staleSession); ui.close(); ui.set(newHost); ui.close();
+  for (const missing of ["hostKey", "sid", "다른 방"]) {
+    const save = structuredClone(resumeSave);
+    if (missing === "다른 방") save.hostKey = null;
+    else delete save[missing];
+    const blockedConn = bootResume(save);
+    if (missing === "다른 방") {
+      ui.get().hostKey = hostIdentity.publicKey;
+      sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify({ ...resumeSave, room: "ABCDEFGH" === room ? "HGFEDCBA" : "ABCDEFGH" }));
+    }
+    sendBeforeSnap(); await ui.get().sending;
+    ok(!ui.get().snap && blockedConn.sent.length === 0, "3-C " + missing + " 저장은 첫 상태 전 모든 요청 차단");
+    ui.close();
+  }
+  for (const err of ["taken", "legacy", "seat", "session"]) {
+    const rejectedConn = bootResume(resumeSave), rejectedSession = ui.get();
+    await rejectedSession.sending;
+    const claim = N.requestBody(rejectedConn.sent[0].payload);
+    const refusal = { team, type: "claim", kid: claim.kid, n: claim.n, err };
+    const signReply = (event, data) => N.signHost(hostIdentity, event, room, resumeSave.sid, data);
+    await rejectedConn.emit("nack", await signReply("nack", refusal));
+    sendBeforeSnap(); tick(); await rejectedSession.sending;
+    ok(rejectedSession.team === team && !rejectedSession.claimAccepted && rejectedConn.sent.length === 1 &&
+      !(rejectedSession.claimAfter > Date.now()), "3-C 이른 " + err + " 거절은 자리 해제·30초 지연·재전송 없음");
+    const snapshot = C.publicView(resumeState, Date.now()); snapshot.sid = resumeSave.sid;
+    await rejectedConn.emit("snap", await signReply("snap", snapshot)); await rejectedSession.sending;
+    const normal = N.requestBody(rejectedConn.sent.at(-1).payload);
+    ok(rejectedConn.sent.length === 2 && normal.type === "claim" && normal.n > claim.n,
+      "3-C 이른 " + err + " 거절 뒤 첫 snap에서 정상 claim 즉시 전송");
+    await rejectedConn.emit("nack", await signReply("nack", refusal));
+    ok(rejectedSession.team === team && rejectedSession.claimAfter < Date.now() + 6000,
+      "3-C snap 뒤 늦게 도착한 이른 " + err + " 거절도 정상 claim 지연 없음");
+    await rejectedConn.emit("nack", await signReply("nack", { ...refusal, n: normal.n, err: "taken" }));
+    ok(rejectedSession.team === null && rejectedSession.claimAfter > Date.now() + 20000,
+      "3-C 정상 claim taken 거절의 자리 해제·30초 지연은 유지");
+    ui.close();
+  }
   const initial = state("REPLAY", "room"), summaryState = structuredClone(initial);
   summaryState.phase = "end"; summaryState.round = 5;
   // 실제 같은 조건으로 다시 함수의 시작 상태 복원을 검사한다. DOM 시작만 대체한다.

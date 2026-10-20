@@ -3347,7 +3347,8 @@
         // '연결됨'은 받아들인 공개 상태가 있을 때만: 형식이 맞지 않아 버린 상태로는 연결 확인 안내를 끄지 않는다(D-77).
         const seq = session.snapSeq;
         if (event === "snap") onSnap(data);
-        else await response(event, data);
+        // 이른 claim 거절은 첫 snap 뒤 정상 claim의 자리 해제·30초 지연을 일으키지 않는다.
+        else if (!(event === "nack" && data?.type === "claim" && data.n === session.earlyClaimN)) await response(event, data);
         const status = document.getElementById("lg-conn");
         if (event === "snap" && session.snapSeq !== seq) { session.hostWarning = false; if (status) { status.dataset.s = "open"; status.textContent = connLabel("open"); } }
         if (L === session) teamSave();
@@ -3404,13 +3405,15 @@
       L.conn.send("req", Object.assign({ type, team: L.team, token: L.token }, extra || {}, stamp));
       return;
     }
-    if (!L.snap?.sid || !L.team) return;
+    const earlyClaim = !L.snap && type === "claim" && !L.earlyClaimSent && L.hostKey && L.sid && tab.get()?.room === L.room;
+    if ((!L.snap?.sid && !earlyClaim) || !L.team) return;
     if (type === "claim" && Date.now() < (L.claimAfter || 0)) return;
+    if (earlyClaim) L.earlyClaimSent = true;
     const session = L, team = L.team;
     const oneShot = ["tie", "respond", "price", "research", "license", "joint", "verdict"].includes(type);
     if (oneShot && !retry && L.pendingRequests.size >= 32) { BG.toast("응답을 기다리는 요청이 많아요. 잠시 뒤 다시 요청해요."); return; }
     const pending = retry || (oneShot ? { id: NET.sessionId(), type, extra: structuredClone(extra || {}), stamp, tries: 0 } : null);
-    const request = { ...extra, ...(pending?.stamp || stamp), type, sid: L.snap.sid, seat: L.snap.teams[team]?.seatVersion || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
+    const request = { ...extra, ...(pending?.stamp || stamp), type, sid: earlyClaim ? L.sid : L.snap.sid, seat: (earlyClaim ? L.seat : L.snap.teams[team]?.seatVersion) || 0, ...(pending ? { id: pending.id, born: pending.born } : {}) };
     if (pending) { session.pendingRequests.set(pending.id, pending); pending.sentAt = Date.now(); rememberVerdictRequest(pending); }
     // 대기열에 넣을 때 최신 요청을 표시해 이전 ack가 새 편집을 지우지 못하게 한다.
     const stateRequest = ["hello", "plan", "econ", "crit", "ready"].includes(type)
@@ -3429,7 +3432,9 @@
       if (!teamSave()) throw new Error("seat-save");
       if (pending) { const body = NET.requestBody(envelope); pending.n = body.n; pending.born = body.born; rememberVerdictRequest(pending); }
       if (stateRequest) { stateRequest.n = NET.requestBody(envelope).n; stateRequest.sentAt = Date.now(); }
-      if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = Date.now() + 5000; }
+      // 첫 snap의 정상 claim은 이른 claim의 5초 재시도 대기에도 막히지 않아야 한다.
+      if (type === "claim") { session.claimN = NET.requestBody(envelope).n; session.claimSeat = request.seat; session.claimAfter = earlyClaim ? 0 : Date.now() + 5000; }
+      if (earlyClaim) session.earlyClaimN = session.claimN;
       session.conn.send("req", envelope);
     }).catch(() => {
       if (L === session) BG.toast("안전한 연결을 만들지 못했어요. 다시 접속해 줘요.");
