@@ -1,6 +1,76 @@
 /* 멀티플레이 리그: 로비 · 진행자 판 · 팀 띠/서랍. 앱 공통 토큰(--ink, --paper, --sheet, --line, --accent)을 쓴다. */
 .lg-lobby, .lg-host { max-width: 1180px; margin: 0 auto; padding: 16px 16px 48px; color: var(--ink); }
 .lg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* W6: 끝 요약 바로 아래의 연대기·비교 그래프. 띠 안에서만 가로 스크롤한다. */
+/* 주민 변화율 그래프의 0(변화 없음) 기준선: 격자보다 진하게. */
+.lg-fx-end .lg-fx-zero { stroke: var(--ui-text); stroke-width: 1; opacity: .55; }
+.lg-fx-end { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; margin: 10px 0 16px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); opacity: 1; transform: translateY(0); transition: opacity .8s, transform .8s; }
+.lg-fx-end h3 { margin: 0 0 8px; font-size: 16px; }
+.lg-fx-strip { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.lg-fx-strip:focus-visible { outline: 2px solid var(--ui-cyan); outline-offset: 2px; }
+.lg-fx-strip ol { display: flex; gap: 0; width: max-content; margin: 0; padding: 0 0 6px; list-style: none; }
+.lg-fx-strip li { flex: 0 0 76px; box-sizing: border-box; padding: 6px; border-right: 1px solid var(--ui-border); font-size: 11px; text-align: center; }
+.lg-fx-strip li > span { display: block; }
+.lg-fx-icons { min-height: 24px; font-size: 18px; }
+.lg-fx-outage { padding-left: 4px; color: var(--ui-danger); font-size: 12px; font-style: normal; }
+.lg-fx-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.lg-fx-chart { min-width: 0; margin: 0; padding: 6px; border: 1px solid var(--ui-border); border-radius: 14px; }
+.lg-fx-end .lg-fx-charts .lg-fx-chart h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin: 0; font-size: 14px; }
+.lg-fx-chart h4 small { color: var(--ui-muted); font-size: 11px; font-weight: 400; }
+.lg-fx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lg-fx-chart svg text { fill: var(--ui-muted); font: 12px system-ui, sans-serif; }
+.lg-fx-gridline { fill: none; stroke: var(--ui-border); stroke-width: 1; }
+.lg-fx-axis { fill: none; stroke: var(--ui-muted); stroke-width: 1; }
+.lg-fx-line { fill: none; stroke: var(--fx-line); stroke-width: 2.2; stroke-linejoin: round; transition: stroke-dashoffset .8s; }
+.lg-fx-line[pathLength] { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.lg-fx-reveal { clip-path: inset(0); transition: clip-path .8s; }
+.lg-fx-chart circle { fill: var(--fx-line); transition: opacity .8s; }
+.lg-fx-values p { margin: 3px 0; color: var(--ui-text); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.lg-fx-values p::before { content: ""; display: inline-block; width: 16px; margin-right: 4px; vertical-align: middle; border-top: 2px solid var(--fx-line); }
+.lg-fx-values p[data-dashed="true"]::before { border-top-style: dashed; }
+.lg-fx-key, .lg-fx-note { margin: 6px 0; color: var(--ui-muted); font-size: 11px; line-height: 1.5; }
+.lg-fx-end.lg-fx-enter { opacity: 0; transform: translateY(12px); }
+.lg-fx-enter .lg-fx-line[pathLength] { stroke-dashoffset: 1; }
+.lg-fx-enter .lg-fx-reveal { clip-path: inset(0 100% 0 0); }
+.lg-fx-enter circle { opacity: 0; }
+/* 기존 순위 meter의 최종 너비·값은 유지하고 보이는 폭만 0에서 펼친다. */
+#lg-rank .lg-scoreparts meter { clip-path: inset(0); transition: clip-path .6s; }
+#lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: inset(0 100% 0 0); }
+/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 네 장은 옆으로 밀어 넘긴다.
+   세로로 쌓으면 그래프 블록만 서랍 약 4화면이라 아래 단추(2022 기출·다시 하기)가 너무 멀어진다(2026-10-20 측정).
+   페이지 가로 스크롤은 없고 이 칸 안에서만 넘긴다. 다음 그래프의 가장자리를 조금 보여 넘길 수 있음을 알린다. */
+@media (max-width: 480px) {
+  .lg-fx-end .lg-fx-charts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 88%; overflow-x: auto;
+    overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+  .lg-fx-end .lg-fx-charts > .lg-fx-chart { scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-fx-end, .lg-fx-end .lg-fx-line, .lg-fx-end .lg-fx-reveal, .lg-fx-end circle, #lg-rank .lg-scoreparts meter { transition: none; }
+  .lg-fx-end.lg-fx-enter { opacity: 1; transform: none; }
+  .lg-fx-enter .lg-fx-line[pathLength] { stroke-dashoffset: 0; }
+  .lg-fx-enter .lg-fx-reveal, #lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: none; }
+  .lg-fx-enter circle { opacity: 1; }
+}
+@media print {
+  /* build.css의 지도 숨김을 끝 그래프가 있을 때만 풀고, 서랍을 종이 흐름으로 바꾼다. */
+  #bd-root.lg-team-map:has(.lg-fx-end) { display: block !important; position: static !important; height: auto !important; overflow: visible !important; }
+  #bd-root.lg-team-map:has(.lg-fx-end) > :not(#lg-panel) { display: none !important; }
+  #bd-root.lg-team-map #lg-panel:has(.lg-fx-end) { display: block !important; position: static !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; overflow: visible !important; background: #fff; color: #111; border: 0; }
+  #lg-panel:has(.lg-fx-end) .lg-pbody { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; }
+  #lg-panel:has(.lg-fx-end) > :not(.lg-pbody), #lg-panel:has(.lg-fx-end) .lg-pbody > :not(#lg-final-summary):not(.lg-fx-end):not(#lg-rank) { display: none !important; }
+  .lg-fx-end { color: #111; background: #fff; border-color: #666; break-inside: avoid; opacity: 1 !important; transform: none !important; }
+  .lg-fx-strip { overflow: visible; }
+  .lg-fx-strip ol { width: auto; flex-wrap: wrap; }
+  .lg-fx-strip li, .lg-fx-chart { border-color: #aaa; }
+  .lg-fx-end svg text, .lg-fx-values p, .lg-fx-chart h4 small, .lg-fx-key, .lg-fx-note { color: #111; fill: #111; }
+  .lg-fx-gridline { stroke: #ccc; }
+  .lg-fx-axis { stroke: #333; }
+  .lg-fx-reveal { clip-path: none !important; transition: none; }
+  .lg-fx-line, .lg-fx-values p::before { stroke: #111; border-color: #111; stroke-dashoffset: 0 !important; transition: none; }
+  .lg-fx-line[stroke-dasharray], .lg-fx-values p[data-dashed="true"]::before { stroke: #555; border-color: #555; }
+  .lg-fx-chart circle, .lg-fx-outage { fill: #111; color: #111; opacity: 1 !important; }
+  #lg-rank .lg-scoreparts meter { clip-path: none !important; }
+}
 .lg-back { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); text-decoration: none; font-weight: 600; }
 .lg-lhead h1 { margin: 4px 0 6px; font-size: clamp(24px, 4vw, 34px); }
 .lg-sub { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
