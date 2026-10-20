@@ -3643,7 +3643,10 @@
     else if (confirmFocus) app.querySelector("#lg-seat-confirm").focus({ preventScroll: true });
   }
   function connectionWarning() {
-    if (Date.now() - (L.lastSnapAt ?? L.lastHostAt) <= 10000) return;
+    // 서명을 확인한 진행자 메시지(ack 포함)가 10초 없거나, 받아들인 공개 상태가 20초 없을 때 안내한다.
+    // 부하 중 무거운 snap 처리만 밀릴 때 일찍 뜨지 않게 하면서, 형식이 안 맞는 snap만 오는 경우(D-77 판본 혼재)도 잡는다.
+    const now = Date.now();
+    if (now - L.lastHostAt <= 10000 && now - (L.lastSnapAt ?? L.lastHostAt) <= 20000) return;
     L.hostWarning = true;
     const text = "진행자 화면과 연결을 확인하는 중 · 새로고침하면 다시 연결됩니다";
     const el = document.getElementById("lg-conn") || document.getElementById("lg-wait");
