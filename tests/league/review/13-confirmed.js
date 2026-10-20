@@ -143,14 +143,14 @@ test("verify 3·9: CO₂ 기여는 실제 공급량과 소비 배출", () => {
   const E = X.initCities(ids, D, { seed: "co2-contribution", months: 12 });
   const changes = [
     { unsPct: 100, servedMWh: 0, co2: 0, co2Local: 0 },
-    // RECAL-SPEC §1.1: 같은 계통 배출계수 0.4567의 공급·소비 반례를 유지.
-    { unsPct: 50, servedMWh: 50, co2: 22.835, co2Local: 22.835 },
-    { servedMWh: 100, co2: 45.67, co2Local: 0, importMWh: 100 },
+    // D-73: .4567→.4173; 22.835→20.865, 45.67→41.73, 감축35.67→31.73. 공급·소비 반례 유지.
+    { unsPct: 50, servedMWh: 50, co2: 50 * D.params.normalCo2.v, co2Local: 50 * D.params.normalCo2.v },
+    { servedMWh: 100, co2: 100 * D.params.normalCo2.v, co2Local: 0, importMWh: 100 },
     { servedMWh: 100, co2: 10, co2Local: 0, importMWh: 100 }
   ];
   changes.forEach((e, i) => {
     const { report } = X.monthStep(E, inputs(E, { [a]: e }), D);
-    near(report.contrib[a].co2Cut, i === 3 ? 35.67 : 0, `공급·소비 반례 ${i}: 미공급/계통수입 감축0·저탄소수입35.67`);
+    near(report.contrib[a].co2Cut, i === 3 ? 100 * D.params.normalCo2.v - 10 : 0, `공급·소비 반례 ${i}: 미공급/계통수입 감축0·저탄소수입31.73`);
   });
 });
 

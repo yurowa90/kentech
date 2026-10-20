@@ -64,7 +64,8 @@ const startAir = Object.fromEntries(ids.map(id => [id, off.econ.cities[id].lagL.
 C.host(off, 'next', 1); off.events = [];
 const result = C.run(off, B, 2);
 for (const id of ids) {
-  assert.equal(result.team[id].unsPct, 100); checks++;
+  // D-74: 빈 계획 정전100%→계통 수입 반영50%; 지역 생산·PM=0 계약 유지.
+  assert.equal(result.team[id].unsPct, 100 * (1 - D.params.gridImportShare.v)); checks++;
   near(result.econ.cities[id].pm25.own, 0, `${id} 정전 달 무발전`);
   near(result.econ.cities[id].Lparts.air, 80, `${id} 정전 air 상한`);
   const startDelta = initial[id] + incoming(initial)[id];

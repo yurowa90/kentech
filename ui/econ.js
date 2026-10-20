@@ -145,7 +145,19 @@
   const servedOf = e => e.servedMWh != null ? Math.min(e.servedMWh, e.demMWh == null ? e.servedMWh : e.demMWh) : (e.demMWh || 0) * (1 - e.unsPct / 100);
   const priceScore = (e, reg, data, previous) => servedOf(e) <= 0 ? fin(previous, pv(data, "neutralScore")) : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
   const taxSatisfaction = (step, average, data) => { const d = step - pv(data, "taxYardstick") * fin(average, 0); return c100(pv(data, "taxBase") + pv(data, "taxGain") * -d * (d > 0 ? pv(data, "lossAversion") : 1)); };
-  const carbonScore = (C, data) => c100(100 * (pv(data, "scoreCo2Worst") - fin(C.co2Intensity, fin(C.co2Intensity0, pv(data, "co2IntDef")))) / (pv(data, "scoreCo2Worst") - pv(data, "scoreCo2Best")));
+  const carbonScore = (C, data) => {
+    const W = pv(data, "scoreCo2Worst"), T = pv(data, "scoreCo2Best");
+    const mid = pv(data, "scoreCo2Mid"), cut = pv(data, "scoreCo2RelCut");
+    const I = fin(C.co2Intensity, fin(C.co2Intensity0, pv(data, "co2IntDef")));
+    const absolute = c100(I >= W ? 0 : I <= 0 ? 100 : I >= T ?
+      mid * (W - I) / (W - T) : mid + (100 - mid) * (T - I) / T);
+    const I0 = fin(C.co2Intensity0, 0);
+    if (I0 <= 0) return absolute;
+    const r = 1 - I / I0;
+    const relative = c100(r <= 0 ? 0 : r >= 1 ? 100 : r <= cut ?
+      mid * r / cut : mid + (100 - mid) * (r - cut) / (1 - cut));
+    return Math.max(absolute, relative);
+  };
   const serviceBase = (C, data) => C.pop * (pv(data, "svcCost") + C.groups.senior.share * pv(data, "svcCostSenior"));
   const debtRatio = (C, data) => Math.max(0, -C.cash) / Math.max(1e-9, pv(data, "budgetToRevenue") * C.revYear);
   const debtStage = (c, data = KCP.ECON_DATA) => c.cash < -c.debtCap || debtRatio(c, data) >= 0.40 - 1e-12 ? "crisis" :

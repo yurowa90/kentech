@@ -2,7 +2,7 @@
 
 실행: tests/.venv/bin/python tests/league/s7.py http://127.0.0.1:9430/index.html
 근거: ../_briefs/lanes/league/V3B-fix5.md·V3B-fix4.md·V3B-fix3.md·V3B-fix2.md와 영상 3차 V3B-s7.md가 카드 문턱·단서·병목·근거 연결·숫자 문구에 우선한다.
-2월 이후는 _briefs/lanes/league/C-fix2.md와 총괄 확정 여섯 단계 명세.
+2월 이후는 _briefs/lanes/league/C-fix2.md와 D-74 일곱 단계 명세(옛 여섯 단계에서 계통 수입 분리).
 1월은 _briefs/lanes/league/S7-fix3.md가 우선. 아래 I 번호는 유지된 기존
 S7-impl.md 항목의 행 번호이며 '겹침=남는 값'·겹침 막대 명세는 폐기한다.
 _briefs/design/s7/notes.md 19–25, LEAGUE-CANON.md 12·14행(목표 4·6).
@@ -32,10 +32,11 @@ from solo import click_next, close_drawer, read
 VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%(?:p)?")
 S7_SHARE = re.compile(r"[+−]?\d+\.\d{2}%p")
 S7_RATE = re.compile(r"\d+\.\d{2}%")
+# D-74: 첫 달4→5/월간6→7단계. 폭포(재현 제외)6→7행, 이웃 뒤 계통 수입 분리.
 NAMES = {"choice": "내 선택", "weather": "날씨·운전 기간", "event": "사건·대응",
-         "trade": "이웃 거래"}
+         "trade": "이웃 거래", "gridImport": "계통 수입"}
 MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기간",
-                 "event": "사건·대응", "progress": "접속·공사·기술 진행", "growth": "도시 성장·연료 값", "trade": "이웃 거래"}
+                 "event": "사건·대응", "progress": "접속·공사·기술 진행", "growth": "도시 성장·연료 값", "trade": "이웃 거래", "gridImport": "계통 수입"}
 STATE = "() => { const l=KCP.league.state(); return l.S || l.snap; }"
 SYNC = "([r,p]) => {const l=KCP.league.state(),s=l&&(l.S||l.snap); return s?.round===r&&s?.phase===p;}"
 
@@ -480,7 +481,7 @@ def scene(checks, page, requests, label, width, trial, actual):
     hidden_answer(checks, page.locator("#lg-outage-others"), label + " 나머지 후보")
     hidden_answer(checks, page.locator("#lg-outage-more"), label + " 상세 단서")
     checks.ok(all(c.get_attribute("data-missed") in NAMES for c in cards.all()),
-              f"{label} 카드 후보는 네 원인만(내 선택이 상위 3개 밖이면 허용)")
+              f"{label} 카드 후보는 다섯 원인만(내 선택이 상위 3개 밖이면 허용)")
     no_answer_records(checks, page, label)
     checks.ok(page.locator("#lg-outage-open").is_disabled(), f"{label} 고르기 전에 열 수 없음 [I22]")
     if width == 390:
@@ -545,9 +546,10 @@ def scene(checks, page, requests, label, width, trial, actual):
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
         track = row.locator('.lg-out-track').bounding_box()
         checks.ok(track is not None and track["width"] > 0, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
+    # D-74: 옛6/7행 → 다섯 원인+출발/도착(+재현)7/8행.
     required(checks, set(values) - {"replay"} == {"trial", "actual", *NAMES} and
-             rows.count() == (7 if "replay" in values else 6),
-             f"{label} 시험 + (재현 차이) + 네 원인 + 실제")
+             rows.count() == len(NAMES) + 2 + int("replay" in values),
+             f"{label} 시험 + (재현 차이) + 다섯 원인 + 실제")
     checks.ok(page.locator('[data-out-step="overlap"]').count() == 0, f"{label} 겹침 막대 0개")
     replay = page.evaluate("""() => {
       const L=KCP.league.state(), V=L.snap || L.S;
@@ -557,7 +559,7 @@ def scene(checks, page, requests, label, width, trial, actual):
               page.locator("#lg-outage-replay").count() == int(abs(replay) >= .005),
               f"{label} 재현 차이·설명은 절댓값 0.005%p 이상일 때만")
     checks.ok(all(n.get_attribute("data-out-other") in NAMES for n in page.locator('[data-out-other]').all()),
-              f"{label} 나머지 후보도 네 원인만")
+              f"{label} 나머지 후보도 다섯 원인만")
     waterfall = page.locator("#lg-outage-waterfall")
     aria = waterfall.get_attribute("aria-label") or ""
     aria_values = [float(v.replace("−", "-").replace(",", "")) for v in VALUE.findall(aria)]
@@ -794,7 +796,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     clue_and_evidence(checks, page, a, label + " 월간 열림")
     checks.ok(bottleneck(checks, page, a, label + " 월간 열기 뒤") == closed_box,
               f"{label} 월간 병목은 열기 전후 동일·합계 밖")
-    checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")
+    checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑦ 순서·보정은 후보 밖")
     checks.ok(abs(a['trial'] - baseline) <= 1e-9 and abs(a['actual'] - actual) <= 1e-9,
               f"{label} 분해 출발/도착 = 지난달/이번 실제")
     # 판정 화면과 저장 outcome도 독립 baseline·actual로 계산한 방향/차이에 대조.
@@ -810,14 +812,33 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     snapshots = device_s7_data(page)['outageSnapshots']
     old_snap = snapshots[str(a['round'] - 1)]
     current_snap = snapshots[str(a['round'])]
-    trade = next(p['value'] for p in a['parts'] if p['key'] == 'trade')
-    # 지난달 조건 재계산 = 저장 고립값 + 재현 진단. 독립 모델 검산은 32번에서 수행.
+    # D-74: 옛 실제−고립(이웃+계통) → 손실 후 이웃 보충 / 남은 부족의 계통 보충.
+    # 공개 flow·sub·dem으로 이웃 부족 보충을 독립 계산하고 계통 효과는 잔차로 검사.
+    state = page.evaluate(STATE)
+    player = a['id']
+    results = state['results']
+    previous_result, current_result = results[-2:]
+    def neighbor_rate(result, isolated):
+        delivered = 0
+        for edge, flow in result.get('flow', {}).items():
+            source, target = edge.split('~')
+            if target == player:
+                delivered += flow['ab']
+            if source == player:
+                delivered += flow['ba']
+        row = result['team'][player]
+        return max(0, isolated - 100 * max(0, delivered - row['sub']) / row['dem'])
     old_recalculated = old_snap['isolatedUnsPct'] + a['replay']
-    wired_trade = (actual - current_snap['isolatedUnsPct']) - (baseline - old_recalculated)
-    checks.ok(abs(trade - wired_trade) <= 1e-9, f"{label} 배선 일치: 거래 = 두 달 실제−고립 효과의 변화량")
+    old_neighbor = neighbor_rate(previous_result, old_recalculated)
+    now_neighbor = neighbor_rate(current_result, current_snap['isolatedUnsPct'])
+    shares = {p['key']: p['value'] for p in a['parts']}
+    wired_trade = (now_neighbor - current_snap['isolatedUnsPct']) - (old_neighbor - old_recalculated)
+    wired_grid = (actual - now_neighbor) - (baseline - old_neighbor)
+    checks.ok(abs(shares['trade'] - wired_trade) <= 1e-9, f"{label} 이웃 몫은 계통 제외")
+    checks.ok(abs(shares['gridImport'] - wired_grid) <= 1e-9, f"{label} 계통 몫은 이웃 뒤 남은 부족 보충의 변화")
     checks.ok(a.get('replayOutsideSum') is True and
               abs(sum(p['value'] for p in a['parts']) - delta) <= 1e-9,
-              f"{label} 배선 일치: 재현은 합계 밖·여섯 몫만의 합계 1e-9")
+              f"{label} 배선 일치: 재현은 합계 밖·일곱 몫만의 합계 1e-9")
     rows = page.locator('#lg-outage-waterfall [data-out-step]')
     expected = ['previous'] + list(MONTHLY_NAMES) + ['actual']
     required(checks, [r.get_attribute('data-out-step') for r in rows.all()] == expected, f"{label} 폭포 전체 순서")
@@ -860,7 +881,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
                       f"{label} 월간 카드 숫자 형식")
         checks.ok([c.get_attribute('data-missed') for c in cards.all()] == keys, f"{label} 연 전후 카드 순서 고정")
         checks.ok(page.locator(f'[data-missed="{ranked[0]["key"]}"] [data-out-tag="largest"]').count() == 1,
-                  f"{label} 공개 최대는 여섯 후보 중 최대")
+                  f"{label} 공개 최대는 일곱 후보 중 최대")
     checks.ok('priorTrade' not in a and page.locator('#lg-outage-prior-trade').count() == 0 and
               '지난달 거래 되돌림' not in root.text_content() and
               page.locator('#lg-outage-replay').count() == int(abs(a['replay']) >= .005),
@@ -1222,6 +1243,11 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     host.wait_for_function(SYNC, arg=[1, "review"])
     actual = team.evaluate(STATE)["results"][-1]["team"]["pyeongtaek"]["unsPct"]
     # 정기 공개 갱신 한 주기(4초)도 지나서 읽는다. now만 제외, 새 필드는 모두 비교.
+    # '전' 값은 팀이 진행자의 최신 공개 상태를 받은 뒤에 찍는다. 운영 직후 진행자가 상태를 한 번 더 바꾸면
+    # (S.rev 증가) 그 전송은 150ms 지연·서명 뒤에 도착하므로, 단계(review)만 맞춰 찍으면 팀 쪽 rev만 '후'에
+    # 오른 것처럼 보인다(2026-10-20 재현: 진행자 diff 0, 팀 diff rev 7→8, 팀 요청 증가 0). 비교 대상은 그대로다.
+    host_rev = host.evaluate("() => KCP.league.state().S.rev")
+    team.wait_for_function("rev => KCP.league.state().snap?.rev === rev", arg=host_rev, timeout=12000)
     before_h, before_t = public_state(host), public_state(team)
     before_dom = json.dumps(host.locator("body").evaluate(SURFACE), ensure_ascii=False)
     snapshot_contract(checks, team, label + "-team-jan")

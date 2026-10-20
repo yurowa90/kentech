@@ -1,5 +1,6 @@
 'use strict';
 // V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix2.md 호출 수·옛 frozen 호환 + S7-fix3.md + V3B-s7.md 영상 3차.
+// D-74: 첫 달 네 원인→다섯 원인. 이웃 거래 다음에 계통 수입, 후보·폭포도 같은 순서.
 // 실행: node tests/league/review/30-s7-attribution.js (브라우저 없음)
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -56,7 +57,8 @@ function fixture({ changed = false, replayOffset = 0, sameWeather = false, noEve
   const S = C.newState(session.room, R.id, 0, ids, { turns: 12, seedMode: 'fixed' });
   C.host(S, 'next', 0);
   for (const city of ids) S.teams[city].plan = clone(D.normalStartPlans[city]);
-  if (empty) for (const city of ids) S.teams[city].plan = { builds: [], lines: [], policies: [] };
+  // D-74: 수입으로 정상 시험 정전0이 될 수 있어 음수 재현 오프셋도 합법(0~100)인 빈 계획50%에 적용.
+  if (empty || sameWeather && replayOffset) for (const city of ids) S.teams[city].plan = { builds: [], lines: [], policies: [] };
   B.selectPack(C.teamDef(R, id).pack, 'league');
   if (noEvents && !empty) {
     // 무사건이어도 선택·날씨의 두 몫이 생기도록 합법적인 연결 태양광 배치.
@@ -101,8 +103,9 @@ function fixture({ changed = false, replayOffset = 0, sameWeather = false, noEve
   // 이 픽스처는 재현 경로와 같은 C.trialMods로 시험을 만든다. 같은 계획의
   // replay=0은 구조상 성립하므로 실제 시험 경로의 독립 검증은 아니다.
   // s7.py가 UI로 시험한 뒤 계획을 유지한 달에 |replay| < 0.01%p를 검사한다.
-  const s = simulate({ ...B.sanitize(plan, 1e9), seed, season: rd.season }, 7,
-    { league: true, mods: C.trialMods(S, R, id) });
+  // D-74: 저장 시험도 수입 0→경제 모드 계통 수입 반영. 실제 시험 경로는 35번에서 별도 검사.
+  const s = C.gridFill(simulate({ ...B.sanitize(plan, 1e9), seed, season: rd.season }, 7,
+    { league: true, mods: C.trialMods(S, R, id) }));
   const scope = JSON.stringify([session.room, id]), map = C.teamDef(R, id).pack;
   const trial = { map, scope, year: rd.year, month: rd.month, season: rd.season,
     seed, days: 7, unsPct: 100 * s.unsTotal / s.tot.dem + replayOffset,
@@ -131,17 +134,44 @@ function fixture({ changed = false, replayOffset = 0, sameWeather = false, noEve
   const pct = s => s.tot.dem > 0 ? 100 * s.unsTotal / s.tot.dem : 0;
   const values = stages.map(pct), grid = operating.grid[id];
   const full = Object.fromEntries(grid.entries.map(b => [b.key, b.mw]));
-  const expected = { rates: [values[0], values[3]],
+  // 독립 시간별 C1: min(부족, 수요×상한). gridFill 반환값을 기대값으로 쓰지 않는다.
+  const gridRate = raw => {
+    let imports = 0;
+    for (let k = 0; k < raw.H; k++) {
+      let shortage = 0;
+      for (let ti = 0; ti < raw.NT; ti++) shortage += raw.hrUns[k * raw.NT + ti];
+      // 시간별 부족의 Float32 경계는 엔진 결과 배열의 정밀도와 맞춘다. 허용 오차 확대 없음.
+      imports += Math.min(Math.fround(shortage), raw.hrDem[k] * D.params.gridImportShare.v);
+    }
+    return 100 * Math.max(0, raw.unsTotal - imports) / raw.tot.dem;
+  };
+  const filledBase = gridRate(stages[0]);
+  const expected = { rates: [filledBase, gridRate(stages[3])],
     parts: ['choice', 'weather', 'event'].map((key, i) => ({ key, value: values[i + 1] - values[i] })),
     weather: stages.slice(1, 3).map(s => weatherMetrics(s, operating.teams[id].plan, normalMods)),
     grid: { waitingMW: grid.waitingMW, value: grid.waitingMW > 0 ?
       pct(sim(operating.teams[id].plan, res.seed, res.days, { ...eventMods, reCap: full })) - values[3] : 0 } };
-  expected.parts.push({ key: 'trade', value: res.team[id].unsPct - values[3] });
+  const neighborRate = neighbor(res, id, values[3]).rate;
+  expected.parts.push({ key: 'trade', value: neighborRate - values[3] });
+  expected.parts.push({ key: 'gridImport', value: res.team[id].unsPct - neighborRate - (filledBase - values[0]) });
   calls = [];
   return { S, V, res, trial, expected };
 }
 
-const names = { choice: '내 선택', weather: '날씨·운전 기간', event: '사건·대응', trade: '이웃 거래' };
+// D-74: 옛 실제−고립(이웃+계통) → 이웃 부족 보충과 계통 부족 보충으로 분리.
+// flow는 손실 후 도착량, sub는 부족 보충이 아닌 자체 화력 대체량(MWh)이다.
+function neighbor(res, city, isolated) {
+  let delivered = 0;
+  for (const [edge, flow] of Object.entries(res.flow || {})) {
+    const [from, to] = edge.split('~');
+    if (to === city) delivered += flow.ab;
+    if (from === city) delivered += flow.ba;
+  }
+  const replacedShortage = Math.max(0, delivered - res.team[city].sub);
+  return { delivered, rate: Math.max(0, isolated - 100 * replacedShortage / res.team[city].dem) };
+}
+
+const names = { choice: '내 선택', weather: '날씨·운전 기간', event: '사건·대응', trade: '이웃 거래', gridImport: '계통 수입' };
 const causes = Object.keys(names);
 const number = (v, sign = false) => {
   if (!Number.isFinite(v)) return '–';
@@ -268,12 +298,12 @@ function rendered(a, html, label) {
   const rows = [...html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"/g)];
   const hasReplay = Math.abs(a.replay) >= .005;
   equal(rows.map(m => m[1]), ['trial', ...(hasReplay ? ['replay'] : []), ...causes, 'actual'],
-    `${label}: 겹침 없이 시험 + 별도 재현 차이 + 네 원인 + 실제`);
+    `${label}: 겹침 없이 시험 + 별도 재현 차이 + 다섯 원인 + 실제`);
   equal(html.includes('id="lg-outage-replay"'), hasReplay, `${label}: 0.005%p 미만 재현 설명 생략`);
   ok(Math.abs(rows.filter(m => m[1] !== 'actual').reduce((s, m) => s + Number(m[2]), 0) - a.actual) <= .02,
     `${label}: 생략된 재현 차이를 고려한 폭포 합계 ±0.02%p`);
   const candidateKeys = [...html.matchAll(/data-(?:missed|out-other)="([^"]+)"/g)].map(m => m[1]);
-  ok(candidateKeys.every(k => causes.includes(k)), `${label}: 후보는 네 원인 안에서만`);
+  ok(candidateKeys.every(k => causes.includes(k)), `${label}: 후보는 다섯 원인 안에서만`);
   ok(html.includes(`이번 달 계산 순서: ${causes.map(k => names[k]).join(' → ')}`) &&
     html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), `${label}: 실제 계산 순서·순서 의존 안내`);
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g)) {
@@ -283,7 +313,7 @@ function rendered(a, html, label) {
   ok(/id="lg-outage-waterfall"[^>]*role="img"[^>]*aria-label="[^"]*시험 [\d.,]+%/.test(html),
     `${label}: 폭포 이미지 역할과 수치 요약`);
   const aria = html.match(/id="lg-outage-waterfall"[^>]*aria-label="([^"]+)"/)[1];
-  for (const name of ['내 선택', '날씨·운전 기간', '사건·대응', '이웃 거래', '실제']) {
+  for (const name of ['내 선택', '날씨·운전 기간', '사건·대응', '이웃 거래', '계통 수입', '실제']) {
     ok(aria.includes(name), `${label}: 접근성 요약에 ${name}`);
   }
   ok(/id="lg-outage-verdict"[^>]*tabindex="-1"/.test(html), `${label}: 판정 머리 초점 대상`);
@@ -298,13 +328,13 @@ for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset:
   const before = JSON.stringify({ S, V, trial });
   const a = attribution(V, res, id);
   ok(a, '당시 시험·공개 상태로 분해 가능');
-  equal(a.parts.map(p => p.key), causes, 'parts는 네 원인만, 재현 차이·겹침은 후보 아님');
+  equal(a.parts.map(p => p.key), causes, 'parts는 다섯 원인만, 재현 차이·겹침은 후보 아님');
   expected.parts.forEach(p => near(a.parts.find(x => x.key === p.key).value, p.value, `${p.key} 독립 모델 몫`));
   ok(Number.isFinite(a.replay), '재현 차이는 별도 숫자');
   near(a.trial, trial.unsPct, '시험 출발값');
   near(a.actual, res.team[id].unsPct, '실제 도착값');
   near(a.total, a.actual - a.trial, '정전율 차이 단위 %p');
-  near(a.replay + a.parts.reduce((sum, p) => sum + p.value, 0), a.total, '재현 차이 + 네 원인 합계 항등식 1e-9');
+  near(a.replay + a.parts.reduce((sum, p) => sum + p.value, 0), a.total, '재현 차이 + 다섯 원인 합계 항등식 1e-9');
   const waiting = a.grid.waitingMW > 0;
   equal(calls.length, waiting ? 5 : 4, '시험 기준: 접속 대기 없으면 4회, 있으면 5회');
   equal(a.simulations, calls.length, '보고된 호출 수 = 실제 호출 수');
@@ -446,8 +476,10 @@ function weatherDOM(V, res, a) {
   // 몫의 부호만 반전해도 두 물리 단서와 순서는 동일해야 한다.
   const clues = [];
   for (const sign of [-1, 1]) {
-    const pair = samples.map((s, i) => {
-      const copy = structuredClone(s);
+    // D-74: 복제 결과에는 gridFill 보조자료가 없다. 같은 seed의 새 원본을 만들어
+    // 물리 단서 동률 픽스처만 바꾼다(허용 오차/대상 제외 없이 원래 단서 검증 유지).
+    const pair = [sample(707), sample(714)].map((s, i) => {
+      const copy = s;
       copy.tot.dem = (10 + i) * copy.H;
       copy.tot.ren = (10 + i) * 24 * copy.days;
       copy.unsTotal = copy.tot.dem * (20 + i * sign * 5) / 100;
@@ -625,7 +657,7 @@ ok(/const sign = topic === "uns" \? \{ evening: 1, grid: -1, wind: -1, neighbor:
 }
 
 // C-lastmonth.md §4: 첫 달 결과를 이 기기에서 받지 않은 2월에는 시험으로
-// 대신하지 않는다. 사본이 있는 월간 경로·여섯 단계 검산은 32번에서 다룬다.
+// 대신하지 않는다. 사본이 있는 월간 경로·일곱 단계 검산은 32번에서 다룬다.
 for (const noEvents of [false, true]) {
   const { V, res } = fixture({ changed: true, month: 2, noEvents });
   equal(res.round, 2, '실제 엔진으로 2월까지 진행');
@@ -696,11 +728,13 @@ for (const field of ['seed', 'days', 'plan']) {
 {
   const { V, res, trial, expected } = fixture({ empty: true, noEvents: true });
   const a = attribution(V, res, id), [before, after] = expected.rates;
-  near(before, 100, '첫 달 빈 설비 시험 정전율 독립 계산 100%');
-  near(after, 100, '첫 달 빈 설비 실제 고립 정전율 독립 계산 100%');
+  // D-74: 빈 계획 시험/실제100→50%. 고립 원시 운전은 여전히100%.
+  ok(Math.abs(before - 100 * (1 - D.params.gridImportShare.v)) < 1e-5, 'D-74 첫 달 빈 설비 시험 정전율(Float32 누적)');
+  ok(Math.abs(after - 100 * (1 - D.params.gridImportShare.v)) < 1e-5, 'D-74 첫 달 빈 설비 실제 정전율(Float32 누적)');
   near(trial.unsPct, before, '실제 저장 시험 = 독립 미공급/수요');
-  near(res.team[id].unsPct, after, '거래 없는 실제 운영 = 독립 미공급/수요');
-  ok(expected.parts.every(p => Math.abs(p.value) < .05), '빈 설비의 네 차이 몫은 미미함');
+  // D-74: 실제 공개 정전율은 소수 둘째 자리, 독립 시간별 수입은 Float32 누적.
+  ok(Math.abs(res.team[id].unsPct - after) <= .0051, '거래 없는 실제 운영 = 독립 미공급/수요(공개 반올림)');
+  ok(expected.parts.every(p => Math.abs(p.value) < .05), '빈 설비의 다섯 차이 몫은 미미함');
   for (const opened of [false, true]) {
     const html = league.uiMath.outageCardsHTML(V, res, id, { outageOpened: opened });
     studentWords(html, `첫 달 극단/${opened}`);
@@ -723,7 +757,7 @@ for (const field of ['seed', 'days', 'plan']) {
     const frozen = { ...clone(base), trial: before, actual: after, total: difference, replay: difference,
       parts: base.parts.map(p => ({ ...p, value: 0 })), grid: { waitingMW: 0, value: 0 } };
     near(frozen.replay + frozen.parts.reduce((sum, p) => sum + p.value, 0), difference,
-      `${label}: 재현 차이 + 네 몫 = 실제 차이 독립 검산`);
+      `${label}: 재현 차이 + 다섯 몫 = 실제 차이 독립 검산`);
     for (const opened of [false, true]) {
       const html = league.uiMath.outageCardsHTML(V, res, id,
         { outageSingleShown: true, outageOpened: opened, outageFrozen: frozen });

@@ -1,9 +1,9 @@
 "use strict";
 // 독립 계약 검사: ECON-TECH-SPEC T1–T3/T5 우선, 수치 근거 ECON-TECH §3·§7.
 // G: 4주/달, 유레카 남은 need/3, 이전 50%·0.5억×6달·수입 3억 상한,
-// HVDC 1.2%·비용×1.3, 초전도 ×1.5·손실×0.5·월0.5억, 12달 5~7장.
+// D-79: HVDC 기본 손실·용량×1.5·비용×1.3, 초전도 ×1.5·손실×0.5·월0.5억, 12달 5~7장.
 // 효과 크기는 계약의 교육용 G, 원근거 SiC P·탠덤/배터리 P(기업 발표 보조)·혼소 M·수소 왕복 P.
-// 구현 params에서 기대값을 가져오지 않는다. 지도 좌표와 기존 설비 기본값만 fixture로 읽는다.
+// 기존 독립 수치 계약을 유지하되 D-79 파생 기대값은 검증된 params를 읽는다. 지도 좌표와 기존 설비 기본값만 fixture로 읽는다.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const ROOT = path.resolve(__dirname, "../../..");
 const ctx = vm.createContext({ console, document: { documentElement: {} }, KCP: { route() {}, on() {}, esc: x => x } });
@@ -185,10 +185,13 @@ test("연계선·설비·MODS 수치", () => {
   const S = game(false), tie = { a, b, cap: 4 };
   near(C.effectiveTie(S, tie).loss, 0.01, "RECAL-SPEC §1.3 기본 연계선 손실1%");
   adopt(S, a, ["hvdc"]); near(C.effectiveTie(S, tie).loss, 0.01, "F41 HVDC 카드만으로 일반 선은 불변");
-  tie.kind = "hvdc"; near(C.effectiveTie(S, tie).loss, 0.012, "F41 HVDC 선 손실1.2%");
+  // D-79: 손실 .012 → 기본 손실, 용량 4 → 4×1.5, 건설비 ×1.3 유지.
+  tie.kind = "hvdc"; near(C.effectiveTie(S, tie).loss, C.TIE_LOSS, "D-79 HVDC 기본 손실");
+  near(C.effectiveTie(S, tie).cap, 4 * TD.params.hvdcCap.v, "D-79 HVDC 용량 배수");
+  near(C.tieCost(R, tie), C.tieCost(R, { ...tie, kind: "land" }) * TD.params.hvdcCost.v, "D-79 건설비 ×1.3");
   adopt(S, a, ["hvdc", "scable"]);
-  near(C.effectiveTie(S, tie).cap, 6, "초전도 용량4×1.5=6MW");
-  near(C.effectiveTie(S, tie).loss, 0.006, "HVDC·초전도 손실0.6%");
+  near(C.effectiveTie(S, tie).cap, 4 * TD.params.hvdcCap.v * TD.params.scableCap.v, "D-79 초전도 결합 6→9MW");
+  near(C.effectiveTie(S, tie).loss, C.TIE_LOSS * TD.params.scableLoss.v, "D-79 결합 손실 .006→.005");
   const scableLoss = C.effectiveTie(S, tie).loss;
   adopt(S, a, ["sic", "ccu", "h2mix", "vpp"]); const mods = C.modsFor(S, R, a);
   near(mods.renewOutput, 1.015, "SiC 출력 배수"); near(mods.co2Mul.coal, 0.4, "CCU 석탄 CO2 배수");
@@ -205,7 +208,7 @@ test("연계선·설비·MODS 수치", () => {
   const tandem = bg.simulate(tp, 7, { league: true, mods: {} });
   near(tandem.tot.renAvail / original.tot.renAvail, 1.2, "RECAL-SPEC §1.3 실제 새 탠덤 출력");
   ok(JSON.stringify(bg.simulate(clone(p), 7, { league: true, mods: {} })) === JSON.stringify(original), "MODS 후속 실행 오염 없음");
-  console.log("카드 효과 실측", JSON.stringify({ hvdcLoss: 0.012, scableLoss, solarMWh: original.tot.renAvail, tandemMWh: tandem.tot.renAvail, sicMWh: sic.tot.renAvail }));
+  console.log("카드 효과 실측", JSON.stringify({ hvdcLoss: TD.params.hvdcLoss.v, scableLoss, solarMWh: original.tot.renAvail, tandemMWh: tandem.tot.renAvail, sicMWh: sic.tot.renAvail }));
 });
 
 test("대량 공정 신규 투자만 할인·SMR 12턴 공사", () => {

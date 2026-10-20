@@ -893,7 +893,7 @@
   function effectiveTie(S, T, mul = 1) {
     const tech = [...techOf(S, T.a), ...techOf(S, T.b)];
     const scable = KCP.TECH_DATA && tech.includes("scable"), hvdc = KCP.TECH_DATA && T.kind === "hvdc";
-    return { id: tieId(T), a: T.a, b: T.b, cap: T.cap * mul * (scable ? tp("scableCap") : 1), loss: (hvdc ? tp("hvdcLoss") : TIE_LOSS) * (scable ? tp("scableLoss") : 1) };
+    return { id: tieId(T), a: T.a, b: T.b, cap: T.cap * mul * (hvdc ? tp("hvdcCap") : 1) * (scable ? tp("scableCap") : 1), loss: (hvdc ? tp("hvdcLoss") : TIE_LOSS) * (scable ? tp("scableLoss") : 1) };
   }
   function coolingCost(S, id) {
     if (!KCP.TECH_DATA || !techOf(S, id).includes("scable")) return 0;
@@ -1093,6 +1093,70 @@
     return { out, flow };
   }
 
+  // D-74: 이웃 거래 뒤의 부족만 현재 운영 시간별 수요에 비례해 보충한다.
+  // 기존 정산 필드만 사용한다. 지역 생산·PM·수출 연료 회계에는 넣지 않는다.
+  function gridSupply(o, s) {
+    const P = KCP.ECON_DATA.params;
+    let total = 0;
+    for (let k = 0; k < s.H; k++) {
+      const amount = Math.min(Math.max(0, s.uns[k] - o.del[k]), s.dem[k] * P.gridImportShare.v);
+      o.del[k] += amount;
+      total += amount;
+    }
+    o.fuelX += total * P.normalCost.v * P.gridImportMarkup.v;
+    o.co2In += total * P.normalCo2.v;
+    return total; // imp·pay는 이웃 거래 전용. 계통 공급량은 내부 호출에서만 쓴다.
+  }
+
+  // 거래 없는 도시 시험. 자체 생산(tot.co2)은 보존하고 co2는 소비 배출로 표시한다.
+  // 원본·공개 필드 집합은 그대로 두며 시간별 수요 보조자료는 WeakMap에서만 읽는다.
+  function gridFill(sim) {
+    const res = structuredClone(sim), uns = new Float32Array(res.H);
+    for (let k = 0; k < res.H; k++) {
+      let total = 0;
+      for (let ti = 0; ti < res.NT; ti++) total += res.hrUns[k * res.NT + ti];
+      uns[k] = total;
+    }
+    const o = { del: new Float32Array(res.H), fuelX: 0, co2In: 0 };
+    const imported = gridSupply(o, { H: res.H, dem: res.hrDem, uns });
+    const detail = KCP.buildGame.gridFillContext(sim);
+    if (!detail) throw new Error("gridFill needs an original league simulation");
+    res.town.forEach(t => { t.uns = t.outH = t.eveH = t.cloudH = t.hotH = 0; t.dayOut.fill(0); });
+    for (let k = 0; k < res.H; k++) {
+      const d = Math.floor(k / 24), h = k % 24;
+      // 실제 운영의 병원 정전 판정과 같이 수입을 병원 부족부터 배분한다.
+      let left = o.del[k];
+      for (const hospital of [true, false]) {
+        const shortage = res.town.reduce((sum, _, ti) => sum + (detail.hospTi[ti] === hospital ? sim.hrUns[k * res.NT + ti] : 0), 0);
+        const fill = Math.min(left, shortage);
+        left -= fill;
+        res.town.forEach((t, ti) => {
+          if (detail.hospTi[ti] !== hospital) return;
+          const at = k * res.NT + ti, remaining = Math.max(0, sim.hrUns[at] * (shortage > 0 ? 1 - fill / shortage : 1));
+          res.hrUns[at] = remaining; t.uns += remaining;
+          if (remaining > Math.max(.005, .02 * detail.townDemand[at])) {
+            t.outH++; t.dayOut[d]++;
+            if (h >= 17 && h < 23) t.eveH++;
+            if (res.wx[d].w > 0) t.cloudH++;
+            if (res.wx[d].hot) t.hotH++;
+          }
+        });
+      }
+      res.hrSup[k] += o.del[k];
+      res.hrHospUns[k] = Math.max(0, sim.hrHospUns[k] - o.del[k]);
+      res.hrHosp[k] = res.hrHospUns[k] > Math.max(.005, .02 * res.hrHospDem[k]) ? 1 : 0;
+    }
+    res.unsTotal = Math.max(0, sim.unsTotal - imported);
+    res.outTotal = res.town.reduce((sum, t) => sum + t.outH, 0);
+    res.hospH = res.hrHosp.reduce((sum, h) => sum + h, 0);
+    res.tot.sup += imported; res.tot.by.import += imported;
+    res.tot.fuel += o.fuelX; res.cost.fuel += o.fuelX; res.cost.total += o.fuelX;
+    res.co2 += o.co2In;
+    const bg = KCP.buildGame;
+    preserveMap(bg, () => { bg.selectPack(res.map, "league"); detail.finish(res); });
+    return res;
+  }
+
   // 라운드 하나를 돌려 결과를 state.results에 붙인다.
   function runRound(S, bg) {
     const R = regionOf(S.region), rd = roundsOf(S)[S.round - 1];
@@ -1127,6 +1191,7 @@
       }
     }
     const { out, flow } = settle(built, sims, price, H, rnd.days);
+    if (S.econ) act.forEach(({ id }) => gridSupply(out[id], sims[id]));
     lastRun = { round: S.round, days: rnd.days, seed: rnd.seed, season: rnd.season,
       teams: Object.fromEntries(act.map(({ id }) => [id, { res: sims[id]._res, del: out[id].del, uns: sims[id].uns, dem: sims[id].dem }])) };
     const team = {};
@@ -1138,7 +1203,7 @@
         if (isOutHour(s.uns, o.del, s.dem, k)) outH++;
         if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > Math.max(0.005, 0.02 * (s.hospDem?.[k] || 0))) hospH++;
       }
-      const uns = Math.max(0, K.uns - (o.imp - o.sub));
+      const uns = Math.max(0, K.uns - o.del.reduce((sum, amount) => sum + amount, 0));
       const tie = tieShare(S, R, t.id), Tm = S.teams[t.id], loss = r2((Tm.sunk || 0) + lossOf(Tm.base, Tm.plan));
       // 현금 흐름: 이번 라운드 새 투자(누적 투자 − 지난 라운드까지) + 이번 라운드 운영비. 라운드를 더해도 건설비가 두 번 세지지 않는다.
       const rfix = r2(Tm.rfix || 0), stock = r2(K.capex + tie + loss + rfix), resp = respCost(S, R, t.id, S.round);
@@ -1374,7 +1439,7 @@
     replayOf, researchView, researchError, researchReserve, effectiveTie, royaltyLedger, techCards, connectedTie,
     gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, trialMods, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
-    budget, tieCost, tieShare, cleanPlan, capexOf,
+    budget, tieCost, tieShare, cleanPlan, capexOf, gridFill,
     SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf, econInput
   };
 })();
