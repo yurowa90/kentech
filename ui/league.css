@@ -679,12 +679,13 @@ section#lg-missed.lg-outage { display: block; }
 .lg-regionviewport:active { cursor: grabbing; }
 .lg-regionboard { position: relative; width: 100%; margin: 0 auto; }
 .lg-regionboard canvas { touch-action: none; }
-.lg-regionlabels { position: absolute; inset: 0; pointer-events: none; }
-.lg-regionlabel { position: absolute; transform: translate(-50%, 20px); width: 140px; max-width: 22%; padding: 4px 6px; border-left: 4px solid var(--c); border-radius: 6px; background: var(--sheet); color: var(--ink); font-size: 12px; line-height: 1.4; }
+.lg-regionlabels { position: absolute; top: 0; left: 0; transform-origin: 0 0; pointer-events: none; }
+.lg-regionlabel { position: absolute; box-sizing: border-box; width: 140px; max-width: 32%; padding: 4px 6px; border-left: 4px solid var(--c); border-radius: 6px; background: var(--sheet); color: var(--ink); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.lg-regionlabel-name::before { content: attr(aria-label); display: block; font-weight: 800; }
 .lg-regioncities { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 8px 12px; }
 .lg-regioncity { min-width: 0; min-height: 44px; text-align: left; padding: 8px; border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font: inherit; cursor: pointer; }
 .lg-regioncity span { display: block; font-size: 12px; }
-.lg-regioncap { margin: 0; padding: 0 12px; font-size: 13px; }
+.lg-regioncap { margin: 0; padding: 0 12px; font-size: 12px; line-height: 1.4; white-space: pre-line; }
 .lg-regioncap:empty { display: none; }
 .lg-peek #lg-peek { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
 .lg-peek .lg-awaybar { pointer-events: auto; position: fixed; inset: 0 0 auto; transform: none; max-width: none; border-radius: 0; z-index: 40; }
@@ -693,7 +694,7 @@ section#lg-missed.lg-outage { display: block; }
 .lg-bar .lg-bbtn { min-height: 44px; }
 @media (max-width: 760px) {
   .lg-regioncities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lg-regionlabel { font-size: 11px; padding: 2px 3px; transform: translate(-50%, 12px); }
+  .lg-regionlabel { width: 114px; font-size: 11px; padding: 2px 3px; }
 }
 
 /* ECON-NEXT §2: 팀 탐색은 막대 한 곳, 서랍은 접어서 지도를 더 보이게 한다. */
@@ -870,7 +871,6 @@ section#lg-missed.lg-outage { display: block; }
 .lg-team-map .bd-toast { top: auto; bottom: calc(var(--bd-dock, 90px) + 16px); }
 #lg-previous-change { margin: 0 0 10px; font-size: 14px; color: var(--ink); }
 @media (max-width: 760px) {
-  .lg-regionlabels { display: none; }
   .lg-regioncity span { overflow-wrap: anywhere; }
   .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
   .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
