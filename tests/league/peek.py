@@ -282,12 +282,14 @@ def scenario(checks, context, base, label, mode, pages):
     if mode != "season":
         checks.ok(initial["rounds"] == 12, f"{label} U5 경제 모드 12달")
         checks.ok(not shown(team, "#lg-panel"), f"{label} U1 첫 지도는 일지 서랍 닫힘")
-        guide = team.locator('#lg-guide-close')
+        # 품질8 UX U5: 첫 달 코치 띠(#lg-coach)는 8단계 동안 지도 조작을 막지 않도록 열 때 포커스를
+        # 옮기지 않는다(D-coach.md). 닫기 단추와 지도 밖 포커스의 Escape 닫기는 그대로 확인한다.
+        guide = team.locator('#lg-coach')
         if guide.count():
-            checks.ok(guide.evaluate('el => el === document.activeElement'), f'{label} U2 첫 안내 닫기에 바로 포커스')
+            checks.ok(team.locator('#lg-coach-close').count() == 1, f'{label} U2 첫 안내 닫기 단추')
             team.evaluate('document.activeElement.blur()')
             team.keyboard.press('Escape')
-            checks.ok(team.locator('#lg-first-guide').count() == 0, f'{label} U2 지도 밖 포커스에서도 안내 Escape 닫기')
+            checks.ok(team.locator('#lg-coach').count() == 0, f'{label} U2 지도 밖 포커스에서도 안내 Escape 닫기')
         team.locator('[data-run="7"]').click()
         team.wait_for_selector('#bd-skip')
         team.wait_for_function("() => !!document.querySelector('#bd-run-tip')?.textContent")

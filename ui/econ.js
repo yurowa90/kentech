@@ -770,7 +770,7 @@
     const rank = list.slice().sort((a, b) => b.score - a.score || E.order.indexOf(a.id) - E.order.indexOf(b.id));
     rank.forEach((x, i) => { x.rank = i + 1; });
     const by = {}; list.forEach(x => { by[x.id] = x; });
-    return { rank, by, aggregation: { name: "균형 점수", formula: `exp(Σ w × ln(max(${floor}, 부분 점수)) / Σ w) + 공동 보너스`, weights: clone(w), floor } };
+    return { rank, by, aggregation: { name: "균형 점수", formula: `0~100 자름(exp(Σ w × ln(max(${floor}, 부분 점수)) / Σ w) + 공동 보너스)`, weights: clone(w), floor } };
   }
 
   KCP.econ = {

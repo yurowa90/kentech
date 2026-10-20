@@ -68,6 +68,10 @@ def _reflect(c, label):
 
 def _state(c, year="2022"):
     c.wait_saved(400)
+    # 저장은 페이지 안 250ms 지연 타이머(app.js schedule)다. 검사 쪽 400ms만 기다리면 렌더러가 밀릴 때
+    # 타이머보다 읽기가 먼저 올 수 있다(10-13 desktop-dark A3 '실제 None' 1회, 재현은 못 함).
+    # 페이지 시계로 300ms 타이머를 하나 더 기다리면 마감이 앞선 저장 타이머가 반드시 먼저 돈다.
+    c.page.evaluate("() => new Promise(r => setTimeout(r, 300))")
     state = c.ls("kcp:v1:" + year)
     return state if isinstance(state, dict) else {}
 
@@ -319,7 +323,8 @@ def t_B1_talk_history(c: Ctx):
 
 def t_B2_recommendation(c: Ctx):
     _room(c, '2024')
-    for i, rec in ((0, '약 2~4분'), (3, '1~3분')):
+    # AUDIT-2024 §2 / A-2024 작업 3: 공통 4도 문항카드의 약 2~4분.
+    for i, rec in ((0, '약 2~4분'), (3, '약 2~4분')):
         button = c.page.locator(f'#pb-speak-{i} .speak-go')
         button.click()
         c.page.wait_for_function("""({i, rec}) => document.querySelector('#pb-speak-' + i + ' .speak-t')

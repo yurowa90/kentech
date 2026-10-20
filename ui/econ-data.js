@@ -1,7 +1,7 @@
 /* 도시 경제 모형의 자료. ui/econ.js가 읽는다(SPEC v2, 3차(v1.2) 보정, 1턴 = 1달).
  * start: 도시마다 시작 인구(pop0)·산업 종사자(ind0)·집단 비중·항만·수출 비중·산업 구성.
  *   est: true = 자리표시 추정값. 조사 담당이 통계(주민등록 인구, 전국사업체조사 종사자, 재정자립도)로 바꾼다.
- * params: 계수마다 {v, grade, note}. 등급 O(공식 원문)·O*(공식 통계 검색 요약)·P(논문·보고서)·M(모형 추정)·G(게임 가정, D-56).
+ * params: 계수마다 {v, grade, note}. 등급 O(공식 원문)·O*(공식 통계·자료를 원문 대신 보도·검색 요약으로 확인)·P(논문·보고서)·M(모형 추정)·G(게임 가정, D-56).
  * intl: 국제 지수(달마다 씨앗 고정 무작위 걷기)와 사건. 사건 효과는 손잡이(지수에 더하는 값).
  * 돈 단위는 게임 억(도시 예산 160–365억과 같은 눈금), 사람 단위는 실제 명.
  */
@@ -73,15 +73,15 @@
       other: { name: "기타" }
     },
     // univ0·lab0: 기존 실제 대학·연구소 시작 수(O*), 게임 건설 자산과 분리. REF 3.9, 4.8(개별 시설 원문 출처는 기존 자료에 없음).
-    // 도시 시작값 — 2025 공식 통계(검색 요약으로 확인, O*)와 추정(G). 출처·등급은 docs/ECON-DATA.md. cash0 = 도시 지도 예산(게임 단위 억, 실제 시 예산이 아니라 에너지·산업 계정).
+    // 도시 시작값 — 2025 공식 통계(주민등록 인구·재정자립도는 2026-10-13 원문 대조 O, 종사자는 검색 요약 O*)와 추정(G). 출처·등급은 docs/ECON-DATA.md. cash0 = 도시 지도 예산(게임 단위 억, 실제 시 예산이 아니라 에너지·산업 계정).
     start: {
       hwaseong: {
-        name: "화성·오산", est: false, pop0: 1239379, ind0: 655000, cash0: 365, fsr0: 0.485,
+        name: "화성·오산", est: false, pop0: 1239379, ind0: 655000, cash0: 365, fsr0: 0.4868, // M: 2025 당초 지방재정365 (화성 자체수입 16,224.59억 + 오산 2,624.14억) / (예산 31,187.53억 + 7,530.07억) = 0.4868
         groups: { worker: 0.408, youth: 0.21, senior: 0.117, business: 0.082, farm: 0.051, green: 0.133 },
         natShare: 0, landCapMul: 1.15,
         port: false, site: true, univ0: 2, lab0: 1, exportShare: 0.55,
         mix: { semi: 0.35, auto: 0.30, other: 0.35 },
-        note: "주민등록 2025-12 1,239,379명(O*) · 종사자 655,000(G) · 재정자립도 48.5%(O*/derived) · 노년 비중 11.7% · 청년 비중은 G"
+        note: "주민등록 2025-12 1,239,379명(O) · 종사자 655,000(G) · 재정자립도 48.7%(M: 두 시 원문 O의 예산 가중) · 노년 비중 11.7% · 청년 비중은 G"
       },
       pyeongtaek: {
         name: "평택", est: false, pop0: 610402, ind0: 283849, cash0: 320, fsr0: 0.416,
@@ -89,7 +89,7 @@
         natShare: 0, landCapMul: 1.15,
         port: true, site: true, univ0: 1, lab0: 0, exportShare: 0.60,
         mix: { semi: 0.45, auto: 0.10, other: 0.45 },
-        note: "주민등록 2025-12 610,402명(O*) · 종사자 283,849(O*) · 재정자립도 41.6%(O*) · 노년 비중 14.4% · 청년 비중은 G"
+        note: "주민등록 2025-12 610,402명(O) · 종사자 283,849(O*) · 재정자립도 41.6%(O) · 노년 비중 14.4% · 청년 비중은 G"
       },
       anseong: {
         name: "안성", est: false, pop0: 196592, ind0: 120000, cash0: 160, fsr0: 0.285,
@@ -97,7 +97,7 @@
         natShare: 0, landCapMul: 1.1,
         port: false, site: false, univ0: 2, lab0: 0, exportShare: 0.30,
         mix: { semi: 0.05, auto: 0.10, bio: 0.10, other: 0.75 },
-        note: "주민등록 2025-12 196,592명(O*) · 종사자 120,000(O*) · 재정자립도 28.5%(O*) · 노년 비중 21.6% · 청년 비중은 G"
+        note: "주민등록 2025-12 196,592명(O) · 종사자 120,000(O*) · 재정자립도 28.5%(O) · 노년 비중 21.6% · 청년 비중은 G"
       },
       dangjin: {
         name: "당진", est: false, pop0: 172564, ind0: 85000, cash0: 215, fsr0: 0.216,
@@ -105,7 +105,7 @@
         natShare: 0.65, landCapMul: 1.3,
         port: true, site: true, univ0: 0, lab0: 0, exportShare: 0.55,
         mix: { steel: 0.55, chem: 0.10, other: 0.35 },
-        note: "주민등록 2025-12 172,564명(O*) · 종사자 85,000(G) · 재정자립도 21.6%(O*) · 노년 비중 22.0% · 청년 비중은 G"
+        note: "주민등록 2025-12 172,564명(O) · 종사자 85,000(G) · 재정자립도 21.6%(O) · 노년 비중 22.0% · 청년 비중은 G"
       },
       asan: {
         name: "아산", est: false, pop0: 359378, ind0: 185000, cash0: 220, fsr0: 0.324,
@@ -113,7 +113,7 @@
         natShare: 0.45, landCapMul: 1.3,
         port: false, site: false, univ0: 3, lab0: 0, exportShare: 0.60,
         mix: { display: 0.35, auto: 0.20, semi: 0.15, other: 0.30 },
-        note: "주민등록 2025-12 359,378명(O*) · 종사자 185,000(G) · 재정자립도 32.4%(O*) · 노년 비중 15.3% · 청년 비중은 G"
+        note: "주민등록 2025-12 359,378명(O) · 종사자 185,000(G) · 재정자립도 32.4%(O) · 노년 비중 15.3% · 청년 비중은 G"
       },
       cheonan: {
         name: "천안", est: false, pop0: 664322, ind0: 323557, cash0: 205, fsr0: 0.337,
@@ -121,7 +121,7 @@
         natShare: 0.45, landCapMul: 1.3,
         port: false, site: false, univ0: 4, lab0: 1, exportShare: 0.40,
         mix: { semi: 0.15, display: 0.10, other: 0.75 },
-        note: "주민등록 2025-12 664,322명(O*) · 종사자 323,557(O*) · 재정자립도 33.7%(O*) · 노년 비중 14.5% · 청년 비중은 G"
+        note: "주민등록 2025-12 664,322명(O) · 종사자 323,557(O*) · 재정자립도 33.7%(O) · 노년 비중 14.5% · 청년 비중은 G"
       }
     },
     params: {
@@ -142,6 +142,12 @@
       cbamEuShare: p(0.154, "M", "EU 철강 수출 몫 · 무역 통계 환산 15.4% · 배속: 없음 · REF 7.13", ["S30"]),
       indTaxLag: p(12, "O", "산업세 과세 시차 · 지방세법 연간 소득 과세 구조 · 계산: 최근 12달 산출 평균 · 배속: 없음 · REF 5.3", ["L01"]),
       budgetToRevenue: p(2.2, "M", "예산/게임 연 세입 환산 · 지방재정365 예산 자료 · 배속: 없음 · REF 6.12", ["X28"]),
+      lngSpikeFrequency: p(3, "M", "LNG 급등 빈도 비교: 연 약 0.36회/현실 약 0.12회≈3배 [S16] · REF 7.8; 배속표 표시만"),
+      outageHoursPerPercent: p(87.6, "M", "연간 정전율 1% = 연 87.6시간(8760×1%); 배속표 표시만"),
+      koreaOutageHours2019: p(0.04, "O", "World Bank Doing Business SAIDI, 한국 연 0.04시간(2019, 최대 상업도시 기준) [S27]; 배속표 표시만"),
+      islandLineLoss: p(3, "G", "섬 연습 지도 1.5%/칸 / 리그 0.5%/칸 = 3배; 손실 관찰용 교육 확대 · REF 8.9 [S20][S25]; 배속표 표시만"),
+      researchYears: p([10, 30], "P", "IEA Clean Energy Innovation(2020): 시제품→대량 시장 10~30년 [I09] · REF 12.8; 게임 수 달로의 압축은 G, 배속표 표시만"),
+      complaintPoliticalEffect: p([50, 200], "G", "민원 정치 효과 약 50~200배: 인구 비례 환산 어림, 실증 계수 없음 · 근거 문서: docs/ECON-REFERENCES.md §10.8; 배속표 표시만", ["docs/ECON-REFERENCES.md"]),
       debtWarnRatio: p(0.55, "M", "채무 주의 문턱 · 지방재정법 시행령 예산 대비 25% · 계산: 2.2×0.25 · 배속: 없음 · REF 6.12", ["L07"]),
       fiscalTargetRev: p(0.3, "G", "설계 선택: 보통 조건 연 운영 수지 / 시작 연 세입 0.3 · G4: 판매가 정상화 뒤 2차 값 복원 · REF 6.10", []),
       svcCostSenior: p(2.0e-5, "M", "노령 서비스 비용 · 노령 인구 비중에 따른 추가 지출 가정 · 배속: 없음 · REF 6.11", ["L05", "S06", "S11"]),
@@ -229,7 +235,7 @@
       curtailKnee: p(0.64, "M", "출력제어 시작점 · 전력거래소(서울경제 2025) 봄 제어 2023 2일·2025 30/93일, 태양광 25.9·33.6GW 가정으로 두 점 맞춤 [S22][X25][X26] · 배속: 없음 · REF 8.13"),
       curtailMax: p(0.6, G, "B18 · EVIDENCE §11.6: 제어일 비율 상한"),
       curtailOffSeason: p(0.3, G, "B18 · EVIDENCE §11.6: 여름·겨울 제어일 비율 배수"),
-      essCap: p(0.9, "O*", "ESS 충전 상한 · 2019·2020 정부 안전대책 옥외 90%(보도), 현행 KEC는 정격 범위만 규정 [X22][L27] · 배속: 없음 · REF 8.8"),
+      essCap: p(0.9, "O", "ESS 충전 상한 · 산업통상자원부 보도설명자료(2022.2.21) p2: 2차 안전대책('20.2) 충전율 제한 옥내 80%·옥외 90%(게임 ESS는 옥외로 봄, G) · 현행 KEC는 정격 범위만 규정 [X22][L27] · 배속: 없음 · REF 8.8"),
       historyMonths: p(48, G, "경제 이력 보관 길이"),
       // 시간·지연
       lambdaFast: p(0.5, G, "GAMES E3: 정전·요금·세금·집단 만족의 월 반영률; 근거 약함: 게임 시차"),
@@ -350,7 +356,7 @@
       { id: "steel_proc", name: "철강 가공 공장", sector: "steel", workers: [800, 2000], mw: [1, 2], re: [0, 10], uns: 2 }
     ],
     sources: [
-      { id: "placeholder", text: "시작값은 2025 주민등록·2022/2023 사업체조사·2025 재정자립도 검색 요약(O*)과 추정(G)이 섞임. start.src에 항목별 기준·출처·등급, 원문 대조는 남음." },
+      { id: "placeholder", text: "시작값은 2025.12 주민등록 인구·2025 재정자립도(2026-10-13 원문 대조 O), 2022/2023 사업체조사(검색 요약 O*)와 추정(G)이 섞임. start.src에 항목별 기준·출처·등급, 원문 대조는 남음." },
       { id: "fiscal", text: "재정지원금 구조는 지방교부세(기준재정수요 − 수입) 원리를 단순화(M)." },
       { id: "cbam", text: "EU CBAM: 2026년 본격 시행, 철강·시멘트·알루미늄 등. 게임 시작부터 법정 도입 비율 적용." }
     ]
@@ -359,9 +365,9 @@
   Object.entries(KCP.ECON_DATA.start).forEach(([id, city]) => {
     const employmentYear = { pyeongtaek: 2022, anseong: 2023, cheonan: 2023 }[id];
     city.src = {
-      pop0: { year: "2025.12", source: "행정안전부 주민등록인구", grade: "O*", unit: "명" },
+      pop0: { year: "2025.12", source: "행정안전부 주민등록 인구통계(jumin.mois.go.kr, 2026-10-13 원문 대조)", grade: "O", unit: "명" },
       ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사" : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명" },
-      fsr0: { year: 2025, source: "지방재정365" + (id === "hwaseong" ? " · 두 도시 예산 가중 계산" : ""), grade: id === "hwaseong" ? "M" : "O*", unit: "%" }
+      fsr0: { year: 2025, source: "지방재정365 재정자립도[당초] 2025(2026-10-13 원문 대조)" + (id === "hwaseong" ? " · 두 도시 자체수입 합÷예산 합(M)" : ""), grade: id === "hwaseong" ? "M" : "O", unit: "%" }
     };
   });
   // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.

@@ -3,6 +3,7 @@
 키/프레임 원문/예외 원문은 출력·저장하지 않는다. 설정이 없으면
 Playwright를 import하기 전에 종료하여 의존성 없이 건너뛴다.
 """
+from league_flow import pass_issue_check
 import base64
 import json
 import os
@@ -145,6 +146,7 @@ class Wire:
         self.project, self.key, self.markers = urlsplit(project).hostname, key, markers
         self.sockets = self.bad_sockets = self.sent = self.snaps = self.leaks = 0
         self.sent_snaps = 0
+        self.bad_verdicts = 0
         self.nacks = self.callback_errors = self.blocked = 0
         self.requests, self.errors = Counter(), Counter()
         self.pending, self.latencies = None, []
@@ -168,17 +170,20 @@ class Wire:
     def frame(self, frame, sent):
         try:
             raw = frame.decode("utf-8", errors="replace") if isinstance(frame, bytes) else frame
+            leaked = False
             if sent:
                 self.sent += 1
-                self.leaks += any(marker in raw for marker in self.markers)
+                leaked = any(marker in raw for marker in self.markers)
+                self.leaks += leaked
             try:
                 msg = json.loads(raw)
             except (ValueError, TypeError):
                 return  # JSON이 아닌 프레임도 원문 표식 검사는 이미 거쳤다.
-            if sent and not any(marker in raw for marker in self.markers):
+            if sent and not leaked:
                 # Unicode escape로 표식이 들어간 경우도 확인한다.
-                self.leaks += any(marker in json.dumps(msg, ensure_ascii=False)
-                                  for marker in self.markers)
+                leaked = any(marker in json.dumps(msg, ensure_ascii=False)
+                             for marker in self.markers)
+                self.leaks += leaked
             if not isinstance(msg, dict) or msg.get("event") != "broadcast":
                 return
             envelope = msg.get("payload", {})
@@ -192,8 +197,17 @@ class Wire:
                 data = data["data"]
             p = self.pending
             if sent and event == "req":
+                # 문자열 JSON body의 Unicode escape까지 풀어 verdict 학생 글도 감시한다.
+                if not leaked:
+                    self.leaks += any(marker in json.dumps(data, ensure_ascii=False)
+                                      for marker in self.markers)
                 self.team = data.get("team")
                 self.requests[data.get("type")] += 1
+                if data.get("type") == "verdict":
+                    protocol = {"type", "team", "kid", "n", "sid", "seat", "id", "born", "rd", "ph"}
+                    self.bad_verdicts += (set(data) - protocol != {"round", "hit"} or
+                                          type(data.get("hit")) is not bool or
+                                          type(data.get("round")) is not int)
                 if p and p["start"] is None and p["request"](data):
                     p["start"] = time.perf_counter()
             elif sent and event == "snap":
@@ -426,6 +440,7 @@ def scenario(checks, host, teams, base, project, key, markers):
         for tid, (page, wire) in teams.items():
             def ready_action():
                 page.click("#lg-ready")
+                pass_issue_check(page)
                 page.wait_for_selector("#lg-predict")
                 checks.require(page.locator("#lg-ready-confirm").is_disabled(),
                                f"{month}달 {tid} 하루 전 약속 입력 전 준비 확인 비활성")
@@ -489,9 +504,11 @@ def report_wires(checks, pages):
             checks.ok(wire.sent > 0 and wire.snaps > 0,
                       f"{label} 프레임 관찰 송신 {wire.sent}·스냅 수신 {wire.snaps}")
         checks.ok(wire.leaks == 0, f"{label} 모든 송신 프레임 자유 서술 표식 {wire.leaks} (기대 0)")
+        checks.ok(wire.bad_verdicts == 0, f"{label} verdict 업무 필드·타입 위반 {wire.bad_verdicts} (기대 0)")
         checks.ok(wire.callback_errors == 0 and wire.blocked == 0,
                   f"{label} 프레임 검사 예외·예상 밖 HTTP 요청 0")
         if label != "진행자":
+            checks.ok(wire.requests["verdict"] >= 1, f"{label} 실제 verdict 프레임 관찰 (기대 최소 1)")
             checks.ok(wire.nacks == 0, f"{label} 요청 거부 {wire.nacks} (기대 0)")
             checks.ok(all(wire.requests[k] >= 3 for k in ("plan", "econ", "ready")) and wire.requests["crit"] >= 1 and
                       wire.requests["tie"] >= 2,
@@ -504,6 +521,24 @@ def report_wires(checks, pages):
                   f"max={max(samples):.1f} ms", flush=True)
         else:
             print("latency n=0 median=N/A max=N/A", flush=True)
+
+
+def check_verdict_monitor(checks):
+    """네트워크 없는 가상 프레임으로 verdict 감시 자체의 빈 통과를 막는다."""
+    marker = "D75_가상_학생글_표식"
+    protocol = {"type": "verdict", "team": "fixture", "kid": "fixture", "n": 1,
+                "sid": "fixture", "seat": 0, "id": "fixture", "born": 1, "rd": 1, "ph": "review"}
+    for escaped, extra in ((False, {}), (False, {"reason": marker}),
+                           (True, {"evidence": marker}), (True, {"hit": "true"})):
+        wire = Wire("https://fixture.invalid", "synthetic-key", (marker,))
+        body = json.dumps({**protocol, "round": 1, "hit": False, **extra}, ensure_ascii=escaped)
+        frame = json.dumps({"event": "broadcast", "payload": {"event": "req", "payload": {
+            "team": "fixture", "body": body, "sig": "synthetic-signature"}}})
+        wire.frame(frame, True)
+        expected_leak = int("reason" in extra or "evidence" in extra)
+        checks.ok(wire.requests["verdict"] == 1 and wire.callback_errors == 0 and
+                  wire.leaks == expected_leak and wire.bad_verdicts == int(bool(extra)),
+                  f"D75 감시 자체 검사 escaped={escaped} 추가 필드={','.join(extra) or '없음'}")
 
 
 def main():
@@ -520,6 +555,7 @@ def main():
     if config is None:
         print("SKIP KCP_SB_URL 또는 KCP_SB_KEY 없음: 실제 Supabase 검사 건너뜀", flush=True)
         return checks.finish()
+    check_verdict_monitor(checks)
     project, key = config
     print(f"공개 키: {key[:6]}…", flush=True)
     markers = tuple(f"LIVE_PRIVATE_{kind}_{secrets.token_hex(16)}"

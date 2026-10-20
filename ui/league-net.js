@@ -11,6 +11,24 @@
   if (!KCP) return;
   const MAX_BYTES = 200000;
 
+  // 공개 키 입력 실수를 막는 검사다. JWT 서명을 검증하는 인증 절차는 아니다.
+  function publicKeyProblem(key) {
+    key = String(key || "").trim();
+    if (key.includes("sb_secret_")) return "secret";
+    if (!key.startsWith("eyJ")) return null;
+    try {
+      // JWT는 header.payload.signature 세 부분이어야 한다(서명 검증은 하지 않는다 — 실수 방지 목적).
+      const parts = key.split("."), part = parts[1];
+      if (parts.length !== 3 || !parts[2] || !part || !/^[A-Za-z0-9_-]+={0,2}$/.test(part)) return "malformed";
+      const encoded = part.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
+        Uint8Array.from(atob(encoded + "=".repeat((4 - encoded.length % 4) % 4)), c => c.charCodeAt(0))
+      ));
+      if (payload?.role === "service_role") return "service_role";
+      return payload?.role === "anon" ? null : "not_anon";
+    } catch (e) { return "malformed"; }
+  }
+
   const bytes = value => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value));
   const secure = () => !!globalThis.crypto?.subtle;
   const algorithm = { name: "ECDSA", namedCurve: "P-256" };
@@ -48,49 +66,121 @@
     const room = Array.from({ length: 8 }, (_, i) => alphabet[parseInt(bits.slice(i * 5, i * 5 + 5), 2)]).join("");
     return { room, fingerprint: btoa(String.fromCharCode(...hash)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "").slice(0, 22) };
   }
-  // base의 키·비용과 trialGrid 배분은 모두 필요하다. 전송에서만 반복 필드명을 없앤다.
+  // D-77: 사전은 고정된 네 경로에서만 쓴다. 경로 참조·재계산은 하지 않는다.
+  const snapshotObject = x => x !== null && typeof x === "object" && !Array.isArray(x) &&
+    (Object.getPrototypeOf(x) === null || Object.getPrototypeOf(x).constructor?.name === "Object");
+  const snapshotKey = k => typeof k === "string" && !["__proto__", "constructor", "prototype"].includes(k);
+  function snapshotSafe(value) {
+    if (!value || typeof value !== "object") return true;
+    return Object.keys(value).every(k => snapshotKey(k) && snapshotSafe(value[k]));
+  }
+  function snapshotEnvelope(view, keys) {
+    // 수신기의 서명 세션 결속 검사는 확장 전이므로 기존 sid도 최상위에 둔다.
+    const { room, region, sid, ...body } = view;
+    return { _cp: 1, ...(Object.hasOwn(view, "room") ? { room } : {}),
+      ...(Object.hasOwn(view, "region") ? { region } : {}),
+      ...(Object.hasOwn(view, "sid") ? { sid } : {}), keys, body };
+  }
+  function snapshotRows(view, row, packing) {
+    for (const t of Object.values(view.teams || {}))
+      if (snapshotObject(t) && Array.isArray(t.hist)) t.hist = t.hist.map(row);
+    for (const c of Object.values(view.econ?.cities || {}))
+      if (snapshotObject(c) && Array.isArray(c.hist)) c.hist = c.hist.map(row);
+    if (Array.isArray(view.results)) view.results = view.results.map(value => {
+      // team 없는 옛 결과도 통째로 보존한다. 배열 원본과 행 배열은 -1 표지로 구분한다.
+      if (packing) {
+        if (!snapshotObject(value) || !snapshotObject(value.team)) return [-1, value];
+        value.team = Object.fromEntries(Object.entries(value.team).map(([id, t]) => [id, row(t)]));
+        return row(value);
+      }
+      const result = row(value);
+      if (value[0] !== -1) {
+        if (!snapshotObject(result) || !snapshotObject(result.team)) throw Error("snapshot-row");
+        result.team = Object.fromEntries(Object.entries(result.team).map(([id, t]) => [id, row(t)]));
+      }
+      return result;
+    });
+  }
+  // base와 배분은 정확한 두 필드일 때만 기존 행 배열로 바꾼다(누락·추가 필드 보존).
   function compactSnapshot(data) {
-    const view = structuredClone(data);
-    for (const t of Object.values(view.teams)) {
-      if (t.base) { t.baseRows = t.base.map(({ k, c }) => [k, c]); delete t.base; }
-      if (t.trialGrid?.entries) {
+    const view = JSON.parse(JSON.stringify(data));
+    if (!snapshotSafe(view)) throw Error("snapshot-key");
+    const pairs = (rows, a, b) => Array.isArray(rows) && rows.every(x => snapshotObject(x) &&
+      Object.keys(x).length === 2 && Object.hasOwn(x, a) && Object.hasOwn(x, b));
+    for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+      if (!Object.hasOwn(t, "baseRows") && pairs(t.base, "k", "c")) {
+        t.baseRows = t.base.map(({ k, c }) => [k, c]); delete t.base;
+      }
+      if (snapshotObject(t.trialGrid) && !Object.hasOwn(t.trialGrid, "rows") && pairs(t.trialGrid.entries, "key", "allocatedMW")) {
         t.trialGrid.rows = t.trialGrid.entries.map(({ key, allocatedMW }) => [key, allocatedMW]);
         delete t.trialGrid.entries;
       }
     }
     // 한 번 측정하고 오래된 기록을 바이트 비율로 한 번에 덜어낸다. 현재 계획은 보존한다.
-    let size = bytes(view).length;
+    let size = bytes(snapshotEnvelope(view, [])).length;
     if (size > 178000) {
       // 예전 저장에 남은 계획 전문은 그 팀의 건설 속도 요약으로 바꾼다.
-      for (const t of Object.values(view.teams)) {
-        t.hist?.forEach((row, i) => {
+      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+        (Array.isArray(t.hist) ? t.hist : []).forEach((row, i) => {
+          if (!snapshotObject(row)) return;
           if (i >= t.hist.length - 2 || !row.plan) return;
           const summary = Object.fromEntries(["t", "r", "cap", "n", "l"].filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
           size -= bytes(row).length - bytes(summary).length;
           t.hist[i] = summary;
         });
       }
-      const rows = Object.values(view.teams).flatMap(t => (t.hist || []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
+      const rows = Object.values(view.teams || {}).filter(snapshotObject).flatMap(t => (Array.isArray(t.hist) ? t.hist : []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
       const removable = rows.reduce((sum, x) => sum + x.size, 0);
       const ratio = Math.max(0, Math.min(1, (size - 177000) / Math.max(1, removable)));
-      for (const t of Object.values(view.teams)) {
+      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
         const old = rows.filter(x => x.t === t), target = old.reduce((sum, x) => sum + x.size, 0) * ratio;
         let removed = 0, count = 0;
         while (count < old.length && removed < target) removed += old[count++].size;
         if (count) t.hist = t.hist.slice(count);
       }
     }
-    return view;
+    // 비상 축약은 객체 기록에서 먼저 끝낸다. 봉투 표지·방·지역·사전도 크기에 포함한다.
+    const keys = [], index = new Map();
+    const row = obj => {
+      if (!snapshotObject(obj)) return [-1, obj];
+      const ks = Object.keys(obj), signature = JSON.stringify(ks);
+      if (!index.has(signature)) { index.set(signature, keys.length); keys.push(ks); }
+      return [index.get(signature), ...ks.map(k => obj[k])];
+    };
+    snapshotRows(view, row, true);
+    return snapshotEnvelope(view, keys);
   }
   function expandSnapshot(view) {
-    for (const t of Object.values(view.teams || {})) {
-      if (t.baseRows) { t.base = t.baseRows.map(([k, c]) => ({ k, c })); delete t.baseRows; }
-      if (t.trialGrid?.rows) {
-        t.trialGrid.entries = t.trialGrid.rows.map(([key, allocatedMW]) => ({ key, allocatedMW }));
-        delete t.trialGrid.rows;
+    if (!snapshotObject(view)) return null;
+    try {
+      if (Object.hasOwn(view, "_cp")) {
+        if (view._cp !== 1 || !snapshotObject(view.body) || !Array.isArray(view.keys) || !snapshotSafe(view)) return null;
+        const keys = view.keys;
+        if (!keys.every(ks => Array.isArray(ks) && ks.every(snapshotKey) && new Set(ks).size === ks.length)) return null;
+        const row = values => {
+          if (!Array.isArray(values)) throw Error("snapshot-row");
+          if (values[0] === -1 && values.length === 2) return values[1];
+          const ks = Number.isSafeInteger(values[0]) && values[0] >= 0 && keys[values[0]];
+          if (!ks || values.length !== ks.length + 1) throw Error("snapshot-row");
+          return Object.fromEntries(ks.map((k, i) => [k, values[i + 1]]));
+        };
+        const envelope = view;
+        view = envelope.body;
+        if (Object.hasOwn(envelope, "room")) view.room = envelope.room;
+        if (Object.hasOwn(envelope, "region")) view.region = envelope.region;
+        if (Object.hasOwn(envelope, "sid")) view.sid = envelope.sid;
+        snapshotRows(view, row, false);
       }
-    }
-    return view;
+      // _cp 없는 옛 진행자·혼자 하기 값에는 기존 base/배분 복원만 적용한다.
+      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+        if (t.baseRows && !Object.hasOwn(t, "base")) { t.base = t.baseRows.map(([k, c]) => ({ k, c })); delete t.baseRows; }
+        if (t.trialGrid?.rows && !Object.hasOwn(t.trialGrid, "entries")) {
+          t.trialGrid.entries = t.trialGrid.rows.map(([key, allocatedMW]) => ({ key, allocatedMW }));
+          delete t.trialGrid.rows;
+        }
+      }
+      return view;
+    } catch (_) { return null; }
   }
   async function signHost(identity, event, room, sid, data) {
     identity.n = Math.max(Date.now(), (identity.n || 0) + 1);
@@ -191,12 +281,13 @@
         T.lastN = Math.max(T.lastN || 0, m.n);
         // 같은 요청 id를 새 순번으로 재전송해도 거래·연구를 두 번 적용하지 않는다.
         const cached = typeof m.id === "string" && T.receipts?.find(x => x.id === m.id && x.kid === token);
-        if (cached) return { ...cached.result, quiet: true, request: m, verified: true };
-        if (m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
+        // D-75는 자체적으로 멱등이다. 같은 id의 재전송도 추가 필드·판정 변경을 규칙에서 검사한다.
+        if (cached && m.type !== "verdict") return { ...cached.result, quiet: true, request: m, verified: true };
+        if (!cached && m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
         const trusted = { ...m, token };
         if (claim) trusted.publicKey = publicJWK(key);
         const result = apply(trusted);
-        if (typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
+        if (!cached && typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
           T.receipts ||= [];
           T.receipts.push({ id: m.id, born: m.born, kid: token, result });
           if (T.receipts.length > 64) T.receiptFloor = Math.max(T.receiptFloor || 0, T.receipts.shift().born || 0);
@@ -266,7 +357,7 @@
   }
 
   function supabase(room, url, key, canSend = () => true) {
-    const H = hub(), topic = "realtime:kcp-league-" + room, addr = wsUrl(url, key);
+    const H = hub(), topic = "realtime:kcp-league-" + room, addr = publicKeyProblem(key) ? null : wsUrl(url, key);
     let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
     const queue = [];
     if (!addr || !key) { H.set("error"); return { kind: "supabase", send() {}, on: H.on, onStatus: H.onStatus, status: () => H.status, close() {} }; }
@@ -337,6 +428,6 @@
   KCP.leagueNet = {
     open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend) : local(o.room); },
     replyGate, compactSnapshot, expandSnapshot, canonical, sessionId, hostBinding, signHost, hostReceiver,
-    wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
+    publicKeyProblem, wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
   };
 })();
