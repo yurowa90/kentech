@@ -1173,6 +1173,10 @@
     const hit = actual == null ? null : n.pred[topic] === actual;
     return { result, r, topic, comparison, grid, delta, actual, hit };
   }
+  function promiseVerdictText({ r, topic, comparison, grid, delta, hit }, n) {
+    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? `이번 달 ${fmt(grid.mwh, 1)} MWh(${grid.base.label})` : `${grid.base.label} ${signed(delta, 1)} MWh(비용 ${signed(grid.deltaCost, 2)}억) · ${hit ? "예상과 같음" : "예상과 다름"}`}`
+      : `${topic === "cash" ? "현금" : "정전"} 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : comparison.label} ${signed(delta, 2)}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
+  }
   function reportPromiseVerdict(V) {
     if (L.role !== "team" || !L.claimAccepted || L.away || !V.econ || V.phase !== "review" ||
         V.round >= C.roundsOf(V).length || V.results.at(-1)?.round !== V.round) return;
@@ -1203,7 +1207,7 @@
   // 약속한 주제로 판정하고 계통 약속 때 실제 정전이 생겼으면 함께 알린다.
   function promiseResultHTML(V, n, reviewOrder = false) {
     if (!n.evidence || !n.pred || n.skipped) return "";
-    const { result, r, topic, comparison, grid, delta, actual, hit } = promiseComparison(V, n);
+    const compared = promiseComparison(V, n), { result, r, topic, actual, hit } = compared;
     if (actual && n.confidence && (!n.outcome || n.outcome.actual !== actual || n.outcome.hit !== hit)) { const { d, n: saved } = monthNote(); saved.outcome = n.outcome = { actual, hit }; putData(d); }
     // 기기에 남긴 전 달 같은 근거와의 변화만 읽는다. 처음에는 방향을 추정하지 않는다.
     const previousNote = tdata().interview?.months?.[V.round - 1], previous = previousNote?.evidence;
@@ -1211,11 +1215,10 @@
     const sign = topic === "uns" || topic === "grid" ? { evening: 1, grid: -1, wind: -1, neighbor: 1 } : { fuel: -1 };
     const change = n.evidence.value - previousValue, threshold = Math.max(Math.abs(previousValue) * EVIDENCE_STEP[n.evidence.key], n.evidence.key === "neighbor" ? EVIDENCE_STEP.neighborFloor : EVIDENCE_STEP.floor);
     const evidenceDir = Number.isFinite(previousValue) && Number.isFinite(n.evidence.value) && sign[n.evidence.key] && Math.abs(change) >= threshold ? (change * sign[n.evidence.key] > 0 ? "up" : "down") : null;
-    const verdict = topic === "grid" ? `계통 예측: ${esc(DIRECTION_NAMES[n.pred[topic]] || "미선택")} / 실제 결과: ${delta == null ? `이번 달 ${esc(fmt(grid.mwh, 1))} MWh(${esc(grid.base.label)})` : `${esc(grid.base.label)} ${esc(signed(delta, 1))} MWh(비용 ${esc(signed(grid.deltaCost, 2))}억) · ${hit ? "예상과 같음" : "예상과 다름"}`}`
-      : `${topic === "cash" ? "현금" : "정전"} 예측: ${esc(DIRECTION_NAMES[n.pred[topic]] || "미선택")} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${esc(fmt(r.unsPct, 2))}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : esc(comparison.label)} ${esc(signed(delta, 2))}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
+    const verdict = esc(promiseVerdictText(compared, n));
     const alsoOutage = topic === "grid" && r?.unsPct >= ZERO_OUTAGE_PCT ? `<p class="lg-hint" id="lg-promise-also-outage">이번 달은 정전도 생겼어요(${esc(fmt(r.unsPct, 2))}%)</p>` : "";
     const outage = (topic === "uns" || topic === "grid") && (hit === false || n.outageOpened || n.outageSingleShown) ? outageCardsHTML(V, result, L.team, n) : "";
-    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${verdict}</p><p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${reviewOrder ? "" : outage}<p class="lg-hint">${predictionRule(topic)}</p>${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
+    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec" tabindex="-1"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${verdict}</p><p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${reviewOrder ? "" : outage}<p class="lg-hint">${predictionRule(topic)}</p>${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
   }
   function newBuildCost(V, st = BG.current()) {
     const base = new Set((V.teams[L.team].base || []).map(b => b.k));
@@ -4799,7 +4802,14 @@
       const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(outage, monthNote().n) : "";
       // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
       const techNews = p.querySelector(".lg-tech-results");
-      panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
+      // 결과 제목(몇 월 결과 · 다음 운영 몇 월)은 접지 않고 서랍 맨 위에 둔다. 섹션을 접힘으로 옮기기 전에 꺼낸다.
+      const heading = p.querySelector("#lg-result-heading");
+      const sections = [p.querySelector("#lg-result"), p.querySelector("#lg-promise-result")].filter(Boolean);
+      const monthDetails = document.createElement("details"); monthDetails.id = "lg-month-details"; monthDetails.className = "lg-sec";
+      const monthSummary = document.createElement("summary"), n = monthNote().n;
+      monthSummary.innerHTML = esc(`이번 달 자세히 · ${summary ? promiseVerdictText(promiseComparison(V, n), n) : "정전 시간 정의·피해 추정"}`);
+      monthDetails.append(monthSummary, ...sections);
+      panelBody.prepend(...[heading, techNews, deltas, summary, outage, decision.childElementCount ? decision : null, sections.length ? monthDetails : null].filter(Boolean));
       if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
     } else if (summary && V?.phase !== "end") panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
@@ -4807,7 +4817,7 @@
       const cause = noSupplyCause(res.team[L.team]?.unsPct, note?.planIssues);
       if (cause) {
         const line = document.createElement("p"); line.id = "lg-no-supply-cause"; line.className = "lg-hint"; line.textContent = cause;
-        if (reviewOrder) p.querySelector("#lg-result-heading").after(line);
+        if (reviewOrder) (summary || p.querySelector("#lg-result-deltas"))?.after(line);
         else if (summary) summary.after(line); else if (V.phase === "end") p.querySelector("#lg-last-month")?.append(line); else panelBody.prepend(line);
       }
     }
@@ -4865,7 +4875,11 @@
     }
     if (e.target.closest("[data-promise-details]")) {
       const details = document.getElementById("lg-last-month"); if (details) details.open = true;
-      scrollPanelTo(document.getElementById("lg-promise-result")); return;
+      const month = document.getElementById("lg-month-details"); if (month) month.open = true;
+      const result = document.getElementById("lg-promise-result");
+      scrollPanelTo(result);
+      if (month && result) result.focus({ preventScroll: true });
+      return;
     }
     const start = e.target.closest("[data-reason-start]");
     if (start) {

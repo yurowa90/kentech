@@ -415,6 +415,10 @@ def results(host, team, checks, fixture):
               'D-A3 결과 CO₂ 목표 = 해당 달 평가 보고서 값')
     # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
     checks.ok(team.locator('#lg-result-deltas > div:not([data-grid-fill])').count() == 3, 'U2 result starts with exactly three numbers')
+    # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+    month = team.locator('#lg-month-details')
+    if month.count() and not month.evaluate('el => el.open'):
+        month.locator(':scope > summary').click()
     for key in ('lg-result-reasons', 'lg-result-details'):
         detail = team.locator('#' + key)
         checks.ok(detail.count() == 1, 'U2 native disclosure ' + key)
@@ -715,6 +719,10 @@ def solo(context, base, checks, pages):
         if state['phase'] == 'review' and state['round'] == 1:
             compared_month_trial = True
             panel(page, r'^결과$')
+            # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+            month = page.locator('#lg-month-details')
+            if month.count() and not month.evaluate('el => el.open'):
+                month.locator(':scope > summary').click()
             detail = page.locator('#lg-result-details')
             if not detail.evaluate('el => el.open'):
                 detail.locator(':scope > summary').click()

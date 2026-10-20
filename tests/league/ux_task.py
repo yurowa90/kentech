@@ -302,9 +302,10 @@ def month_one(r):
         page.wait_for_function("() => document.getElementById('lg-panel')?.dataset.folded !== 'true'", timeout=8000)
     except Exception:
         pass
-    if not r.visible("#lg-promise-result"):
+    # 상세(#lg-promise-result)는 '이번 달 자세히' 접힘 안이다. 결과 서랍이 열렸는지는 판정 줄로 본다.
+    if not r.visible("#lg-promise-summary"):
         r.act('#lg-bar [data-panel="result"]', "결과 서랍 열기")
-    page.wait_for_selector("#lg-promise-result", timeout=30000)
+    page.wait_for_selector("#lg-promise-summary", timeout=30000)
     r.shot("top")
     # S6 판정은 결과 서랍 맨 위 판정 줄(#lg-promise-summary, 품질8 UX ①). 상세(#lg-promise-result)는 '예측 자세히'의 보조 정보.
     r.view("#lg-promise-summary" if r.visible("#lg-promise-summary") else "#lg-promise-result", "약속 판정 보기")

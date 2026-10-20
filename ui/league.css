@@ -1143,6 +1143,7 @@ html.bd-drawer-open #lg-plan-reminder,
 }
 .lg-promise-summary { margin: 0 0 10px; padding: 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--paper); }
 .lg-promise-summary button { min-height: 44px; margin-top: 4px; }
+#lg-month-details > summary { min-height: 44px; gap: 8px; color: var(--ink); }
 .lg-team-map #lg-panel .lg-compared {
   position: relative; display: flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 8px 52px 8px 10px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); cursor: pointer;
