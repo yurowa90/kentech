@@ -2443,10 +2443,15 @@
   // flow는 손실 뒤 도착량이며 화력 대체도 포함한다. 기존 결과로 계통 수입 전
   // 거래 단계를 복원한다. 시간별 공급 식은 core만 소유하고 반올림 잔차는 마지막 몫에 둔다.
   // D-74: 이번 결과의 공급이 모두 바깥 계통에서 왔는지(자체 발전·이웃 구매 0). 결과 서랍의 계통 수입 역산과 같은 공개 필드만 쓴다.
+  // 바깥 계통이 메워 준 전기(대표 기간 MWh): 고립 운전 정전 − 실제 정전 − 이웃 구매 + 판매 대체분. 공개 필드로 역산하며 없으면 null.
+  function gridFillMWh(r) {
+    if (!r || ![r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return null;
+    return Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
+  }
   function gridOnlyServed(V, r) {
-    if (!V.econ || !r || ![r.dem, r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return false;
-    const served = r.dem - r.uns, grid = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
-    return served > 0.01 && served - grid <= 0.01;
+    if (!V.econ || !r || !Number.isFinite(r.dem)) return false;
+    const served = r.dem - r.uns, grid = gridFillMWh(r);
+    return grid != null && served > 0.01 && served - grid <= 0.01;
   }
   function outageNeighborStage(res, id, isolated) {
     const imported = Object.entries(res.flow || {}).reduce((sum, [key, flow]) => {
@@ -3006,6 +3011,12 @@
     const demand = city.pop > 0 ? inflow / city.pop * 100 : null;
     return `<p id="lg-migration-benefit">이주 유입 ${esc(fmt(inflow))}명(순이동 ${esc(signed(net.pop))}명): 편익은 주민세 +${esc(fmt(tax, 2))}억/달, 부담은 주민 수요 +${esc(fmt(demand, 2))}%·서비스 +${esc(fmt(service, 2))}억/달(다음 운영, 정책 유지 가정·추정).</p>`;
   }
+  // D-74: 정전 0%인 달에도 계통이 메웠으면 맨 위 숫자 줄에서 보이게 한다. 표시 단위(0.1 MWh) 미만이면 칸을 숨긴다.
+  function gridFillHTML(r, mul) {
+    const grid = gridFillMWh(r), mwh = grid == null ? 0 : grid * mul;
+    if (!(mwh >= .05)) return "";
+    return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(mwh, 1))} MWh</dd><small>비용 약 ${esc(fmt(mwh * params("normalCost") * params("gridImportMarkup"), 2))}억 · 상한·할증은 ${esc(gradeWords("G"))}</small></div>`;
+  }
   function resultHTML(V, res) {
     const id = L.team, r = res.team[id], rep = resultReport(V, res), { days, mul } = resultPeriod(V, res);
     const previous = V.results.find(x => x.round === res.round - 1), p = previous?.team[id];
@@ -3017,7 +3028,7 @@
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
-      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
+      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}${gridFillHTML(r, mul)}</dl>
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
@@ -4437,7 +4448,6 @@
             <div><dt>정전</dt><dd class="num" data-bad="${r.unsPct > g.unsPct}">${fmt(r.unsPct, 2)}%</dd><small>혼자였다면 ${fmt(100 * r.isolated.uns / Math.max(1e-9, r.dem), 2)}%</small></div>
             <div><dt>병원 정전</dt><dd class="num" data-bad="${r.hospH > 0}">${r.hospH}시간</dd></div>
             <div><dt>사 온 전기 / 판 전기</dt><dd class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)} MWh</dd><small>거래 수지 ${fmt(r.earn - r.pay, 2)}억</small></div>
-            ${V.econ && [r.isolated?.uns, r.uns, r.imp, r.sub].every(Number.isFinite) ? (() => { const gridMWh = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub) * (rd.mdays || rd.days) / rd.days; return `<div><dt>바깥 계통이 메워 준 전기</dt><dd class="num">${fmt(gridMWh, 1)} MWh</dd><small>비용 약 ${fmt(gridMWh * params("normalCost") * params("gridImportMarkup"), 2)}억 · 상한·할증은 ${gradeWords("G")}</small></div>`; })() : ""}
             <div><dt>CO₂ 생산 / 소비 기준</dt><dd class="num">${fmt(r.co2Prod)} / ${fmt(r.co2Cons)} t</dd></div>
             <div><dt>이번 라운드 돈</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>새 투자 ${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} + 운영 ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}(연료·정책·대응${r.cost.research ? "·연구소" : ""}·거래) · 누적 투자 ${fmt(r.cost.stock != null ? r.cost.stock : r.cost.capex, 1)}</small></div>
             <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>

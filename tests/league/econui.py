@@ -742,7 +742,8 @@ def economic(checks, context, base, label, pages):
             confirmed_plan(checks, team, 1, False, 'result', label + ' 유지·변경 없음 운영 뒤')
         if month == 1:
             team.locator('#lg-result-heading').wait_for(state='visible', timeout=WAIT)
-            checks.ok(wait_count(team, '#lg-result-deltas > div', 3) == 3 and
+            # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
+            checks.ok(wait_count(team, '#lg-result-deltas > div:not([data-grid-fill])', 3) == 3 and
                       team.locator('#lg-result-reasons').count() == 1 and team.locator('#lg-result-details').count() == 1 and
                       not team.locator('#lg-result-details').evaluate('el => el.open'), f'{label} U2 결과 숫자 셋·원인·자세히 접힘')
             checks.ok(wait_shown(team, '#lg-map-result'), f'{label} U2 실제 도시 결과 지도 요약')
