@@ -158,7 +158,8 @@ for (const connected of [false, true]) test('D74-operation', connected ? '이웃
     const input = C.econInput(S, R, id, r, 1).energy;
     ok(!Object.hasOwn(input.genMWh, 'import'), 'PM용 발전량에 외부 계통 없음');
     if (!connected) {
-      eq(input.genMWh, { coal: 0, lng: 0, diesel: 0, biomass: 0 }, '빈 도시 생산·PM 발전량0');
+      // H03의 호스트 내부 생산 입력에는 무발전 SMR도 명시적 0으로 포함된다.
+      eq(input.genMWh, { coal: 0, lng: 0, diesel: 0, biomass: 0, smr: 0 }, '빈 도시 생산·PM 발전량0');
       eq(r.co2Prod, 0, '계통 소비를 지역 생산으로 세지 않음');
     }
   }
@@ -249,8 +250,8 @@ function allPublicKeyPaths(value) {
   };
   walk(value, ''); return [...keys].sort();
 }
-function publicKeys(V) {
-  const allKeys = allPublicKeyPaths(V);
+function publicKeys(V, allowed = new Set()) {
+  const allKeys = allPublicKeyPaths(V).filter(key => !allowed.has(key));
   const r = V.results.at(-1), id = ids[0];
   return { allKeyCount: allKeys.length, allKeyHash: createHash('sha256').update(JSON.stringify(allKeys)).digest('hex'),
     ...Object.fromEntries(Object.entries({ root: V, team: V.teams[id], result: r, resultTeam: r.team[id],
@@ -270,9 +271,15 @@ const LEGACY_KEYS = {
   "allKeyCount": 5161,
   "allKeyHash": "9a4825d2426c95f50f75e4c844831c23910f5da6a78a3d53eab8faa1cc43a148"
 };
-test('D74-public', '새 공개 필드0', () => {
+test('D74-public', '승인된 rev.facility 이외 새 공개 필드0', () => {
   const S = state(); C.run(S, B, 0);
-  eq(publicKeys(C.publicView(S, 0)), LEGACY_KEYS, 'fa472b4의 전체 중첩 공개 키 집합 불변(배열 인덱스 정규화)');
+  const V = C.publicView(S, 0);
+  // 총괄 승인 H03 예외는 현재 보고서·결과 보고서 각 도시의 rev.facility 경로뿐.
+  // 나머지는 fa472b4의 해시를 그대로 써서 예상 밖 중첩 공개 키도 계속 검출한다.
+  const allowed = new Set(ids.flatMap(id => [`.econ.report.fiscal.${id}.rev.facility`, `.results[].econ.fiscal.${id}.rev.facility`]));
+  const actual = new Set(allPublicKeyPaths(V));
+  ok([...allowed].every(key => actual.has(key)), '승인된 facility 경로도 실제로 공개됨');
+  eq(publicKeys(V, allowed), LEGACY_KEYS, 'fa472b4 대비 rev.facility만 허용(배열 인덱스 정규화)');
 });
 for (const [key, value] of [['hvdcCap', 1.5], ['hvdcCost', 1.3]]) test('D79-params', key, () => near(T.params[key]?.v, value, 'H2 근거값'));
 function tieFixture() {

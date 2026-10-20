@@ -204,38 +204,63 @@
     return wire;
   }
   function hostReceiver(trust, apply, rejected = () => {}) {
-    let chain = Promise.resolve(), queued = 0;
+    let chain = Promise.resolve(), queued = 0, waitingSnap = null;
     const retiredSessions = new Set();
     const cheap = wire => wire && wire.event && wire.room === trust.room && typeof wire.sid === "string" && wire.sid.length <= 64 &&
       Number.isSafeInteger(wire.n) && wire.n > (trust.hostN || 0) &&
       (!trust.sid || wire.sid === trust.sid || wire.event === "snap" && !retiredSessions.has(wire.sid));
     return (event, incoming) => {
-      if (queued >= 16 || !cheap(incoming) || incoming.event !== event) return Promise.resolve(false);
-      let wire, signed, json;
+      const snap = event === "snap";
+      // 16개 상한은 snap이 아닌 메시지(ack·nack)만 센다. snap은 아래에서 최신 하나만 기다리게 한다.
+      if (!snap && queued >= 16 || !cheap(incoming) || incoming.event !== event) return Promise.resolve(false);
       try {
         if (typeof incoming.sig !== "string" || incoming.sig.length > 128) return Promise.resolve(false);
         if (bytes(incoming).length > SEND_CAP) return Promise.resolve(false);
-        const { sig, ...data } = incoming;
-        json = canonical(data); signed = JSON.parse(json); wire = { ...signed, sig };
       } catch (_) { rejected(event); return Promise.resolve(false); }
-      queued++;
+      // 공개 상태는 가장 새것만 쓸모 있다. 검증을 시작하지 않은 옛 snap은 '처리하지 않음'으로 건너뛴다.
+      // 건너뛴 snap은 hostN을 올리지 않으므로 순번 재사용 검사는 실제로 검증하는 snap에 그대로 걸린다.
+      // 늦게 도착한 옛 순번 snap이 기다리던 더 새 snap을 밀어내지 못하게 순번으로 비교한다.
+      // 밀어내지 못한 snap도 예비 후보로 둔다(순번이 가장 큰 하나). 기다리던 snap이 순번만 큰 위조여도 그 뒤 정상 snap이 남는다.
+      if (snap && waitingSnap && waitingSnap.incoming.n >= incoming.n) {
+        if (!waitingSnap.prev || waitingSnap.prev.incoming.n < incoming.n) waitingSnap.prev = { incoming };
+        return Promise.resolve(false);
+      }
+      const item = { incoming, skip: false, prev: null };
+      if (snap) {
+        // 밀려난 snap 하나는 예비로 둔다. 최신 snap이 위조라 거절되면 그것을 대신 검증한다(예비 후보는 순번이 가장 큰 하나).
+        if (waitingSnap) { waitingSnap.skip = true; item.prev = waitingSnap; waitingSnap.prev = null; }
+        waitingSnap = item;
+      } else queued++;
+      const check = async it => {
+        const { sig, ...data } = it.incoming;
+        const json = canonical(data), signed = JSON.parse(json), wire = { ...signed, sig };
+        if (!cheap(wire)) return false;
+        const binding = await hostBinding(wire.hostKey);
+        if (binding.room !== trust.room || trust.fingerprint && binding.fingerprint !== trust.fingerprint ||
+            trust.hostKey && canonical(publicJWK(trust.hostKey)) !== canonical(publicJWK(wire.hostKey))) throw Error("host");
+        const key = await crypto.subtle.importKey("jwk", publicJWK(wire.hostKey), algorithm, false, ["verify"]);
+        if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig), c => c.charCodeAt(0)), bytes(json))) throw Error("host");
+        if (event === "snap" && (wire.data?.sid !== wire.sid || wire.data?.room !== trust.room)) throw Error("host");
+        it.prev = null; // 검증을 통과했으니 예비는 필요 없다(무거운 apply 동안 붙잡지 않음, apply 예외 때 옛 상태 재반영도 막음).
+        if (trust.sid && trust.sid !== wire.sid) retiredSessions.add(trust.sid);
+        trust.hostKey = publicJWK(wire.hostKey); trust.fingerprint = binding.fingerprint;
+        trust.sid = wire.sid; trust.hostN = wire.n;
+        await apply(event, signed.data);
+        return true;
+      };
       const work = async () => {
+        if (waitingSnap === item) waitingSnap = null;
+        // 건너뛴 snap의 내용은 뒤 snap의 예비로 남을 수 있어 여기서 지우지 않는다.
+        if (item.skip) return false;
         try {
-          if (!cheap(wire)) return false;
-          const { sig } = wire;
-          const binding = await hostBinding(wire.hostKey);
-          if (binding.room !== trust.room || trust.fingerprint && binding.fingerprint !== trust.fingerprint ||
-              trust.hostKey && canonical(publicJWK(trust.hostKey)) !== canonical(publicJWK(wire.hostKey))) throw Error("host");
-          const key = await crypto.subtle.importKey("jwk", publicJWK(wire.hostKey), algorithm, false, ["verify"]);
-          if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig), c => c.charCodeAt(0)), bytes(json))) throw Error("host");
-          if (event === "snap" && (wire.data?.sid !== wire.sid || wire.data?.room !== trust.room)) throw Error("host");
-          if (trust.sid && trust.sid !== wire.sid) retiredSessions.add(trust.sid);
-          trust.hostKey = publicJWK(wire.hostKey); trust.fingerprint = binding.fingerprint;
-          trust.sid = wire.sid; trust.hostN = wire.n;
-          await apply(event, signed.data);
-          return true;
-        } catch (_) { rejected(event); return false; }
-        finally { queued--; }
+          try { return await check(item); }
+          catch (_) {
+            rejected(event);
+            const back = item.prev; item.prev = null;
+            if (!back) return false;
+            try { return await check(back); } catch (_) { rejected(event); return false; }
+          }
+        } finally { if (!snap) queued--; item.incoming = null; item.prev = null; }
       };
       chain = chain.then(work);
       return chain;

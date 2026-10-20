@@ -68,7 +68,7 @@
     const energy = {
       // H01: 생산 기준 월 MWh. 누락은 무배출과 구분하며 CO₂로 역산하지 않는다.
       genMWh: e.genMWh && typeof e.genMWh === "object" && !Array.isArray(e.genMWh)
-        ? Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(f => [f, num(e.genMWh[f], 0, BIG, 0)])) : null,
+        ? Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, num(e.genMWh[f], 0, BIG, 0)])) : null,
       residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, 0.1, 2, 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, 1e4, 0),
       costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, 10) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
@@ -311,7 +311,7 @@
       // 지원금 보정도 시작 연 세입에 포함되므로 목표식을 보정액에 대해 푼다.
       C.equalize = r3(clamp((P("fiscalTargetRev") * (startTax + baseSub) - 12 * operating - baseSub) / (1 - P("fiscalTargetRev")), 0, baseSub * P("equalizeMaxShare") / (1 - P("equalizeMaxShare"))));
       C.revenueHistory = []; C.standardRevenueHistory = []; C.outHistory = [];
-      C.revYear = Math.max(0, 12 * (own.resTax + own.indTax) + subsidyOf(C, data));
+      C.revYear = Math.max(0, 12 * (own.resTax + own.indTax + own.facility) + subsidyOf(C, data));
       C.Leff = 0; C.Aeff = 0;
       C.debtCap = r1(P("debtCapRatio") * C.revYear);
       // 지연 추적·집단 만족도 시작 상태의 균형값에서 출발(아무것도 안 하면 지지율이 저절로 오르내리지 않게)
@@ -373,9 +373,13 @@
   const netOpex = e => Math.max(0, e.opex + e.buyCost - servedOf(e) * (e.costPerMWh || 0));
   function ownRev(C, inp, data, out, reg) {
     const P = k => pv(data, k), e = inp.energy, pol = C.policy;
+    // H03: 생산지 과세(수출 생산 포함, 수입 제외). 지도 축척은 기존 지역 숫자 필드를 쓴다.
+    // genMWh.smr: 호스트 내부 입력(공개 상태 아님). PM 가중(pmFuelW)에는 smr이 없어 대기 계산에는 들어가지 않는다.
+    const mwScale = Object.values(KCP.LEAGUE_REGIONS || {}).find(r => r.teams.some(t => t.id === C.id))?.mwScale || 0;
     const o = {
       resTax: r3(C.pop * P("resTax") * (1 + P("taxStep") * pol.taxRes)),
       indTax: r3(C.ind * P("indTax") * Math.pow(C.outHistory?.length ? sum(C.outHistory) / C.outHistory.length : 1, P("indTaxK")) * (1 + P("taxStep") * pol.taxInd)),
+      facility: P("facilityShare") * sum(Object.entries(P("facilityRate")).map(([fuel, rate]) => rate * (e.genMWh?.[fuel] || 0))) * mwScale * P("mwhToKwh") / P("wonPerEok") / P("moneyScale"),
       tariff: e.demMWh != null ? r3(servedOf(e) * ((reg.otherCost[C.id]) * (1 + P("tariffMarkup")) - fin(e.costPerMWh, reg.otherCost[C.id]))) : 0,
       trade: r3(Math.max(0, e.tradeNet + e.buyCost))
     };
@@ -560,7 +564,7 @@
   }
 
   /* ---------- 한 달 ---------- */
-  // inputs[id] = {energy:{genMWh?:{coal,lng,diesel,biomass}(생산·월), unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), royalty?(기술 사용료 수입), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
+  // inputs[id] = {energy:{genMWh?:{coal,lng,diesel,biomass,smr}(생산·월, smr은 H03 세입만), unsPct, hospH, costPerMWh, co2Local, co2?, renPct, tradeNet(판매−구매), royalty?(기술 사용료 수입), buyCost(구매 대금), servedMWh?, opex(구매 제외), capexNew, bonus?, salvage?, demMWh?, co2Int?, spareMW?},
   //               policy:{taxRes, taxInd, service, incentive}, assets:{uni, lab, port, site, houseCap?, indCap?}}
   function monthStep(E0, inputs, data) {
     data = data || DATA();
@@ -631,7 +635,7 @@
       c.out = o.v;
       c.outHistory = [...(c.outHistory || []), o.v].slice(-P("indTaxLag"));
       const own = ownRev(c, inp, data, o.v, reg);
-      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty), bonus: r3(e.bonus), salvage: r3(e.salvage) };
+      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, facility: own.facility, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty), bonus: r3(e.bonus), salvage: r3(e.salvage) };
       const exp = {
         capex: r3(e.capexNew), opex: r3(netOpex(e)),
         service: r3(serviceBase(c, data) * (1 + P("svcStep") * c.policy.service)),
@@ -641,7 +645,8 @@
       const revT = sum(Object.values(rev)), expT = sum(Object.values(exp));
       // 선지급과 같은 덧셈 순서: 지원금을 먼저 더해 부동소수 오차로 두 경로가 갈리지 않는다.
       c.cash = (cashBefore[id] + rev.subsidy) + sum(Object.entries(rev).filter(([key]) => key !== "subsidy").map(([, value]) => value)) - expT;
-      const recurring = own.resTax + own.indTax;
+      // 지방세 배분 세입도 연간 세입·지방채 한도에 포함. 표준 주민·산업세 기반 지원금 상쇄식은 유지.
+      const recurring = own.resTax + own.indTax + own.facility;
       c.standardRevenueHistory = c.standardRevenueHistory || [];
       c.standardRevenueHistory.push(c.pop * P("resTax") + c.ind * P("indTax") * Math.pow(sum(c.outHistory) / c.outHistory.length, P("indTaxK")));
       if (c.standardRevenueHistory.length > 12) c.standardRevenueHistory.shift();

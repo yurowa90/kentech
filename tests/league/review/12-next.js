@@ -133,7 +133,8 @@ test("left·월 장부·배치 결과·공동성과 필드", () => {
       near(l.close, S.econ.cities[id].cash, `${id} 기말 실제 현금`);
       const f = rep.fiscal[id], wk = C.roundsOf(S)[0].mdays / res.days;
       // NEXT §0의 수입·총지출은 총액. SPEC §5의 기존 fiscal 차익 표는 유지한다.
-      const income = f.tariffGross + ["subsidy", "resTax", "indTax", "trade", "bonus", "salvage"].reduce((sum, k) => sum + f.rev[k], 0);
+      // H03: 생산지 지역자원시설세도 세입이므로 장부 총수입에 더한다(차익 상계 대상 아님).
+      const income = f.tariffGross + ["subsidy", "resTax", "indTax", "facility", "trade", "bonus", "salvage"].reduce((sum, k) => sum + f.rev[k], 0);
       const power = (t.cost.fuel + t.cost.policy + t.pay) * wk + t.cost.resp + t.cost.research;
       const other = ["service", "incentive", "interest", "policy"].reduce((sum, k) => sum + f.exp[k], 0);
       near(l.income, income, `${id} 장부 수입은 전기 총매출 포함`);
