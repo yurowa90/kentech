@@ -4353,7 +4353,7 @@
     const card = outage?.hasAttribute("data-opened") ? outage : null;
     if (!card || card.dataset.single === "true" || n.missedCarry || n.outageSingleShown)
       return `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`;
-    return `<p id="lg-to-decision" class="lg-hint">${n.outageOpened ? "연 원인을 다음 달 약속 카드에 붙이면 다음 결정으로 가요" : "원인 하나를 먼저 골라 열어 봐요"}</p>`;
+    return `<p id="lg-to-decision" class="lg-hint">${n.outageOpened || card.dataset.opened === "true" ? "연 원인을 다음 달 약속 카드에 붙이면 다음 결정으로 가요" : "원인 하나를 먼저 골라 열어 봐요"}</p>`;
   }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
   function scrollPanelTo(el) {
