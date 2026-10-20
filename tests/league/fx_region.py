@@ -309,8 +309,34 @@ def check_outage(checks, page, label):
     # 코드 확인: league.js renderBoard의 iconX/iconY/iconSize는 공개되지 않는다.
     # placeCards 라벨 상자는 이름·결과·기호를 합친 영역이며 기호 위치가 아니다.
     # 팀 색 경계선도 빨갈 수 있어 도시 중심 주변 빨간 화소를 기호로 간주하지 않는다.
-    checks.skip(label + ' 정전/무정전 도시 빨간 기호 화소: 구현에 좌표 공개 필요 '
-                '(renderBoard iconX/iconY/iconSize 비공개)')
+    # W8b: KCP.fxRegion.lastLayout()이 마지막으로 그린 기호 상자(화면 좌표)와 도시 id를 읽기 전용으로 공개한다.
+    # 명세 W8b 3: 정전 기호는 화면 표시(소수 1자리)로 0이 아닌 값, 즉 0.05% 이상일 때만.
+    layout = page.evaluate("() => KCP.fxRegion?.lastLayout?.() || null")
+    if not layout:
+        checks.ok(False, label + ' 정전 기호 배치 공개 자료(lastLayout) 존재')
+        return
+    outage = {i['id'] for i in layout['icons'] if i.get('kind') == 'outage'}
+    expect = {city for city, v in values.items() if isinstance(v, (int, float)) and v >= 0.05}
+    checks.ok(outage == expect, f'{label} 정전 기호 도시 = 공개 정전 0.05% 이상 도시: 기호 {sorted(outage)}, 기대 {sorted(expect)}')
+    # 기호 상자 화소에 빨간 계열이 실제로 그려졌는지(캔버스 복사본에서 읽기 — getImageData 경고 방지).
+    reds = page.evaluate("""(ids) => {
+      const L=KCP.fxRegion.lastLayout(), out={};
+      const cv=document.querySelector('#lg-mapc') || document.querySelector('canvas.lg-map');
+      if (!cv) return null;
+      const r=cv.getBoundingClientRect(), sx=cv.width/r.width, sy=cv.height/r.height;
+      for (const icon of L.icons.filter(i=>i.kind==='outage' && ids.includes(i.id))) {
+        const w=Math.max(1,Math.round(icon.width*sx)), h=Math.max(1,Math.round(icon.height*sy));
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true});
+        g.drawImage(cv, Math.round((icon.x-r.left)*sx), Math.round((icon.y-r.top)*sy), w, h, 0, 0, w, h);
+        const d=g.getImageData(0,0,w,h).data; let n=0;
+        for (let k=0;k<d.length;k+=4) if (d[k]>170 && d[k+1]<130 && d[k+2]<150) n++;
+        out[icon.id]=n;
+      }
+      return out;
+    }""", sorted(outage))
+    checks.ok(reds is not None and all(n > 0 for n in reds.values()),
+              f'{label} 정전 기호 상자 안 빨간 화소 존재: {reds}')
 
 
 def solo_stage(checks, page, width, month):
