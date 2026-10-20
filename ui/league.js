@@ -30,7 +30,8 @@
     set(v) { try { window.sessionStorage.setItem(K_TAB, JSON.stringify(v)); return true; } catch (e) { return false; } }
   };
   const dataKey = () => `${K_DATA}:${L.room}:${L.team}`;
-  const tdata = () => { const d = L?.role === "solo" ? L.interview || {} : store.get(dataKey()) || {}; d.docs = d.docs || {}; d.journal = d.journal || {}; return d; };
+  // 저장값이 숫자·문자열·배열로 깨져 있으면 속성을 붙일 수 없어 상태 수신이 멈춘다 — 일반 객체가 아니면 빈 자료로 시작한다.
+  const tdata = () => { const raw = L?.role === "solo" ? L.interview : store.get(dataKey()); const d = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}; d.docs = d.docs && typeof d.docs === "object" ? d.docs : {}; d.journal = d.journal && typeof d.journal === "object" ? d.journal : {}; return d; };
   // S7 월간 사본(계획 때 국제 지수·운영 조건)은 팀 자료와 다른 키에 둔다. 같은 키에 두면 이 기기가 새 방의
   // 같은 팀으로 승인된 적이 있을 때 사본만으로 '이미 자료 있음'이 되어 옛 방 → 새 방 이전(일지·답변 복사)이
   // 건너뛰어진다(sec.js F3-9: 앞 단계의 승인된 세션이 같은 방:팀 키에 사본을 남긴 경우).
