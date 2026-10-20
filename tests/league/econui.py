@@ -5,6 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
+from league_flow import pass_issue_check, wait_unfolded
 import ast
 import json
 import math
@@ -216,6 +217,7 @@ def wait_text(page, selector, text):
 
 
 def open_panel(page, name):
+    wait_unfolded(page)
     button = page.locator(f'#lg-bar [data-panel="{name}"]')
     wait_count(page, f'#lg-bar [data-panel="{name}"]', 1)
     if button.count() != 1:
@@ -258,6 +260,54 @@ def diagnostics(checks, events, label):
     for kind in ("error", "warning", "pageerror"):
         checks.ok(not events[kind],
                   f"{label} {kind} 0" + (f": {events[kind][:2]}" if events[kind] else ""))
+
+
+def mission_status(checks, page, expected, label, selector='#lg-learning-mission', preview=False):
+    """대기·계획 미리보기·확정 판정을 구분하며 달성과 미달성을 혼동하지 않는다."""
+    text = page.locator(selector).inner_text()
+    marker = '(지금 계획 기준, 준비하면 확정)'
+    if selector == '#lg-previous-mission':
+        checks.ok(text == '지난달 학습 미션: ' + expected + (marker if preview else ''),
+                  label + f' 지난달 판정 문구·꼬리 완전 일치 [V3A-fix4] (실제: {text})')
+    checks.ok(text.endswith(marker) if preview else marker not in text,
+              label + ' 계획 미리보기 표지 구분 [V3A-fix3]')
+    if preview:
+        text = text.replace(marker, '')
+    text = text.split(':', 1)[-1].strip(' \n·:—-')
+    # 어긋남 설명이 같은 문단/다음 줄 어디에 있든 상태 자체는 미달성이어야 한다.
+    valid = text == expected or (expected == '미달성' and bool(re.fullmatch(
+        r'미달성\s*[·:—-]?\s*말과 실제 변경이 달라요', text)))
+    checks.ok(valid, f'{label} 학습 미션 = {expected} (실제: {text})')
+
+
+def learning_note(page, month):
+    return page.evaluate("""month => {
+      const l=KCP.league.state();
+      const d=l.role==='solo' ? JSON.parse(localStorage.getItem('kcp-league-solo-v1')).interview :
+        JSON.parse(localStorage.getItem(`kcp-league-data-v1:${l.room}:${l.team}`));
+      return d?.interview?.months?.[month] || {};
+    }""", month)
+
+
+def confirmed_plan(checks, page, month, changed, basis, label):
+    note = learning_note(page, month)
+    checks.ok(note.get('followingPlanChanged', 'missing') is changed,
+              label + f' followingPlanChanged = {changed} [V3A-fix3]')
+    checks.ok(note.get('followingPlanBasis') == basis,
+              label + f' 확정 시점 = {basis} [V3A-fix3]')
+    checks.ok('followingPlanConfirmedChanged' not in note,
+              label + ' 별도 확정 필드 없음 [V3A-fix3]')
+
+
+def pending_mission(checks, page, month, label, final=False, check_text=True):
+    note = learning_note(page, month)
+    checks.ok('followingPlanChanged' in note and note['followingPlanChanged'] is None,
+              label + ' 새 기록 followingPlanChanged:null [V3A A1]')
+    confirmed_plan(checks, page, month, None, None, label)
+    if final:
+        checks.ok(note.get('finalMonth') is True, label + ' 마지막 달 기록 finalMonth:true')
+    if check_text:
+        mission_status(checks, page, '마지막 달이라 판정 없음' if final else '다음 달 계획에서 확인해요', label)
 
 
 def automatic_plan():
@@ -490,7 +540,8 @@ def u_plan_contract(checks, team, host, tid, label):
               f'{label} U2 도구 재선택에도 학생이 끈 렌즈 유지')
     checks.ok(all(team.locator('[data-run]').nth(i).inner_text().startswith('시험 ') for i in range(team.locator('[data-run]').count())),
               f'{label} U2 시험 단추 실제 글자')
-    checks.ok(team.locator('#lg-watch button').count() <= 3 and wait_count(team, '#lg-hud-chips button', 2) == 2,
+    # 품질8 UX ③(docs/QUALITY-ux.md 8.5): 지지·주민 변화 칩은 '도시' 서랍과 같은 곳을 여는 중복 단추라 글자 표시로 바꿨다.
+    checks.ok(team.locator('#lg-watch button').count() <= 3 and wait_count(team, '#lg-hud-chips > span', 2) == 2,
               f'{label} U4 이번 달 배지 최대 셋·지지·주민 칩')
     checks.ok(not shown(team, '.lg-bmoney') and not shown(team, '[data-tab="mission"]'),
               f'{label} U4·U7 남은 돈 중복·리그 미션 0/2 숨김')
@@ -503,9 +554,10 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#lg-sound').click()
     team.locator('#lg-panel [data-pclose]').click()
     open_panel(team, 'city')
-    team.locator('#lg-panel').evaluate('el => {el.scrollTop=500}')
+    # 품질8 UX U1(docs/QUALITY-ux.md 6절): 스크롤은 서랍 본문 .lg-pbody가 맡는다(없으면 서랍 자체).
+    team.locator('#lg-panel').evaluate("el => {(el.querySelector('.lg-pbody')||el).scrollTop=500}")
     open_panel(team, 'result')
-    checks.ok(team.locator('#lg-panel').evaluate('el => el.scrollTop===0'), f'{label} U2 새 결과 서랍은 위에서 시작')
+    checks.ok(team.locator('#lg-panel').evaluate("el => (el.querySelector('.lg-pbody')||el).scrollTop===0"), f'{label} U2 새 결과 서랍은 위에서 시작')
     open_panel(team, 'city')
     checks.ok(wait_count(team, '#lg-trends [data-trend]', 4) == 4, f'{label} U5 도시 추이 네 줄')
     checks.ok('주민·기업 이동 시간 ×' in wait_text(team, '#lg-city', '주민·기업 이동 시간 ×'), f'{label} U9 배속 대상·현실 달 문구')
@@ -526,15 +578,19 @@ def u_plan_contract(checks, team, host, tid, label):
       return {html, speed:m.speedText({speeds:{monthsPerTurn:1.5},eduSpeed:99}),
         reason:m.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'집값이 올라서 (M)',whyGrade:'M'})};
     }""")
-    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
+    checks.ok(all(word in ui['html'] for word in ('바이오 CO₂ 2 t(국가 총량 밖 · IPCC 정보 항목)', '공급 1MWh당, 지연 평균', '−100 게임 원', '지방재정법 시행령 제65조의3', '2026.1.2 시행')),
               f'{label} U9 재보정 필드·재정 음수 부호·법령 문턱')
-    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes('(G)')"),
-              f'{label} U2 이전 엔진 이주 이유 G 표시 유지')
+    # D-72(품질8 UX U9): 학생 기본 화면의 등급 글자는 학생 말(KCP.gradeWords)로 보인다.
+    checks.ok(team.evaluate("() => KCP.league.uiMath.migrationReason({from:KCP.league.state().team,to:KCP.league.state().team,why:'생활 조건'}).includes(KCP.gradeWords('G'))"),
+              f'{label} U2 이전 엔진 이주 이유 게임 가정 표시 유지')
     checks.ok('정수 반올림' not in team.locator('#lg-city').inner_text(), f'{label} U2 내부 용어 숨김')
-    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('(M)') == 1 and '(추정·G)' not in ui['reason'],
+    # D-72: '(M)'·'(추정·G)' 대신 학생 말. 근거 표시가 한 번만 붙고 추정·게임 가정 겹침이 없는지 본다.
+    checks.ok('×1.5' in ui['speed'] and '99' not in ui['speed'] and ui['reason'].count('모형 계산') == 1 and '(추정' not in ui['reason']
+              and '(M)' not in ui['reason'] and '(G)' not in ui['speed'],
               f'{label} U9 monthsPerTurn 우선·whyGrade 한 번')
     team.locator('.lg-px').click()
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     wait_shown(team, '#lg-predict')
     wait_ui(team, """() => {
       const card = document.querySelector('#lg-predict'), panel = document.querySelector('#lg-panel');
@@ -675,7 +731,15 @@ def economic(checks, context, base, label, pages):
             if month == 2:
                 team.wait_for_function("() => document.querySelector('#lg-map-result')?.dataset.faded === 'true'")
                 checks.ok(team.locator('#lg-map-result').get_attribute('data-faded') == 'true', f'{label} U2 다음 달 계획에 지난 결과 흐리게 유지')
+                open_panel(team, 'journal')
+                mission_status(checks, team, '달성', label + ' 다음 달 유지·변경 없음',
+                               '#lg-previous-mission', preview=True)
+                checks.ok(learning_note(team, 1).get('followingPlanChanged', 'missing') is None,
+                          label + ' 유지·변경 없음 미리보기는 준비 전 미확정 [V3A-fix2]')
+                confirmed_plan(checks, team, 1, None, None, label + ' 계획 미리보기')
         advance(host, team, month, "review")
+        if month == 2:
+            confirmed_plan(checks, team, 1, False, 'result', label + ' 유지·변경 없음 운영 뒤')
         if month == 1:
             team.locator('#lg-result-heading').wait_for(state='visible', timeout=WAIT)
             checks.ok(wait_count(team, '#lg-result-deltas > div', 3) == 3 and
@@ -720,23 +784,24 @@ def economic(checks, context, base, label, pages):
             (/^lg-[rpf]-/.test(ask.dataset.question) ? 2 : 0));
         }"""))
         if month == 1:
-            checks.test(f"{label} 학습 미션은 비교 전 미달성", lambda:
-                        '달성' != team.locator('#lg-learning-mission').inner_text().split(':')[-1].strip())
+            pending_mission(checks, team, month, label + ' 비교 전')
             team.locator('[data-compared]').check()
+            for choice, reason in (
+                    ('keep', '실제 결과와 비교했고 다음 달에도 근거를 확인한다'),
+                    ('keep', '정전 결과를 확인하여 다음 달에도 유지한다'),
+                    ('revise', '정전 결과를 확인하여 다음 달에는 고친다')):
+                team.locator(f'#lg-panel [data-answer="{choice}"]').click()
+                team.locator('[data-note="askReason"]').fill(reason)
+                team.locator('[data-note="askReason"]').press('Tab')
+                pending_mission(checks, team, month, label + ' ' + choice + ' 응답 직후')
+            # 다음 달 실제 변경이 없는 경우와 대조할 유지 약속을 남긴다.
             team.locator('#lg-panel [data-answer="keep"]').click()
-            team.locator('[data-note="askReason"]').fill('실제 결과와 비교했고 다음 달에도 근거를 확인한다')
-            team.locator('[data-note="askReason"]').press('Tab')
-            # S8N-next.md:11 — 일반 이유만으로는 달성이 아니다. 실제 다음 달
-            # 계획 변경 분기는 s8n.py에서 설비 1기를 추가하여 별도로 검증한다.
-            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
-                      f"{label} 일반 유지 이유·다음 달 변경 없음은 미달성 [S8N:11]")
             team.locator('[data-note="askReason"]').fill('정전 결과를 확인하여 다음 달에도 유지한다')
             team.locator('[data-note="askReason"]').press('Tab')
-            checks.ok(wait_text(team, '#lg-learning-mission', re.compile(r'^학습 미션: 달성\s*$')).strip() == '학습 미션: 달성',
-                      f"{label} 결과 원인 단어를 인용한 유지 이유는 달성 [S8N:11]")
-            team.locator('#lg-panel [data-answer="revise"]').click()
-            checks.ok(team.locator('#lg-learning-mission').inner_text().strip() != '학습 미션: 달성',
-                      f"{label} 결과를 인용해도 수정 약속만 하고 실제 변경 전이면 미달성 [S8N:11]")
+        if month == 12:
+            # 이 달에는 근거·예측 약속이 없으므로 미션 UI를 기다리지 않는다.
+            # 마지막 달의 확정 제외는 기기 기록으로 검증한다.
+            pending_mission(checks, team, month, label + ' 마지막 달', final=True, check_text=False)
         # // ECON-UI v1.1: 결과로 자동 전환된 서랍에서 도시 탭을 직접 열어 검사한다.
         checks.test(f"{label} U1 {month}달 결과 정책 disabled", lambda:
                     (open_panel(team, "city"), disabled_policies(team))[1])
@@ -923,7 +988,8 @@ def ui_fixes(checks, context, base, label, pages):
     try:
         team.locator('[data-tech-card="bms"]').click()
         team.locator('[data-tech-detail="bms"]').wait_for(state='visible', timeout=UI_WAIT)
-        checks.ok(bool(re.search(r'79(?:\.0+)?%', wait_text(team, '.lg-tech-effect', re.compile(r'79(?:\.0+)?%')))), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
+        # 품질8 UX U7c: BMS 효율은 왕복 효율로 보인다(한 방향 0.79 → 왕복 0.79² ≈ 62.4%).
+        checks.ok(bool(re.search(r'왕복 효율 62(?:\.4\d*)?%', wait_text(team, '.lg-tech-effect', re.compile(r'왕복 효율 62(?:\.4\d*)?%')))), f'{label} #23 BMS 기본 효율은 현재 자료에서 읽음')
     finally:
         team.evaluate('v => {KCP.buildGame.M.batEff=v}', before)
     contrast(checks, team, '.lg-tech-effect [class^="tag-"]', label + ' 기술')
@@ -1255,8 +1321,9 @@ def main():
                             for page, _, role in pages:
                                 screenshot(checks, page, f"econui-{label}-{name}-{role}-failure.png")
                         finally:
-                            for _, events, role in pages:
+                            for page, events, role in pages:
                                 diagnostics(checks, events, f"{label} {name} {role}")
+                                overflow(checks, page, f"{label} {name} {role}")
                             checks.ok(not external, f"{label} {name} 외부 연결 시도 0: {external}")
                             context.close()
             browser.close()

@@ -323,7 +323,8 @@ def t_B1_talk_history(c: Ctx):
 
 def t_B2_recommendation(c: Ctx):
     _room(c, '2024')
-    for i, rec in ((0, '약 2~4분'), (3, '1~3분')):
+    # AUDIT-2024 §2 / A-2024 작업 3: 공통 4도 문항카드의 약 2~4분.
+    for i, rec in ((0, '약 2~4분'), (3, '약 2~4분')):
         button = c.page.locator(f'#pb-speak-{i} .speak-go')
         button.click()
         c.page.wait_for_function("""({i, rec}) => document.querySelector('#pb-speak-' + i + ' .speak-t')

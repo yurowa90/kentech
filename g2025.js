@@ -28,7 +28,7 @@
         <div class="cap">사진: 켄트로늄의 채굴장 전경과 켄트로늄 사용량 그래프 (사용량 곡선이 최근 급격히 치솟음)</div>
       </article>
       <article><h4>AI 로봇, 기억 클라우드 접속권을 요구하다</h4>
-        <p>최근 AI 로봇의 처우에 대한 논란이 화제다. 마틴 박사의 연구 결과를 기점으로, AI 로봇의 인지능력이 대폭 향상되면서 이제는 AI 로봇도 하나의 인격체로서 대우해야 한다는 목소리가 높아지고 있다. 이에 더해 기억 클라우드(경험 공유 시스템)에 대한 접근 권한을 AI 로봇에게도 부여해달라는 요구가 늘어나고 있다.</p>
+        <p>최근 AI 로봇의 처우에 대한 논란이 화제다. 마틴 박사의 연구 결과를 기점으로, AI 로봇의 인지능력이 대폭 향상되면서 이제는 AI 로봇도 또 하나의 인격체로서 대우해야 한다는 목소리가 높아지고 있다. 이에 더해 기억 클라우드(경험 공유 시스템)에 대한 접근 권한을 AI 로봇에게도 부여해달라는 요구가 늘어나고 있다.</p>
         <p>지금까지 기억 클라우드는 인간의 전유물이었다. 기억 클라우드를 통해 사람들은 자신이 직접 경험한 것들을 공유하며 타인과 소통하는 문화를 만들어 왔다. 그런데, 최근 AI 로봇을 친구나 가족으로 의지하는 사람들이 늘어나면서, 자연스럽게 이들과 경험을 공유할 수 있게 해달라는 요청이 늘어나고 있는 것이다.</p>
         <p>하지만 기억 클라우드에 AI 로봇이 접속하는 것에 대한 우려의 목소리도 높다. 단순히 인간과 경험을 공유하는 것을 넘어, 이 경험들이 AI 로봇의 행동에 영향을 줄 수 있다는 것이다. 인간들의 다양한 경험에 빗대어 스스로 판단하게 되면, 판타지 소설에서 나오는 인간과 로봇의 전쟁이 현실이 될 것이라는 주장도 나온다.</p>
         <div class="by">모두우리 기자 (modoo@ktimes.com)</div>
@@ -68,7 +68,7 @@
       </article>
       <article><h4>AI 로봇, 인류 생활 혁신을 이끌다</h4>
         <p>이제는 AI 로봇이 켄테시아 사회 전반에 없어서는 안될 존재가 되었다. 초기 AI 로봇은 단순한 업무를 자율적으로 수행하는 수준에 그쳤으나, 기술의 발전으로 가정과 직장, 교육 등 다양한 분야에서 그 활용 범위가 빠르게 확대되고 있다. 최근 고도화된 AI 로봇은 물건을 옮기거나 청소하는 단순 작업을 넘어, 인간의 감정을 이해하고 표현할 수 있는 단계에 이르렀다. 이에 따라 아이들의 개인 교사로 AI 로봇을 활용하는 사례가 늘어나고 있다. 로봇이 학생들에게 개별적으로 학습을 지도하거나, 감정적으로 어려움을 겪는 아이들에게 위로와 격려를 건네는 모습은 이제 더 이상 낯선 광경이 아니다.</p>
-        <p>AI 로봇의 뛰어난 활용성과 다재다능함은 수요 폭증을 불러왔으나, AI 로봇의 생산량 증가로 인해 자원 고갈 문제도 점차 심각해지고 있다. 특히 AI 로봇의 핵심 소재인 켄트로늄의 대량 소모가 우려의 중심에 있다. 켄트로늄은 에너지 밀도가 높은 자원으로, 로봇이 높은 성능을 발휘하는데 필수적이지만 전문가들 사이에서 한정적인 매장량에 대한 우려의 목소리가 커지고 있다.</p>
+        <p>AI 로봇의 뛰어난 활용성과 다재다능함은 수요 폭증을 불러왔으나, AI 로봇의 생산량 증가로 인해 자원 고갈 문제도 점차 심각해지고 있다. 특히 AI 로봇의 핵심 소재인 켄트로늄의 대량 소모가 우려의 중심에 있다. 켄트로늄은 에너지 밀도가 높은 자원으로, 로봇이 높은 성능을 발휘하는데 필수적이지만 전문가들 사이에 한정적인 매장량에 대한 우려의 목소리가 커지고 있다.</p>
         <div class="by">크리스 윤택 기자 (chrisyt@kentesia.com)</div>
         <div class="cap">사진: 학생을 가르치고 있는 AI로봇</div>
       </article>`,
@@ -92,9 +92,19 @@
   };
 
   function g(state) {
-    state.game = Object.assign({ tab: "blue", order: [null, null, null, null], links: {}, gaps: {}, overall: "", sel: null }, state.game || {});
+    state.game = Object.assign({ tab: "blue", order: [null, null, null, null], links: {}, gaps: {}, overall: "", sel: null, factsOpen: true }, state.game || {});
     return state.game;
   }
+
+  let prepView = null;
+  KCP.on("settings:change", () => {
+    if (prepView && prepView.root.isConnected && prepView.mode !== KCP.settings().timeMode) {
+      prepView.mode = KCP.settings().timeMode;
+      prepView.paint();
+    }
+  });
+  KCP.on("route:change", () => { prepView = null; });
+  KCP.on("phase:change", ({ to }) => { if (to !== "prep") prepView = null; });
 
   KCP.games["2025"] = {
     brief() {
@@ -129,7 +139,7 @@
                 (id, i) => `<button role="tab" data-tab="${id}" aria-selected="${G.tab === id}">자료 ${i + 2} ${tagOf(id)}</button>`
               ).join("")}</div>
               <div class="paper" id="paper"></div>
-              <div style="margin-top:10px"><p class="label" style="margin-bottom:6px">단서 카드 · 누르면 선택한 연결 근거 칸에 들어갑니다</p><div class="tray" id="facts"></div></div>
+              <div id="clues25" style="margin-top:10px"></div>
             </section>
           </div>
           <div class="stack">
@@ -150,11 +160,24 @@
 
       let lastLink = null;
       const paper = KCP.$("#paper", root);
-      const facts = KCP.$("#facts", root);
-      const paintPaper = () => {
-        KCP.$$("[data-tab]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === G.tab)));
-        paper.innerHTML = `<div class="mast"><b>KENTESIA TIMES</b><span class="sym ${P[G.tab].cls}">${P[G.tab].sym}</span></div>${PAPER[G.tab]()}`;
-        facts.innerHTML = FACTS[G.tab].map((f) => `<button data-fact="${esc(f)}">${tagOf(G.tab)} ${esc(f)}</button>`).join("");
+      const clues = KCP.$("#clues25", root);
+      const paintFacts = () => {
+        if (KCP.settings().timeMode === "real") {
+          clues.innerHTML = '<p class="small muted"><span class="tag-mine">연습용 안내</span> 실전 시간 모드에서는 기사에서 단서를 직접 찾습니다. 연습 모드에서 단서 카드를 켤 수 있습니다.</p>';
+          return;
+        }
+        const open = G.factsOpen !== false;
+        clues.innerHTML = `<div class="row" style="margin-bottom:6px"><button type="button" class="btn" id="facts-toggle25" aria-pressed="${open}" aria-controls="facts">단서 카드 ${open ? "끄기" : "켜기"}</button><span class="tag-mine">연습용 단서</span></div>
+          ${open ? '<p class="small muted" style="margin-bottom:6px">단서 카드를 누르면 선택한 연결 근거 칸에 들어갑니다.</p>' : ""}
+          <div class="tray" id="facts" ${open ? "" : "hidden"}></div>`;
+        KCP.$("#facts-toggle25", clues).onclick = () => {
+          G.factsOpen = !open;
+          save(); paintFacts();
+          KCP.$("#facts-toggle25", clues).focus();
+        };
+        if (!open) return;
+        const facts = KCP.$("#facts", clues);
+        facts.innerHTML = FACTS[G.tab].map((f) => `<button type="button" data-fact="${esc(f)}">${tagOf(G.tab)} ${esc(f)}</button>`).join("");
         KCP.$$("[data-fact]", facts).forEach((b) =>
           (b.onclick = () => {
             const ta = lastLink && document.body.contains(lastLink) ? lastLink : KCP.$("#overall25", root);
@@ -165,22 +188,30 @@
           })
         );
       };
+      const paintPaper = () => {
+        KCP.$$("[data-tab]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === G.tab)));
+        paper.innerHTML = `<div class="mast"><b>KENTESIA TIMES</b><span class="sym ${P[G.tab].cls}">${P[G.tab].sym}</span></div>${PAPER[G.tab]()}`;
+        paintFacts();
+      };
+      prepView = { root, paint: paintFacts, mode: KCP.settings().timeMode };
       KCP.$$("[data-tab]", root).forEach((b) => (b.onclick = () => { G.tab = b.dataset.tab; save(); paintPaper(); }));
       paintPaper();
 
       const tray = KCP.$("#tray", root);
       const slots = KCP.$("#slots", root);
-      const paintOrder = () => {
+      const paintOrder = (focusSelector) => {
         const placed = G.order.filter(Boolean);
         tray.innerHTML = IDS.filter((id) => !placed.includes(id))
-          .map((id) => `<button data-sel="${id}" aria-pressed="${G.sel === id}">${tagOf(id)} ${esc(P[id].short)}</button>`)
+          .map((id) => `<button type="button" data-sel="${id}" aria-pressed="${G.sel === id}">${tagOf(id)} ${esc(P[id].short)}</button>`)
           .join("") || '<span class="small muted">4부를 모두 배치했습니다.</span>';
         let html = "";
         G.order.forEach((id, i) => {
-          html += `<div class="slot ${id ? "filled" : ""}" data-slot="${i}">
-            <span class="n">${i + 1}</span>
-            <span>${id ? `<span class="pp">${tagOf(id)} ${esc(P[id].short)}</span>` : '<span class="small muted">여기를 눌러 배치</span>'}</span>
-            <span class="row">${id ? `<button class="btn small ghost" data-up="${i}" aria-label="위로" ${i === 0 ? "disabled" : ""}>↑</button><button class="btn small ghost" data-down="${i}" aria-label="아래로" ${i === 3 ? "disabled" : ""}>↓</button>` : ""}</span>
+          html += `<div class="slot ${id ? "filled" : ""}">
+            <button type="button" class="slot-button" data-slot="${i}" aria-label="${i + 1}번 칸, ${id ? `신문 ${P[id].sym} ${esc(P[id].short)}, 누르면 빼기` : "비어 있음"}">
+              <span class="n">${i + 1}</span>
+              <span>${id ? `<span class="pp">${tagOf(id)} ${esc(P[id].short)}</span>` : '<span class="small muted">여기를 눌러 배치</span>'}</span>
+            </button>
+            <span class="row">${id ? `<button type="button" class="btn small ghost" data-up="${i}" aria-label="${i + 1}번 칸 신문 ${P[id].sym} 위로" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="btn small ghost" data-down="${i}" aria-label="${i + 1}번 칸 신문 ${P[id].sym} 아래로" ${i === 3 ? "disabled" : ""}>↓</button>` : ""}</span>
           </div>`;
           if (i < 3) {
             const a = G.order[i], b = G.order[i + 1];
@@ -193,25 +224,32 @@
           }
         });
         slots.innerHTML = html;
-        KCP.$$("[data-sel]", tray).forEach((b) => (b.onclick = () => { G.sel = G.sel === b.dataset.sel ? null : b.dataset.sel; save(); paintOrder(); }));
+        KCP.$$("[data-sel]", tray).forEach((b) => (b.onclick = () => { G.sel = G.sel === b.dataset.sel ? null : b.dataset.sel; save(); paintOrder(`[data-sel="${b.dataset.sel}"]`); }));
         KCP.$$("[data-slot]", slots).forEach((s) =>
-          s.addEventListener("click", (e) => {
-            if (e.target.closest("button")) return;
+          s.addEventListener("click", () => {
             const i = Number(s.dataset.slot);
             if (G.order[i]) G.order[i] = null;
             else if (G.sel) { G.order[i] = G.sel; G.sel = null; }
             else { KCP.toast("먼저 위에서 신문을 고르세요"); return; }
-            save(); paintOrder();
+            save(); paintOrder(`[data-slot="${i}"]`);
           })
         );
-        const swap = (i, j) => { const t = G.order[i]; G.order[i] = G.order[j]; G.order[j] = t; save(); paintOrder(); };
-        KCP.$$("[data-up]", slots).forEach((b) => (b.onclick = () => swap(Number(b.dataset.up), Number(b.dataset.up) - 1)));
-        KCP.$$("[data-down]", slots).forEach((b) => (b.onclick = () => swap(Number(b.dataset.down), Number(b.dataset.down) + 1)));
+        KCP.$$(".slot", slots).forEach((s) => s.addEventListener("click", (e) => {
+          if (!e.target.closest("button")) KCP.$("[data-slot]", s).click();
+        }));
+        const swap = (i, j, direction) => {
+          const t = G.order[i]; G.order[i] = G.order[j]; G.order[j] = t;
+          const atEdge = direction === "up" ? j === 0 : j === 3;
+          save(); paintOrder(atEdge ? `[data-slot="${j}"]` : `[data-${direction}="${j}"]`);
+        };
+        KCP.$$("[data-up]", slots).forEach((b) => (b.onclick = () => swap(Number(b.dataset.up), Number(b.dataset.up) - 1, "up")));
+        KCP.$$("[data-down]", slots).forEach((b) => (b.onclick = () => swap(Number(b.dataset.down), Number(b.dataset.down) + 1, "down")));
         KCP.$$("[data-link]", slots).forEach((t) => {
           t.addEventListener("focus", () => (lastLink = t));
           t.addEventListener("input", () => { G.links[t.dataset.link] = t.value; save(); });
         });
         KCP.$$("[data-gap]", slots).forEach((t) => t.addEventListener("input", () => { G.gaps[t.dataset.gap] = t.value; save(); }));
+        if (focusSelector) KCP.$(focusSelector, root)?.focus();
       };
       paintOrder();
       const ov = KCP.$("#overall25", root);

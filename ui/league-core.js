@@ -3,7 +3,7 @@
  * - reduce(state, msg): 팀이 보낸 요청(자리 잡기 · 계획 · 판매 단가 · 연계선 · 준비)을 검사해 반영
  * - runRound(state, bg): 팀마다 자기 도시를 따로 돌린 뒤(bg = KCP.buildGame) settle로 도시 사이 거래를 정산
  * 정산은 시간마다: 모자란 도시가 연계선으로 이어진 이웃에게서 남는 재생 전력 → 남는 화력 여유 순으로, 단가가 싼 쪽부터 산다.
- * 팔 쪽 화력은 단가가 연료비보다 비쌀 때만 판다. 연계선 손실 2%. 돈은 도착한 양만큼 낸다.
+ * 팔 쪽 화력은 단가가 연료비보다 비쌀 때만 판다. 기본 연계선 손실은 TIE_LOSS. 돈은 도착한 양만큼 낸다.
  */
 (function () {
   "use strict";
@@ -416,15 +416,15 @@
     // 수요를 못 구해 0이 되면 저장하지 않는다('≤ 0 t' 고정 방지). run 첫머리에서 다시 시도한다.
     if (goal.co2Plan > 0) S.goalPlan = { ...S.goalPlan, [S.round]: goal };
   }
-  // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 0.7배 폭(P, 예측 NRMSE 30.6% 감소 [P101] · REF 12.7)으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
+  // 예측 기술을 도입한 팀은 실제 크기 x를 원래 범위 ×fcstWidth 폭으로 미리 안다(가운데는 x에서 조금 비켜 둔다). 근거는 tech-data params.
   function fcxOf(S, id) {
     if (!techOf(S, id).includes("fcst")) return null;
     const R = regionOf(S.region), out = {};
     (S.events || []).filter(ev => ev.round === S.round && typeof ev.x === "number").forEach(ev => {
       const E = eventDef(R, ev.id), fc = (E && E.fc) || 0;
       if (!fc) return;
-      const u = (hashStr((S.seedKey ?? S.room) + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc * 0.7) * (u - 0.5);
-      out[ev.id] = [r3(Math.max(1 - fc, c - fc * 0.7)), r3(Math.min(1 + fc, c + fc * 0.7))];
+      const u = (hashStr((S.seedKey ?? S.room) + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc * tp("fcstWidth")) * (u - 0.5);
+      out[ev.id] = [r3(Math.max(1 - fc, c - fc * tp("fcstWidth"))), r3(Math.min(1 + fc, c + fc * tp("fcstWidth")))];
     });
     return out;
   }
@@ -446,8 +446,8 @@
     const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
     Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: P.eduAir.v, eduAirSpecified: P.eduAir.v,
       smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed),
-      lngSpikeFrequency: 3, outageHoursPerPercent: 87.6, koreaOutageHours2019: 0.04,
-      islandLineLoss: 3, researchYears: [10, 30], complaintPoliticalEffect: [50, 200],
+      lngSpikeFrequency: P.lngSpikeFrequency.v, outageHoursPerPercent: P.outageHoursPerPercent.v, koreaOutageHours2019: P.koreaOutageHours2019.v,
+      islandLineLoss: P.islandLineLoss.v, researchYears: P.researchYears.v.slice(), complaintPoliticalEffect: P.complaintPoliticalEffect.v.slice(),
       note: `주민·기업 이동과 SMR 공사 시간 ×${speed}(게임 1달 ≈ 현실 약 ${speed}달)`,
       items: [
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
@@ -458,12 +458,12 @@
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
         ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
         ["hazardFreq", `기상 사건 빈도 ×${P.hazardFreq.v}: 정책 판단 시간을 확보`],
-        ["lngSpikeFrequency", "LNG 급등은 현실보다 약 3배 자주: 충격 관찰"],
-        ["outageHoursPerPercent", "정전 1% = 연 87.6시간: 한국 평균 연 0.04시간(2019)보다 큰 교육용 눈금"],
-        ["islandLineLoss", "섬 연습 지도 송전 손실은 리그의 3배: 짧은 지도에서 손실 관찰"],
+        ["lngSpikeFrequency", `LNG 급등은 현실보다 약 ${P.lngSpikeFrequency.v}배 자주: 충격 관찰`],
+        ["outageHoursPerPercent", `정전 1% = 연 ${P.outageHoursPerPercent.v}시간: 한국(최대 상업도시 기준) 연 ${P.koreaOutageHours2019.v}시간(2019)보다 큰 교육용 눈금`],
+        ["islandLineLoss", `섬 연습 지도 송전 손실은 리그의 ${P.islandLineLoss.v}배: 짧은 지도에서 손실 관찰`],
         ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 약 55개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed)}달`],
-        ["researchYears", "연구 기간 수십 배 압축: 현실 10~30년 → 게임 수 달"],
-        ["complaintPoliticalEffect", "민원 정치 효과 약 50~200배 확대: 마을 민원을 도시 전체 만족에 반영"]
+        ["researchYears", `연구 기간 수십 배 압축: 현실 ${P.researchYears.v.join("~")}년 → 게임 수 달`],
+        ["complaintPoliticalEffect", `민원 정치 효과 약 ${P.complaintPoliticalEffect.v.join("~")}배 확대: 마을 민원을 도시 전체 만족에 반영`]
       ].map(([key, note]) => ({ key, note })) });
     return { speeds, year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { len: E.len, coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, revYear: c.revYear, co2Intensity0: c.co2Intensity0, co2Intensity: c.co2Intensity, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
   }
@@ -472,6 +472,7 @@
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
+      // D-75: 판정은 진행자의 전체 상태에만 남기고 팀 기기에 공개하지 않는다.
       const left = KCP.buildGame ? preserveMap(KCP.buildGame, () => r2(budget(S, id) - spendOf(KCP.buildGame, S, regionOf(S.region), id, T.plan || {}))) : null;
       teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
@@ -510,10 +511,21 @@
     }
     if (T.token !== m.token) return err("seat");
     // 식별자가 없는 옛 클라이언트와 claim·hello는 기존 규약을 유지한다.
-    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price"].includes(m.type) &&
+    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price", "verdict"].includes(m.type) &&
         ((Object.hasOwn(m, "rd") && m.rd !== S.round) || (Object.hasOwn(m, "ph") && m.ph !== S.phase))) return err("stale");
     T.online = now;
     if (m.type === "hello") return { ok: true, quiet: true };
+    if (m.type === "verdict") {
+      // 봉투 필드 외에는 round·hit만 허용한다. 학생 글은 저장하거나 재방송하지 않는다.
+      const allowed = ["type", "team", "token", "kid", "n", "sid", "seat", "id", "born", "rd", "ph", "round", "hit"];
+      if (Object.keys(m).some(k => !allowed.includes(k)) || !Number.isInteger(m.round) || typeof m.hit !== "boolean") return err("verdict");
+      if (!["review", "end"].includes(S.phase)) return err("phase");
+      if (m.round !== S.round || m.round !== S.results.at(-1)?.round) return err("stale");
+      // 최초 판정 고정: 재접속·ack 유실의 같은 값 재전송은 성공, 뒤늦은 변경은 거부해 집계를 보존한다.
+      if (Object.hasOwn(T.verdicts || {}, m.round)) return T.verdicts[m.round] === m.hit ? { ok: true, quiet: true } : err("verdict");
+      T.verdicts ||= {}; T.verdicts[m.round] = m.hit; S.rev++;
+      return { ok: true };
+    }
     if (m.type === "ready") {
       const ready = m.ready === true;
       if (T.ready === ready) return { ok: true, quiet: true };
