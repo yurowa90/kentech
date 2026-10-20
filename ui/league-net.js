@@ -9,7 +9,9 @@
   "use strict";
   const KCP = window.KCP;
   if (!KCP) return;
-  const MAX_BYTES = 200000;
+  const MAX_BYTES = 200000; // 로컬 BroadcastChannel의 기존 제한.
+  const SEND_CAP = 256000; // Supabase 무료 요금제 문서상 256KB. 실측 256KB까지 도착, 300KB 이상은 error로 거부됐다.
+  const ACK_WAIT = 5000; // 실제 측정 지연 중앙 약 230ms·최대 약 500ms에 재시도 여유를 둔다.
 
   // 공개 키 입력 실수를 막는 검사다. JWT 서명을 검증하는 인증 절차는 아니다.
   function publicKeyProblem(key) {
@@ -212,7 +214,7 @@
       let wire, signed, json;
       try {
         if (typeof incoming.sig !== "string" || incoming.sig.length > 128) return Promise.resolve(false);
-        if (bytes(incoming).length > MAX_BYTES) return Promise.resolve(false);
+        if (bytes(incoming).length > SEND_CAP) return Promise.resolve(false);
         const { sig, ...data } = incoming;
         json = canonical(data); signed = JSON.parse(json); wire = { ...signed, sig };
       } catch (_) { rejected(event); return Promise.resolve(false); }
@@ -262,12 +264,12 @@
     const chains = new Map(), queued = new Map();
     return envelope => {
       const team = envelope?.team;
-      if (typeof team !== "string" || !Object.hasOwn(S.teams, team) || (queued.get(team) || 0) >= 16 || typeof envelope.body !== "string" || envelope.body.length > MAX_BYTES || bytes(envelope.body).length > MAX_BYTES || typeof envelope.sig !== "string" || envelope.sig.length > 128) return Promise.resolve({ ok: false, err: "bad" });
+      if (typeof team !== "string" || !Object.hasOwn(S.teams, team) || (queued.get(team) || 0) >= 16 || typeof envelope.body !== "string" || envelope.body.length > SEND_CAP || bytes(envelope.body).length > SEND_CAP || typeof envelope.sig !== "string" || envelope.sig.length > 128) return Promise.resolve({ ok: false, err: "bad" });
       const wire = { team, body: envelope.body, sig: envelope.sig };
       queued.set(team, (queued.get(team) || 0) + 1);
       const work = async () => {
         const m = requestBody(wire), T = S.teams[team];
-        if (!m || m.team !== team || typeof m.type !== "string" || !Number.isSafeInteger(m.n) || m.n <= 0 || bytes(wire.body).length > MAX_BYTES) return { ok: false, err: "bad" };
+        if (!m || m.team !== team || typeof m.type !== "string" || !Number.isSafeInteger(m.n) || m.n <= 0 || bytes(wire.body).length > SEND_CAP) return { ok: false, err: "bad" };
         const claim = m.type === "claim", epoch = T.seatVersion || 0;
         const stateful = ["hello", "plan", "econ", "crit", "ready"].includes(m.type);
         // kick 뒤 새 키/자리는 독립된 순번 공간이다. lastN은 퇴거 차단용 최댓값으로 남긴다.
@@ -371,7 +373,28 @@
   function supabase(room, url, key, canSend = () => true) {
     const H = hub(), topic = "realtime:kcp-league-" + room, addr = publicKeyProblem(key) ? null : wsUrl(url, key);
     let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
-    const queue = [];
+    const queue = [], pending = new Map();
+    // 미확인(ack 없음)은 크기 때문인지 일시 끊김 때문인지 가를 수 없다. 그래서 미확인 기록으로 보내기를 막지 않는다:
+    // 교실 와이파이가 한 번 흔들려 100KB 상태의 ack가 늦으면 이후 100KB 넘는 상태를 영영 못 보내게 되기 때문이다.
+    // 미확인 결과는 진행자 경고에만 쓴다.
+    const cap = () => SEND_CAP;
+    function reset() {
+      pending.forEach(p => clearTimeout(p.timer)); pending.clear();
+    }
+    function settle(id, success, reason) {
+      const p = pending.get(id);
+      if (!p) return;
+      pending.delete(id); clearTimeout(p.timer);
+      H.fire(success ? "delivered" : "undelivered", { ev: p.ev, bytes: p.bytes, ...(reason ? { reason } : {}) });
+    }
+    function transmit(m) {
+      const size = bytes(m).length, ev = m.payload.event;
+      if (size > cap()) { H.fire("oversize", { ev, bytes: size }); return false; }
+      if (pending.size >= 64) settle(pending.keys().next().value, false, "pending-limit");
+      pending.set(m.ref, { ev, bytes: size, timer: setTimeout(() => settle(m.ref, false, "timeout"), ACK_WAIT) });
+      raw(m);
+      return true;
+    }
     if (!addr || !key) { H.set("error"); return { kind: "supabase", send() {}, on: H.on, onStatus: H.onStatus, status: () => H.status, close() {} }; }
     const raw = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
     function enqueue(m) {
@@ -393,12 +416,14 @@
       for (let i = 0; i < queue.length;) {
         const m = queue[i];
         if (!canSend(m.payload.event, m.payload.payload)) { i++; continue; }
-        queue.splice(i, 1); m.join_ref = joinRef; raw(m);
+        queue.splice(i, 1); m.join_ref = joinRef; transmit(m);
       }
     }
     function join() {
+      if (closed || !ws || ws.readyState !== 1) return;
+      reset(); joined = false;
       joinRef = String(++ref);
-      const payload = { config: { broadcast: { self: false, ack: false }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
+      const payload = { config: { broadcast: { self: false, ack: true }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
       if (/^eyJ/.test(key)) payload.access_token = key; // 예전 anon 키(JWT)만. 새 publishable 키는 주소의 apikey로 충분하다.
       raw({ topic, event: "phx_join", payload, ref: joinRef, join_ref: joinRef });
     }
@@ -416,10 +441,15 @@
           else { H.set("error"); }
           return;
         }
-        if (m.event === "phx_error" || m.event === "phx_close") { joined = false; H.set("reconnecting"); setTimeout(join, 1000); return; }
+        if (m.event === "phx_reply") {
+          if (m.payload?.status === "ok" || m.payload?.status === "error")
+            settle(m.ref, m.payload.status === "ok", m.payload.status === "error" ? m.payload.response?.reason || "error" : undefined);
+          return;
+        }
+        if (m.event === "phx_error" || m.event === "phx_close") { joined = false; reset(); H.set("reconnecting"); clearTimeout(timer); timer = setTimeout(join, 1000); return; }
         if (m.event === "broadcast" && m.payload && typeof m.payload.event === "string") H.fire(m.payload.event, m.payload.payload);
       };
-      ws.onclose = () => { joined = false; clearInterval(hb); if (!closed) { H.set("reconnecting"); schedule(); } };
+      ws.onclose = () => { joined = false; reset(); clearTimeout(timer); clearInterval(hb); if (!closed) { H.set("reconnecting"); schedule(); } };
       ws.onerror = () => {};
     }
     function schedule() { clearTimeout(timer); retry++; timer = setTimeout(connect, Math.min(15000, 500 * 2 ** Math.min(retry, 5))); }
@@ -428,12 +458,13 @@
       kind: "supabase",
       send(ev, data) {
         const m = broadcastMessage(room, ev, data, String(++ref), joinRef);
-        if (bytes(m).length > MAX_BYTES) { H.fire("oversize", { ev }); return false; }
+        const size = bytes(m).length;
+        if (size > cap()) { H.fire("oversize", { ev, bytes: size }); return false; }
         enqueue(m); flush(); return true;
       },
       flush,
       on: H.on, onStatus: H.onStatus, status: () => H.status,
-      close() { closed = true; clearInterval(hb); clearTimeout(timer); if (ws) try { ws.close(); } catch (e) { /* 이미 닫힘 */ } H.set("closed"); }
+      close() { closed = true; joined = false; reset(); clearInterval(hb); clearTimeout(timer); if (ws) try { ws.close(); } catch (e) { /* 이미 닫힘 */ } H.set("closed"); }
     };
   }
 

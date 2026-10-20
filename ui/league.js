@@ -1959,7 +1959,7 @@
         if (r.ok && !r.quiet) changed();
         else if (r.ok && m.type === "claim") pushSnap();
       });
-      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } });
+      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L === session && !L.channelWatching) hostChannelWatch(); });
       L.timers.push(setInterval(() => { pushSnap(); renderHost(); }, 4000));
       L.timers.push(setInterval(tickTimer, 1000));
       flushHost();
@@ -1977,9 +1977,25 @@
     L.saveWarning = !store.set(K_HOST, { room: L.room, net: L.net, identity: L.identity, fingerprint: L.fingerprint, migration: L.migration, state: L.S });
     hostWarning();
   }
+  function hostChannelWatch() {
+    if (L?.role !== "host" || L.conn.kind !== "supabase" || L.channelWatching) return;
+    const session = L;
+    L.channelWatching = true;
+    const watch = (event, missed) => L.conn.on(event, m => {
+      if (L !== session || m.ev !== "snap") return;
+      L.channelMissed = missed ? m.bytes : 0; hostWarning();
+    });
+    watch("undelivered", true);
+    // 다음 상태의 전달 확인까지 실패 경고를 유지한다. 단순 send 성공은 확인이 아니다.
+    watch("delivered", false);
+    hostWarning();
+  }
   function hostWarning() {
     const el = document.getElementById("lg-host-warning");
-    if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인해요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || ""].filter(Boolean).join(" ");
+    let channel = "";
+    if (L?.role === "host" && L.conn?.kind === "supabase" && L.channelMissed)
+      channel = `방금 상태(${Math.round(L.channelMissed / 1000)}KB)가 팀 기기에 전달되지 않았어요. 연결을 확인해요.`;
+    if (el) el.textContent = [L.saveWarning ? "진행을 저장하지 못했어요. 저장 공간·브라우저 설정을 확인해요. 이 화면을 닫으면 진행을 잃을 수 있어요." : "", L.migration || "", channel].filter(Boolean).join(" ");
   }
   function hostSend(event, data) {
     const session = L, copy = structuredClone(data);

@@ -271,7 +271,7 @@ async function transport() {
     ok(await N.verifyEnvelope(sent.at(-1).payload.payload, identity.publicKey), "큐·외부 비교 필드가 문자열 서명을 바꾸지 않음");
     let warns = 0; online.on("oversize", m => { if (m.ev === "snap") warns++; });
     const count = socket.sent.length;
-    ok(online.send("snap", { text: "가".repeat(90000) }) === false && warns === 1 && socket.sent.length === count, "Supabase UTF-8 200,000바이트 초과는 전송 안 함·경고 이벤트");
+    ok(online.send("snap", { text: "가".repeat(90000) }) === false && warns === 1 && socket.sent.length === count, "Supabase UTF-8 256,000바이트 초과는 전송 안 함·경고 이벤트");
     localA = N.open({ kind: "local", room: "MOCK02" }); localB = N.open({ kind: "local", room: "MOCK02" });
     let received; localB.on("req", m => { received = m; });
     localA.send("req", plan2);
@@ -279,7 +279,7 @@ async function transport() {
     localA.on("oversize", () => warns++);
     ok(localA.send("snap", { text: "가".repeat(90000) }) === false && warns === 2, "로컬 초과도 경고 이벤트");
     const oversized = await N.signHost(identity, "snap", "MOCK01", "fixture-session", {
-      teams: { [team]: { plan: { detail: "x".repeat(210000) },
+      teams: { [team]: { plan: { detail: "x".repeat(260000) },
         hist: Array.from({ length: 20 }, (_, r) => ({ r, detail: "x".repeat(1000) })) } }
     });
     ok(online.send("snap", oversized) === false && warns === 3 && socket.sent.length === count,
@@ -879,7 +879,7 @@ async function floor3Network() {
   await receive(await sign({ type: "claim", publicKey: key.publicKey }));
   const good = await sign({}), old = await sign({ sid: "old-session" }), repeat = await sign({});
   await receive(repeat); const before = verifies;
-  for (const wire of [old, good, { ...good, body: "x".repeat(200001) }]) await receive(wire);
+  for (const wire of [old, good, { ...good, body: "x".repeat(256001) }]) await receive(wire);
   ok(verifies === before, "F3-5 진행자 sid·순번·크기 싼 검사가 검증보다 먼저");
   let unblock, calls = 0;
   const held = N.receiver(S, () => ({ ok: true }), async () => { calls++; await new Promise(r => { unblock = r; }); return false; });
@@ -909,7 +909,7 @@ async function floor3Network() {
     const trusted = { room: S.room, sid: S.sid, hostN: wire.n }, receiveHost = N.hostReceiver(trusted, () => {});
     await receiveHost("snap", wire);
     await receiveHost("ack", { ...wire, event: "ack", sid: "wrong", n: wire.n + 1 });
-    await receiveHost("snap", { ...wire, n: wire.n + 1, data: { text: "x".repeat(200001) } });
+    await receiveHost("snap", { ...wire, n: wire.n + 1, data: { text: "x".repeat(256001) } });
     ok(expensive === 0, "F3-5 팀 sid·순번·크기 싼 검사가 암호 계산보다 먼저");
     let hostCalls = 0;
     const crowded = N.hostReceiver({ room: S.room }, () => { hostCalls++; });
@@ -972,9 +972,9 @@ async function floor3Network() {
   ok(retried.sizes.length === 3 && retried.sizes[1] > 178000 && N.byteLength(retried.packed) <= 178000,
     "F3-6 행별 축약률 차이로 남은 초과분을 두 번째 비율 축약으로 해소");
   const blocked = structuredClone(retry);
-  blocked.teams[team].plan.detail = "x".repeat(210000);
+  blocked.teams[team].plan.detail = "x".repeat(260000);
   const stopped = measureCompact(blocked);
-  ok(stopped.sizes.length === 3 && N.byteLength(stopped.packed) > 200000,
+  ok(stopped.sizes.length === 3 && N.byteLength(stopped.packed) > 256000,
     "F3-6 두 번 뒤에도 큰 보존 항목은 전송 oversize 경로에 남김");
   for (const [original, measured] of [[retry, retried], [blocked, stopped]]) {
     const restored = N.expandSnapshot(structuredClone(measured.packed));
