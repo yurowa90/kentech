@@ -67,7 +67,8 @@ function fixture(changed) {
   const data = { interview: { months: {
     1: { ...clone(promise), operatingPlan, followingPlanChanged: null, resultNumbers: ['12'],
       compared: true, answer: changed ? 'revise' : 'keep', askReason: '정전 결과를 확인했다' },
-    2: { ...clone(promise), operatingPlan: null, followingPlanChanged: null, resultNumbers: [] },
+    // 품질8 UX 준비 전 확인 카드(QUALITY-ux U5): 설비 없는 검사 재료는 카드를 이미 통과한 것으로 둔다. 준비 요청 단언은 그대로.
+    2: { ...clone(promise), operatingPlan: null, followingPlanChanged: null, resultNumbers: [], issueCheckPassed: true },
   } } };
   mem.setItem(key, JSON.stringify(data));
   const note = month => JSON.parse(mem.getItem(key)).interview.months[month];

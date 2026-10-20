@@ -74,8 +74,9 @@ function ledgerCell(html, id) {
   return { bad: cell[1] === 'true', warning: cell[2].includes('▲') };
 }
 function approvalChip(html, name) {
-  const text = [...html.matchAll(/<span class="lg-risk-chip"[^>]*>([\s\S]*?)<\/span>/g)]
-    .find(m => m[1].includes(`<b>▲ ${name}</b>`))?.[1].split('</b>')[1].trim() || '';
+  // 위험 칩은 목록(li)으로 바뀌었다(진행자 상황판 접근성 정리). span·li 둘 다 읽고 판정 단언은 그대로 둔다.
+  const text = [...html.matchAll(/<(span|li) class="lg-risk-chip"[^>]*>([\s\S]*?)<\/\1>/g)]
+    .find(m => m[2].includes(`<b>▲ ${name}</b>`) || m[2].includes(`<b>▲ 위험 · ${name}</b>`))?.[2].split('</b>')[1].replace(/<[^>]+>/g, '').trim() || '';
   // 같은 도시의 현금 위험 등이 함께 표시되어도 지지율 칩의 짧은 이름만 비교한다.
   return text.split(' · ').find(word => word.includes('지지율')) || '';
 }
