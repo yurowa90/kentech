@@ -91,8 +91,17 @@
         status.fallback = "mismatch"; return null;
       }
       const dem = raw.hrDem;
-      const r = dem?.length === u.length && dem.every(v => Number.isFinite(v) && v >= 0) &&
-        calibrate(u, dem, team.uns, team.outH);
+      if (!(dem?.length === u.length && dem.every(v => Number.isFinite(v) && v >= 0))) { status.fallback = "calibrate"; return null; }
+      // D-74 계통 수입: 엔진은 이웃 거래 정산 뒤 남은 부족을 시간마다 수요×gridImportShare까지 메운다
+      // (league-core gridSupply). 같은 식·같은 32비트 저장 순서로 적용한 뒤 보정한다. 이웃 거래가 없는 달은
+      // 이것만으로 엔진의 시간별 남은 부족(uns−del)과 같다. 거래가 있는 달의 시간별 순서는 보정 규칙(G).
+      const share = V.econ ? KCP.ECON_DATA?.params?.gridImportShare?.v : null, g = new Float64Array(u.length);
+      for (let k = 0; k < u.length; k++) {
+        const uF = Math.fround(u[k]);
+        const fill = Number.isFinite(share) ? Math.fround(Math.min(Math.max(0, uF), dem[k] * share)) : 0;
+        g[k] = uF - fill;
+      }
+      const r = calibrate(g, dem, team.uns, team.outH);
       if (!r) { status.fallback = "calibrate"; return null; }
       const data = { r, outH: team.outH, sum: sum(r), source: "device" };
       return inspect ? data : { ...data, res: raw, outHour: k => r[k] > threshold(dem[k]) };
