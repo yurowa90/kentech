@@ -357,7 +357,14 @@ def setup(page, base, mode):
         if not pressed.count():
             break
         pressed.first.click()
-    page.locator('[data-layer="map"]').click()
+    # 품질8 UX: 리그 지도에서는 자료 지도 단추가 '지도 보기'(details.lg-map-views) 안으로 접혔다. 닫혀 있으면 펼친 뒤 고른다.
+    layer = page.locator('[data-layer="map"]')
+    # 기본 '지도' 층이 이미 켜져 있으면 고르지 않는다. 리그에서는 펼친 '지도 보기' 메뉴의 선택지가
+    # 문제 칩(#lg-issue 계열)에 가려 클릭이 막히는 기존 배치 결함이 있다(UX 갈래에 보고, 2026-10-20).
+    if layer.get_attribute('aria-pressed') != 'true':
+        if not layer.is_visible() and page.locator('.lg-map-views > summary').count():
+            page.locator('.lg-map-views > summary').click()
+        layer.click()
     page.mouse.move(0, 0)
     page.wait_for_timeout(600)
     return page.evaluate(PROBE_JS)
