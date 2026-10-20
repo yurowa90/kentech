@@ -97,18 +97,28 @@ PIXELS_JS = """(() => {
 
 CITY_COLOR_JS = """() => {
   const P=""" + PIXELS_JS + """, BG=KCP.buildGame, cv=document.querySelector('#bd-canvas');
+  const view=BG.saveView(), pack=KCP.BUILD_MAPS[view.map];
+  if (!cv) return {rgb:null,samples:[],win:pack.win || [0,0],map:view.map,
+    diagnostics:{canvas:null,k:null,candidates:0,inCanvas:0,visibleCandidates:0}};
   const box=cv.getBoundingClientRect(), current=BG.current();
   const occupied=new Set([...(current.builds || []).map(b=>b.i),
     ...(current.lines || []).flatMap(l=>l.p || [])]);
-  const tiles=BG.TILES.filter(t=>!t.out && t.t==='plain' && t.site<0 && !occupied.has(t.i))
-    .map(t=>{const [x,y]=BG.tileXY(t.c,t.r); return {c:t.c,r:t.r,x,y};})
-    .filter(t=>t.x>3 && t.y>3 && t.x<cv.clientWidth-3 && t.y<cv.clientHeight-3 &&
-      document.elementFromPoint(box.left+t.x,box.top+t.y)===cv);
-  const data=P.image(cv), samples=P.spread(tiles).map(t=>({...t,rgb:P.patch(cv,data,t.x,t.y)}))
-    .filter(t=>t.rgb);
-  const pack=KCP.BUILD_MAPS[BG.saveView().map];
+  const candidates=BG.TILES.filter(t=>!t.out && t.t==='plain' && t.site<0 && !occupied.has(t.i))
+    .map(t=>{const [x,y]=BG.tileXY(t.c,t.r); return {c:t.c,r:t.r,x,y};});
+  const inCanvas=candidates.filter(t=>t.x>3 && t.y>3 &&
+    t.x<cv.clientWidth-3 && t.y<cv.clientHeight-3);
+  const tiles=inCanvas.filter(t=>document.elementFromPoint(box.left+t.x,box.top+t.y)===cv);
+  const data=cv.width>0 && cv.height>0 ? P.image(cv) : null;
+  const samples=data ? P.spread(tiles).map(t=>({...t,rgb:P.patch(cv,data,t.x,t.y)}))
+    .filter(t=>t.rgb) : [];
   return {rgb:P.representative(samples.map(t=>t.rgb)), samples,
-    win:pack.win || [0,0], map:BG.saveView().map};
+    win:pack.win || [0,0], map:view.map,
+    // 도시 지도는 tileXY()를 사용한다. dataset.k 누락만으로 표본을 배제하지 않는다.
+    diagnostics:{canvas:{width:cv.width,height:cv.height,clientWidth:cv.clientWidth,
+      clientHeight:cv.clientHeight,x:box.x,y:box.y,widthCSS:box.width,heightCSS:box.height,
+      visible:cv.checkVisibility({visibilityProperty:true})},k:cv.dataset.k ?? null,
+      viewport:{width:innerWidth,height:innerHeight},candidates:candidates.length,
+      inCanvas:inCanvas.length,visibleCandidates:tiles.length}};
 }"""
 
 REGION_COLOR_JS = """reference => {
@@ -147,7 +157,7 @@ GEOMETRY_JS = """() => {
     Math.abs(layout.bounds.height-cv.clientHeight)<1;
   const labels=valid ? layout.labels.map(b=>({x:map.x+b.x*map.width/cv.clientWidth,
     y:map.y+b.y*map.height/cv.clientHeight,width:b.width*map.width/cv.clientWidth,
-    height:b.height*map.height/cv.clientHeight})) : null;
+    height:b.height*map.height/cv.clientHeight,kind:b.kind,soft:b.soft,id:b.id})) : null;
   return {map:rect(cv),cards,labels};
 }"""
 
@@ -266,12 +276,24 @@ def geometry(checks, page, label):
                c['y'] + c['height'] > bounds['y'] + bounds['height'] + .01]
     checks.ok(not outside, f'{label} 카드 지도 안: 지도={bounds}, 밖={outside}')
     if data['labels'] is None:
-        checks.skip(label + ' 도시 이름 충돌: 공개 배치 계산 결과 필요')
+        checks.skip(label + ' 도시 이름·hard/soft 상자 충돌: 공개 배치 계산 결과 필요')
     else:
-        checks.ok(len(data['labels']) == 6, label + ' 공개 이름 라벨 측정 상자 6개')
+        # W8 브리프 할 일 2·검사 6: 6개 및 이름 충돌 0은 kind=city에 적용한다.
+        # placeCards의 전체 입력에는 수역 이름·화살표·기호도 포함된다.
+        cities = [b for b in data['labels'] if b.get('kind') == 'city']
+        checks.ok(len(cities) == 6, label + ' 공개 도시 이름 라벨 측정 상자 6개')
         collisions = [(i, j) for i, c in enumerate(cards)
-                      for j, b in enumerate(data['labels']) if intersect(c, b)]
+                      for j, b in enumerate(cities) if intersect(c, b)]
         checks.ok(not collisions, f'{label} 카드·도시 이름 겹침 0: {collisions}')
+        # W8 할 일 3·검사 6 및 placeCards 계약: 비도시 hard 상자도 가리지 않는다.
+        hard = [b for b in data['labels'] if b.get('kind') != 'city' and not b.get('soft')]
+        collisions = [(i, j, b.get('kind'), b.get('id')) for i, c in enumerate(cards)
+                      for j, b in enumerate(hard) if intersect(c, b)]
+        checks.ok(not collisions, f'{label} 카드·비도시 hard 상자 겹침 0: {collisions}')
+        # W8 할 일 2의 도시 이름 충돌 금지와 구분: soft(water)는 비용만 부과한다.
+        soft = [b for b in data['labels'] if b.get('soft')]
+        overlaps = sum(intersect(c, b) for c in cards for b in soft)
+        print(f'INFO {label} 카드·soft(water) 상자 겹침 {overlaps}개', flush=True)
     overflow(checks, page, label)
 
 
@@ -286,9 +308,11 @@ def compare_color(checks, page, reference, label):
     actual = page.evaluate(REGION_COLOR_JS, reference)
     distance = (math.dist(reference['rgb'], actual['rgb'])
                 if reference['rgb'] is not None and actual['rgb'] is not None else math.inf)
+    detail = (f", 도시 표본 0개 진단={reference.get('diagnostics')}"
+              if not reference['samples'] else '')
     checks.ok(len(reference['samples']) >= 5 and actual['n'] >= 5 and distance <= 55,
               f"{label} 평지 RGB 거리 ≤55: 도시={reference['rgb']}, "
-              f"광역={actual['rgb']}, 거리={distance:.1f}, n={actual['n']}")
+              f"광역={actual['rgb']}, 거리={distance:.1f}, n={actual['n']}{detail}")
 
 
 def returned(checks, page, player, label):
@@ -321,9 +345,12 @@ def check_outage(checks, page, label):
     # 기호 상자 화소에 빨간 계열이 실제로 그려졌는지(캔버스 복사본에서 읽기 — getImageData 경고 방지).
     reds = page.evaluate("""(ids) => {
       const L=KCP.fxRegion.lastLayout(), out={};
-      const cv=document.querySelector('#lg-mapc') || document.querySelector('canvas.lg-map');
+      // W8 할 일 3: lastLayout의 기호가 그려진 팀 광역/진행자 지도를 읽는다.
+      const canvases=['#lg-regionmap','#lg-mapc'].map(s=>document.querySelector(s)).filter(Boolean);
+      const cv=canvases.find(c=>c.checkVisibility({visibilityProperty:true})) || canvases[0];
       if (!cv) return null;
       const r=cv.getBoundingClientRect(), sx=cv.width/r.width, sy=cv.height/r.height;
+      if (!r.width || !r.height) return null;
       for (const icon of L.icons.filter(i=>i.kind==='outage' && ids.includes(i.id))) {
         const w=Math.max(1,Math.round(icon.width*sx)), h=Math.max(1,Math.round(icon.height*sy));
         const c=document.createElement('canvas'); c.width=w; c.height=h;
