@@ -116,8 +116,17 @@ class Ctx:
         self.page.click(f'[data-phase="{p}"]')
         self.page.wait_for_timeout(120)
 
-    def wait_saved(self, ms=400):
+    def wait_saved(self, ms=400, limit=3000):
+        """250ms 지연 저장을 기다린다. 먼저 ms만큼 기다리고(지연 저장 자체를 검증),
+        부하로 타이머가 늦어지면 앱의 저장 대기열이 빌 때까지 limit ms 더 기다린다.
+        저장값을 대신 쓰지 않으며(flush 아님), 시간이 다 되면 그대로 넘어가 단언이 판정한다."""
         self.page.wait_for_timeout(ms)
+        try:
+            self.page.wait_for_function(
+                "() => !(window.KCP && typeof KCP.savePending === 'function') || KCP.savePending() === 0",
+                timeout=limit, polling=50)
+        except Exception:
+            pass
 
     def ls(self, key):
         """localStorage 값을 JSON으로 읽는다(없으면 None)."""
