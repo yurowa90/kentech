@@ -726,6 +726,9 @@ section#lg-missed.lg-outage { display: block; }
 /* ECON-NEXT §3: 월 결과와 진행자 요약. 색은 밝음·어두움 공통 토큰을 따른다. */
 .lg-result-deltas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 10px 0; }
 .lg-result-deltas > div { padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); min-width: 0; }
+/* D-74 계통 칸은 숫자 셋 아래 한 줄로 둔다(넷째 칸이 혼자 한 행을 차지하지 않게). */
+.lg-result-deltas > [data-grid-fill] { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.lg-result-deltas > [data-grid-fill] dd { margin: 0; }
 .lg-result-deltas dt,
 .lg-result-deltas small { font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
 .lg-result-deltas dd { margin: 4px 0; font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -1151,6 +1154,39 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-reason-starts { margin: 8px 0; }
 .lg-reason-starts button { min-height: 44px; text-align: left; }
 
+/* 결과의 결정: 설명은 접고, 비교·선택·이유는 계속 보인다. */
+#lg-panel .lg-result-decision { margin: 8px 0; }
+#lg-panel .lg-result-decision :is(#lg-loop-review, .lg-ask) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px;
+  margin: 0; padding: 0; border: 0; min-width: 0;
+}
+#lg-panel .lg-result-decision :is(h3, .lg-ask, .lg-question-full, .lg-decision-actions, .lg-reason-starts, .lg-jq) { grid-column: 1 / -1; margin: 0; min-width: 0; }
+#lg-panel .lg-result-decision .lg-decision-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: stretch; gap: 4px; }
+#lg-panel .lg-result-decision .lg-decision-actions:not(:has(.lg-compared)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#lg-panel .lg-result-decision .lg-compared { margin: 0; }
+#lg-panel .lg-result-decision .lg-compared > span { min-height: 0; }
+#lg-panel .lg-result-decision .lg-reason-starts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+#lg-panel .lg-result-decision .lg-reason-starts button { padding: 4px 6px; white-space: normal; overflow-wrap: anywhere; }
+#lg-panel .lg-result-decision .lg-jq textarea { height: 44px; min-height: 44px; padding: 4px 8px; }
+#lg-panel .lg-result-decision #lg-learning-mission { margin: 0; align-self: center; }
+#lg-panel .lg-result-decision .lg-learning-details { min-width: 0; }
+#lg-panel .lg-result-decision .lg-learning-details[open] { grid-column: 1 / -1; }
+#lg-panel .lg-question-full > summary { gap: 8px; }
+#lg-panel .lg-question-full > summary > span:last-child { flex-shrink: 0; }
+#lg-panel .lg-question-preview { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#lg-panel .lg-question-full[open] .lg-question-preview { display: none; }
+#lg-panel #lg-to-decision { display: none; }
+@media (max-width: 1024px) {
+  #lg-panel #lg-to-decision { display: block; margin: 0 0 8px; }
+  #lg-panel button#lg-to-decision { min-height: 44px; width: 100%; }
+}
+@media (max-width: 760px) {
+  #lg-panel .lg-result-decision .lg-decision-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #lg-panel .lg-result-decision .lg-decision-actions .lg-compared { grid-column: 1 / -1; }
+  #lg-panel .lg-result-decision .lg-reason-starts { grid-template-columns: minmax(0, 1fr); }
+  #lg-panel .lg-result-decision #lg-learning-mission { grid-column: 1 / -1; }
+}
+
 /* 시작 버튼은 도시·게임 설정보다 먼저 보인다. */
 html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border-top: 0; }
 
@@ -1203,6 +1239,31 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .lg-team-map #lg-panel .lg-promise-confidence h4 { flex: none; margin: 0; }
 .lg-team-map #lg-panel .lg-promise-confidence .lg-acts { flex-wrap: nowrap; gap: 4px; }
 .lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
+@media (max-width: 760px) {
+  /* 폰: 지난달 두 줄·근거 세 줄 뒤에도 방향과 확신이 본문 첫 화면에 들어가게 한다. */
+  /* 지난달 두 줄은 폰에서도 두 줄까지 보인다. '가장 큰 몫' 숫자와 학생이 쓴 문장이 말줄임으로 사라지지 않게(터치 기기는 title을 못 본다). */
+  .lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 2px 8px; }
+  .lg-team-map #lg-panel #lg-predict { display: grid; grid-template-columns: minmax(0, 1fr) 140px; column-gap: 8px; }
+  .lg-team-map #lg-panel #lg-predict > * { grid-column: 1 / -1; min-width: 0; }
+  .lg-team-map #lg-panel .lg-promise-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .lg-team-map #lg-panel .lg-promise-heading > * { white-space: nowrap; }
+  .lg-team-map #lg-panel #lg-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg-team-map #lg-panel #lg-evidence button {
+    display: block; min-width: 0; height: 44px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* 비교 기준은 한 줄로 조작 아래에 둔다. 상세 설명은 기존 약속 비교 기준 펼침을 쓴다. */
+  .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel #lg-predict > .lg-field {
+    grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
+  }
+  .lg-team-map #lg-panel .lg-promise-direction { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel #lg-predict select { width: 100%; height: 44px; }
+  .lg-team-map #lg-panel #lg-predict > .lg-promise-confidence {
+    grid-column: 2; grid-row: 3; display: grid; align-self: end; gap: 4px;
+  }
+  .lg-team-map #lg-panel #lg-predict .lg-promise-confidence h4 { margin: 0; }
+  .lg-team-map #lg-panel .lg-promise-confidence button { flex: 0 0 44px; width: 44px; height: 44px; padding: 4px; }
+}
 @media (min-width: 768px) {
   /* 계획 서랍 폭은 기존 360px 유지(s8n [17]). 약속 카드는 근거 칩 격자를 폭에 맞춰 접는다. */
 }

@@ -79,6 +79,8 @@
   KCP.flush = function () {
     Array.from(pending.keys()).forEach(run);
   };
+  // 검사 도우미가 대기 저장이 끝났는지 확인할 때만 읽는다(동작은 바꾸지 않음).
+  KCP.savePending = () => pending.size;
   KCP.reset = function (year) {
     remove(KEY(year));
     const goal = KCP.goal.get();

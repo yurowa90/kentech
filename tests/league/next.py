@@ -413,7 +413,8 @@ def results(host, team, checks, fixture):
     shown_goal = re.search(r'CO₂ ≤ ([\d,]+)\s*t', goals)
     checks.ok(shown_goal is not None and abs(float(shown_goal.group(1).replace(',', '')) - target) <= .5,
               'D-A3 결과 CO₂ 목표 = 해당 달 평가 보고서 값')
-    checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
+    # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
+    checks.ok(team.locator('#lg-result-deltas > div:not([data-grid-fill])').count() == 3, 'U2 result starts with exactly three numbers')
     for key in ('lg-result-reasons', 'lg-result-details'):
         detail = team.locator('#' + key)
         checks.ok(detail.count() == 1, 'U2 native disclosure ' + key)
@@ -725,7 +726,9 @@ def solo(context, base, checks, pages):
               [...row.querySelectorAll('td')].map(n => Number(n.textContent.replace(/[^0-9.−-]/g,'').replace('−','-'))))''')
             expected = [[month_trial['unsPct'], actual['unsPct']],
                         [month_trial['outH'] * monthly / 30, actual['outH'] * monthly / result['days']],
-                        [month_trial['co2'] * monthly / 30, actual['co2Prod'] * monthly / result['days']],
+                        # D-74(fe4473d): 경제 모드 시험은 계통 수입분을 포함하고 그 CO₂는 소비 기준에만 귀속된다.
+                        # 그래서 비교 줄은 'CO₂ 소비(계통 포함)'이며 실제 값은 co2Cons다(생산 co2Prod 아님).
+                        [month_trial['co2'] * monthly / 30, actual['co2Cons'] * monthly / result['days']],
                         [month_trial['opex'] * monthly / 30,
                          (actual['cost']['fuel'] + actual['cost']['policy']) * monthly / result['days']]]
             checks.ok(len(values) == 4 and all(len(row) == 2 for row in values) and
