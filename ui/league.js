@@ -1092,12 +1092,14 @@
     if (!needsLoop(V)) return "";
     const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
-    return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
+    const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
+    const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향`;
+    return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
       const label = x.key === "wind" ? x.text.replace(EVIDENCE_NAMES.wind, "풍속") : x.key === "neighbor" ? x.text.slice(x.text.indexOf(EVIDENCE_NAMES.neighbor)) : x.text;
       return `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text)}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}</button>`;
     }).join("")}</div>
-      <p id="lg-promise-baseline" class="lg-hint">비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : `${esc(comparison.label)} · 정전 ${Number.isFinite(comparison.value) ? `${esc(fmt(comparison.value, 2))}%` : "시험 기록 없음"}`}</p>
-      <label class="lg-field">2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : "정전"} 방향<select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <p id="lg-promise-baseline" class="lg-hint" title="${esc(baseline)}">${esc(baseline)}</p>
+      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
       ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section><details id="lg-promise-rules"><summary>약속 비교 기준 자세히</summary><p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.</p><p class="lg-hint">${PREDICTION_RULE}</p></details>${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
@@ -1229,10 +1231,16 @@
     const unsChange = baseUns == null ? null : res.unsPct - baseUns, cashChange = c.cash - (V.econ.before?.[L.team]?.cash ?? c.cash);
     const pred = promiseResultHTML(V, n, reviewOrder);
     const key = n.ask || n.quarterKey, revisable = /^lg-[rpf]-/.test(key || ""), reflection = revisable || needsReviewLoop(n);
-    const controls = reflection ? `<div class="lg-acts">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const controls = reflection ? `<div class="lg-acts lg-decision-actions">${[["revise", "고치겠다"], ["keep", "유지하겠다"]].map(([k, name]) => `<button class="v2-btn" type="button" data-answer="${k}" aria-pressed="${n.answer === k}">${name}</button>`).join("")}</div>` : "";
+    const rules = learningRuleHTML();
+    const questionBody = n.ask ? `<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}` : "";
+    const questionReason = `<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>`;
+    // 반문의 두 지표는 판단 근거라 접지 않는다. 접는 것은 질문 전문뿐이다.
+    const rebuttal = /^lg-r-/.test(n.ask || "") ? rebuttalMetricsHTML(V, n.ask, n.nb) : "";
+    const question = reviewOrder ? `${rebuttal}<details class="lg-question-full" data-decision-detail="question"><summary><span class="lg-question-preview">${questionBody.replaceAll("<p>", "").replaceAll("</p>", " ")}</span><span>질문 전문</span></summary>${questionBody}${!revisable && needsReviewLoop(n) ? questionReason : ""}</details>` : `${rebuttal}${questionBody}`;
     // c/i/d/e/h형 질문에는 선택 버튼을 붙이지 않는다. 고리의 수정은 별도 영역이다.
-    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}</section>` : "";
-    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}"><h3>질문 한 장 <span class="tag-mine">연습용</span></h3>${/^lg-r-/.test(n.ask) ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${learningRuleHTML()}` : ""}</section>` : "";
+    const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}</section>` : "";
+    const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}">${reviewOrder && loop ? "" : `<h3>질문 한 장 <span class="tag-mine">연습용</span></h3>`}${question}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}${reviewOrder && !revisable && needsReviewLoop(n) ? "" : questionReason}${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}` : ""}</section>` : "";
     return `${pred}${loop}${ask}`;
   }
 
@@ -2439,10 +2447,15 @@
   // flow는 손실 뒤 도착량이며 화력 대체도 포함한다. 기존 결과로 계통 수입 전
   // 거래 단계를 복원한다. 시간별 공급 식은 core만 소유하고 반올림 잔차는 마지막 몫에 둔다.
   // D-74: 이번 결과의 공급이 모두 바깥 계통에서 왔는지(자체 발전·이웃 구매 0). 결과 서랍의 계통 수입 역산과 같은 공개 필드만 쓴다.
+  // 바깥 계통이 메워 준 전기(대표 기간 MWh): 고립 운전 정전 − 실제 정전 − 이웃 구매 + 판매 대체분. 공개 필드로 역산하며 없으면 null.
+  function gridFillMWh(r) {
+    if (!r || ![r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return null;
+    return Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
+  }
   function gridOnlyServed(V, r) {
-    if (!V.econ || !r || ![r.dem, r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return false;
-    const served = r.dem - r.uns, grid = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
-    return served > 0.01 && served - grid <= 0.01;
+    if (!V.econ || !r || !Number.isFinite(r.dem)) return false;
+    const served = r.dem - r.uns, grid = gridFillMWh(r);
+    return grid != null && served > 0.01 && served - grid <= 0.01;
   }
   function outageNeighborStage(res, id, isolated) {
     const imported = Object.entries(res.flow || {}).reduce((sum, [key, flow]) => {
@@ -3002,6 +3015,12 @@
     const demand = city.pop > 0 ? inflow / city.pop * 100 : null;
     return `<p id="lg-migration-benefit">이주 유입 ${esc(fmt(inflow))}명(순이동 ${esc(signed(net.pop))}명): 편익은 주민세 +${esc(fmt(tax, 2))}억/달, 부담은 주민 수요 +${esc(fmt(demand, 2))}%·서비스 +${esc(fmt(service, 2))}억/달(다음 운영, 정책 유지 가정·추정).</p>`;
   }
+  // D-74: 정전 0%인 달에도 계통이 메웠으면 맨 위 숫자 줄에서 보이게 한다. 표시 단위(0.1 MWh) 미만이면 칸을 숨긴다.
+  function gridFillHTML(r, mul) {
+    const grid = gridFillMWh(r), mwh = grid == null ? 0 : grid * mul;
+    if (!(mwh >= .05)) return "";
+    return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(mwh, 1))} MWh</dd><small>비용 약 ${esc(fmt(mwh * params("normalCost") * params("gridImportMarkup"), 2))}억 · 상한·할증은 ${esc(gradeWords("G"))}</small></div>`;
+  }
   function resultHTML(V, res) {
     const id = L.team, r = res.team[id], rep = resultReport(V, res), { days, mul } = resultPeriod(V, res);
     const previous = V.results.find(x => x.round === res.round - 1), p = previous?.team[id];
@@ -3013,7 +3032,7 @@
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
-      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}</dl>
+      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}${gridFillHTML(r, mul)}</dl>
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
@@ -4332,6 +4351,14 @@
       if (card) { p.querySelector(".lg-pbody")?.scrollTo(0, 0); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
   }
+  // 원인 카드(분해된 #lg-missed[data-opened])가 있는 달만 S7을 먼저 거치게 한다. 분해할 수 없는 달(시험 기록·지난달 사본 없음,
+  // 계산 전)은 할 수 있는 S7 행동이 없으므로 바로 단추를 낸다. 고르기를 생략하는 달(data-single)은 카드가 보이는 순간 S7이 끝난다.
+  function decisionShortcutHTML(outage, n) {
+    const card = outage?.hasAttribute("data-opened") ? outage : null;
+    if (!card || card.dataset.single === "true" || n.missedCarry || n.outageSingleShown)
+      return `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`;
+    return `<p id="lg-to-decision" class="lg-hint">${n.outageOpened || card.dataset.opened === "true" ? "연 원인을 다음 달 약속 카드에 붙이면 다음 결정으로 가요" : "원인 하나를 먼저 골라 열어 봐요"}</p>`;
+  }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
   function scrollPanelTo(el) {
     const p = document.getElementById("lg-panel");
@@ -4381,7 +4408,7 @@
     const reviewOrder = tab === "result" && V?.econ && V.phase === "review" && ["team", "solo"].includes(L.role);
     const techScroll = p.querySelector(".lg-tech-scroll")?.scrollLeft || 0;
     const bodyScroll = p.querySelector(".lg-pbody")?.scrollTop || 0;
-    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : null).filter(Boolean);
+    const openedDetails = [...p.querySelectorAll("details[open]")].map(el => el.id ? ["id", el.id] : el.hasAttribute("data-event-source") ? ["data-event-source", el.dataset.eventSource] : el.hasAttribute("data-decision-detail") ? ["data-decision-detail", el.dataset.decisionDetail] : null).filter(Boolean);
     const focused = document.activeElement, focusKey = focused && p.contains(focused) ? ["data-note", "data-j", "data-end", "data-pol", "data-ptab", "data-tech-card", "data-tech-action", "data-pclose", "data-evidence", "data-confidence", "data-answer", "data-missed", "data-crit", "data-crit-choice", "data-resp", "id"].find(k => focused.hasAttribute(k)) : null;
     const focusValue = focusKey ? focused.getAttribute(focusKey) : null, cursor = focusKey && focused.tagName === "TEXTAREA" ? [focused.selectionStart, focused.selectionEnd] : null;
     let body = "";
@@ -4429,7 +4456,6 @@
             <div><dt>정전</dt><dd class="num" data-bad="${r.unsPct > g.unsPct}">${fmt(r.unsPct, 2)}%</dd><small>혼자였다면 ${fmt(100 * r.isolated.uns / Math.max(1e-9, r.dem), 2)}%</small></div>
             <div><dt>병원 정전</dt><dd class="num" data-bad="${r.hospH > 0}">${r.hospH}시간</dd></div>
             <div><dt>사 온 전기 / 판 전기</dt><dd class="num">${fmt(r.imp, 1)} / ${fmt(r.exp, 1)} MWh</dd><small>거래 수지 ${fmt(r.earn - r.pay, 2)}억</small></div>
-            ${V.econ && [r.isolated?.uns, r.uns, r.imp, r.sub].every(Number.isFinite) ? (() => { const gridMWh = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub) * (rd.mdays || rd.days) / rd.days; return `<div><dt>바깥 계통이 메워 준 전기</dt><dd class="num">${fmt(gridMWh, 1)} MWh</dd><small>비용 약 ${fmt(gridMWh * params("normalCost") * params("gridImportMarkup"), 2)}억 · 상한·할증은 ${gradeWords("G")}</small></div>`; })() : ""}
             <div><dt>CO₂ 생산 / 소비 기준</dt><dd class="num">${fmt(r.co2Prod)} / ${fmt(r.co2Cons)} t</dd></div>
             <div><dt>이번 라운드 돈</dt><dd class="num">${fmt(r.cost.total, 1)}억</dd><small>새 투자 ${fmt(r.cost.inv != null ? r.cost.inv : r.cost.capex, 1)} + 운영 ${fmt(r.cost.opex != null ? r.cost.opex : r.cost.fuel, 1)}(연료·정책·대응${r.cost.research ? "·연구소" : ""}·거래) · 누적 투자 ${fmt(r.cost.stock != null ? r.cost.stock : r.cost.capex, 1)}</small></div>
             <div><dt>최저 만족 · 민원</dt><dd class="num">${r.sat} · ${r.cp}건</dd></div>
@@ -4465,6 +4491,7 @@
       body = goal + body;
     }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    p.querySelectorAll(".lg-promise-carry > p").forEach(line => { line.title = line.textContent; });
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
     syncResultMapSpace();
@@ -4473,12 +4500,25 @@
       // 숫자 → 판정 → 원인 카드 → 결정을 먼저 두고, 상세의 기존 열림 상태는 보존한다.
       const deltas = p.querySelector("#lg-result-deltas"), outage = p.querySelector("#lg-missed");
       const compared = p.querySelector(".lg-compared"), questions = [...p.querySelectorAll("#lg-loop-review, .lg-ask")];
-      const decision = document.createElement("section"); decision.className = "lg-result-decision";
-      if (compared) decision.append(compared);
+      const decision = document.createElement("section"); decision.className = "lg-result-decision"; decision.id = "lg-result-decision"; decision.tabIndex = -1;
       decision.append(...questions);
+      const loop = decision.querySelector("#lg-loop-review"), ask = decision.querySelector(".lg-ask");
+      if (loop && ask) loop.querySelector("h3").after(ask);
+      const actions = decision.querySelector(".lg-decision-actions");
+      if (compared) { if (actions) actions.prepend(compared); else decision.prepend(compared); }
+      // 판정 줄은 남기고 긴 규칙 문단만 기존 펼치기 안으로 옮긴다.
+      const mission = decision.querySelector("#lg-learning-mission"), rules = mission?.nextElementSibling;
+      const ruleDetails = rules?.nextElementSibling;
+      if (rules?.matches(".lg-hint") && ruleDetails?.matches(".lg-learning-details")) {
+        ruleDetails.querySelector("summary").textContent = "학습 미션 판정 규칙";
+        ruleDetails.querySelector("summary").after(rules);
+        ruleDetails.dataset.decisionDetail = "rule";
+      }
+      const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(outage, monthNote().n) : "";
       // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
       const techNews = p.querySelector(".lg-tech-results");
       panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
+      if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
     } else if (summary) panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
@@ -4533,6 +4573,10 @@
   function onPanelClick(e) {
     if (e.target.closest("#lg-coach-again")) { closePanel(); showFirstGuide(document.getElementById("bd-root"), true); return; }
     if (e.target.closest("#lg-solo-restart")) { restartSolo(); return; }
+    if (e.target.closest("button#lg-to-decision")) {
+      const decision = document.getElementById("lg-result-decision");
+      scrollPanelTo(decision); decision?.focus({ preventScroll: true }); return;
+    }
     if (e.target.closest("[data-promise-details]")) {
       const details = document.getElementById("lg-last-month"); if (details) details.open = true;
       scrollPanelTo(document.getElementById("lg-promise-result")); return;
