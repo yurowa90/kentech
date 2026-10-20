@@ -1235,8 +1235,9 @@
     const rules = learningRuleHTML();
     const questionBody = n.ask ? `<p>${esc(questionText(n.ask, { nb: n.nb }))}</p>${n.ask === "lg-f-event" ? eventQuestionHTML(V) : ""}` : "";
     const questionReason = `<label class="lg-jq">이유 한 줄(기기에만)<textarea data-note="${revisable || !needsReviewLoop(n) ? "askReason" : "questionReason"}" rows="2" maxlength="1000">${esc((revisable || !needsReviewLoop(n) ? n.askReason : n.questionReason) || "")}</textarea></label>`;
-    const questionDetails = `${/^lg-r-/.test(n.ask || "") ? rebuttalMetricsHTML(V, n.ask, n.nb) : ""}${questionBody}`;
-    const question = reviewOrder ? `<details class="lg-question-full" data-decision-detail="question"><summary><span class="lg-question-preview">${questionBody.replaceAll("<p>", "").replaceAll("</p>", " ")}</span><span>질문 전문</span></summary>${questionDetails}${!revisable && needsReviewLoop(n) ? questionReason : ""}</details>` : questionDetails;
+    // 반문의 두 지표는 판단 근거라 접지 않는다. 접는 것은 질문 전문뿐이다.
+    const rebuttal = /^lg-r-/.test(n.ask || "") ? rebuttalMetricsHTML(V, n.ask, n.nb) : "";
+    const question = reviewOrder ? `${rebuttal}<details class="lg-question-full" data-decision-detail="question"><summary><span class="lg-question-preview">${questionBody.replaceAll("<p>", "").replaceAll("</p>", " ")}</span><span>질문 전문</span></summary>${questionBody}${!revisable && needsReviewLoop(n) ? questionReason : ""}</details>` : `${rebuttal}${questionBody}`;
     // c/i/d/e/h형 질문에는 선택 버튼을 붙이지 않는다. 고리의 수정은 별도 영역이다.
     const loop = needsReviewLoop(n) && !revisable ? `<section id="lg-loop-review" class="lg-sec"><h3>비교 뒤 유지·수정</h3>${controls}${reasonStartsHTML(V)}<label class="lg-jq">다음 선택의 이유<textarea data-note="askReason" rows="2" maxlength="1000">${esc(n.askReason || "")}</textarea></label><p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}</section>` : "";
     const ask = n.ask ? `<section class="lg-ask lg-sec" data-question="${esc(n.ask)}">${reviewOrder && loop ? "" : `<h3>질문 한 장 <span class="tag-mine">연습용</span></h3>`}${question}${revisable ? controls : ""}${revisable || !needsReviewLoop(n) ? reasonStartsHTML(V) : ""}${reviewOrder && !revisable && needsReviewLoop(n) ? "" : questionReason}${needsReviewLoop(n) && revisable ? `<p id="lg-learning-mission">학습 미션: ${learningStatus(n, true)}</p>${rules}` : ""}</section>` : "";
@@ -4346,10 +4347,13 @@
       if (card) { p.querySelector(".lg-pbody")?.scrollTo(0, 0); card.querySelector("button:not(:disabled),select")?.focus({ preventScroll: true }); }
     } else if (previous !== tab) p.querySelector(".lg-px")?.focus({ preventScroll: true });
   }
-  function decisionShortcutHTML(hasOutage, n) {
-    return !hasOutage || n.missedCarry || n.outageSingleShown
-      ? `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`
-      : `<p id="lg-to-decision" class="lg-hint">원인 하나를 먼저 골라 열어 봐요</p>`;
+  // 원인 카드(분해된 #lg-missed[data-opened])가 있는 달만 S7을 먼저 거치게 한다. 분해할 수 없는 달(시험 기록·지난달 사본 없음,
+  // 계산 전)은 할 수 있는 S7 행동이 없으므로 바로 단추를 낸다. 고르기를 생략하는 달(data-single)은 카드가 보이는 순간 S7이 끝난다.
+  function decisionShortcutHTML(outage, n) {
+    const card = outage?.hasAttribute("data-opened") ? outage : null;
+    if (!card || card.dataset.single === "true" || n.missedCarry || n.outageSingleShown)
+      return `<button type="button" class="v2-btn" id="lg-to-decision" aria-controls="lg-result-decision">다음 결정으로 가기</button>`;
+    return `<p id="lg-to-decision" class="lg-hint">${n.outageOpened ? "연 원인을 다음 달 약속 카드에 붙이면 다음 결정으로 가요" : "원인 하나를 먼저 골라 열어 봐요"}</p>`;
   }
   // 리그 서랍 안에서 el 위끝이 탭 줄 바로 아래 오도록 서랍만 스크롤한다(페이지·지도는 움직이지 않음).
   function scrollPanelTo(el) {
@@ -4506,7 +4510,7 @@
         ruleDetails.querySelector("summary").after(rules);
         ruleDetails.dataset.decisionDetail = "rule";
       }
-      const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(!!outage, monthNote().n) : "";
+      const shortcut = summary && decision.childElementCount ? decisionShortcutHTML(outage, monthNote().n) : "";
       // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
       const techNews = p.querySelector(".lg-tech-results");
       panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));

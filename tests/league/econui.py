@@ -1114,7 +1114,7 @@ def ui_fixes(checks, context, base, label, pages):
         checks.ok(wait_count(team, '.lg-ask .lg-rebuttal-metrics > div', 2) == 2 and
                   team.locator('.lg-ask .lg-rebuttal-metrics').evaluate("""el => {
                     const [a,b]=el.children, x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
-                    return Math.abs(x.top-y.top)<1 && x.right <= y.left;
+                    return x.width > 0 && y.width > 0 && Math.abs(x.top-y.top)<1 && x.right <= y.left;
                   }"""), f'{label} #18 r-{key} 두 지표 나란히')
         overflow(checks, team, f'{label} 반문 {key}')
     team.evaluate("""() => {
