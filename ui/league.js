@@ -2435,6 +2435,12 @@
   const outageCacheKey = (res, id, trial) => JSON.stringify([id, res.round, trial && [trial.seed, trial.days, trial.unsPct, trial.plan]]);
   // flow는 손실 뒤 도착량이며 화력 대체도 포함한다. 기존 결과로 계통 수입 전
   // 거래 단계를 복원한다. 시간별 공급 식은 core만 소유하고 반올림 잔차는 마지막 몫에 둔다.
+  // D-74: 이번 결과의 공급이 모두 바깥 계통에서 왔는지(자체 발전·이웃 구매 0). 결과 서랍의 계통 수입 역산과 같은 공개 필드만 쓴다.
+  function gridOnlyServed(V, r) {
+    if (!V.econ || !r || ![r.dem, r.uns, r.imp, r.sub, r.isolated?.uns].every(Number.isFinite)) return false;
+    const served = r.dem - r.uns, grid = Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub);
+    return served > 0.01 && served - grid <= 0.01;
+  }
   function outageNeighborStage(res, id, isolated) {
     const imported = Object.entries(res.flow || {}).reduce((sum, [key, flow]) => {
       const [a, b] = key.split("~");
@@ -2980,7 +2986,7 @@
     if (!region) return `<section id="lg-coop" class="lg-sec"><h4>지역 공동성과</h4><p class="lg-hint">공동목표 보고서가 없어요.</p></section>`;
     const bonus = V.econ?.score?.by[id]?.coop;
     return `<section id="lg-coop" class="lg-sec"><h4>1. 지역 공동성과</h4><p class="lg-goals"><span data-ok="${region.met.uns}">정전 ${esc(fmt(region.unsPct, 2))}% / 목표 ≤ ${esc(fmt(region.goal.uns, 2))}%</span><span data-ok="${region.met.co2}">CO₂ ${esc(fmt(region.co2))} t / 목표 ≤ ${esc(fmt(region.goal.co2))} t</span></p><p id="lg-coop-bonus">공동 보너스 +${esc(fmt(bonus, 1))}점 · 두 목표 달성 시 +${esc(fmt(params("coopBonus"), 1))}점(이번 달만, 누적하지 않음)</p>
-      <h4>2. 도시별 기여</h4><ul class="lg-contrib">${actT(V).map(t => { const c = rep.contrib?.[t.id]; return `<li data-contrib="${esc(t.id)}"><b>${esc(t.name)}</b> ${c ? `판매 ${esc(fmt(c.exportMWh, 1))} / 구매 ${esc(fmt(c.importMWh, 1))} MWh · 공급한 전기 기준 감축(소비 배출, 추정): ${(c.servedMWh ?? (res.team[t.id] ? Math.max(0, res.team[t.id].dem - res.team[t.id].uns) * resultPeriod(V, res).mul : undefined)) === 0 ? "공급 없음" : `${esc(signed(c.co2Cut, 1))} t`} · 연계선 분담 ${esc(fmt(c.tieCost, 1))}억` : "자료 없음"}</li>`; }).join("")}</ul><p class="lg-hint">실제 공급량 × 보통 배출계수 − 소비 기준 배출(수입분 포함, 판매분 제외). 정전으로 줄어든 배출은 감축에 넣지 않음. 음수는 초과 배출. 연계선 분담은 누적 투자예요.</p>
+      <h4>2. 도시별 기여</h4><ul class="lg-contrib">${actT(V).map(t => { const c = rep.contrib?.[t.id]; return `<li data-contrib="${esc(t.id)}"><b>${esc(t.name)}</b> ${c ? `판매 ${esc(fmt(c.exportMWh, 1))} / 구매 ${esc(fmt(c.importMWh, 1))} MWh · 공급한 전기 기준 감축(소비 배출, 추정): ${(c.servedMWh ?? (res.team[t.id] ? Math.max(0, res.team[t.id].dem - res.team[t.id].uns) * resultPeriod(V, res).mul : undefined)) === 0 ? "공급 없음" : gridOnlyServed(V, res.team[t.id]) ? "바깥 계통 공급만(자체·이웃 공급 없음)" : `${esc(signed(c.co2Cut, 1))} t`} · 연계선 분담 ${esc(fmt(c.tieCost, 1))}억` : "자료 없음"}</li>`; }).join("")}</ul><p class="lg-hint">실제 공급량 × 보통 배출계수 − 소비 기준 배출(수입분 포함, 판매분 제외). 정전으로 줄어든 배출은 감축에 넣지 않음. 음수는 초과 배출. 연계선 분담은 누적 투자예요.</p>
       <h4>3. 도시 자체 성과</h4><p>${esc(teamName(id))}: 정전 ${esc(fmt(res.team[id].unsPct, 2))}% · CO₂ ${esc(fmt(res.team[id].co2Prod * resultPeriod(V, res).mul))} t · 도시 점수 ${esc(fmt(V.econ?.score?.by[id]?.score, 1))}점(공동 보너스 포함)</p></section>`;
   }
   function migrationBenefitHTML(V, res, id) {
