@@ -557,6 +557,7 @@ def link(checks, page, selector, new_tab, label):
 
 def scene(checks, page, requests, label, width, trial, actual):
     open_panel(page, "result")
+    page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
     required(checks, "다름" in page.locator('#lg-promise-result').inner_text(),
              f"{label} 반대 예측 → 다름 [요청1, 목표4]")
     root = page.locator("#lg-missed")
@@ -850,6 +851,7 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
     required(checks, page.locator("#lg-outage-baseline").inner_text() ==
              "약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.", f"{label} 같은 비교 기준 안내")
     checks.ok("시험 1주 대비" not in root.text_content(), f"{label} 시험 대비 분해 안내 폐기")
+    page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
     comparison = page.locator('#lg-trial-compare').inner_text()
     checks.ok('원인 카드는 지난달 실제 → 이번 달 실제의 정전 변화를 나눠요.' in comparison and
               '위 시험 / 실제 차이와는 기준이 달라요.' in comparison,
