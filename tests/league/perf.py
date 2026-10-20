@@ -31,6 +31,7 @@ LOAD_LIMIT = 150
 # M3는 총괄 확정(2026-10-20): 새로고침→첫 도시 화면 중앙 ≤ 1초(4배 감속). 이른 claim 수정 뒤 실측 0.51~0.65초.
 # M1·M2는 잠정값 그대로(교실 기준 미확정).
 BUDGETS = {"M1": 1.5, "M2": 3.0, "M3": 1.0}
+LONG_BUDGET = 0  # 잠정: 표본 구간마다 200ms 넘는 주 스레드 작업 0개. 측정 뒤 총괄 확정.
 LABELS = {"M1-plan-review": "M1 계획→결과", "M1-review-plan": "M1 결과→계획",
           "M2-result": "M2 결과 서랍", "M2-city": "M2 도시 서랍",
           "M2-deal": "M2 거래 서랍", "M3": "M3 새로고침→첫 화면"}
@@ -137,6 +138,11 @@ PANEL_READY_JS = """([name, title]) => {
   return panel?.dataset.tab === name && heading?.textContent === title &&
     body?.checkVisibility({visibilityProperty:true}) && !!body.textContent.trim();
 }"""
+LONG_TASK_MS = 200
+# 이 브라우저에서 longtask 관찰은 값을 받지 못해 Chromium 추적의 렌더러 주 스레드 RunTask 길이로 센다.
+# 감속은 스레드를 멈추는 방식이라 RunTask 길이는 감속이 반영된 경과 시간이다.
+TRACE_CATEGORIES = ["devtools.timeline", "disabled-by-default-devtools.timeline"]
+TRACER = {"browser": None}
 FRAMES_JS = "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
 
 
@@ -148,12 +154,32 @@ def metrics(session):
     return {key: values[key] for key in METRICS}
 
 
+def long_tasks(raw):
+    data = json.loads(raw)
+    events = data["traceEvents"] if isinstance(data, dict) else data
+    names = {(e["pid"], e["tid"]): e["args"]["name"] for e in events
+             if e.get("name") == "thread_name" and e.get("ph") == "M"}
+    tasks = [e["dur"] / 1000 for e in events if e.get("name") == "RunTask" and e.get("ph") == "X"
+             and names.get((e["pid"], e["tid"])) == "CrRendererMain"]
+    if not tasks:
+        raise RuntimeError("추적에 렌더러 주 스레드 RunTask가 없음")
+    return {"long_tasks": sum(ms > LONG_TASK_MS for ms in tasks), "longest_task_ms": max(tasks),
+            "main_tasks": len(tasks)}
+
+
 def measure(sessions, action, **extra):
-    before = {role: metrics(session) for role, session in sessions.items()}
-    start = time.perf_counter()
-    action()
-    elapsed = time.perf_counter() - start
-    after = {role: metrics(session) for role, session in sessions.items()}
+    browser = TRACER["browser"]
+    if browser:
+        browser.start_tracing(categories=TRACE_CATEGORIES)
+    try:
+        before = {role: metrics(session) for role, session in sessions.items()}
+        start = time.perf_counter()
+        action()
+        elapsed = time.perf_counter() - start
+        after = {role: metrics(session) for role, session in sessions.items()}
+    finally:
+        raw = browser.stop_tracing() if browser else None
+    tasks = long_tasks(raw) if browser else {}
     delta, reset = {}, []
     for role in sessions:
         delta[role] = {}
@@ -166,7 +192,7 @@ def measure(sessions, action, **extra):
                 reset.append(f"{role}.{key}")
             delta[role][key] = max(0.0, value)
     return dict(seconds=elapsed, main_thread_seconds=delta, counters_reset=reset,
-                counters_before=before, counters_after=after, **extra)
+                counters_before=before, counters_after=after, **tasks, **extra)
 
 
 def failure(report, label, exc):
@@ -337,6 +363,7 @@ def reloads(report, team, session):
 def run(report, base, rate):
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        TRACER["browser"] = browser
         context, external = econui.context_for(browser, base, 1280, 900, "light")
         pages, sessions = [], {}
 
@@ -367,6 +394,7 @@ def run(report, base, rate):
                     failure(report, role + " 페이지 예외", RuntimeError(detail))
             if external:
                 failure(report, "외부 연결 차단", RuntimeError(str(external)))
+            TRACER["browser"] = None
             context.close()
             browser.close()
 
@@ -384,13 +412,18 @@ def summarize(report):
                    "median_seconds": statistics.median(values), "max_seconds": max(values),
                    "main_thread_median_seconds": {role: {metric: statistics.median(
                        row["main_thread_seconds"][role][metric] for row in samples)
-                       for metric in METRICS} for role in sorted(roles)}}
+                       for metric in METRICS} for role in sorted(roles)},
+                   "long_tasks_max": max(row["long_tasks"] for row in samples),
+                   "longest_task_ms_max": max(row["longest_task_ms"] for row in samples)}
         if report["budget_enabled"] and len(samples) == REPEATS:
             limit = BUDGETS[key[:2]]
             summary["budget"] = {"limit_seconds": limit, "exceeded": summary["median_seconds"] > limit,
+                                 "long_task_limit": LONG_BUDGET,
+                                 "long_tasks_exceeded": summary["long_tasks_max"] > LONG_BUDGET,
                                  "judgment_valid": report["judgment_valid"]}
         report["summary"][key] = summary
-    report["budget_exceeded"] = sum(row.get("budget", {}).get("exceeded", False)
+    report["budget_exceeded"] = sum(row.get("budget", {}).get("exceeded", False) +
+                                     row.get("budget", {}).get("long_tasks_exceeded", False)
                                      for row in report["summary"].values())
     report["problems"] = len(report["failures"]) + report["budget_exceeded"]
 
@@ -404,18 +437,21 @@ def output(report):
     print("기본은 측정만. 예산: " + ("잠정 예산 적용" if report["budget_enabled"] else "적용 안 함"))
     print("클릭 표본은 실제 click 호출·동기화 대기를 포함한다. M2는 두 프레임 뒤까지 잰다.")
     print("M3는 세 표본 모두 함수 후킹, 2회차만 100µs 프로파일을 켜므로 계측 부하가 포함된다.")
-    print("\n| 지표 | 횟수 | 최소 초 | 중앙 초 | 최대 초 | 예산 |")
-    print("|---|---:|---:|---:|---:|---|")
+    print(f"긴 작업: 표본 구간 안 렌더러 주 스레드 RunTask > {LONG_TASK_MS}ms 개수(추적 기준, 표본 중 최대).")
+    print("\n| 지표 | 횟수 | 최소 초 | 중앙 초 | 최대 초 | 긴 작업 | 최장 ms | 예산 |")
+    print("|---|---:|---:|---:|---:|---:|---:|---|")
     for key, label in LABELS.items():
         row = report["summary"].get(key)
         if not row:
-            print(f"| {label} | 0/3 | — | — | — | 측정 없음 |")
+            print(f"| {label} | 0/3 | — | — | — | — | — | 측정 없음 |")
             continue
         budget = row.get("budget")
-        verdict = (f"{'초과' if budget['exceeded'] else '이내'}(기준 ≤ {budget['limit_seconds']:g}초)"
+        verdict = (f"{'초과' if budget['exceeded'] or budget['long_tasks_exceeded'] else '이내'}"
+                   f"(≤ {budget['limit_seconds']:g}초, 긴 작업 ≤ {budget['long_task_limit']})"
                    if budget else "미적용" if not report["budget_enabled"] else "표본 부족")
         print(f"| {label} | {row['count']}/3 | {row['min_seconds']:.3f} | "
-              f"{row['median_seconds']:.3f} | {row['max_seconds']:.3f} | {verdict} |")
+              f"{row['median_seconds']:.3f} | {row['max_seconds']:.3f} | {row['long_tasks_max']} | "
+              f"{row['longest_task_ms_max']:.0f} | {verdict} |")
     print("\n메인 스레드: 구간별 CDP 누계 차이의 중앙값(초). Task에 Script·Layout·Style을 더하지 않는다.")
     print("같은 렌더러에서 중복 집계될 수 있어 진행자·팀 Task도 합산하지 않는다.")
     print("| 지표 | 페이지 | Task | Script | Layout | RecalcStyle |")

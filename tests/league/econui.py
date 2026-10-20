@@ -1034,7 +1034,9 @@ def ui_fixes(checks, context, base, label, pages):
       return nodes.length === 1 && !nodes[0].disabled;
     }""", other)
     checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
-    box = proposal.bounding_box()
+    # 4배 감속에서 bounding_box가 다시 그려지는 순간의 옛 노드를 잡아 None을 돌려준 기록이 있다(같은 순간
+    # 새 노드는 231×44). 크기 판정은 연결된 노드의 실제 사각형으로 한다. 44px 기준은 그대로다.
+    box = proposal.evaluate("el => el.isConnected ? el.getBoundingClientRect().toJSON() : null")
     checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
     proposal.focus(); proposal.press('Enter')
     host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>
@@ -1207,7 +1209,10 @@ def feature_hiding(checks, context, base, label, pages):
     team.locator('.lg-px').click()
     team.locator('[data-run="7"]').click(); team.wait_for_selector('#bd-skip')
     team.locator('#bd-skip').click(); team.wait_for_selector('#bd-res-title')
-    checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내')
+    if not checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내'):
+        print('  진단:', team.evaluate("() => ({fab2: KCP.buildGame.current()?.fab2, "
+              "title: document.querySelector('#bd-res-title')?.textContent, "
+              "notice: !!document.querySelector('#bd-fab2-active')})"), flush=True)
     checks.ok(all(absent_or_hidden(team, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
               f'{label} E G12 시험 결과의 일지 쓰기·대화상자·타이머 숨김')
     saved = team.evaluate('''() => {
