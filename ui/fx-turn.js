@@ -6,7 +6,7 @@
   let status = { playing: false, skipped: false, ms: 0, replayed: false, cardsOpen: false,
     source: null, fallback: null, recomputeMs: 0 };
   let layer = null, toast = null, deck = null, timers = [], off = [], raf = 0, layoutRaf = 0, epoch = 0;
-  let lastMonth = null, advanceSummary = null;
+  let lastMonth = null, advanceSummary = null, syncCardSounds = null;
   const reduced = () => KCP.v2?.reduced?.() ?? !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const threshold = dem => Math.max(0.005, 0.02 * dem);
   const sum = values => values.reduce((total, value) => total + value, 0);
@@ -70,7 +70,7 @@
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards() { deck?.remove(); deck = null; status.cardsOpen = false; }
+  function closeCards() { deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = false; }
   function hideSummary() {
     toast?.remove(); toast = null; advanceSummary = null;
     if (raf) cancelAnimationFrame(raf); raf = 0;
@@ -84,8 +84,18 @@
     if (raf) cancelAnimationFrame(raf); raf = 0;
     if (layoutRaf) cancelAnimationFrame(layoutRaf); layoutRaf = 0;
     layer?.remove(); layer = toast = deck = null;
+    syncCardSounds = null;
     advanceSummary = null;
+    const cut = status.playing;
     status.playing = false; status.cardsOpen = false;
+    if (cut) emitReplay("end", replayOpts, true);
+  }
+  // 재생 시작·끝을 알린다(UX 갈래가 좁은 화면에서 재생 동안 결과 서랍을 접는 데 쓴다).
+  // KCP.on("fx:replay", d => …) — d = { state: "start" | "end", round, team, ms, source, skipped, cancelled }
+  let replayOpts = null;
+  function emitReplay(state, o, cancelled = false) {
+    KCP.emit?.("fx:replay", { state, round: o?.round ?? null, team: o?.team ?? null, ms: status.ms,
+      source: status.source, skipped: status.skipped, cancelled });
   }
   function clearForMap(root) { if (layer && root.contains(layer)) clear(); }
   function schedulePlace(root) {
@@ -140,6 +150,7 @@
     const width = Math.max(0, box.right - box.left), height = Math.max(0, box.bottom - box.top);
     Object.assign(layer.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${width}px`, height: `${height}px` });
     layer.dataset.compact = String(width < 600);
+    syncCardSounds?.();
   }
   function showCards(cards, sound, root) {
     if (!cards.length || !layer?.isConnected || !root.isConnected) return;
@@ -149,6 +160,12 @@
     const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
     close.addEventListener("click", closeCards); deck.append(close);
     const row = node("div", "fx-turn-card-row"); deck.append(row);
+    const sounded = new WeakSet();
+    const cardSound = article => {
+      if (sounded.has(article) || !article.classList.contains("fx-revealed") ||
+          (layer?.dataset.compact === "true" && article.dataset.active !== "true")) return;
+      sounded.add(article); sound?.("card");
+    };
     const articles = cards.slice(0, 3).map((card, i) => {
       const article = node("article", "fx-turn-card");
       article.dataset.active = String(i === 0);
@@ -157,16 +174,17 @@
       const nav = node("div", "fx-turn-card-nav");
       const prev = node("button", "", "이전"), next = node("button", "", "다음");
       prev.type = next.type = "button"; prev.disabled = i === 0; next.disabled = i === Math.min(cards.length, 3) - 1;
-      const select = n => articles.forEach((a, k) => { a.dataset.active = String(k === n); });
+      const select = n => articles.forEach((a, k) => { a.dataset.active = String(k === n); if (k === n) cardSound(a); });
       prev.addEventListener("click", () => select(i - 1)); next.addEventListener("click", () => select(i + 1));
       nav.append(prev, node("span", "", `${i + 1} / ${Math.min(cards.length, 3)}`), next);
       article.append(nav); row.append(article); return article;
     });
     layer.append(deck); status.cardsOpen = true;
+    syncCardSounds = () => articles.forEach(cardSound);
     articles.forEach((article, i) => later(reduced() ? 0 : 80 + i * 260, () => {
       if (!deck) return;
       article.classList.add("fx-revealed");
-      sound?.("card");
+      cardSound(article);
     }));
     later(10000, closeCards);
   }
@@ -270,9 +288,10 @@
       if (info?.cancelled || !root.isConnected) { clear(); return; }
       if (finished) return;
       finished = true;
+      const wasPlaying = status.playing;
       status.playing = false;
-      if (status.replayed) opts.sound?.("done");
-      else if (deferred) opts.sound?.(opts.result?.team?.[opts.team]?.unsPct > 0 ? "outage" : "done");
+      if (wasPlaying || status.replayed) emitReplay("end", opts);
+      if (status.replayed || deferred) opts.sound?.(opts.result?.team?.[opts.team]?.unsPct > 0 ? "outage" : "done");
       showSummary(opts, root);
     };
     const start = replay => {
@@ -282,7 +301,7 @@
         del: replay.del, r: replay.r, outHour: replay.outHour, onDone: done,
         note: replay.source === "device" ? "이 기기에서 다시 계산한 재생 · 합계는 실제 결과와 같음" : "",
         onDay: () => { if (token === epoch) opts.sound?.("tick"); }, onOutage: () => { if (token === epoch) opts.sound?.("outage"); } });
-      if (started) { place(root); return true; }
+      if (started) { place(root); replayOpts = opts; emitReplay("start", opts); return true; }
       status.playing = false; status.replayed = false;
       return false;
     };
