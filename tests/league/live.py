@@ -140,6 +140,46 @@ def local_base():
     return base.split("#", 1)[0]
 
 
+def expand_snapshot(view):
+    """D-77 진행자 스냅 봉투({_cp:1, room, region, sid, keys, body})를 앱의 expandSnapshot과 같은 규칙으로 펼친다.
+    봉투가 아니면 그대로 돌려준다. 프레임 관찰(지연 측정)이 rev·팀 계획을 읽기 위한 것이다."""
+    if not isinstance(view, dict) or view.get("_cp") != 1:
+        return view
+    keys, body = view.get("keys"), view.get("body")
+    if not isinstance(keys, list) or not isinstance(body, dict):
+        return view
+
+    def row(values):
+        if not isinstance(values, list):
+            raise ValueError("snapshot-row")
+        if values and values[0] == -1 and len(values) == 2:
+            return values[1]
+        ks = keys[values[0]] if values and isinstance(values[0], int) and 0 <= values[0] < len(keys) else None
+        if not ks or len(values) != len(ks) + 1:
+            raise ValueError("snapshot-row")
+        return dict(zip(ks, values[1:]))
+
+    out = json.loads(json.dumps(body))
+    for k in ("room", "region", "sid"):
+        if k in view:
+            out[k] = view[k]
+    for t in (out.get("teams") or {}).values():
+        if isinstance(t, dict) and isinstance(t.get("hist"), list):
+            t["hist"] = [row(r) for r in t["hist"]]
+    for c in ((out.get("econ") or {}).get("cities") or {}).values():
+        if isinstance(c, dict) and isinstance(c.get("hist"), list):
+            c["hist"] = [row(r) for r in c["hist"]]
+    if isinstance(out.get("results"), list):
+        results = []
+        for value in out["results"]:
+            result = row(value)
+            if not (isinstance(value, list) and value and value[0] == -1):
+                result["team"] = {tid: row(t) for tid, t in result["team"].items()}
+            results.append(result)
+        out["results"] = results
+    return out
+
+
 class Wire:
     """원문·토큰·키가 있는 URL은 보관하지 않는다. 카운터와 측정값만 남긴다."""
     def __init__(self, project, key, markers):
@@ -148,6 +188,7 @@ class Wire:
         self.sent_snaps = 0
         self.bad_verdicts = 0
         self.nacks = self.callback_errors = self.blocked = 0
+        self.nack_kinds = Counter()
         self.requests, self.errors = Counter(), Counter()
         self.pending, self.latencies = None, []
         self.team = None
@@ -195,6 +236,8 @@ class Wire:
                 data = json.loads(data["body"])
             elif event in ("snap", "nack", "ack") and isinstance(data.get("data"), dict):
                 data = data["data"]
+                if event == "snap":
+                    data = expand_snapshot(data)  # D-77 행 배열 봉투(18e9748) 뒤에도 rev·계획을 읽는다(Claude 정정)
             p = self.pending
             if sent and event == "req":
                 # 문자열 JSON body의 Unicode escape까지 풀어 verdict 학생 글도 감시한다.
@@ -214,6 +257,7 @@ class Wire:
                 self.sent_snaps += 1
             elif not sent and event == "nack" and self.team is not None and data.get("team") == self.team:
                 self.nacks += 1
+                self.nack_kinds[f"{data.get('type')}:{data.get('err')}"] += 1  # 종류·이유 코드만(본문 없음)
             elif not sent and event == "snap":
                 self.snaps += 1
                 if (p and p["start"] is not None and p["ms"] is None and
@@ -509,7 +553,7 @@ def report_wires(checks, pages):
                   f"{label} 프레임 검사 예외·예상 밖 HTTP 요청 0")
         if label != "진행자":
             checks.ok(wire.requests["verdict"] >= 1, f"{label} 실제 verdict 프레임 관찰 (기대 최소 1)")
-            checks.ok(wire.nacks == 0, f"{label} 요청 거부 {wire.nacks} (기대 0)")
+            checks.ok(wire.nacks == 0, f"{label} 요청 거부 {wire.nacks} (기대 0) {dict(wire.nack_kinds)}")
             checks.ok(all(wire.requests[k] >= 3 for k in ("plan", "econ", "ready")) and wire.requests["crit"] >= 1 and
                       wire.requests["tie"] >= 2,
                       f"{label} 3달 plan·econ·ready, 1달 crit 및 연계선 요청 관찰")
