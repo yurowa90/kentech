@@ -1225,3 +1225,6 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 @media (max-width: 760px) {
   .lg-team-map .lg-map-views { display: none; }
 }
+
+/* '지도 보기'를 펼친 동안은 안내 묶음(문제 칩·코치)을 지도 막대(z 25) 아래로 내려 펼친 선택지가 깔리지 않게 한다. */
+#bd-root:has(.lg-map-views[open]) .lg-map-guidance { z-index: 24; }
