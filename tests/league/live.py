@@ -645,7 +645,7 @@ def bigsnap_scenario(checks, browser, base, project, key):
             team.evaluate("expected => { liveBigsnap.expected = expected; liveBigsnap.received = null; }", expected)
             sent = host.evaluate(BIGSNAP_SEND_JS, fixture["signed"])
             checks.ok(sent["sent"] is True and sent["bytes"] == fixture["frameBytes"] and
-                      sent["bytes"] < 200000,
+                      sent["bytes"] <= 256000,  # 원격 채널 송신 상한 SEND_CAP(ui/league-net.js)
                       f"6팀 {fixture['turns']}달 최대 스냅 앱 send·프레임 크기·상한")
             deadline = time.monotonic() + WAIT / 1000
             received = None

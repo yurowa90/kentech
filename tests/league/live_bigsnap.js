@@ -27,7 +27,10 @@ async function main() {
         const signed = await N.signHost(host, "snap", ROOM, SID, C.publicView(S, CLOCK));
         // 새 앱 연결은 join ref=1, 첫/두 번째 send ref=2/3(같은 바이트 수)이다.
         const frameBytes = N.byteLength(N.broadcastMessage(ROOM, "snap", signed, "2", "1"));
-        assert.ok(frameBytes < 200000, "앱 송신 상한 미만의 실제 서명 프레임");
+        // 상한 두 개(ui/league-net.js): 원격 채널 SEND_CAP 256,000B는 Broadcast 프레임에,
+        // 로컬 BroadcastChannel MAX_BYTES 200,000B는 {ev, data}에 적용된다. 6팀 판은 두 연결 방식 모두 가능해야 한다.
+        assert.ok(frameBytes <= 256000, "원격 채널 송신 상한(256,000B) 안의 실제 서명 프레임");
+        assert.ok(N.byteLength({ ev: "snap", data: signed }) <= 200000, "로컬 연결 송신 상한(200,000B) 안의 같은 스냅");
         if (!largest || frameBytes > largest.frameBytes) {
           largest = { turns, style, month: S.round, phase: S.phase, rev: S.rev,
             frameBytes, signedBytes: N.byteLength(signed), signed };
