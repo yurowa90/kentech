@@ -972,13 +972,13 @@ def ui_fixes(checks, context, base, label, pages):
                       f'{label} #23 {card} 학생용 한 문장')
     # A new coefficient must change displayed effect immediately, without editing prose.
     for card, param, value in (('tandem', 'tandemOutput', 1.237), ('ccu', 'ccuCo2', .321),
-                               ('hvdc', 'hvdcLoss', .0173)):
+                               ('hvdc', 'hvdcCap', 1.73)):  # 옛 hvdcLoss .0173 → 새 hvdcCap 1.73, 근거 D-79: 효과는 용량 배수, 손실은 기본과 같음.
         before = team.evaluate('key => KCP.TECH_DATA.params[key].v', param)
         team.evaluate('([key,v]) => {KCP.TECH_DATA.params[key].v=v}', [param, value])
         try:
             team.locator(f'[data-tech-card="{card}"]').click()
             team.locator(f'[data-tech-detail="{card}"]').wait_for(state='visible', timeout=UI_WAIT)
-            expected = '1.73%' if card == 'hvdc' else str(value)
+            expected = f'연계선 용량 ×{value}' if card == 'hvdc' else str(value)  # 옛 손실 1.73% → 새 변경된 용량 배수 문구, 근거 D-79.
             checks.ok(expected in wait_text(team, '.lg-tech-effect', expected),
                       f'{label} #23 {card} 변경된 자료 값으로 효과 표시')
         finally:
@@ -1040,6 +1040,7 @@ def ui_fixes(checks, context, base, label, pages):
     host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>
       [t.a,t.b].includes(a) && [t.a,t.b].includes(b) && t.kind==='hvdc' && t.st==='prop')""", arg=[tid, other])
     checks.ok(True, f'{label} #11 HVDC 제안 kind=hvdc 서버 반영')
+    host.evaluate("id => {KCP.league.state().S.teams[id].plan={builds:[],lines:[],policies:[],rq:[]};}", other)  # 옛 암묵적 무계획 → 새 상대 도시 빈 계획 명시, 근거 D-74: 계통만 공급하는 사례를 실제 운영.
     # Leave another city as unseated: run anyway creates review with stale ready values.
     advance(host, team, 1, 'review')
     team.evaluate('() => {window.__huHold=true}')
@@ -1077,9 +1078,14 @@ def ui_fixes(checks, context, base, label, pages):
                 n.querySelector('a[href^="http"]') && /기준연월/.test(n.textContent) &&
                 !n.querySelector('a[href^="docs/"]'))"""), f'{label} #12 사건 외부 출처·기준연월')
     snapshot = team.evaluate('() => KCP.league.state().snap')
-    zero_ids = [id for id, r in snapshot['results'][-1]['team'].items() if r['dem'] == r['uns']]
-    checks.ok(bool(zero_ids) and all('공급 없음' in team.locator(f'[data-contrib="{id}"]').inner_text()
-                                   for id in zero_ids), f'{label} #8 공급 0 도시 공급 없음')
+    # 옛 공급 0(dem == uns) → 새 계통만 공급, 근거 D-74 각주: 매시간 50% 계통 공급으로 경제 모드의 '공급 없음' 경로는 도달 불가, 단언 제외.
+    # 옛 공급량만 비교 → 새 공개 결과로 자체 공급(dem - isolated.uns)·이웃 구매(imp)를 독립 판별, 근거 D-74. 0.01 MWh는 공개값 소수 둘째 자리 반올림 허용차.
+    grid_only_ids = [id for id, r in snapshot['results'][-1]['team'].items()  # 옛 zero_ids → 새 계통만 공급한 도시 목록, 근거 D-74.
+                     if r['dem'] - r['uns'] > .01  # 옛 dem == uns → 새 실제 공급 양수, 근거 D-74.
+                     and abs(r['dem'] - r['isolated']['uns']) <= .01  # 옛 자체 공급 미확인 → 새 거래 전 부족량 = 수요로 자체 공급 0 확인, 근거 D-74.
+                     and abs(r['imp']) <= .01 and abs(r['sub']) <= .01]  # 옛 이웃 공급 미확인 → 새 이웃 구매·화력 대체 0 확인, 근거 D-74.
+    checks.ok(other in grid_only_ids and all('바깥 계통 공급만' in team.locator(f'[data-contrib="{id}"]').inner_text()  # 옛 공급 없음 → 새 계통 공급만 문구·빈 계획 사례 포함, 근거 D-74.
+                                            for id in grid_only_ids), f'{label} #8 계통만 공급한 도시 바깥 계통 공급만')  # 옛 공급 0 단언 → 새 독립 판별한 모든 해당 도시 문구 단언, 근거 D-74.
     checks.ok(team.locator('.lg-pop-reasons meter').count() == 0 and
               '항목별 점수 변화의 비중' not in team.locator('#lg-causes').inner_text(), f'{label} #6 주민 이동 비례 막대 제거')
     reasons = team.locator('.lg-pop-reasons').inner_text() if team.locator('.lg-pop-reasons').count() else ''

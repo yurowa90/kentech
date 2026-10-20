@@ -14,7 +14,8 @@
     royaltyMonths: p(6, "G", "이전 연구의 사용료 최대 지급 달 수"),
     royaltyCap: p(3, "G", "도시별 월 사용료 수입 상한, 억"),
     jointShare: p(0.5, "G", "공동 실증비를 두 도시가 절반씩 부담"),
-    hvdcLoss: p(0.012, "G", "연계선 2%→1.2%; 장거리 HVDC 개선폭을 축소", [evidence + "#3", "https://www.brown.edu/Departments/Engineering/Courses/ENGN1931F/HVDC_Proven_TechnologySiemens.pdf"]),
+    hvdcLoss: p(0.01, "G", "손실 개선 없음: 기본 연계선과 같은 1%로 두는 선택(G) · 수십 km에서는 변환소 손실 때문에 HVDC가 교류보다 손실이 작지 않다(P, [P94]·Tosatto 외 2020 [P114]) · D-79 REF 12.1", ["P94", "P114", "docs/ECON-REFERENCES.md#121-hvdc-연계선-손실hvdclosseffectivetie"]),
+    hvdcCap: p(1.5, "G", "HVDC 용량 배수는 교육용 선택(G), 현실 비교값 없음 · 짧은 선의 손실 개선을 기대하지 않는 근거(P): [P94] Alassi 외 2019·[P114] Tosatto 외 2020 · 국내 북당진–고덕 35km 사례의 목적은 계통 제약 해소·공급 신뢰도(조사 §3) · D-79 REF 12.1", ["P94", "P114", "docs/ECON-REFERENCES.md#121-hvdc-연계선-손실hvdclosseffectivetie", "docs/RESEARCH-2026-10-14.md#3-d2-hvdc-카드-의미"]),
     hvdcCost: p(1.3, "G", "새 HVDC 연계선 건설비; 조사 초안 1.5보다 계약 T1 우선"),
     scableCap: p(1.5, "G", "초전도 용량; 보도 5배 대비 증가폭 배속 0.125"),
     scableLoss: p(0.5, "G", "초전도 연계선 손실 절반; 보도 1/4보다 보수적"),
@@ -81,7 +82,7 @@
   });
   const cards = [
     card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "선로 상태를 살펴 전기를 보낼 때의 손실을 줄여요."),
-    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], "연계선 손실 2→1.2%, 새 선 건설비 ×1.3", "P·G", "짧은 거리에서는 변환소 비용 부담이 커요."),
+    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], `연계선 용량 ×${params.hvdcCap.v}로 송전 용량을 늘리고 계통 제약을 푼다, 새 선 건설비 ×${params.hvdcCost.v}`, "P·G", "짧은 거리에서는 변환소 손실 때문에 손실 개선을 기대하지 않아요."),
     card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
     card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
     card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "하한 10→5%, 왕복 효율 85→87%", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
@@ -99,7 +100,7 @@
   // 효과 계수는 그대로 둔다. scale은 효과 증가/감소 폭을 현실 비교 폭으로 나눈 표시값(G).
   // tandem 기준은 ECON-TECH와 ECON-DATA의 일반 모듈 22% → 상용 탠덤 26.9%다.
   const comparisons = {
-    hvdc: { v: (1 - params.hvdcLoss.v / .02) / (1 - 3.5 / 6.7), baseline: "손실 개선폭: 교류 6.7% → 직류 3.5%", reference: { from: 6.7, to: 3.5, unit: "%" } },
+    hvdc: { v: null, baseline: "현실 비교값 없음 · 국내 사례의 목적은 계통 제약 해소", reference: null },
     scable: { v: (params.scableCap.v - 1) / (5 - 1), baseline: "송전 용량 증가폭: 기존의 5배", reference: { multiplier: 5 } },
     tandem: { v: (params.tandemOutput.v - 1) / (26.9 / 22 - 1), baseline: "모듈 효율 증가폭: 일반 22% → 탠덤 26.9%", reference: { from: 22, to: 26.9, unit: "%" } },
     nbat: { v: (params.nbatCapacity.v - 1) / .4, baseline: "셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요)", reference: { increase: .4 } },
@@ -110,7 +111,7 @@
   cards.forEach(c => { c.scale = { v: null, baseline: null, reference: null, grade: "G", ...comparisons[c.id] }; });
   // 외부 자료는 기존 조사 기록에서 옮긴다. 연도가 없는 자료는 추정하지 않는다.
   const referenceNotes = {
-    hvdc: ["2019", "직류 송전 비교", "https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
+    hvdc: ["2019·2020", "D-79: [P94]·Tosatto 외 2020 [P114]·국내 북당진–고덕 사례(조사 §3)", "https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
     scable: ["2025", "초전도 케이블 운영 보도", "https://www.hankyung.com/article/202507072966i"],
     sic: ["자료 없음", "전력변환 비교 설계", "https://minds.wisc.edu/items/299cade1-bc94-4a3b-8a19-85a24ae2aea2"],
     tandem: ["2024-06", "상용 모듈 효율 보도", "https://optics.org/news/oxford-pv-debuts-commercial-solar-module-with-record-26.9-efficiency"],
@@ -128,8 +129,7 @@
     c.numbers.need.note = ref ? ref[1] + " · " + ref[2] : "분야 이름 자료 · https://gs.kentech.ac.kr/process/research_field · 효과 크기는 게임 가정(G)";
     c.numbers.need.year = ref ? ref[0] : "2026 모집요강";
   });
-  params.hvdcLoss.year = "2019";
-  params.hvdcLoss.note += " · 현실 비교: 교류 6.7%, 직류 3.5%";
+  params.hvdcCap.year = "2019·2020(국내 사례 연도 미기재)";
   params.h2Efficiency.year = "자료 없음";
   params.sicOutput.year = "자료 없음";
   params.ccuCo2.year = "2024";

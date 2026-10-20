@@ -20,6 +20,7 @@
   let trialMemory = {};
   // 설비 대조 자료도 모듈 메모리에만 보관한다. 원본 결과·저장 문서에 필드를 붙이지 않는다.
   const replayLayouts = new WeakMap();
+  const gridFillContexts = new WeakMap(); // 시간별 수요·성적표 재계산은 기기 메모리에만 둔다.
   const replayLayout = st => JSON.stringify({ builds: st.builds.map(b => [b.t, b.i]), lines: st.lines.map(l => l.p) });
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -265,8 +266,8 @@
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
-  // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂ O: 법정 0.4567 [L14] REF 9.4.
-  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.4567 }
+  // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂: normalCo2의 국가 계수(D-73).
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: KCP.ECON_DATA.params.normalCo2.v }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0, bioCo2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
   const CLEAR_COST = 2;
@@ -665,6 +666,7 @@
     });
     const flow = new Float32Array(Math.max(1, H * E));
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
+    const townDemand = lgOut ? new Float64Array(H * NT) : null;
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
     const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0, bioCo2: 0, h2mixMWh: 0 };
     if (curtail) { tot.curtailMWh = 0; tot.curtailCapturedMWh = 0; }
@@ -753,6 +755,7 @@
           }
         });
         const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2) + instLoad[ti]);
+        if (townDemand) townDemand.set(dem, k * NT);
         const rem = dem.slice();
         const dem0 = dem.reduce((a, b) => a + b, 0);
         let deliv = 0;
@@ -872,15 +875,15 @@
     };
     cost.research = RR ? RR.cost.total : 0;
     cost.total = cost.capex + cost.fuel + cost.policy + cost.research;
-    const sat = TOWNS.map((W, ti) => {
-      const Dt = town[ti], K = KIND[W.kind] || { w: 1 };
+    const satisfaction = towns => TOWNS.map((W, ti) => {
+      const Dt = towns[ti], K = KIND[W.kind] || { w: 1 };
       const outPen = Math.min(80, (Dt.outH / H) * 300 * K.w + (K.old ? (Dt.hotH / H) * 300 : 0));
       const cpPen = cp.items.filter(it => it.ti === ti).reduce((a, it) => a + it.pts, 0);
       return Math.round(clamp(100 - outPen - cpPen - (pol.save ? 5 : 0), 0, 100));
     });
     const res = {
       days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
-      town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
+      town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat: satisfaction(town), pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
       hrHosp, hrHospDem, hrHospUns, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
       gx: GX.map(G => ({ to: G.to, byHead: G.byHead, byDisp: G.byDisp, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
@@ -889,6 +892,7 @@
     res.news = headlines(st, res, N);
     res.questions = questions(st, res, N);
     replayLayouts.set(res, replayLayout(st));
+    if (lgOut) gridFillContexts.set(res, { townDemand, hospTi, finish: r => { r.sat = satisfaction(r.town); r.missions = judge(st, r); r.news = headlines(st, r, N); r.questions = questions(st, r, N); replayLayouts.set(r, replayLayout(st)); } });
     return res;
   }
 
@@ -936,14 +940,14 @@
     });
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(55, `남는 전기 ${fmt(R.tot.curt)} MWh 버려져… "담아 둘 곳이 없다"`);
     const hiCO2 = PK.climate ? PK.goals.co2Day * 1.3 : 30;
-    if (R.co2 / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(R.co2)} t… 탄소세 도입 논의`);
+    if ((LG ? R.tot.co2 : R.co2) / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(LG ? R.tot.co2 : R.co2)} t… 탄소세 도입 논의`);
     if (R.tot.by.import > 0 && R.tot.by.import / Math.max(1, R.tot.sup) > 0.3) add(48, `전기 ${fmt(100 * R.tot.by.import / R.tot.sup)}%를 밖에서 사 왔다… "자립은 멀다"`);
     const lossShare = R.tot.loss / Math.max(1, R.tot.sup + R.tot.loss);
     // 섬의 기존 6% 문턱을 기준으로 리그 지도 손실률에 비례한다. #build의 뉴스는 보존한다.
     const lossThreshold = LG ? 0.06 * (PK.lossPerHex || M.lossPerHex) / M.lossPerHex : 0.06;
     if (lossShare > lossThreshold) add(45, `먼 송전선에서 전기 ${fmt(100 * lossShare, 1)}% 새어 나가`);
     if (R.outTotal === 0 && R.tot.dem > 0) add(75, `${R.days}일 무정전 운영… "불 한 번 안 꺼졌다"`);
-    if (R.co2 / R.days <= (PK.climate ? PK.goals.co2Day * 0.5 : 5) && R.outTotal < R.H * 0.02) add(52, `화석 연료 거의 안 쓰고 ${place}을 밝혔다`);
+    if ((LG ? R.tot.co2 : R.co2) / R.days <= (PK.climate ? PK.goals.co2Day * 0.5 : 5) && R.outTotal < R.H * 0.02) add(52, `${LG ? "지역에서 " : ""}화석 연료 거의 안 쓰고 ${place}을 밝혔다`);
     const idleG = N.nodes.filter(n => n.kind !== "town" && !n.live && n.bi !== undefined).length;
     if (idleG) add(57, `선 없는 발전소 ${idleG}곳… "지어 놓고 못 쓴다"`);
     if (!out.length) add(1, `${R.days}일 운영 끝… ${place} 전력망 첫 성적표`);
@@ -1082,6 +1086,7 @@
 
   selectPack(PACK_IDS[0]);
   KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
+  KCP.buildGame.gridFillContext = res => gridFillContexts.get(res);
 
   /* =====================================================================
    * 3. 아이콘
@@ -2685,7 +2690,9 @@
     hideTip();
     S.hover = null;
     const mods = leagueMods(S.st);
-    const res = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
+    const raw = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
+    // D-74 계통 수입은 경제 모드(달이 있는 월 리그)의 실제 운영에만 있으므로 시험도 그때만 보정한다. 계절 4라운드는 그대로.
+    const res = S.opts.league && leagueMonth() ? KCP.leagueCore.gridFill(raw) : raw;
     if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.());
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
@@ -3405,7 +3412,7 @@
       <div class="bd-kpis">
         <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>${S.opts.league ? "건설(지도 전체 설비비)" : "건설"} ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
         ${R.research && (R.research.unis || R.research.labs) ? `<p><span>연구</span><b class="num">${Object.keys(R.research.adoptW).length ? Object.keys(R.research.adoptW).map(id => `${TECHS.find(T => T.id === id).name.split(/[·\s]/)[0]} ${R.research.adoptW[id] + 1}주차`).join(", ") : "도입 없음"}</b><small>${(R.st && R.st.rq || []).length || (R.research.log.length) ? `실증 ${R.research.log.filter(x => x.ev === "demo").length}건 · ` : ""}연구비 ${fmt(R.research.cost.total, 1)}억</small></p>` : ""}
-        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
+        <p><span>CO₂${LG ? " 생산" : ""}</span><b class="num">${fmt(LG ? R.tot.co2 : R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
       <table class="bd-towns"><thead><tr><th scope="col">수요지</th><th scope="col">정전 h</th><th scope="col">부족 MWh</th><th scope="col">만족</th></tr></thead>
