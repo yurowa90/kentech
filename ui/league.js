@@ -1062,7 +1062,7 @@
     const change = nextChangeOf(d, V.round - 1);
     const preview = old && !legacyLearningNote(old) ? { ...old, followingPlanChanged: diff.known ? diff.changed : null } : old;
     const canConfirm = old && !legacyLearningNote(old) && !old.finalMonth && diff.known;
-    return `<details id="lg-plan-followup" class="lg-sec"><summary>지난달 말과 실제 변경${old ? ` · 학습 미션 ${learningStatus(preview, false, true)}` : ""}</summary><div class="lg-plan-comparison"><div><h4>말한 변경</h4><p>${esc(change.text || "지난달 이유 기록 없음")}</p>${extraReason}</div><div><h4>이번 달 실제 변경</h4><p id="lg-actual-change">${esc(diff.text)}</p><p class="lg-hint">설비·전선·정책·연구만 셉니다. 연계선·사건 대응은 제외해요.</p></div></div>${old ? `<p id="lg-previous-mission">지난달 학습 미션: ${learningStatus(preview, false, true)}${canConfirm ? "(지금 계획 기준, 준비하면 확정)" : ""}</p>` : ""}${learningRuleHTML()}</details>`;
+    return `<details id="lg-plan-followup" class="lg-sec"><summary>지난달 말과 실제 변경${old ? ` · 학습 미션 ${learningStatus(preview, false, true)}` : ""}</summary><div class="lg-plan-comparison"><div><h4>말한 변경</h4><p>${esc(change.text || "지난달 이유 기록 없음")}</p>${extraReason}</div><div><h4>이번 달 실제 변경</h4><p id="lg-actual-change">${esc(diff.text)}</p><p class="lg-hint">설비·전선·정책·연구만 셉니다. 연계선·사건 대응은 제외해요.</p></div></div></details>${old ? `<p id="lg-previous-mission">지난달 학습 미션: ${learningStatus(preview, false, true)}${canConfirm ? "(지금 계획 기준, 준비하면 확정)" : ""}</p>` : ""}${learningRuleHTML()}`;
   }
   function updatePlanReminder(V) {
     const root = document.getElementById("bd-root");
@@ -1317,7 +1317,7 @@
     if (!old && !change.text) return "";
     const hasAnswer = !!(old?.ask || old?.quarterKey), reason = old?.questionReason || old?.askReason || old?.quarterAnswer || "";
     const sameReason = hasAnswer && !!change.text && change.text === reason.trim().replace(/\s+/g, " ");
-    return `<details id="lg-previous-note" class="lg-sec"><summary>지난달 답 · 다음에 바꿀 것 자세히</summary>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}</details>`;
+    return `<details id="lg-previous-note" class="lg-sec" open><summary>지난달 답 · 다음에 바꿀 것 자세히</summary>${hasAnswer ? `<p>${esc(questionText(old.ask || old.quarterKey, { nb: old.nb }))}</p><p>${esc(old.answer === "revise" ? "고치겠다" : old.answer === "keep" ? "유지하겠다" : "한 줄 답")}: ${esc(reason || "미응답")}</p>` : ""}${sameReason ? "" : `<p>다음에 바꿀 것${change.answer}: ${esc(change.text || "아직 쓰지 않음")}</p>`}</details>`;
   }
   function weightSimulation(E, weights) {
     if (!E.scoreState || !KCP.econ) return reweightScore(E.score, weights);
@@ -4402,7 +4402,9 @@
       const decision = document.createElement("section"); decision.className = "lg-result-decision";
       if (compared) decision.append(compared);
       decision.append(...questions);
-      panelBody.prepend(...[deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
+      // 연구 완료 소식(T2 '결과 맨 위')은 숫자 줄보다 먼저 둔다.
+      const techNews = p.querySelector(".lg-tech-results");
+      panelBody.prepend(...[techNews, deltas, summary, outage, decision.childElementCount ? decision : null].filter(Boolean));
     } else if (summary) panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];

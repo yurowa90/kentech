@@ -174,16 +174,15 @@ def reminder_geometry(checks, page, label, first_guide):
     # 첫 달 안내는 다음 달 이유 띠와 자연스럽게 공존하지 않는다.
     # 첫 화면에서 보관한 실제 DOM을 같은 부모에 재부착해 CSS 교차를 검사한다.
     require(checks, bool(first_guide), label + ' 첫 달 안내 DOM fixture 확보')
-    page.evaluate("""html => {
-      document.querySelector('#bd-root').insertAdjacentHTML('beforeend',html);
-      window.dispatchEvent(new Event('resize'));
-    }""", first_guide)
+    # 품질8 UX U5(docs/QUALITY-ux.md 6절): 첫 달 안내는 코치 띠(#lg-coach)이고, 코치가 있으면 이유 띠를
+    # 숨겨 둘이 함께 보이지 않게 했다. 겹침은 코치 없이 나머지 요소로 보고, 코치를 다시 붙였을 때
+    # 이유 띠가 숨는지(공존 금지)를 따로 확인한다.
     page.locator('[data-lens="complaints"]').focus()
     page.wait_for_timeout(250)
     require(checks, shown(page, '#lg-plan-reminder'), label + ' 이유 띠 표시 [V3A 1]')
     chips = '#lg-watch' if page.viewport_size['width'] <= 760 else '#lg-hud-chips'
     for selector in ('#bd-hud .bd-cap', chips, '#lg-lens-grid', '.lg-lens-key',
-                     '.lg-map-result', '.lg-first-guide'):
+                     '.lg-map-result'):
         nodes = page.locator(selector)
         require(checks, shown(page, selector), label + ' 겹침 검사 대상 표시 ' + selector)
         boxes = nodes.evaluate_all("""nodes => {
@@ -197,7 +196,13 @@ def reminder_geometry(checks, page, label, first_guide):
         checks.ok(bool(boxes) and all(b['area'] == 0 for b in boxes),
                   label + ' 띠와 경계 상자 교차 면적 0 ' + selector)
     overflow(checks, page, label + ' 띠·렌즈')
-    page.locator('#lg-first-guide').evaluate('el => el.remove()')
+    page.evaluate("""html => {
+      document.querySelector('#bd-root').insertAdjacentHTML('beforeend',html);
+      window.dispatchEvent(new Event('resize'));
+    }""", first_guide)
+    page.wait_for_timeout(150)
+    checks.ok(not shown(page, '#lg-plan-reminder'), label + ' 첫 달 코치와 이유 띠 공존 없음(코치가 있으면 띠 숨김)')
+    page.locator('#lg-coach').evaluate('el => el.remove()')
     open_panel(page, 'journal')
     checks.ok(not shown(page, '#lg-plan-reminder'), label + ' 서랍 열면 이유 띠 숨김 [V3A 1]')
     close_drawer(page)
@@ -230,7 +235,9 @@ def followup(checks, page, added, mission, reason, label, mismatch=False, neutra
     checks.ok(page.evaluate(NOTES)[month]['followingPlanChanged'] is None,
               label + ' 계획 미리보기는 followingPlanChanged:null 유지 [V3A-fix2]')
     confirmed_plan(checks, page, int(month), None, None, label)
-    checks.ok(all(s in text for s in ('다음 달', '계획', '숫자', '원인', '유지', '달성')),
+    # 품질8 UX ②: 판정 줄·규칙은 접힌 '지난달 말과 실제 변경' 바깥(약속 카드 위)에 있다. 화면(서랍)에 보이는지 본다.
+    rules = page.locator('#lg-panel').inner_text()
+    checks.ok(all(s in rules for s in ('다음 달', '계획', '숫자', '원인', '유지', '달성')),
               label + ' 판정 규칙을 화면에 표시 [11]')
     overflow(checks, page, label + ' 준비 관문')
     learning_details(checks, page, label)
@@ -338,7 +345,7 @@ def solo(checks, context, base, width, label, pages):
     page.wait_for_function(SYNC, arg=[1, 'plan'])
     # 길이만 단축. 저장은 정상 계획 변경의 저장 경로로 수행한다.
     page.evaluate("() => {KCP.league.state().S.rounds.length=3;}")
-    first_guide = page.locator('#lg-first-guide').evaluate('el => el.outerHTML')
+    first_guide = page.locator('#lg-coach').evaluate('el => el.outerHTML')  # 품질8 UX U5: 첫 달 안내 = 코치 띠
     if shown(page, '#lg-guide-close'):
         page.locator('#lg-guide-close').click()
     require(checks, plan(page, 'empty'), label + ' 정전 관찰용 빈 계획')
