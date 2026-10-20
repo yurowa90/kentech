@@ -726,7 +726,9 @@ def solo(context, base, checks, pages):
               [...row.querySelectorAll('td')].map(n => Number(n.textContent.replace(/[^0-9.−-]/g,'').replace('−','-'))))''')
             expected = [[month_trial['unsPct'], actual['unsPct']],
                         [month_trial['outH'] * monthly / 30, actual['outH'] * monthly / result['days']],
-                        [month_trial['co2'] * monthly / 30, actual['co2Prod'] * monthly / result['days']],
+                        # D-74(fe4473d): 경제 모드 시험은 계통 수입분을 포함하고 그 CO₂는 소비 기준에만 귀속된다.
+                        # 그래서 비교 줄은 'CO₂ 소비(계통 포함)'이며 실제 값은 co2Cons다(생산 co2Prod 아님).
+                        [month_trial['co2'] * monthly / 30, actual['co2Cons'] * monthly / result['days']],
                         [month_trial['opex'] * monthly / 30,
                          (actual['cost']['fuel'] + actual['cost']['policy']) * monthly / result['days']]]
             checks.ok(len(values) == 4 and all(len(row) == 2 for row in values) and
