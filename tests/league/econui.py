@@ -240,7 +240,8 @@ def open_panel(page, name):
     page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
     if name == "result":
         # 기존 숫자 기대값을 유지하며 세 단계의 결과 내용을 명시적으로 펼친다.
-        for key in ("lg-last-month", "lg-result-reasons", "lg-result-details"):
+        # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+        for key in ("lg-last-month", "lg-month-details", "lg-result-reasons", "lg-result-details"):
             detail = page.locator("#" + key)
             if detail.count() and not detail.evaluate("el => el.open"):
                 detail.locator(":scope > summary").click()

@@ -11,7 +11,8 @@ def panel(P, name):
     if b.get_attribute("aria-expanded") != "true": b.click()
     P.wait_for_timeout(200)
     if name == "result":
-        for key in ("lg-result-reasons", "lg-result-details"):
+        # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+        for key in ("lg-month-details", "lg-result-reasons", "lg-result-details"):
             detail = P.locator('#' + key)
             if detail.count() and not detail.evaluate('el => el.open'):
                 detail.locator(':scope > summary').click()
