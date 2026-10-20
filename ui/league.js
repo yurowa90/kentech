@@ -3353,7 +3353,8 @@
         if (L === session) teamSave();
       }, event => { if (L === session && event === "snap") connectionWarning(); });
       for (const event of ["snap", "nack", "ack"]) L.conn.on(event, wire => receiveHost(event, wire));
-      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team && !L.claimAccepted) send("claim"); });
+      // 소켓이 다시 열려도 받아들인 공개 상태가 오기 전에는 연결 확인 안내를 '연결됨'으로 덮지 않는다(D-77 판본 혼재).
+      L.conn.onStatus(s => { const el = document.getElementById("lg-conn"); if (el && !(s === "open" && L.hostWarning)) { el.dataset.s = s; el.textContent = connLabel(s); } if (s === "open" && L.team && !L.claimAccepted) send("claim"); });
       // 교실 와이파이에서 요청 하나가 사라져도 5초 안에 복구한다: 계획·정책·기준·준비를 진행자에 반영될 때까지 다시 보낸다.
       // 진행자는 같은 값을 조용히 넘기므로(reduce의 quiet) 중복 전송은 해가 없다. 준비는 토글이 아니라 원하는 값을 보낸다.
       L.timers.push(setInterval(() => {
@@ -3385,7 +3386,7 @@
     if (!L.team) seatPicker(app);
     else if (L.claimAccepted && L.snap?.teams[L.team]) mountCity(app);
     else {
-      app.innerHTML = `<main class="lg-lobby" id="lg-team-wait"><a class="lg-back" href="#league">← 로비</a><h1>${esc(teamName(L.team))} 팀</h1><p role="status">진행자에게 첫 도시 상태를 받는 중이에요.</p></main>`;
+      app.innerHTML = `<main class="lg-lobby" id="lg-team-wait"><a class="lg-back" href="#league">← 로비</a><h1>${esc(teamName(L.team))} 팀</h1><p role="status" id="lg-wait">진행자에게 첫 도시 상태를 받는 중이에요.</p></main>`;
       send("hello"); send("claim");
     }
   }
@@ -3542,7 +3543,7 @@
           if (oldS7 && !store.get(s7Key())) store.set(s7Key(), oldS7);
           s7data(); // 옛 방 자료에 들어 있던 분리 전 사본도 정리한다.
         }
-        if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap);
+        if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap, true);
       }
       return;
     }
@@ -3585,10 +3586,11 @@
     const text = typeof why === "string" ? why : why?.text || g?.approvalChangeCause?.text || "";
     return text.replace(/([+−-]?\d+(?:\.\d+)?)%p/g, (_, value) => `${signed(Number(value.replace("−", "-")), 1)}%p`);
   }
-  function onSnap(V) {
+  function onSnap(V, replay) {
     V = NET.expandSnapshot(V);
     if (!V || V.room !== L.room || V.region !== REGION || !V.teams) return;
-    L.lastSnapAt = Date.now(); L.snapSeq = (L.snapSeq || 0) + 1;
+    // 이미 받은 상태를 다시 그리는 호출(replay)은 새 진행자 상태가 아니므로 연결 판정 시각을 바꾸지 않는다.
+    if (!replay) { L.lastSnapAt = Date.now(); L.snapSeq = (L.snapSeq || 0) + 1; }
     return soloMutate(() => {
       const prev = L.snap;
       L.snap = V; L.skew = V.now - Date.now();
