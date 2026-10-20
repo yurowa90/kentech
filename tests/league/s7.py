@@ -198,9 +198,18 @@ def plan_and_trial(page, empty=False, renewable=False, change_after=True):
     return trial
 
 
-def expected_operation(page, player, topic="uns"):
-    """분해 함수와 독립: 실운영 엔진을 복제 상태에 실행. 실제 판은 불변."""
-    return page.evaluate("""([id,topic]) => {
+def period_days(result):  # D-80: 대표 일수와 달력상 월 일수를 구별한다.
+    return calendar.monthrange(result["year"], result["month"])[1] if result.get("month") else result["days"]  # D-80: 계약 A.
+
+
+def public_grid_mwh(result, player):  # D-80: UI 계산 함수를 부르지 않고 공개 필드로 월 환산한다.
+    row = result["team"][player]  # D-80: 지도 수입 설비 출력은 포함하지 않는다.
+    return max(0, row["isolated"]["uns"] - row["uns"] - row["imp"] + row["sub"]) * period_days(result) / result["days"]  # D-80: 계약 A.
+
+
+def expected_operation(page, player):  # D-80: 복제 운영 한 번으로 세 주제의 기대값을 함께 얻는다.
+    """분해·판정 함수와 독립: 복제 실운영 결과의 공개 필드를 Python에서 계산한다."""  # D-80: 실제 판은 불변.
+    forecast = page.evaluate("""id => { // D-80: 화면 주제는 약속 창을 연 뒤 읽는다.
       const L=KCP.league.state(), C=KCP.leagueCore, B=KCP.buildGame;
       const before=JSON.stringify(L.S), S=structuredClone(L.S);
       try {
@@ -209,28 +218,69 @@ def expected_operation(page, player, topic="uns"):
           C.computerPlans(S,B,id,save.style || 'balanced',true);
         }
         const result=C.run(S,B,0);
-        const actual=topic==='cash' ? S.econ.cities[id].cash-S.econ.before[id].cash : result.team[id].unsPct;
+        const economy=C.publicView(S,0).econ; // D-80: 내부 S.econBefore는 공개 뷰의 econ.before로 읽는다.
+        const cash=economy.cities[id].cash-economy.before[id].cash; // D-80: 현금은 운영 전 대비.
         if (JSON.stringify(L.S)!==before) throw Error('복제 운영이 원본을 변경함');
-        return actual;
+        return {result,cash}; // D-80: 계통 기대값은 공개 결과로 독립 계산.
       } finally {B.selectPack(C.teamDef(C.regionOf('south'),id).pack,'league');}
-    }""", [player, topic])
+    }""", player)  # D-80: 진행자에서 복제한 결과도 팀 약속에 전달할 수 있다.
+    result = forecast["result"]  # D-80: 정전·계통은 같은 복제 운영에서 읽는다.
+    return {"uns": result["team"][player]["unsPct"], "cash": forecast["cash"],  # D-80: 기존 기대값 유지.
+            "grid": public_grid_mwh(result, player), "days": period_days(result)}  # D-80: 첫 달 시험 환산에도 이번 달 일수 사용.
 
 
-def promise(page, trial, actual, *, hit=False, topic="uns", baseline=None):
-    # 2월부터 지난달과 비교한다. 실제 판정 함수 대신 명세의 정수 반올림 기준 사용.
-    baseline = (0 if topic == "cash" else trial["unsPct"]) if baseline is None else baseline
-    delta = actual - baseline
-    direction = "same" if abs(delta) < .5 else "up" if delta > 0 else "down"
-    prediction = direction if hit else ("down" if direction != "down" else "up")
+def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  # D-80: 운영 전 독립 기대값과 hit 의도를 보존한다.
     page.evaluate(COUNT_SIM)
     close_drawer(page)
     page.locator("#lg-ready").click()
     pass_issue_check(page)
     page.locator('[data-evidence="grid"]').click()
-    page.locator(f'[data-pred="{topic}"]').select_option(prediction)
+    select = page.locator('#lg-predict [data-pred]')  # D-80: 정전 0인 계획은 grid 선택지만 존재한다.
+    screen_topic = select.get_attribute("data-pred")  # D-80: 호출자의 주제 가정보다 실제 화면 주제를 따른다.
+    assert screen_topic in ("uns", "cash", "grid"), f"알 수 없는 약속 주제: {screen_topic}"  # D-80: 누락·중복도 실패.
+    assert topic != "cash" or screen_topic == "cash", f"현금 약속을 요구했으나 화면 주제는 {screen_topic}"  # D-80: cash 검사를 다른 주제로 우회하지 않는다.
+    topic = screen_topic  # D-80: 확정 때 저장할 주제로 방향을 계산한다.
+    state = page.evaluate(STATE)  # D-80: 지난달 값은 공개 결과에서 읽는다.
+    player = page.evaluate("() => KCP.league.state().team")  # D-80: 멀티에서도 팀 도시를 기준으로 한다.
+    previous = next((r for r in state["results"] if r["round"] == state["round"] - 1), None)  # D-80: 첫 달만 시험 기준.
+    if topic == "grid":  # D-80: 지난달은 지난달 일수, 시험은 이번 달 일수로 환산한다.
+        baseline = public_grid_mwh(previous, player) if previous else trial["gridMWh"] * expected["days"] / trial["days"]  # D-80: 계약 A.
+    else:  # D-80: 정전·현금의 기존 비교 기준을 유지한다.
+        baseline = 0 if topic == "cash" else baseline if baseline is not None else trial["unsPct"]  # D-80: 현금은 운영 전 대비.
+    actual = expected[topic]  # D-80: 주제별 복제 운영 기대값.
+    delta = actual - baseline  # D-80: UI promiseComparison/gridReliance 호출 없이 계산한다.
+    same = abs(delta) <= max(1, .05 * abs(baseline)) if topic == "grid" else abs(delta) < .5  # D-80: 계통 경계는 ≤, 정전·현금은 정수 반올림.
+    direction = "same" if same else "up" if delta > 0 else "down"  # D-80: 명세의 독립 기대 방향.
+    prediction = direction if hit else ("down" if direction != "down" else "up")  # D-80: 모든 주제에서 맞히기/틀리기 의도 유지.
+    select.select_option(prediction)  # D-80: 화면에 존재하는 주제만 조작한다.
     page.locator('[data-confidence="fairly"]').click()
     page.locator("#lg-ready-confirm").click()
-    return prediction
+    return {"topic": topic, "prediction": prediction, "direction": direction, "hit": hit,  # D-80: 운영 뒤 검증용 기대값.
+            "baseline": baseline, "actual": actual, "delta": delta,  # D-80: S7 분해 대상과 별도로 보존한다.
+            "basis": "운영 전 대비" if topic == "cash" else "지난달 대비" if previous else "시험 1주 대비"}  # D-80: 기준 문구도 검사한다.
+
+
+def promise_result(checks, page, expected, label):  # D-80: 주제별 S6 판정과 복제 기대값을 실제 운영에 대조한다.
+    topic = expected["topic"]  # D-80: 약속 때 화면에서 읽은 주제는 운영 뒤에도 고정되어야 한다.
+    state = public_state(page)  # D-80: 현금의 econ.before를 포함한 공개 운영값만 읽는다.
+    player = page.evaluate("() => KCP.league.state().team")  # D-80: 혼자·멀티 공통.
+    result = state["results"][-1]  # D-80: 이번 달 공개 운영 결과.
+    actual = (public_grid_mwh(result, player) if topic == "grid" else result["team"][player]["unsPct"] if topic == "uns"  # D-80: 계약 A.
+              else state["econ"]["cities"][player]["cash"] - state["econ"]["before"][player]["cash"])  # D-80: 현금은 운영 전 대비.
+    checks.ok(actual == expected["actual"], f"{label} {topic} 복제 기대값 = 실제 공개 운영값")  # D-80: 기존 복제 일치 검사 유지.
+    compare = page.locator(f'[data-compare="{topic}"]').inner_text()  # D-80: grid·cash도 동일한 판정 의도 검사.
+    note = current_note(page)  # D-80: 저장 주제·예측·판정도 확인한다.
+    checks.ok(note.get("topic") == topic and note.get("pred", {}).get(topic) == expected["prediction"] and  # D-80: 약속 주제 고정.
+              note.get("outcome", {}).get("actual") == expected["direction"] and  # D-80: 독립 방향 기대값.
+              note.get("outcome", {}).get("hit") is expected["hit"], f"{label} {topic} 저장 판정 = 독립 기대 방향·적중")  # D-80: 적중 의도 완화 금지.
+    verdict = "예상과 같음" if expected["hit"] else "예상과 다름"  # D-80: 틀리기/맞히기 양쪽 확인.
+    checks.ok(verdict in compare and expected["basis"] in compare, f"{label} {topic} 화면 판정·비교 기준 일치")  # D-80: B-3.
+    unit = "MWh" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-80: 주제별 단위.
+    match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-80: 계통 비용 대신 첫 MWh 차이를 검사한다.
+    step = ".1" if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
+    displayed = Decimal.from_float(expected["delta"]).quantize(Decimal(step), rounding=ROUND_HALF_UP)  # D-80: 이진 실수의 표시 반올림값과 대조, 허용 오차 확대 없음.
+    checks.ok(match is not None and Decimal(match[1].replace("−", "-").replace(",", "")) == displayed,  # D-80: B-3 수치.
+              f"{label} {topic} 표시 차이 = 독립 기대값의 {unit} 반올림")  # D-80: 기존 월간 판정 수치 검사를 세 주제로 확장한다.
 
 
 def current_note(page):
@@ -456,7 +506,10 @@ def clue_and_evidence(checks, page, a, label):
     largest = max(a["parts"], key=lambda p: abs(p["value"]))
     largest = largest if abs(largest["value"]) >= part_min(a) else None  # D-80: C-1·2·4·5 대상별 검사.
     expected_links = links.get(key, {})
-    text = page.locator("#lg-outage-verdict p").nth(2).inner_text()
+    # D-80 접힘(D80-s7-fold.md): '내 예측이 놓친 것'은 #lg-outage-verdict 안의 닫힌 #lg-outage-evidence에 있다.
+    # 학생처럼 펼친 뒤 읽는다. 접힘이 없는 옛 구조면 셋째 줄을 읽는다.
+    page.evaluate("() => { const d = document.getElementById('lg-outage-evidence'); if (d) d.open = true; }")
+    text = page.locator("#lg-outage-evidence p").first.inner_text() if page.locator("#lg-outage-evidence").count() else page.locator("#lg-outage-verdict p").nth(2).inner_text()
     for kind, prefix in (("direct", "직접 연결 — "), ("stage", "같은 단계와 연결 — "), ("indirect", "간접 연결 — ")):
         linked = [p for p in a["parts"] if expected_links.get(p["key"]) == kind]
         checks.ok((prefix in text) == bool(linked), f"{label} {kind} 근거 연결 구분")
@@ -784,12 +837,12 @@ def monthly_no_answer_records(checks, page, label):
     open_panel(page, "result")
 
 
-def monthly_scene(checks, page, requests, label, width, baseline, actual):
+def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약속 기대값과 S7 분해 대상은 따로 검사한다.
     """C-lastmonth §2–5: 월간 분해·기준 일치·공개 전후·화면 검산."""
-    promise_baseline, promise_actual = baseline, actual  # D-80: 약속 주제와 S7 대상은 별도.
     open_panel(page, "result")
-    required(checks, "예상과 다름" in page.locator('[data-compare="uns"]').inner_text(),
-             f"{label} 지난달 대비 정전 오예측")
+    promise_result(checks, page, expected, label)  # D-80: 계통 오예측도 독립 방향·차이·outcome과 대조한다.
+    required(checks, "예상과 다름" in page.locator(f'[data-compare="{expected["topic"]}"]').inner_text(),  # D-80: 약속 당시 주제를 따른다.
+             f"{label} 지난달 대비 {expected['topic']} 오예측")  # D-80: S7 열림 조건의 의도 유지.
     root = page.locator("#lg-missed")
     required(checks, root.get_attribute("data-single") in ("true", "false"),
              f"{label} 사본 있는 달 월간 분해")
@@ -848,17 +901,8 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok(abs(a['trial'] - baseline) <= 1e-9 and abs(a['actual'] - actual) <= 1e-9,
               f"{label} 분해 출발/도착 = 지난달/이번 실제")
-    # 판정 화면과 저장 outcome도 독립 baseline·actual로 계산한 방향/차이에 대조.
+    # D-80: S6 주제·방향·표시 차이는 위 promise_result에서 검증한다. 실제 정전 시 S7 대상은 달라질 수 있다.
     delta = actual - baseline  # D-80: C-2, S7 대상의 월간 합계.
-    promise_delta = promise_actual - promise_baseline  # D-80: S6는 약속한 정전 주제 유지.
-    direction = 'same' if abs(promise_delta) < .5 else 'up' if promise_delta > 0 else 'down'  # D-80: S6와 S7의 단위 분리.
-    outcome = current_note(page).get('outcome', {})
-    compare = page.locator('[data-compare="uns"]').inner_text()
-    matches = VALUE.findall(compare)
-    checks.ok(outcome.get('actual') == direction and outcome.get('hit') is False and
-              '지난달 대비' in compare and matches and
-              abs(float(matches[0].replace('−','-').replace(',','')) - promise_delta) <= .0051,  # D-80: S6는 약속한 정전 주제의 차이.
-              f"{label} 약속 판정값과 분해 기준 수치 일치")
     snapshots = device_s7_data(page)['outageSnapshots']
     old_snap = snapshots[str(a['round'] - 1)]
     current_snap = snapshots[str(a['round'])]
@@ -989,31 +1033,31 @@ def later_outage(checks, page, requests, label, width, hit=False, host=None):
     previous_carry_names(checks, page, label)
     state = page.evaluate(STATE)
     player = 'pyeongtaek'
-    required(checks, state['econ']['cities'][player]['cash'] >= 0, f"{label} 정전 약속 경로 유지(생략 금지)")
+    required(checks, state['econ']['cities'][player]['cash'] >= 0, f"{label} 정전·계통 약속 경로 유지(생략 금지)")  # D-80: 자동 현금 달로 우회하지 않는다.
     trial = plan_and_trial(page, renewable=True, change_after=False)
     if host:
         host.wait_for_function("() => !KCP.league.state().S.teams.pyeongtaek.plan.policies.includes('save')")
-    actual = expected_operation(host or page, player)
+    forecast = expected_operation(host or page, player)  # D-80: 멀티는 진행자의 입력으로 세 주제 기대값을 미리 얻는다.
     baseline = state['results'][-1]['team'][player]['unsPct']
-    promise(page, trial, actual, baseline=baseline, hit=hit)
+    expected = promise(page, trial, forecast, baseline=baseline, hit=hit)  # D-80: 화면 주제와 독립 기대 방향 보존.
     if host:
         host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.ready")
         host.locator('#lg-next').click()
     page.wait_for_function(SYNC, arg=[state['round'], 'review'])
     open_panel(page, 'result')
     snapshots = snapshot_contract(checks, page, label)
-    required(checks, snapshots[str(state['round']-1)]['unsPct'] == baseline, f"{label} 판정 기준 = 사본 지난달 실제")
+    required(checks, snapshots[str(state['round']-1)]['unsPct'] == baseline, f"{label} 사본 정전율 = 지난달 공개 실제")  # D-80: 계통 약속과 사본 정전율 구별.
     if hit:
-        checks.ok('예상과 같음' in page.locator('[data-compare="uns"]').inner_text(), f"{label} 3월 적중")
+        promise_result(checks, page, expected, label)  # D-80: 3월 grid/uns 적중을 같은 의도로 검사한다.
         checks.ok(page.locator('#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall').count() == 0,
                   f"{label} 월간 적중 달 원인 답 비노출")
         no_answer_records(checks, page, label)
         capture(checks, page, label, 'monthly-hit')
     else:
-        a = monthly_scene(checks, page, requests, label, width, baseline, actual)
+        a = monthly_scene(checks, page, requests, label, width, expected)  # D-80: 주제별 판정과 월간 S7 열림 검증.
         checks.ok(abs(a['trial'] - attribution_endpoints(page, a)[0]) <= 1e-9,  # D-80: 대상별 지난달 공개값.
 
-                  f"{label} 분해 출발 = 저장 지난달 = 판정 기준")
+                  f"{label} 분해 출발 = 대상별 지난달 공개값")  # D-80: 실제 정전 시 S6·S7 대상 차이를 허용하되 수치는 엄격히 검사.
 
 
 def missing_snapshot_after_reload(checks, page, base, label):
@@ -1023,14 +1067,16 @@ def missing_snapshot_after_reload(checks, page, base, label):
     page.locator('#lg-solo-seed').select_option('fixed'); start_solo(page, months=12)
     page.wait_for_function(SYNC, arg=[1, 'plan'])
     trial = plan_and_trial(page, renewable=True)
-    promise(page, trial, expected_operation(page, 'pyeongtaek'))
+    expected = promise(page, trial, expected_operation(page, 'pyeongtaek'))  # D-80: 사본 누락 검사 전에도 정상 오예측을 검증한다.
     page.wait_for_function(SYNC, arg=[1, 'review']); open_panel(page, 'result')
+    promise_result(checks, page, expected, label + '-jan')  # D-80: grid도 의도한 오예측인지 확인.
     snapshot_contract(checks, page, label + '-jan')
     click_next(page, page.evaluate(STATE)); page.wait_for_function(SYNC, arg=[2, 'plan'])
     state = page.evaluate(STATE)
     trial = plan_and_trial(page, renewable=True, change_after=False)
-    promise(page, trial, expected_operation(page, 'pyeongtaek'), baseline=state['results'][-1]['team']['pyeongtaek']['unsPct'])
+    expected = promise(page, trial, expected_operation(page, 'pyeongtaek'), baseline=state['results'][-1]['team']['pyeongtaek']['unsPct'])  # D-80: grid는 독립 지난달 계통 기준 사용.
     page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
+    promise_result(checks, page, expected, label + '-feb')  # D-80: 사본 삭제 전 월간 판정 의도 확인.
     required(checks, page.locator('#lg-missed').get_attribute('data-single') == 'false',
              f"{label} 사본 삭제 전 미공개 월간 복수 후보(고정 자료로 우회 금지)")
     page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
@@ -1068,16 +1114,22 @@ def isolated_branch(checks, page, base, label, correct):
     page.wait_for_function(SYNC, arg=[1, "plan"])
     trial = plan_and_trial(page, empty=not correct, change_after=False)
     player = read(page)["player"]
-    actual = expected_operation(page, player)
-    promise(page, trial, actual, hit=correct)
+    forecast = expected_operation(page, player)  # D-80: 정전·계통 기대값을 모두 준비한다.
+    actual = forecast["uns"]  # D-80: 정전 전용 요약 검사용 공개 정전율.
+    if not correct:  # D-80: 기존 빈 배치를 재사용해 정전 전용 단언을 유지한다.
+        required(checks, trial["unsPct"] >= .005, f"{label} 빈 배치 시험에 실제 정전 존재(uns 경로 유지)")  # D-80: 정전 fixture를 생략하지 않는다.
+    expected = promise(page, trial, forecast, hit=correct)  # D-80: 정상 계획 적중은 grid, 빈 계획 오예측은 uns.
     page.wait_for_function(SYNC, arg=[1, "review"])
     open_panel(page, "result")
+    promise_result(checks, page, expected, label)  # D-80: 두 분기의 저장·화면 판정과 공개 실제값 확인.
+    if not correct:  # D-80: 정전 카드·높은 정전 요약의 전제 유지.
+        required(checks, expected["topic"] == "uns" and actual >= .005, f"{label} 빈 배치 약속·실제 모두 정전 경로")  # D-80: grid 전환으로 정전 단언 우회 금지.
     attribution = current_attribution(page)
     required(checks, bool(attribution), f"{label} 같은 계획의 실제 시험 경로 분해 가능")
     checks.ok(math.isfinite(attribution["replay"]) and abs(attribution["replay"]) < .01,
               f"{label} 시험 뒤 계획 불변: 실제 UI 시험과 재현 차이 < 0.01%p")
     if correct:
-        checks.ok("예상과 같음" in page.locator('[data-compare="uns"]').inner_text(), f"{label} 정전 예측 적중")
+        checks.ok("예상과 같음" in page.locator(f'[data-compare="{expected["topic"]}"]').inner_text(), f"{label} {expected['topic']} 예측 적중")  # D-80: 적중 달 S7 비노출 유지.
         checks.ok(page.locator("#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall").count() == 0,
                   f"{label} 적중 달 원인 카드·요약 없음")
         no_answer_records(checks, page, label)
@@ -1160,11 +1212,13 @@ def solo(checks, page, requests, base, label, width):
     # 1월에 접속 신청한 태양광이 2월에 연결돼 무사건 날씨 몫도 생긴다.
     trial = plan_and_trial(page, renewable=True)
     player = read(page)["player"]
-    expected = expected_operation(page, player)
-    promise(page, trial, expected)
+    forecast = expected_operation(page, player)  # D-80: 같은 복제 운영에서 정전·계통 기대값을 얻는다.
+    expected = promise(page, trial, forecast)  # D-80: 화면 주제에 맞는 오예측 선택.
     page.wait_for_function(SYNC, arg=[1, "review"])
     actual = read(page)["S"]["results"][-1]["team"][player]["unsPct"]
-    checks.ok(actual == expected, f"{label} 복제 운영 방향과 실제 운영 일치")
+    checks.ok(actual == forecast["uns"], f"{label} 복제 운영 정전율과 실제 운영 일치")  # D-80: 기존 정전율 검사를 보존한다.
+    open_panel(page, "result")  # D-80: S6 DOM과 저장 outcome이 렌더링된 뒤 검사한다.
+    promise_result(checks, page, expected, label + "-jan")  # D-80: 계통 방향·수치·오예측도 독립 검증.
     snapshot_contract(checks, page, label + "-jan")
     picked = scene(checks, page, requests, label, width, trial, actual)
     # 실제 새 탭 이동도 확인하고 원래 판의 달·단계를 보존한다(I40).
@@ -1203,10 +1257,11 @@ def solo(checks, page, requests, base, label, width):
         # 자동 현금 주제의 반대 예측을 고른다. 상태·현금·주제는 주입하지 않는다.
         if state["phase"] == "plan" and state["round"] < 12 and not cash_checked and state["econ"]["cities"][player]["cash"] < 0:
             trial = plan_and_trial(page)
-            delta = expected_operation(page, player, "cash")
-            promise(page, trial, delta, topic="cash")
+            forecast = expected_operation(page, player)  # D-80: 운영 전 현금 대비 기대값도 같은 복제 운영에서 얻는다.
+            expected = promise(page, trial, forecast, topic="cash")  # D-80: 화면이 cash가 아니면 실패한다.
             page.wait_for_function(SYNC, arg=[state["round"], "review"])
             open_panel(page, "result")
+            promise_result(checks, page, expected, label + "-cash")  # D-80: 현금 판정·차이·저장 outcome 검증.
             checks.ok("예상과 다름" in page.locator('[data-compare="cash"]').inner_text(),
                       f"{label} 현금 주제 오예측 실제 진행")
             checks.ok(page.locator('#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall, #lg-missed.lg-outage').count() == 0,
@@ -1276,13 +1331,15 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     trial = plan_and_trial(team)
     # 진행자가 실제로 받은 계획을 기다려 복제 운영의 입력을 확정한다.
     host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.plan.policies.includes('save')")
-    actual = expected_operation(host, "pyeongtaek")
-    promise(team, trial, actual)
+    forecast = expected_operation(host, "pyeongtaek")  # D-80: 팀에는 비공개 운영 상태가 없어 진행자 복제 결과를 사용한다.
+    expected = promise(team, trial, forecast)  # D-80: 실제 팀 화면의 grid/uns 주제로 오예측한다.
     host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.ready")
     host.locator("#lg-next").click()
     team.wait_for_function(SYNC, arg=[1, "review"])
     host.wait_for_function(SYNC, arg=[1, "review"])
     actual = team.evaluate(STATE)["results"][-1]["team"]["pyeongtaek"]["unsPct"]
+    open_panel(team, "result")  # D-80: 실제 진행자 운영을 받은 팀 화면에서 판정한다.
+    promise_result(checks, team, expected, label + "-team-jan")  # D-80: 멀티 grid 오예측과 실제 공개값 대조.
     # 정기 공개 갱신 한 주기(4초)도 지나서 읽는다. now만 제외, 새 필드는 모두 비교.
     # '전' 값은 팀이 진행자의 최신 공개 상태를 받은 뒤에 찍는다. 운영 직후 진행자가 상태를 한 번 더 바꾸면
     # (S.rev 증가) 그 전송은 150ms 지연·서명 뒤에 도착하므로, 단계(review)만 맞춰 찍으면 팀 쪽 rev만 '후'에

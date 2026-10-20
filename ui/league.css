@@ -411,6 +411,9 @@ section#lg-missed.lg-outage { display: block; }
 [data-out-step="trial"] .lg-out-bar, [data-out-step="actual"] .lg-out-bar { background: var(--ui-muted); }
 #lg-outage-verdict { padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }
 #lg-outage-verdict p { margin: 6px 0; }
+.lg-out-fold > summary { min-height: 44px; display: flex; align-items: center; color: var(--ink-2); cursor: pointer; }
+.lg-out-fold > summary::after { content: "▾"; margin-left: 6px; }
+.lg-out-fold[open] > summary::after { content: "▴"; }
 #lg-outage-carry { max-width: 100%; margin: 8px 4px 0 0; }
 #lg-missed-carry { padding: 8px 10px; border-left: 3px solid var(--ui-gold); background: var(--ui-hud); }
 #lg-outage-grid-bottleneck { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--ui-gold); border-left-width: 4px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }

@@ -609,7 +609,8 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
 }
 // 약속 예측 판정 쪽은 공개 S7 API가 아니므로 해당 함수 범위의 기존 부호 계약을 보존한다.
 const promiseSource = source.slice(source.indexOf('  function promiseResultHTML('), source.indexOf('  function newBuildCost('));
-ok(/const sign = topic === "uns" \? \{ evening: 1, grid: -1, wind: -1, neighbor: 1 \}/.test(promiseSource),
+// D-80 B-2: 계통 주제도 정전 주제와 같은 근거 부호 표를 쓴다.
+ok(/const sign = topic === "uns" \|\| topic === "grid" \? \{ evening: 1, grid: -1, wind: -1, neighbor: 1 \}/.test(promiseSource),
   '약속 예측 쪽 grid −1 유지(S7 전용 grid 0과 분리)');
 
 // 수정 1의 재현: 재생 0·풍력 없음인데 무더위 수요로 정전이 늘어나는 두 씨앗.
