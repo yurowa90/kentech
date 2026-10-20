@@ -47,7 +47,8 @@ function play(ids) {
     // F20: 2027=.70, 2028=2/3, 2029=19/30. 직전 달 실제 일평균 수요 × 이번 달 일수(일수 차이만 보정).
     const factor = [0.7, 2 / 3, 19 / 30][Math.floor((month - 1) / 12)];
     const expectedDemand = month === 1 ? initialDemand : previousDaily * core.roundsOf(state)[month - 1].mdays;
-    near(goals.co2Plan, expectedDemand * 0.4567 * factor, `${month}달 수요·연도별 감축 경로`);
+    // D-73: 목표의 국가 계수 .4567→.4173; 수요·연도별 감축 경로 유지.
+    near(goals.co2Plan, expectedDemand * data.params.normalCo2.v * factor, `${month}달 수요·연도별 감축 경로`);
     equal(goals.co2Basis, month === 1 ? '첫 달 보정 운영 수요' : '지난달 수요(일수 보정)', '목표 산출 근거');
     equal(state.goalPlan[month].co2Plan, goals.co2Plan, '계획 진입 즉시 상태에 보존');
     planned.push(goals.co2Plan);

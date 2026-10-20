@@ -160,11 +160,33 @@ function main() {
     });
   }
 
-  // simulate의 실제 적용 문장에서 읽는다. TECHS 설명 문자열을 oracle로 쓰지 않는다.
-  const bms = read('build').match(/if \(techDay\.bms === d\) \{ bEff = ([\d.]+);[^\n]*g\.floor = storedMWh\(g\) \* ([\d.]+)/);
-  test('[7] BMS 효율 param = simulate 적용 값', () => assert.equal(T.params.bmsEfficiency?.v, Number(bms?.[1])));
-  test('[7] BMS 하한 param = simulate 적용 값', () => assert.equal(T.params.bmsFloor?.v, Number(bms?.[2])));
-  test('[7] BMS 효과 93.30%', () => assert.ok(B.bmsEffectText().includes('93.30%')));
+  // 기존 BMS params 계약·D-72 학생말 표시: 옛 정규식 literal 추출 → params를 바꾼 실제 simulate 결과 비교.
+  // build는 bmsParams()를 읽는다. 설명의 93.30% 고정 → 왕복85→87%, 한 방향 약93.3%.
+  B.selectPack(C.teamDef(C.regionOf('south'), 'pyeongtaek').pack, 'league');
+  const batteryPlan = clone(D.normalStartPlans.pyeongtaek);
+  const anchor = B.SITES.find(s => s.dem).tile;
+  for (const kind of ['solar', 'battery']) {
+    const tile = B.TILES.find(t => !t.out && !B.siteRule(kind, t) &&
+      !batteryPlan.builds.some(b => b.i === t.i) && B.routePath(anchor, t.i));
+    assert.ok(tile, `BMS ${kind} 연결 픽스처`);
+    batteryPlan.builds.push({ t: kind, i: tile.i });
+    batteryPlan.lines.push({ p: B.routePath(anchor, tile.i) });
+  }
+  const runBattery = () => B.simulate({ ...B.sanitize(batteryPlan, 1e9), seed: 7013, season: 'summer' },
+    7, { league: true, mods: { tech: ['bms'] } });
+  for (const [key, changed] of [['bmsEfficiency', .5], ['bmsFloor', .9]]) {
+    test(`[7] ${key} 변경이 simulate의 실제 방전에 반영`, () => {
+      const before = runBattery(), old = T.params[key];
+      try {
+        T.params[key] = { ...old, v: changed };
+        const after = runBattery();
+        assert.notEqual(after.tot.batOut, before.tot.batOut);
+        assert.ok(after.tot.batOut < before.tot.batOut, '효율 하락/하한 상승은 방전량 감소');
+      } finally { T.params[key] = old; }
+    });
+  }
+  test('[7] BMS 왕복85→87%, 한 방향 약93.3%', () =>
+    assert.match(B.bmsEffectText(), /왕복 효율 85%\s*→\s*87%\(한 방향 약 93\.3%\)/));
   test('[7] BMS 효과에 95.5 없음', () => assert.ok(!B.bmsEffectText().includes('95.5')));
   test('[9] 점수식에 0~100 자름 명시', () => assert.match(X.score(row.E).aggregation.formula, /0\s*[~～–-]\s*100\s*자름/));
   for (const city of row.E.order) test(`[9] ${city} 공동 보너스 150에서 100 상한`, () => {
@@ -172,9 +194,10 @@ function main() {
     const E = clone(row.E); E.coop = 150;
     assert.equal(X.score(E).by[city].score, 100);
   });
-  test('[10] HVDC 손실 D2 전 0.012 유지', () => assert.equal(T.params.hvdcLoss.v, 0.012));
-  test('[10] HVDC 기존 카드 문구 유지', () => assert.equal(C.techCards().find(c => c.id === 'hvdc').eff,
-    '연계선 손실 2→1.2%, 새 선 건설비 ×1.3'));
+  // D-79: 옛 손실.012·손실개선 문구 → 기본 손실·용량×1.5/건설비×1.3.
+  test('[10] HVDC 손실은 기본 연계선과 같음', () => assert.equal(T.params.hvdcLoss.v, C.TIE_LOSS));
+  test('[10] HVDC 용량·계통 제약 카드 문구', () => assert.equal(C.techCards().find(c => c.id === 'hvdc').eff,
+    `연계선 용량 ×${T.params.hvdcCap.v}로 송전 용량을 늘리고 계통 제약을 푼다, 새 선 건설비 ×${T.params.hvdcCost.v}`));
   end();
 }
 
