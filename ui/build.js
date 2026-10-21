@@ -3845,7 +3845,7 @@
       root.querySelector(".bd-layers").append(lenses);
       const legend = document.createElement("span"); legend.className = "lg-lens-key"; legend.textContent = "하늘색: 선 닿음 · 노랑: 선 안 닿음 · 분홍 점선: 민원 반경";
       lenses.append(legend);
-      // 마을 모양 범례는 렌즈 도움말(마우스·초점 때만 보임)이 아니라 지도 위에 늘 보이게 둔다. 리그 화면은 안내 묶음으로 옮긴다.
+      // 마을 모양 범례는 렌즈 도움말(마우스·초점 때만 보임)이 아니라 지도 왼쪽 아래에 늘 보이게 둔다(사건 카드 배치의 장애물 아님).
       const townKey = document.createElement("p"); townKey.id = "bd-town-look-key"; townKey.className = "lg-town-key"; townKey.hidden = true;
       townKey.textContent = TOWN_LOOK_KEY; root.querySelector(".bd-stage").append(townKey);
       lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; rememberLenses(); syncLensButtons(); placeBannerValues(); request(); });

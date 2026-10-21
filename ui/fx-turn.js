@@ -128,7 +128,9 @@
   // 펼친 카드는 서랍 위를 덮는 맨 위 층이고, 초점이 덱 안이면 학생이 카드를 보고 있다. 이때는 window 캡처
   // 단계에서 리그 처리기보다 먼저 받아 카드만 닫고 서랍 쪽으로 넘기지 않는다.
   const topEscape = (e, close) => {
-    if (!escFree(e) || coachUp() || !deck || status.deferred || !(expanded || deck.contains(document.activeElement))) return;
+    const focused = !!deck?.contains(document.activeElement);
+    // D-83 각주 2: 키보드 초점이 덱 안이면 코치보다 먼저 덱이 받는다.
+    if (!escFree(e) || (coachUp() && !focused) || !deck || status.deferred || !(expanded || focused)) return;
     e.preventDefault(); e.stopPropagation(); close();
   };
   // 덱 안 초점은 어떻게 닫히든 복귀시킨다(자동 닫힘·화면 낭독기 훑기·달 불일치·단계 전환 포함). 이미 body로
