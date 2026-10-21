@@ -31,6 +31,7 @@ TRIAL_KEY = "kcp-build-trial-v1"
 ZERO = 0.005
 # D80-contract-A.md 확정 계약. UI의 gridSameTol을 기대값으로 호출하지 않는다.
 SAME_MWH, SAME_SHARE = 1.0, 0.05
+SAME_PER_DAY = .05  # D-82: 측정 보고서 제안 하한(MWh/일), 월 합계 표시는 보존.
 DIRECTIONS = {"up": "늘 것", "down": "줄 것", "same": "같을 것"}
 NUMBER = r"[+−–-]?\s*\d[\d,]*(?:\.\d+)?"
 WHY = "시험에서 정전이 없어서, 이번 달은 부족을 바깥 계통이 얼마나 메웠는지로 약속해요."
@@ -179,27 +180,32 @@ def oracle(page, state, result, player, tested):
     previous = next((r for r in state["results"] if r["round"] == result["round"] - 1), None)
     if previous:
         base = filled(previous["team"][player]) * month_days(state, previous) / previous["days"]
+        base_per_day = filled(previous["team"][player]) / previous["days"]  # D-82
         label = "지난달 대비"
-    elif tested and isinstance(tested.get("gridMWh"), (int, float)):
+    elif tested and isinstance(tested.get("gridMWh"), (int, float)) and tested.get("days", 0) > 0:  # D-82: 옛 기간 누락/0은 비교 없음.
         if (tested["month"], tested["year"], tested["season"]) != (
                 result["month"], result["year"], result["season"]):
             raise AssertionError("다른 월의 시험을 비교 기준으로 쓰려 함")
         base = tested["gridMWh"] * days / tested["days"]
+        base_per_day = tested["gridMWh"] / tested["days"]  # D-82: 시험 원기간 직접 평균.
         label = "시험 1주 대비"
     else:
         base = None
+        base_per_day = None  # D-82
         label = "비교 없음(시험 기록에 계통 값 없음)" if tested else "비교 없음(첫 결과)"
     delta = None if base is None else mwh - base
     return {"mwh": mwh, "cost": mwh * price, "base": base, "label": label,
             "delta": delta, "deltaCost": None if delta is None else delta * price,
-            "tol": max(SAME_MWH, SAME_SHARE * abs(base)) if base is not None else SAME_MWH}
+            "tol": max(SAME_MWH, SAME_SHARE * abs(base)) if base is not None else SAME_MWH,
+            "deltaPerDay": None if base_per_day is None else mwh / days - base_per_day,  # D-82
+            "tolPerDay": max(SAME_PER_DAY, SAME_SHARE * abs(base_per_day)) if base_per_day is not None else SAME_PER_DAY}  # D-82
 
 
 def direction(values):
-    delta = values["delta"]
+    delta = values["deltaPerDay"]  # D-82: 판정만 일평균, 월 합계 표시 검사는 유지.
     if delta is None:
         raise AssertionError("비교 기준 없는 시나리오의 방향을 단정할 수 없음")
-    return "same" if abs(delta) <= values["tol"] else "up" if delta > 0 else "down"
+    return "same" if abs(delta) <= values["tolPerDay"] else "up" if delta > 0 else "down"  # D-82
 
 
 def numeric_match(token, value):
@@ -279,7 +285,7 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
         verdict = "예상과 같음" if hit else "예상과 다름"
         other = "예상과 다름" if hit else "예상과 같음"
         checks.ok(bool(re.search(r"\)\s*·\s*" + verdict, text)) and other not in text,
-                  label + f" S6 판정 {verdict} (|Δ|≤max(1,|기준|×5%)={values['tol']:.6f}이면 same)")
+                  label + f" S6 판정 {verdict} (D-82 |Δ/일|≤max(0.05,|기준/일|×5%)={values['tolPerDay']:.6f}이면 same)")  # D-82
         if not hit:
             # D-80 C-5: 유의미한 원인이 하나뿐이면 S7은 카드 목록 대신 한 줄 요약(#lg-outage-single)을 보인다.
             checks.ok(page.locator("#lg-missed").count() == 1 and

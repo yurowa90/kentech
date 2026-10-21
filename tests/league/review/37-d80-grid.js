@@ -1,10 +1,10 @@
 'use strict';
-// D-80 A 확정 계약의 독립 검사. 구현은 git show fae2dfb에서만 읽는다.
+// D-82: 현재 구현에서 D-80 월 합계 계약의 보존과 추가 필드의 공존을 검사한다.
 // 브라우저·네트워크·봇 장기 운전 없음. VM의 GUI 경계만 기존 35/36 방식으로 노출한다.
 const assert = require('node:assert/strict');
 const path = require('node:path'), vm = require('node:vm');
-const { execFileSync } = require('node:child_process');
-const ROOT = path.resolve(__dirname, '../../..'), REV = 'fae2dfb';
+const fs = require('node:fs');
+const ROOT = path.resolve(__dirname, '../../..'), REV = 'working-tree'; // D-82: 과거 고정판 대신 현재 파일.
 const plain = x => JSON.parse(JSON.stringify(x)), clone = structuredClone;
 let assertions = 0;
 const failures = [], observations = [];
@@ -28,7 +28,7 @@ function load() {
   ctx.window = ctx;
   vm.runInContext('Math.random = () => { throw Error("unseeded random"); };', ctx);
   for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core', 'league']) {
-    let source = execFileSync('git', ['show', `${REV}:ui/${name}.js`], { cwd: ROOT, encoding: 'utf8' });
+    let source = fs.readFileSync(path.join(ROOT, `ui/${name}.js`), 'utf8'); // D-82
     if (name === 'build') {
       const boundary = '// 화면용: 디젤 건물 번호 → 비트 위치';
       assert.equal(source.split(boundary).length, 2, '35와 같은 애니메이션 직전 경계');
@@ -79,8 +79,10 @@ function expectedMWh(r, days, representativeDays) {
 function inspect(V, res, expected, team = id) {
   const before = JSON.stringify(V), saved = JSON.stringify([...storage]);
   const a = K.__grid(V, res, team), b = K.__grid(V, res, team);
-  eq(Object.keys(a).sort(), ['mwh', 'cost', 'base', 'delta', 'deltaCost', 'tol'].sort(), '반환 키 정확히 6개');
-  eq(Object.keys(a.base).sort(), ['kind', 'label', 'mwh', 'cost'].sort(), 'base 반환 키 정확히 4개');
+  // D-82: 기존 월 합계 필드는 아래 산식 단언을 유지하고 일평균 필드만 추가한다.
+  eq(Object.keys(a).sort(), ['mwh', 'cost', 'base', 'delta', 'deltaCost', 'tol',
+    'days', 'perDay', 'deltaPerDay', 'deltaPerDayCost', 'tolPerDay', 'unit'].sort(), 'D-82 반환 키');
+  eq(Object.keys(a.base).sort(), ['kind', 'label', 'mwh', 'cost', 'days', 'perDay'].sort(), 'D-82 base 반환 키');
   eq(a, b, '같은 입력 두 번 호출 값 동일');
   eq(JSON.stringify(V), before, '호출 전후 V 직렬화 불변');
   eq(JSON.stringify([...storage]), saved, '호출 전후 시험 저장 불변');
