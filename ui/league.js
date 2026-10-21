@@ -4470,6 +4470,8 @@
       onHelp: () => openPanel("help"),
       onDrawer: closePanel,
       onTool: closePanel,
+      // Esc 도구 취소(D-83)는 서랍을 닫지 않는다. 키 처리 순서와 무관하게 송전선 표시 상태만 맞춘다.
+      onToolCancel: () => { const map = document.querySelector(".lg-team-map[data-line-tool]"); if (map) map.dataset.lineTool = "false"; },
       leagueResultDays: () => L.snap?.results.at(-1)?.days,
       leagueResult: () => { const res = L.snap?.results.at(-1); return res?.team[L.team] ? { ...res.team[L.team], faded: L.snap.phase === "plan", round: res.round, month: res.month || C.roundsOf(L.snap)[res.round - 1]?.month, days: res.days } : null; },
       onMount: root => { refreshCityTownLook(L.snap, L.team); addBar(root); setupTeamMap(root); warnTeamSave(); window.dispatchEvent(new Event("resize")); }
@@ -4847,10 +4849,19 @@
     L.escapeHandler = e => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
       const check = root.querySelector("#lg-issue-check"), coach = root.querySelector("#lg-coach");
-      if (check) { check.remove(); document.getElementById("lg-ready")?.focus({ preventScroll: true }); }
+      const drawer = L.panel ? document.getElementById("lg-panel") : null, active = document.activeElement;
+      // D-83 각주 2: 키보드 초점이 들어 있는 층이 기본 순서보다 먼저 Esc를 받는다(덱의 '초점이 덱 안'과 같은
+      // 루트 contains 판정). 확인 상자·서랍 안에 초점이 있으면 코치가 열려 있어도 그 층부터 닫는다.
+      if (check?.contains(active)) { check.remove(); document.getElementById("lg-ready")?.focus({ preventScroll: true }); }
+      else if (drawer?.contains(active)) closePanel(true);
+      // 기본 순서(D-83): 코치(②)가 확인 상자·서랍(⑤)보다 먼저다. 코치 안에 포커스가 있거나 고른 건설 도구가 없을
+      // 때만 코치를 닫는다. 도구를 고른 채 포커스가 코치 밖이면 이 Esc는 도구 취소(build.js) 몫이라 서랍도 닫지 않고 넘긴다.
+      else if (coach) {
+        if (!(coach.contains(document.activeElement) || !document.getElementById("bd-root")?.dataset.mode)) return;
+        closeCoach(true);
+      }
+      else if (check) { check.remove(); document.getElementById("lg-ready")?.focus({ preventScroll: true }); }
       else if (L.panel) closePanel(true);
-      // 코치 안에 포커스가 있거나, 고른 건설 도구가 없을 때만 코치를 닫는다(도구 취소용 Escape가 코치를 닫지 않게).
-      else if (coach && (coach.contains(document.activeElement) || !document.getElementById("bd-root")?.dataset.mode)) closeCoach(true);
       else return;
       e.preventDefault();
       e.stopPropagation();
