@@ -228,7 +228,9 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
   // 계통은 하한·양수·음수 기준을 모두 쓰고 actual/total은 기준과 다르게 둔다.
   const bases = target === 'grid' ? [0, 10, 1000, -1000] : [10];
   for (const base of bases) {
-    const minPart = target === 'grid' ? Math.max(.05, .05 * Math.abs(base)) / 10 : .05; // D-82: gridSameTolPerDay/10의 명시식으로 독립 계산, 양·음·하한 사례 유지.
+    // D-82 수정 2(총괄 결정): 계통 최소 몫 = max('같음' 문턱/10, 0.05 MWh/일), 문턱 = max(0.05, 기준×5%).
+    // 기준 0은 하한 0.05가, ±1000은 문턱/10이 정한다. 10은 둘이 같은 경계다.
+    const minPart = target === 'grid' ? Math.max(Math.max(.05, .05 * Math.abs(base)) / 10, .05) : .05;
     const evidence = { key: 'evening', text: '저녁 수요: 12.34 MW' }, ns = names(basis);
     for (const mode of ['zero', 'below']) check(`12 §2-1 ${scope}/${base}/${mode} 직접 연결 모두 작은 몫`, () => {
       const tiny = mode === 'zero' ? 0 : minPart * .999;
