@@ -487,7 +487,7 @@ def replay_events(checks, page, state, label, ended=False, reduced=False):
         return
     checks.ok(all(event.get('state') in ('start', 'end') and
                   event.get('round') == 1 and event.get('team') == state['player'] and
-                  event.get('ms') == 4000 and event.get('source') == 'engine' and
+                  event.get('ms') == 2200 and event.get('source') == 'engine' and
                   event.get('cancelled') is False for event in events) and bool(starts) and
               starts[0].get('skipped') is False,
               f'{label} 이벤트 round/team/ms/source/cancelled 및 start skipped=false')
@@ -565,8 +565,8 @@ def desktop(checks, page, base):
             fx = state['fx'] or {}
             checks.ok(fx.get('playing') is True and fx.get('replayed') is True,
                       f'{label} 결과 진입 직후 playing/replayed true')
-            checks.ok(fx.get('ms') == (4000 if month == 1 else 2000),
-                      f'{label} 재생 길이 {4000 if month == 1 else 2000}ms')
+            checks.ok(fx.get('ms') == (2200 if month == 1 else 2000),
+                      f'{label} 재생 길이 {2200 if month == 1 else 2000}ms')
             checks.ok(state['panelOpen'], f'{label} 재생 시작 때 결과 서랍 이미 열림')
         overflow(checks, page, label + ' 결과 진입')
         if month == 1:
