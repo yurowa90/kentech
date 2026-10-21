@@ -1,4 +1,4 @@
-"""D-82 결정 2·5차 영상 N2/S8/CO₂ 머리 칩 수용 검사.
+"""D-82 결정 1·화면 지시서 및 결정 2·5차 영상 N2/S8/CO₂ 머리 칩 수용 검사.
 
 실행 담당: Claude, 샌드박스 밖 로컬. 이 파일은 작성 중 실행하지 않는다.
   tests/.venv/bin/python tests/league/d82ux.py http://127.0.0.1:9430/index.html
@@ -166,14 +166,16 @@ def trial(checks, page, label):
 
 def trial_report(checks, page, tested, label):
     days = month_days(tested)
-    monthly = tested["gridMWh"] * days / tested["days"]
+    # D-82 결정 1·화면 지시서: 달력 일수·원시험으로 일평균과 보조 월 합계를 각각 검산.
+    per_day = tested["gridMWh"] / tested["days"]
+    monthly = per_day * days
     line = page.locator("#bd-league-goals p").filter(has_text="바깥 계통이 메워 준 전기").inner_text()
-    match = re.search(rf"전기 ({NUMBER}) MWh\(7일 시험\) → {days}일 환산 약 ({NUMBER}) MWh · 비용 약 ({NUMBER})억", line)
-    require(checks, bool(match), label + " S3 계통 시험·월 환산·비용 형식")
+    match = re.search(rf"전기 시험 {tested['days']}일 ({NUMBER}) MWh → 하루 평균 ({NUMBER}) MWh/일\(이번 달 {days}일이면 약 ({NUMBER}) MWh · 비용 약 ({NUMBER})억", line)
+    require(checks, bool(match), label + " S3 계통 시험·하루 평균·보조 월 합계·비용 형식")
     price = page.evaluate("() => KCP.ECON_DATA.params.normalCost.v*KCP.ECON_DATA.params.gridImportMarkup.v")
-    checks.ok(near(match[1], tested["gridMWh"], 1) and near(match[2], monthly, 1) and
-              near(match[3], monthly * price, 2) and line.count("비용") == 1,
-              label + " S3 계통 MWh·월 환산 비용 독립 검산(7일 비용 혼용 없음)")
+    checks.ok(near(match[1], tested["gridMWh"], 1) and near(match[2], per_day, 1) and
+              near(match[3], monthly, 1) and near(match[4], monthly * price, 2) and line.count("비용") == 1,
+              label + " S3 계통 MWh/일·월 환산 비용 독립 검산(7일 비용 혼용 없음)")
     explanation = page.locator("#bd-league-goals p").filter(has_text="머리 칩").inner_text()
     co2 = re.search(rf"7일 시험 약 ({NUMBER}) t", explanation)
     factor = page.evaluate("() => KCP.ECON_DATA.params.normalCo2.v")
@@ -181,7 +183,7 @@ def trial_report(checks, page, tested, label):
               "바깥 계통에서 받은 전기" in explanation and bool(co2) and
               near(co2[1], tested["gridMWh"] * factor, 0),
               label + " 생산/소비 CO₂ 차이 = 실제 계통 MWh × 기존 normalCo2")
-    return match[2], monthly
+    return match[2], per_day  # D-82 결정 1·화면 지시서: S4와 비교할 값은 하루 평균.
 
 
 def promise(checks, page, topic, label, baseline=None):
@@ -191,12 +193,18 @@ def promise(checks, page, topic, label, baseline=None):
     pass_issue_check(page)
     page.wait_for_selector("#lg-ready-confirm")
     require(checks, shown(page, f'[data-pred="{topic}"]'), label + f" S4 {topic} 주제")
+    if topic == "grid":
+        # D-82 결정 1·화면 지시서: 390px도 하루 평균·월 보조 정보를 말줄임 없이 표시한다(Claude 실행).
+        checks.ok(page.locator("#lg-promise-baseline").evaluate("""el => {
+          const s=getComputedStyle(el);
+          return s.whiteSpace==='normal' && el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1;
+        }"""), label + " S4 계통 기준 전체 줄바꿈·가로 넘침 없음")
     if baseline:
-        token, monthly = baseline
+        token, per_day = baseline  # D-82 결정 1·화면 지시서: 성적표와 같은 일평균.
         line = page.locator("#lg-promise-baseline").inner_text()
-        match = re.search(rf"시험 1주 대비 · ({NUMBER}) MWh", line)
-        checks.ok(bool(match) and near(match[1], monthly, 1) and value(match[1]) == value(token),
-                  label + " S4 비교 기준 MWh = 독립 월 환산 = S3 표시")
+        match = re.search(rf"시험 1주 대비 · 하루 평균 ({NUMBER}) MWh/일", line)
+        checks.ok(bool(match) and near(match[1], per_day, 1) and value(match[1]) == value(token),
+                  label + " S4 비교 기준 MWh/일 = 독립 하루 평균 = S3 표시")
     page.locator('[data-evidence="grid"]').click()
     page.locator(f'[data-pred="{topic}"]').select_option("same")
     page.locator('[data-confidence="fairly"]').click()
@@ -228,31 +236,33 @@ def result(checks, page, tested, label, grid=True):
       return r.top>=p.top-.5 && r.bottom<=Math.min(innerHeight,p.bottom)+.5;
     }"""), label + " S6 서랍 첫 화면에서 CO₂ 줄 전체 보임")
     r = current["team"][player]
+    # D-82 결정 1·화면 지시서: 소비 CO₂·계통 칩도 하루 평균 먼저, 월 합계는 보조.
     total = r["co2Cons"] * month_days(current) / current["days"]
+    per_day = total / month_days(current)
     previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
     if previous:
-        base = previous["team"][player]["co2Cons"] * month_days(previous) / previous["days"]
+        base = previous["team"][player]["co2Cons"] * month_days(previous) / previous["days"] / month_days(previous)
         baseline_name = "지난달 대비"
     else:
-        base = tested["co2"] * month_days(current) / tested["days"]
+        base = tested["co2"] / tested["days"]
         baseline_name = "시험 1주 대비"
     line = node.inner_text()
-    match = re.search(rf"소비 CO₂\(이웃·계통에서 받은 전기 포함\) ({NUMBER}) t · {baseline_name} Δ ({NUMBER}) t", line)
+    match = re.search(rf"소비 CO₂\(이웃·계통에서 받은 전기 포함\) 하루 평균 ({NUMBER}) t/일 · {baseline_name} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", line)
     require(checks, bool(match), label + " S6 소비 CO₂·기준·Δ 형식")
-    checks.ok(near(match[1], total, 0) and near(match[2], total - base, 0) and
+    checks.ok(near(match[1], per_day, 1) and near(match[2], per_day - base, 1) and near(match[3], total, 0) and
               (value(match[2]) == 0 or match[2].lstrip().startswith(("+", "−", "-"))),
-              label + " S6 소비 CO₂×월 배수·Δ 독립 검산(부호·표시 자릿수)")
+              label + " S6 소비 CO₂ 하루 평균·Δ·보조 월 합계 독립 검산(부호·표시 자릿수)")
     checks.ok("계통에서 끌어온 전기도 우리 도시 소비 배출에 들어가요." in line,
               label + " S6 계통 수입과 소비 배출 연결")
     isolated = r["isolated"]["uns"]
-    grid_mwh = max(0, isolated - r["uns"] - r["imp"] + r["sub"]) * month_days(current) / current["days"]
+    grid_per_day = max(0, isolated - r["uns"] - r["imp"] + r["sub"]) / current["days"]
     buttons = page.locator(".lg-reason-starts").first.locator("[data-reason-start]")
     starts = buttons.all_text_contents()
-    m = re.search(rf"이번 달 계통이 메운 전기 ({NUMBER}) MWh라서", starts[0] if starts else "")
-    checks.ok(len(starts) == 3 and bool(m) and near(m[1], grid_mwh, 1) and
+    m = re.search(rf"이번 달 계통이 메운 전기 하루 평균 ({NUMBER}) MWh/일이라서", starts[0] if starts else "")
+    checks.ok(len(starts) == 3 and bool(m) and near(m[1], grid_per_day, 1) and
               starts[1] == "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 " and
               starts[2].startswith("남은 돈 ") and not any("정전" in x for x in starts),
-              label + " S8 계통 월 환산 칩·확인 칩·현금 칩(정전 0% 없음)")
+              label + " S8 계통 하루 평균 칩·확인 칩·현금 칩(정전 0% 없음)")
     # 칩은 클릭할 때 textarea에 같은 문장을 넣는 실제 사용자 조작도 확인한다.
     buttons.nth(0).click()
     checks.ok(page.locator('[data-note="askReason"]').input_value().startswith(starts[0]),

@@ -249,7 +249,7 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
         baseline = 0 if topic == "cash" else baseline if baseline is not None else trial["unsPct"]  # D-80: 현금은 운영 전 대비.
     actual = expected[topic]  # D-80: 주제별 복제 운영 기대값.
     delta = actual - baseline  # D-80: UI promiseComparison/gridReliance 호출 없이 계산한다.
-    # D-82: 방향은 두 기간 각각의 일평균으로, S6 기존 월 합계 표시 단언은 유지한다.
+    # D-82 결정 1·화면 지시서: S6 표시 차이도 두 기간 각각의 일평균을 사용한다.
     base_per_day = (public_grid_mwh(previous, player) / period_days(previous) if previous else trial["gridMWh"] / trial["days"]) if topic == "grid" else None  # D-82
     same = abs(actual / expected["days"] - base_per_day) <= max(.05, .05 * abs(base_per_day)) if topic == "grid" else abs(delta) < .5  # D-82
     direction_delta = actual / expected["days"] - base_per_day if topic == "grid" else delta  # D-82
@@ -259,7 +259,7 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
     page.locator('[data-confidence="fairly"]').click()
     page.locator("#lg-ready-confirm").click()
     return {"topic": topic, "prediction": prediction, "direction": direction, "hit": hit,  # D-80: 운영 뒤 검증용 기대값.
-            "baseline": baseline, "actual": actual, "delta": delta,  # D-80: S7 분해 대상과 별도로 보존한다.
+            "baseline": baseline, "actual": actual, "delta": direction_delta,  # D-82 결정 1·화면 지시서: grid는 독립 일평균 Δ, 다른 주제는 기존 값.
             "basis": "운영 전 대비" if topic == "cash" else "지난달 대비" if previous else "시험 1주 대비"}  # D-80: 기준 문구도 검사한다.
 
 
@@ -278,8 +278,8 @@ def promise_result(checks, page, expected, label):  # D-80: 주제별 S6 판정�
               note.get("outcome", {}).get("hit") is expected["hit"], f"{label} {topic} 저장 판정 = 독립 기대 방향·적중")  # D-80: 적중 의도 완화 금지.
     verdict = "예상과 같음" if expected["hit"] else "예상과 다름"  # D-80: 틀리기/맞히기 양쪽 확인.
     checks.ok(verdict in compare and expected["basis"] in compare, f"{label} {topic} 화면 판정·비교 기준 일치")  # D-80: B-3.
-    unit = "MWh" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-80: 주제별 단위.
-    match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-80: 계통 비용 대신 첫 MWh 차이를 검사한다.
+    unit = "MWh/일" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-82 결정 1·화면 지시서: 판정과 같은 일평균 단위.
+    match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-82 결정 1·화면 지시서: 첫 MWh/일 차이를 검사, 월 합계와 혼동 금지.
     step = ".1" if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
     displayed = Decimal.from_float(expected["delta"]).quantize(Decimal(step), rounding=ROUND_HALF_UP)  # D-80: 이진 실수의 표시 반올림값과 대조, 허용 오차 확대 없음.
     checks.ok(match is not None and Decimal(match[1].replace("−", "-").replace(",", "")) == displayed,  # D-80: B-3 수치.
