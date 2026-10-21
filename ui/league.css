@@ -313,7 +313,8 @@
 .lg-solo-cities { display: grid; gap: 6px; }
 .lg-panel[data-econ="true"] .lg-ptabs { flex-wrap: wrap; }
 .lg-panel[data-econ="true"] .lg-ptab { padding: 0 9px; font-size: 13px; }
-.lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; }
+/* 한글 낱말 중간에서 줄이 바뀌지 않게 한다(예: '개월'). 칸보다 긴 낱말은 anywhere로 끊어 넘치지 않는다. */
+.lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; word-break: keep-all; }
 .lg-panel[data-econ="true"] .lg-pbody h2 { font-size: 19px; }
 .lg-panel[data-econ="true"] .lg-pbody h4 { margin: 14px 0 6px; }
 /* B18: 요약은 한 줄로 묶고 좁은 서랍에서는 줄바꿈한다. 팀 화면의 남색 토큰을 쓴다. */
@@ -661,6 +662,30 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-host #lg-host-summary-table td { font-size: 18px; }
     html.v2-league-host .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
     html.v2-league-host .lg-evs { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* 품질8 F: 프로젝터(1920×1080)용 진행자 원거리 가독. 넓은 화면의 진행자만 바꾸고 팀 화면·좁은 화면은 그대로 둔다.
+     기준(docs/QUALITY-ux.md F): 방 코드 48px, 핵심 숫자 32px, 표 본문 18px, 머리글·목표 줄 16px, 14px 미만은 보조 각주만. */
+  @media (min-width: 1400px) {
+    html.v2-league-host #lg-roomcode { font-size: 48px; letter-spacing: .06em; }
+    html.v2-league-host .lg-host-board small,
+    html.v2-league-host .lg-phase-chip { font-size: 16px; }
+    html.v2-league-host #lg-host-ready b small { font-size: 20px; }
+    html.v2-league-host #lg-host-goals,
+    html.v2-league-host .lg-goalbar,
+    html.v2-league-host .lg-goalbar b { font-size: 16px; }
+    html.v2-league-host .lg-goalbar { grid-template-columns: 44px minmax(20px, 1fr) auto; }
+    html.v2-league-host .lg-command-goals > small { font-size: 16px; }
+    html.v2-league-host .lg-command-goals small.lg-goal-note { font: 400 14px/1.5 var(--body); }
+    html.v2-league-host #lg-host-risk > .lg-hint,
+    html.v2-league-host #lg-host-unready > .lg-hint { font-size: 16px; }
+    html.v2-league-host #lg-host-summary > .lg-hint,
+    html.v2-league-host .lg-host-city-chips .lg-hint,
+    html.v2-league-host .lg-hbar :is(.v2-kicker, .lg-conn) { font-size: 14px; }
+    html.v2-league-host #lg-host-summary-table thead th { font-size: 16px; }
+    html.v2-league-host #lg-host-unready,
+    html.v2-league-host .lg-risk-chip { font-size: 16px; }
+    html.v2-league-host .lg-host-tools .v2-btn { font-size: 15px; }
+    html.v2-league-host .lg-ledger-note { font-size: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *,
