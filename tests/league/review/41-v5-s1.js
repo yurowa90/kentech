@@ -411,12 +411,68 @@ for (const role of ['team', 'solo']) for (const event of [undefined, 'regulation
 for (const opt of [{ role: 'host' }, { role: 'host', viewing: 'dangjin' }, { away: true }, { noEcon: true }, { phase: 'review' }, { phase: 'end' }])
   test(`1 §1 제외 조건 ${JSON.stringify(opt)}`, () => { fixture(h, opt); assert.ok(!view(h).group); });
 test('1 §1·5 대응 사건 달 카드 없음', () => { fixture(h, { event: 'response' }); assert.ok(!view(h).group); });
+function eventDrawerHTML(a) {
+  // 기준 버전은 하네스에서 검사용으로 노출한 기존 렌더 함수를 사용한다.
+  const fn = api(a, 'renderPanel'); a.L.panel = 'deal';
+  const panel = new Element('aside', { id: 'lg-panel' }); a.nodes.set('lg-panel', panel);
+  fn(); return panel.innerHTML;
+}
+function normalizeEventSources(html) {
+  const blocks = [];
+  // 이 클래스의 details만 치환한다. 다른 접힘과 블록 밖 공백·속성은 그대로 둔다.
+  const normalized = html.replace(/<details\b[^>]*\sclass="lg-event-source"[^>]*>[\s\S]*?<\/details>/g, raw => {
+    const element = htmlTree(raw).querySelector('details.lg-event-source');
+    const id = element.getAttribute('data-event-source');
+    blocks.push({ id, element });
+    return `<details class="lg-event-source" data-event-source="${escape(id)}">[사건 자료]</details>`;
+  });
+  return { html: normalized, blocks };
+}
+test('사건 자료 정규화: 다른 details·다른 클래스·블록 밖 바이트 보존', () => {
+  const block = '<details class="lg-event-source" data-event-source="event-a"><summary>자료</summary><p>변경 가능</p></details>';
+  const before = '<details><summary>다른 접힘</summary>그대로</details>\n';
+  const after = '\n<details class="lg-event-source-extra">다른 클래스</details> 끝';
+  const normalized = normalizeEventSources(before + block + after);
+  assert.equal(normalized.html, before + '<details class="lg-event-source" data-event-source="event-a">[사건 자료]</details>' + after);
+  assert.deepEqual(normalized.blocks.map(b => b.id), ['event-a']);
+});
 test('1 §1·5 대응 사건 달 서랍 HTML = 9c14549', () => {
   for (const a of [h, old]) fixture(a, { event: 'response' });
-  // 기준 버전은 하네스에서 검사용으로 노출한 기존 렌더 함수를 사용한다.
-  const render = a => { const fn = api(a, 'renderPanel'); a.L.panel = 'deal';
-    const panel = new Element('aside', { id: 'lg-panel' }); a.nodes.set('lg-panel', panel); fn(); return panel.innerHTML; };
-  assert.equal(render(h), render(old), '사건 달 전체 서랍 바이트 동일');
+  const current = normalizeEventSources(eventDrawerHTML(h)), baseline = normalizeEventSources(eventDrawerHTML(old));
+  assert.ok(baseline.blocks.length >= 1, '기준 서랍에 사건 자료 블록 한 개 이상');
+  assert.equal(current.blocks.length, baseline.blocks.length, '사건 자료 블록 개수 동일');
+  assert.ok(current.blocks.every(b => b.id), '현재 사건 자료 블록의 사건 id 누락 없음');
+  assert.deepEqual(current.blocks.map(b => b.id), baseline.blocks.map(b => b.id), '사건 id 순서 동일');
+  assert.deepEqual(Buffer.from(current.html, 'utf8'), Buffer.from(baseline.html, 'utf8'),
+    '사건 자료 블록만 정규화한 전체 서랍 UTF-8 바이트 동일');
+});
+test('사건 자료 현재 서랍: summary·출처·관측 시점·발표 표시 누락 없음', () => {
+  fixture(h, { event: 'response' });
+  // 공개된 시점 함수가 없으므로 실제 사건 입력을 쓴다. 전체 사건을 넣어 null·구간·발표도 확인한다.
+  h.L.snap.events = h.R.events.map(E => ({ id: E.id, round: h.L.snap.round }));
+  const blocks = htmlTree(eventDrawerHTML(h)).querySelectorAll('details.lg-event-source');
+  assert.equal(blocks.length, h.R.events.length, '입력 사건마다 자료 블록 하나');
+  assert.ok(blocks.length >= 1, '검사할 사건 자료 존재');
+  for (const block of blocks) {
+    const id = block.getAttribute('data-event-source'), E = h.C.eventDef(h.R, id);
+    assert.ok(E, `${id}: 사건 정의 존재`);
+    assert.equal(block.querySelector('summary')?.textContent, '사건 자료·출처', `${id}: summary`);
+    const line = block.querySelectorAll('p').find(p => p.textContent.startsWith('출처:'))?.textContent;
+    assert.ok(line, `${id}: 출처 줄 존재`);
+    const fields = line.split(' · ');
+    assert.match(fields[0], /^출처:\s*\S+/, `${id}: 빈 출처 없음`);
+    assert.doesNotMatch(block.textContent, /undefined|NaN/, `${id}: 잘못된 출처·시점 없음`);
+    // ISO 구간은 시작~끝, 여러 시점은 쉼표로 표시한다(사건 자료 계약).
+    const dates = list => Array.from(list, date => date.replace('/', '~')).join(', ');
+    const observed = E.asOf === null ? '없음' : E.asOf === undefined ? '미기재' : dates(E.asOf);
+    assert.ok(observed.trim(), `${id}: 빈 관측 시점 없음`);
+    assert.equal(fields.find(f => f.startsWith('자료 시점 ')), `자료 시점 ${observed}`, `${id}: 관측 시점`);
+    if (E.published !== undefined) {
+      const published = dates(E.published);
+      assert.ok(published.trim(), `${id}: 빈 발표 시점 없음`);
+      assert.equal(fields.find(f => f.startsWith('발표 ')), `발표 ${published}`, `${id}: 발표 시점`);
+    } else assert.ok(!fields.some(f => f.startsWith('발표 ')), `${id}: 발표 없는 자료`);
+  }
 });
 
 const cases = [
