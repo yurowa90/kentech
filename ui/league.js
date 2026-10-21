@@ -917,10 +917,11 @@
     return `${rounded < 0 ? "−" : sign && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
   };
   const outageCost = (x, a) => a?.target === "grid" ? ` (비용 ${outageNumber(x * params("normalCost") * params("gridImportMarkup"), true)}억)` : "";
-  // D-80 C-5 임시(G): 계통 '같음' 문턱의 1/10. 옛 기록은 정전 문턱 그대로 읽는다.
   // 재현 차이를 보일 최소 크기: 표시 자릿수의 절반(정전 0.005%p, 계통 0.05 MWh/일).
   const outageReplayShown = (a, x) => Number.isFinite(x) && Math.abs(x) >= (a?.target === "grid" ? .05 : .005);
-  const outageMinPart = a => a?.target === "grid" ? gridSameTolPerDay(a.trial ?? a.base) / 10 : .05;
+  // D-82 총괄 결정: 계통 최소 몫은 '같음' 문턱의 1/10과 표시 눈금(0.1 MWh/일)의 절반 중 큰 값.
+  const OUTAGE_MIN_GRID_PART_PER_DAY = 0.05;
+  const outageMinPart = a => a?.target === "grid" ? Math.max(gridSameTolPerDay(a.trial ?? a.base) / 10, OUTAGE_MIN_GRID_PART_PER_DAY) : .05;
   // 직접: 해당 물리 입력을 바꾸는 단계. 같은 단계: 함께 바뀌지만 해당 근거만의 효과는 아니다.
   // 간접: 비용·다른 수요·이웃 조건을 통한 관련성만 있다.
   // 연료 배수는 급전 한계비용을 바꾼다. 고립 정전 효과가 보장되지 않으므로 growth도 간접이다.

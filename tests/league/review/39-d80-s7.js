@@ -38,6 +38,7 @@ const monthDays = (V, res) => C.roundsOf(V)[res.round - 1].mdays;
 const mul = (V, res) => monthDays(V, res) / res.days;
 const actualMWh = f => fillMWh(f.res.team[id]) / f.res.days; // D-82: S7은 MWh/일.
 const sameTol = base => Math.max(.05, .05 * Math.abs(base)); // D-82: 측정 보고서의 제안 식.
+const minPart = base => Math.max(sameTol(base) / 10, .05); // D-82 수정 2(총괄 결정): S7 최소 몫 하한 = 표시 눈금 0.1의 절반.
 const sum = a => a.parts.reduce((n, p) => n + p.value, 0);
 let checks = 0, failures = 0;
 function check(label, fn) {
@@ -215,7 +216,7 @@ function synthetic(f, target, values, base = 1000) {
   });
   check('8 largest includes cost', () => assert.ok((text.match(/<p>가장 큰 것[^]*?<\/p>/)?.[0] || '').includes('억'), '최대 몫 판정 줄의 비용'));
   for (const base of [0, 10, 1000, -1000]) {
-    const threshold = sameTol(base) / 10, counts = [];
+    const threshold = minPart(base), counts = [];
     for (const factor of [.999999, 1.000001]) {
       const a = synthetic(f, 'grid', [threshold * 3, threshold * factor, 0, 0], base);
       const closed = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
@@ -236,7 +237,7 @@ function synthetic(f, target, values, base = 1000) {
     if (a?.target === 'grid') {
       gridMonths++;
       // MWh 소수 첫째 자리 표시값이 같으면 공동 최대(D-80 C-7).
-      const rounded = a.parts.filter(p => Math.abs(p.value) >= sameTol(a.trial) / 10)
+      const rounded = a.parts.filter(p => Math.abs(p.value) >= minPart(a.trial))
         .map(p => ({ key: p.key, size: Math.round(Math.abs(p.value) * 10) }));
       const largest = Math.max(...rounded.map(p => p.size));
       if (rounded.length)

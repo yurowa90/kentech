@@ -45,7 +45,7 @@ S7_MWH = re.compile(r"[+−]?[\d,]+\.\d MWh/일")  # D-82: 새 S7의 표시 단�
 
 
 def part_min(a):  # D-80: C-5, 독립 문턱 식.
-    return max(.05, .05 * abs(a["trial"])) / 10 if a.get("target") == "grid" else .05  # D-82: 측정 보고서의 일평균 문턱.
+    return max(max(.05, .05 * abs(a["trial"])) / 10, .05) if a.get("target") == "grid" else .05  # D-82 수정 2(총괄 결정): 하한 0.05 = 표시 눈금 절반.
 
 
 def rounded_share(value, a):  # D-80: C-4, 허용 오차 확대 없이 표시 반올림값과 대조.
