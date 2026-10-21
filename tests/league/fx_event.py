@@ -7,7 +7,8 @@
 1280×900/390×844 밝음 × 일반/reduce마다 두 고정 방 코드로 12달 진행한다.
 fx_event_seeds.js가 D-64 room 규칙으로 만든 lobby 시작 저장본만 기존
 혼자 하기 복원 경로로 넣는다(s8n.py restore_solo와 같은 저장 형식).
-사건·계획·라운드를 주입하거나 fx API를 직접 호출하지 않는다.
+사건·계획·라운드를 주입하지 않는다. Esc1 보조 판에서만 monthStart의 실제
+호출을 잠시 붙잡아 서랍을 연 뒤 원래 인자로 풀고, 검사 후 함수를 복원한다.
 분위기 표는 w4-event-cards.md 3절의 독립 기대값이다. 여러 사건은 자료
 순서의 첫 유효 분위기를 비교한다. 8항목 모두 계획·실제 예보·결과/재생
 검사를 수행해야 하며, 고정 판의 사건이 달라지거나 항목이 빠지면 실패한다.
@@ -28,6 +29,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 from playwright.sync_api import sync_playwright
 
@@ -1040,7 +1042,13 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                     map_touch(checks, page, prefix)
                     coverage['paths'].add(action)
                 elif strip_ready and action == 'esc':
+                    drawer_open = page.locator('#lg-panel').is_visible()
                     page.keyboard.press('Escape')
+                    if drawer_open:
+                        checks.ok(not page.locator('#lg-panel').is_visible(),
+                                  prefix + ' 별도 달 Esc1 서랍만 닫힘')
+                        strip_stays_open(checks, page, prefix + ' 별도 달 Esc1 띠 유지')
+                        page.keyboard.press('Escape')
                     result_closed(checks, page, prefix + ' 별도 달 Esc')
                     coverage['paths'].add(action)
                 elif strip_ready and action == 'timeout':
@@ -1096,6 +1104,243 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
     if mobile:
         checks.ok(strip_expand, f'{label} W4c 결과 띠 펼치기·Esc 검사 실행')
         checks.ok(strip_click, f'{label} W4c 결과 띠 열린 채 S8 유지 단추 클릭 전달 검사 실행')
+
+
+def esc_one_layer(checks, page, base, label, reduced, fixture, coverage):
+    """총괄 규칙 a~e: 한 Esc를 처리한 층 이외의 카드/서랍은 남아야 한다.
+
+    첫 고정 방의 자연 사건 1·2·4·6월을 사용한다. 기대값은 규칙 문장에서
+    정하며, monthStart 감싸기는 호출 시점만 고정하고 인자/상태는 바꾸지 않는다.
+    """
+    class TimedChecks(Checks):
+        # 자동 닫힘과 구별할 수 없는 판은 FAIL을 출력하기 전에 통째로 제외한다.
+        def __init__(self):
+            self.pending = []
+            self.shown_at = None
+            self.sample_key = None
+
+        def ok(self, condition, message):
+            self.pending.append((bool(condition), message))
+            return bool(condition)
+
+        def start_clock(self, month, forecast):
+            self.sample_key = [month, forecast]
+            age_ms = page.wait_for_function("""([month, forecast]) => {
+              const dom=(""" + DOM_JS + """);
+              const fx=KCP.fxTurn?.state?.();
+              const record=window.__fxEventProbe.find(
+                r=>r.round===month && r.forecast===forecast);
+              const shown=dom.cards().some(c=>c.visible) ||
+                [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible);
+              if (!fx?.cardsOpen || fx.forecastOpen!==forecast || fx.playing ||
+                  !shown || record?.firstVisibleAt==null) return false;
+              return {age:performance.now()-record.firstVisibleAt};
+            }""", arg=[month, forecast], timeout=WAIT).json_value()['age']
+            # DOM 최초 표시 시각을 monotonic 시간축으로 옮긴다. locator 대기
+            # 중 흐른 시간까지 포함해 마지막 단언까지의 8초를 판정한다.
+            self.shown_at = time.monotonic() - age_ms / 1000
+
+        def flush(self, prefix):
+            if self.shown_at is None and self.sample_key is not None:
+                # 대기 중 이미 자동으로 닫혀도 최초 표시 기록으로 시간을 복구한다.
+                age_ms = page.evaluate("""([month, forecast]) => {
+                  const record=window.__fxEventProbe.find(
+                    r=>r.round===month && r.forecast===forecast);
+                  return record?.firstVisibleAt==null ? null :
+                    performance.now()-record.firstVisibleAt;
+                }""", self.sample_key)
+                if age_ms is not None:
+                    self.shown_at = time.monotonic() - age_ms / 1000
+            elapsed = (time.monotonic() - self.shown_at
+                       if self.shown_at is not None else None)
+            if elapsed is not None and elapsed > 8:
+                print(f'INFO {prefix} 표시 후 {elapsed:.2f}초 > 8초: '
+                      '10초 자동 닫힘과 구별 불가하므로 이 판의 단언은 채점하지 않음', flush=True)
+                return False
+            for condition, message in self.pending:
+                checks.ok(condition, message)
+            return True
+
+    city = page.locator('#lg-bar [data-panel="city"]')
+    panel = page.locator('#lg-panel')
+    touch = page.viewport_size['width'] == 390
+    trials = {1: 'coach', 2: 'drawer', 4: 'focus', 6: 'dialog'}
+    restore_fixture(checks, page, base, label + ' Esc1', fixture)
+    try:
+        for month in range(1, 7):
+            state = wait_state(page, month, ['plan'])
+            kind = trials.get(month)
+            prefix = f'{label} Esc1 {month}월 {kind or "진행"}'
+            timed = TimedChecks()
+            forecast_strip = False
+            try:
+                if kind and month != 1:
+                    page.wait_for_function("""month =>
+                      window.__fxEscMonthStart?.calls.some(c=>c.args[0]?.round===month)
+                    """, arg=month, timeout=WAIT)
+                    pointer_press(page, city, touch=touch)
+                    panel.wait_for(state='visible', timeout=1000)
+                    timed.ok(panel.get_attribute('data-tab') == 'city',
+                             prefix + ' 예보 마운트 전 실제 포인터로 도시 서랍 열림')
+                    if kind == 'dialog':
+                        # econui.u_plan_contract의 실제 도움말 열기 경로를 재사용.
+                        page.locator('#bd-help').click()
+                        page.locator('#lg-help').wait_for(state='visible')
+                        page.locator('#lg-build-help').click()
+                        page.locator('#bd-help-dlg[open]').wait_for(state='visible')
+                    page.evaluate("""() => {
+                      const held=window.__fxEscMonthStart;
+                      for (const call of held.calls.splice(0))
+                        held.original.apply(call.receiver, call.args);
+                    }""")
+                if kind:
+                    timed.start_clock(month, True)
+                    timed.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
+                             prefix + ' 실제 예보 열린 상태에서 시작')
+                    if kind == 'coach':
+                        timed.ok(page.locator('#lg-coach').is_visible(),
+                                 prefix + ' 첫 달 코치 보임')
+                        # c: 기존 코치 Esc1/예보 Esc2 단언을 중복 작성하지 않는다.
+                        dismiss_forecast(timed, page, state, prefix, False)
+                    elif kind == 'drawer':
+                        fx = observe(page)['fx'] or {}
+                        if touch:
+                            forecast_strip = (panel.is_visible() and fx.get('strip') is True and
+                                              page.locator('.fx-turn-strip:visible').count() == 1)
+                            timed.ok(forecast_strip, prefix + ' 도시 서랍 앞 예보 띠 실제 표시')
+                        else:
+                            # 1280은 서랍이 지도를 덮지 않아 띠가 아니라 카드로 보인다(맨 위 층 아님).
+                            timed.ok(panel.is_visible() and fx.get('strip') is not True and
+                                     page.locator('.fx-turn-card-row:visible').count() == 1,
+                                     prefix + ' 도시 서랍과 함께 예보 카드 실제 표시')
+                        # 덱 밖인 서랍 안에 초점을 두어 실제 복귀 동작까지 검출한다.
+                        # 처음부터 도시 탭에 두면 복귀하지 않는 회귀를 놓치게 된다.
+                        page.locator('#lg-panel-fold').focus()
+                        timed.ok(page.locator('#lg-panel-fold').evaluate(
+                            'el => el===document.activeElement'),
+                            prefix + ' Esc 전 초점이 서랍 안·덱 밖')
+                        page.keyboard.press('Escape')
+                        timed.ok(not panel.is_visible() and
+                                 (observe(page)['fx'] or {}).get('forecastOpen') is True,
+                                 prefix + ' Esc1 도시 서랍만 닫히고 예보 유지')
+                        timed.test(prefix + ' Esc1 도시 탭으로 초점 복귀', lambda: bool(
+                            page.wait_for_function("""() => document.activeElement===
+                              document.querySelector('#lg-bar [data-panel="city"]')
+                            """, timeout=1000)))
+                        page.keyboard.press('Escape')
+                        timed.test(prefix + ' Esc2 예보 닫힘', lambda: bool(
+                            page.wait_for_function("""() =>
+                              KCP.fxTurn?.state?.().forecastOpen===false
+                            """, timeout=1000)))
+                    elif kind == 'focus':
+                        # 펼치지 않고 덱 안의 실제 초점 가능 단추로 이동한다.
+                        # 띠(390)는 펼치기 단추, 카드(1280)는 닫기 단추가 덱 안의 초점 가능 요소다.
+                        target = page.locator('.fx-turn-cards ' +
+                                              ('.fx-turn-expand' if touch else '.fx-turn-close'))
+                        target.focus()
+                        timed.ok(target.is_visible() and
+                                 (not touch or target.get_attribute('aria-expanded') == 'false') and
+                                 page.evaluate("""() => !!document.activeElement?.closest(
+                                   '.fx-turn-cards')""") and panel.is_visible(),
+                                 prefix + ' 펼치기 전 덱 안 초점·도시 서랍 열림')
+                        page.keyboard.press('Escape')
+                        timed.test(prefix + ' Esc 예보만 닫힘', lambda: bool(
+                            page.wait_for_function("""() =>
+                              KCP.fxTurn?.state?.().forecastOpen===false
+                            """, timeout=1000)))
+                        timed.ok(panel.is_visible() and panel.get_attribute('data-tab') == 'city',
+                                 prefix + ' Esc 뒤 도시 서랍 유지')
+                    else:
+                        dialog = page.locator('#bd-help-dlg[open]')
+                        timed.ok(dialog.is_visible(), prefix + ' 네이티브 dialog[open] 보임')
+                        # close는 keydown보다 늦다. 기존 econui 검사처럼 이벤트까지 기다린다.
+                        page.evaluate("""() => {
+                          window.__fxEscHelpClosed=false;
+                          document.querySelector('#bd-help-dlg').addEventListener('close',
+                            () => { window.__fxEscHelpClosed=true; }, {once:true});
+                        }""")
+                        page.keyboard.press('Escape')
+                        timed.test(prefix + ' Esc 대화상자만 닫힘', lambda: bool(
+                            page.wait_for_function("""() => window.__fxEscHelpClosed &&
+                              !document.querySelector('dialog[open]')""", timeout=1000)))
+                        timed.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
+                                 prefix + ' Esc 뒤 예보 유지(dialog에 양보)')
+            except Exception as exc:
+                timed.ok(False, f'{prefix} 예외 {type(exc).__name__}: '
+                         f'{str(exc).splitlines()[0][:200]}')
+            finally:
+                timed.flush(prefix)
+                # 실행 경로와 시간 안의 규칙 판정은 구분한다. 8초 초과 판도 실제로
+                # 띠를 봤다면 경로는 실행했으므로 필수 coverage로 간접 실패시키지 않는다.
+                if forecast_strip:
+                    coverage['paths'].add('forecast-strip')
+                page.evaluate("""() => {
+                  const held=window.__fxEscMonthStart;
+                  if (held) KCP.fxTurn.monthStart=held.original;
+                  delete window.__fxEscMonthStart;
+                }""")
+
+            # 실패 뒤에도 다음 독립 자연 사건으로 진행하기 위한 화면 조작이다.
+            if page.locator('dialog[open]').count():
+                page.locator('dialog[open]').press('Escape')
+            coach = page.locator('#lg-guide-close')
+            if coach.count() and coach.is_visible():
+                coach.click()
+            if (observe(page)['fx'] or {}).get('forecastOpen'):
+                page.locator('.fx-turn-cards button:visible').first.press('Escape')
+            if month == 6:
+                break
+            result = click_progress(page, observe(page))
+            if month == 1 or result['resultEvents']:
+                timed = TimedChecks()
+                prefix = f'{label} Esc1 {month}월 result'
+                try:
+                    timed.start_clock(month, False)
+                    if month == 1:
+                        fx = observe(page)['fx'] or {}
+                        shown_cards = (fx.get('strip') is True and
+                                       page.locator('.fx-turn-strip:visible').count() == 1 and
+                                       not page.locator('.fx-turn-expand[aria-expanded="true"]').count()
+                                       ) if touch else (fx.get('strip') is not True and
+                                       page.locator('.fx-turn-card-row:visible').count() == 1)
+                        timed.ok(panel.is_visible() and panel.get_attribute('data-tab') == 'result' and
+                                 shown_cards,
+                                 prefix + (' 결과 서랍·펼치지 않은 결과 띠 보임' if touch else
+                                           ' 결과 서랍·결과 카드 보임'))
+                        page.locator('#lg-bar [data-panel="result"]').focus()
+                        page.keyboard.press('Escape')
+                        timed.ok(not panel.is_visible(), prefix + ' Esc1 결과 서랍만 닫힘')
+                        if touch:
+                            strip_stays_open(timed, page, prefix + ' Esc1 결과 카드·띠 유지')
+                        else:
+                            timed.ok((observe(page)['fx'] or {}).get('cardsOpen') is True and
+                                     page.locator('.fx-turn-card-row:visible').count() == 1,
+                                     prefix + ' Esc1 결과 카드 유지')
+                        page.keyboard.press('Escape')
+                        result_closed(timed, page, prefix + ' Esc2 결과 카드 닫힘')
+                except Exception as exc:
+                    timed.ok(False, f'{prefix} 예외 {type(exc).__name__}: '
+                             f'{str(exc).splitlines()[0][:200]}')
+                finally:
+                    timed.flush(prefix)
+                if (observe(page)['fx'] or {}).get('cardsOpen'):
+                    page.locator('.fx-turn-cards button:visible').first.press('Escape')
+            if month + 1 in trials:
+                # 다음 달 진행 전에 포착한다. league는 호출마다 공개 함수를 찾는다.
+                page.evaluate("""() => {
+                  const held={original:KCP.fxTurn.monthStart, calls:[]};
+                  window.__fxEscMonthStart=held;
+                  KCP.fxTurn.monthStart=function(...args) {
+                    held.calls.push({receiver:this, args});
+                  };
+                }""")
+            click_progress(page, observe(page))
+    finally:
+        page.evaluate("""() => {
+          const held=window.__fxEscMonthStart;
+          if (held) KCP.fxTurn.monthStart=held.original;
+          delete window.__fxEscMonthStart;
+        }""")
 
 
 def run_forecast_case(checks, page, base, label, reduced, fixture, coverage):
@@ -1192,6 +1437,21 @@ def main():
                                 diagnostics(checks, events, case_label)
                                 checks.ok(not external, f'{case_label} 외부 연결 시도 0: {external}')
                                 context.close()
+                        # Esc 계층 검사는 각 크기·motion마다 별도 저장소에서 한 번 실행한다.
+                        context, external = context_for(MotionBrowser(browser, reduced),
+                                                        base, width, height, 'light')
+                        context.add_init_script(PROBE_JS)
+                        page, events = monitored_page(context)
+                        try:
+                            esc_one_layer(checks, page, base, label, reduced,
+                                          fixtures[0], coverage)
+                        except Exception as exc:
+                            checks.ok(False, f'{label} Esc1 진행 예외 {type(exc).__name__}: '
+                                      f'{str(exc).splitlines()[0][:200]}')
+                        finally:
+                            diagnostics(checks, events, label + ' Esc1')
+                            checks.ok(not external, f'{label} Esc1 외부 연결 시도 0: {external}')
+                            context.close()
                         if width == 390:
                             probe_label = label + '-forecast-probe'
                             context, external = context_for(MotionBrowser(browser, reduced),
@@ -1215,15 +1475,15 @@ def main():
                                 checks.ok(key in coverage[stage],
                                           f'{label} 필수 분위기 표 {key} {stage} 실행')
                         if width == 390:
+                            # 띠는 서랍이 지도를 덮는 좁은 화면의 모양이다. 1280은 같은 Esc 규칙을 카드로 판정한다.
+                            checks.ok('forecast-strip' in coverage['paths'],
+                                      f'{label} Esc1 forecast-strip 경로 실행')
                             opens = ('auto-open',) if reduced else ('mouse-open', 'touch-open')
                             for path in opens + ('map', 'esc', 'timeout',
                                          'late-tab', 'deferred-recover', 'deferred-next', 'plan-cleanup'):
                                 checks.ok(path in coverage['paths'], f'{label} {path} 경로 실행')
                             if 'deferred-observed' not in coverage['paths']:
                                 print(f'INFO {label} 보류 재현 실패; 다음 달 제거는 일반 띠에서 단언',
-                                      flush=True)
-                            if 'forecast-strip' not in coverage['paths']:
-                                print(f'INFO {label} 예보 띠 재현 불가: 예보 전 서랍 터치 시각 미확보',
                                       flush=True)
                             if 'forecast-reload' not in coverage['paths']:
                                 print(f'INFO {label} 예보 표시 전 닫힘·같은 달 재로딩 재현 불가',
