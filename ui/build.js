@@ -211,6 +211,7 @@
    * ===================================================================== */
   const M = {
     solarMW: 2, rated: 12, cutout: 25, cutin: 3,
+    hotTmax: 28, // G · 무더위 구분과 냉방 수요의 일 최고기온 기준(℃)
     // P · 왕복 85%의 √값 0.922 [I13][I14] · REF 8.6
     batMW: 4, batMWh: 16, batEff: 0.922, socFloor: 0.1,
     lossPerHex: 0.015, taxPerT: 0.005 / 0.75,
@@ -218,21 +219,23 @@
     // M · 경사면 이득 포함 실적 수율 0.8×14.2/12.4≈0.92 [S22][S31] · REF 8.1
     wxSun: [1, 0.45, 0.2], tidalPeriod: 12.42, pvYield: 0.92
   };
+  // 기존 출력 계수: 계산과 도움말이 같은 값을 읽는다.
+  const TIDAL_FACTOR = 0.31, HYDRO_MEAN_FACTOR = 0.25;
   // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
   const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
   const BLD0 = {
-    solar: { hostLimited: true, variable: true, name: "태양광", spec: "2 MW", mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
-    roof: { hostLimited: true, variable: true, name: "지붕 태양광", spec: "0.6 MW", mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
-    wind: { hostLimited: true, variable: true, name: "풍력", spec: "2 MW", mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
-    offshore: { hostLimited: true, variable: true, name: "해상풍력", spec: "4 MW", mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
-    tidal: { hostLimited: true, variable: true, name: "조력", spec: "2 MW", mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
-    hydro: { hostLimited: true, name: "소수력", spec: "0.8 MW", mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
-    diesel: { name: "디젤", spec: "3 MW", mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
-    biomass: { name: "바이오매스", spec: "2 MW", mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
-    battery: { name: "배터리", spec: "4 MW/16 MWh", mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" },
+    solar: { hostLimited: true, variable: true, name: "태양광", get spec() { return buildingSpec("solar", this); }, mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
+    roof: { hostLimited: true, variable: true, name: "지붕 태양광", get spec() { return buildingSpec("roof", this); }, mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
+    wind: { hostLimited: true, variable: true, name: "풍력", get spec() { return buildingSpec("wind", this); }, mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
+    offshore: { hostLimited: true, variable: true, name: "해상풍력", get spec() { return buildingSpec("offshore", this); }, mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
+    tidal: { hostLimited: true, variable: true, name: "조력", get spec() { return buildingSpec("tidal", this); }, mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
+    hydro: { hostLimited: true, name: "소수력", get spec() { return buildingSpec("hydro", this); }, mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
+    diesel: { name: "디젤", get spec() { return buildingSpec("diesel", this); }, mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
+    biomass: { name: "바이오매스", get spec() { return buildingSpec("biomass", this); }, mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
+    battery: { name: "배터리", get spec() { return buildingSpec("battery", this); }, mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" },
     // 연구 기관(cls inst): 발전하지 않는다. 가까운 마을 수요에 load MW를 더한다. 연구 규칙은 아래 RS·TECHS.
-    uni: { name: "에너지공학대학", spec: "연구인력 2 · 0.3 MW", mw: 0, cost: 40, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "uni", load: 0.3 },
-    lab: { name: "기후에너지데이터연구소", spec: "연구석 3 · 0.3억/주", mw: 0, cost: 25, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "lab", load: 0.15 }
+    uni: { name: "에너지공학대학", get spec() { return buildingSpec("uni", this); }, mw: 0, cost: 40, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "uni", load: 0.3 },
+    lab: { name: "기후에너지데이터연구소", get spec() { return buildingSpec("lab", this); }, mw: 0, cost: 25, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "lab", load: 0.15 }
   };
   /* ---------- 연구 → 실증 → 도입 (설계안 v0.1 §5·§13, 숫자는 모두 게임 가정 G) ----------
    * 유효 연구인력 = min(전문인력, 연구석). 전문인력 = 연구소마다 1 + 대학마다 2(지은 뒤 준비 기간이 지나야).
@@ -241,7 +244,7 @@
   const RS = { uniStaff: 2, uniPrepW: 4, labStaff: 1, labSeats: 3, labOpexW: 0.3, labOpexR: 3, roundSteps: 3, retroBat: 1 };
   const TECHS = [
     { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, get eff() { return bmsEffectText(); }, get why() { return `잔량을 정확히 읽어 안전 여유를 줄이고, 충전·방전 손실을 줄여요. ${bmsEffectText()}. 도입 때 배터리마다 개조비 ${fmt(RS.retroBat, 1)}억`; }, grade: "M·G" },
-    { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, eff: "송전 손실 1.5%/칸 → 1.0%/칸", why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
+    { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, get eff() { return gridEffectText(); }, why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
     { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, eff: "배터리를 저녁 피크(17–22시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다", why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
   ];
   // 혼자 하기: 운영 기간(주) 안에서 연구가 어디까지 가는지. 시험 운전마다 처음부터(운영해도 연구가 쌓이지 않는다).
@@ -284,6 +287,7 @@
     return `잔량 하한 ${fmt(M.socFloor * 100)}% → ${fmt(p.floor * 100)}% · 왕복 효율 ${fmt(M.batEff ** 2 * 100)}% → ${fmt(p.efficiency ** 2 * 100)}%(한 방향 약 ${fmt(p.efficiency * 100, 1)}%)`;
   }
   const gridEffectText = () => `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 2)}%/칸 → ${fmt(100 * gridLossPerHex(), 2)}%/칸`;
+  const leagueImportText = () => `연결점 직접 수입 없음${leagueMonth() ? ` · 월 운영은 남은 부족을 시간별 수요의 ${+(KCP.ECON_DATA.params.gridImportShare.v * 100).toFixed(2)}%까지 계통에서 보충` : ""}`;
   const cityName = (pack = PK) => KCP.ECON_DATA?.start?.[pack.id]?.name ||
     Object.values(KCP.LEAGUE_REGIONS || {}).flatMap(r => r.teams).find(t => t.pack === pack.id)?.name || pack.name;
   const WX = [{ k: "sun", name: "맑음" }, { k: "cloud", name: "흐림" }, { k: "rain", name: "비" }];
@@ -291,12 +295,15 @@
   // 평택 계절 날씨: 달마다 맑음·흐림·비 비율(7월 장마)
   const PW = [[.55, .35, .10], [.55, .33, .12], [.50, .35, .15], [.55, .30, .15], [.55, .30, .15], [.40, .35, .25], [.20, .35, .45], [.35, .35, .30], [.50, .30, .20], [.65, .25, .10], [.50, .35, .15], [.50, .38, .12]];
   const POLICIES = [
-    { id: "tax", name: "탄소세", icon: "co2", eff: () => "CO₂ 값 매김 (디젤 ×1.5)", cost: "0억/일" },
-    { id: "dr", name: "수요반응 계약", icon: "clock", eff: () => demandResponseText(), cost: "0.05억/일" },
+    { id: "tax", name: "탄소세", icon: "co2", eff: () => {
+      const D = dispOf("diesel"), fuel = D.fuel * (S && leagueMods(S.st)?.fuelMul?.diesel || 1);
+      return `CO₂ 값 매김 (디젤 ×${+((fuel + D.co2 * M.taxPerT) / fuel).toFixed(4)})`;
+    }, cost: "0억/일" },
+    { id: "dr", name: "수요반응 계약", icon: "clock", eff: () => demandResponseText(), get cost() { return `${+(M.drCost * (S && leagueMods(S.st)?.drCost || 1)).toFixed(3)}억/일`; } },
     { id: "share", name: "주민 이익공유", icon: "people", eff: () => {
       const remaining = 1 - (KCP.ECON_DATA?.params.shareRelief?.v ?? 0.5);
       return `풍력·태양광 민원 ${remaining === 0.5 ? "½" : fmt(remaining * 100, 1) + "%"}`;
-    }, cost: "0.1억/일" },
+    }, get cost() { return `${M.shareCost}억/일`; } },
     { id: "save", name: "절전 캠페인", icon: "bolt", eff: () => `수요 −${fmt(M.save * 100)}% · 만족 −${fmt(KCP.ECON_DATA?.params.saveSatPenalty?.v ?? 5)}`, cost: "0억/일" }
   ];
   const costTarget = days => Math.round(PK.goals.costBase + PK.goals.costPerDay * days);
@@ -316,13 +323,13 @@
     "결론 먼저, 근거는 두세 개.",
     "얻는 것과 잃는 것을 한 문장에 함께.",
     "배터리는 전기를 만들지 않는다 — 남는 전기를 옮길 뿐.",
-    "충전·방전마다 조금씩 잃는다(여기서는 각 95%).",
-    "흐린 날 태양광은 맑은 날의 절반도 안 된다.",
+    () => `충전·방전마다 조금씩 잃는다(여기서는 각 ${fmt(M.batEff * 100, 1)}%, 왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%).`,
+    () => M.wxSun[1] / M.wxSun[0] < 0.5 ? "흐린 날 태양광은 맑은 날의 절반도 안 된다." : `흐린 날 태양광은 맑은 날의 ${fmt(M.wxSun[1] / M.wxSun[0] * 100)}%다.`,
     "버린 전력도 비용이다 — 건설비는 이미 냈다.",
     "짧게 보면 연료가 싸고, 길게 보면 연료 없는 발전이 싸질 수 있다.",
     "전기가 모자라면 병원은 마지막까지 받는다 — 우선순위가 있다."
   ];
-  const tips = () => (PK.tips || []).concat(TIPS0);
+  const tips = () => (PK.tips || []).concat(TIPS0.map(t => typeof t === "function" ? t() : t));
 
   function mulberry32(a) {
     return function () {
@@ -350,8 +357,8 @@
       const day = { w, mult, noise: [], m, doy };
       if (C) {
         day.tmax = C.temp_c[m] + 5 + (r3 - 0.5) * 6 + (w === 0 ? 1.5 : w === 2 ? -2.5 : 0);
-        day.hot = day.tmax > 28;
-        day.coolF = 0.15 + clamp((day.tmax - 28) * 0.025, 0, 0.1);
+        day.hot = day.tmax > M.hotTmax;
+        day.coolF = 0.15 + clamp((day.tmax - M.hotTmax) * 0.025, 0, 0.1);
         day.winter = m === 11 || m <= 1;
         sunny = w === 0 ? sunny + 1 : 0;
         day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= 3 ? 0.7 : 0.85;
@@ -621,10 +628,10 @@
       if (!C) return B.mw * Math.min(1, (v / M.rated) ** 3);
       return v < M.cutin ? 0 : B.mw * Math.min(1, (v ** 3 - M.cutin ** 3) / (M.rated ** 3 - M.cutin ** 3));
     }
-    if (g.kind === "tidal") return B.mw * 0.31 * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
+    if (g.kind === "tidal") return B.mw * TIDAL_FACTOR * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
     if (g.kind === "hydro") {
       const rain = C?.precip_mm, q = rain ? 0.5 + 0.5 * rain[MODS?.hydroMonth != null ? MODS.hydroMonth - 1 : day.m] / (rain.reduce((a, v) => a + v, 0) / 12) : 1;
-      return B.mw * Math.min(1, 0.25 * q * (day.flow || 1) / (day.flowMean || 1));
+      return B.mw * Math.min(1, HYDRO_MEAN_FACTOR * q * (day.flow || 1) / (day.flowMean || 1));
     }
     return 0;
   }
@@ -976,7 +983,7 @@
     if (spent >= budgetOf() - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
       ["무엇을 가장 중요하게 봤나", `연료비 ${fmt(R.cost.fuel, 1)}억 · 건설비 ${fmt(R.cost.capex, 1)}억`, "기간이 길어지면 답이 바뀌나?"]);
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(65, `남아서 버린 전력이 ${fmt(R.tot.curt)} MWh입니다. 어떻게 쓸 수 있었을까요?`,
-      ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, "배터리 1대 12억의 값어치는?"]);
+      ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, `배터리 1대 ${BLD.battery.cost}억의 값어치는?`]);
     if (R.fab2 && R.town.some((Dt, ti) => TOWNS[ti].kind === "factory_big" && Dt.outH > 0)) add(85, "반도체 2라인 증설로 전기가 모자랐습니다. 공장과 주민 중 누구를 먼저 지켜야 합니까?",
       ["차단 순서를 무엇으로 정했나", "부족한 MW와 시간", "송전선을 새로 놓을 때의 갈등"]);
     const lost = R.missions.filter(m => m.chosen && !m.ok);
@@ -1065,16 +1072,23 @@
     doc.jAuto = o.jAuto === true;
     return doc;
   }
+  const fmtSpec = x => +x.toFixed(2);
+  function buildingSpec(kind, B) {
+    if (kind === "uni") return `연구인력 ${fmtSpec(RS.uniStaff)} · ${fmtSpec(B.load)} MW`;
+    if (kind === "lab") return `연구석 ${fmtSpec(RS.labSeats)} · ${fmtSpec(RS.labOpexW)}억/주`;
+    if (kind === "battery") return `${fmtSpec(B.mw)} MW/${fmtSpec(M.batMWh)} MWh`;
+    return `${fmtSpec(B.mw)} MW`;
+  }
   function bldFor(P) {
     const out = {};
-    Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); });
+    Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); out[k].spec = P.bld?.[k]?.spec ?? buildingSpec(k, out[k]); });
     if (LG && KCP.TECH_DATA) {
       const v = k => KCP.TECH_DATA.params[k].v;
-      out.tandem = { ...out.solar, name: "탠덤 태양광", spec: `${out.solar.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.solar.mw * v("tandemOutput"), cost: out.solar.cost * v("tandemCost") };
-      out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${out.roof.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
-      out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: "4 MW/20 MWh" };
-      out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: "4 MW/200 MWh · 왕복 35%" };
-      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${+v("smrMW").toFixed(2)} MW · 건설 ${v("smrTurns")}턴` };
+      out.tandem = { ...out.solar, name: "탠덤 태양광", spec: `${fmtSpec(out.solar.mw * v("tandemOutput"))} MW`, tech: "tandem", mw: out.solar.mw * v("tandemOutput"), cost: out.solar.cost * v("tandemCost") };
+      out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${fmtSpec(out.roof.mw * v("tandemOutput"))} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
+      out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: `${fmtSpec(out.battery.mw)} MW/${fmtSpec(M.batMWh * v("nbatCapacity"))} MWh` };
+      out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: `${fmtSpec(v("h2MW"))} MW/${fmtSpec(v("h2MWh"))} MWh · 왕복 ${fmt(v("h2Efficiency") * 100)}%` };
+      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${fmtSpec(v("smrMW"))} MW · 건설 ${fmtSpec(v("smrTurns"))}턴` };
     }
     return out;
   }
@@ -3072,7 +3086,7 @@
     return root;
   }
 
-  const powerChipDefinition = "설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(7월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.";
+  const powerChipDefinition = `설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(${PLAIN_DAY.m + 1}월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.`;
   function refreshHUD() {
     refreshUndo();
     const set = (k, v, tone) => {
@@ -3308,7 +3322,10 @@
     const mulTxt = T.out ? "선 못 지남" : stepMul(T) > 1 ? `선 ×${stepMul(T)}` : "";
     let siteRow = "";
     if (W && W.dem) siteRow = `<p class="bd-tip-row"><span>${esc((KIND[W.kind] || {}).label || "")}</span><span>평균 ${fmt(avgDem(W.ti), avgDem(W.ti) < 1 ? 2 : 1)} MW</span>${CRIT[W.kind] ? "<span>필수</span>" : ""}</p>`;
-    else if (W) siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `LNG ${fmt(W.cap || 9.5, 1)} MW` : `수입 ${fmt(PK.gridCap || 4, 1)} MW`}</span><span>CO₂ ${W.kind === "plant" ? "0.37" : "0.46"} t/MWh</span></p>`;
+    else if (W) {
+      const kind = W.kind === "plant" ? W.fuel === "coal" ? "coal" : "lng" : "import", D = dispOf(kind);
+      siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `${kind === "coal" ? "석탄" : "LNG"} ${fmt(W.cap || dispOf("lng").cap, 1)} MW` : LG ? leagueImportText() : `수입 ${fmt(D.cap, 1)} MW`}</span><span>CO₂ ${D.co2} t/MWh</span></p>`;
+    }
     el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${mulTxt ? `<span>${mulTxt}</span>` : ""}${T.tidal ? "<span>조력 후보</span>" : ""}</p>` + siteRow +
       (T.wind > 0 ? `<p class="bd-tip-row">${T.sun ? `<span>${ico("sun")}×${T.sun.toFixed(2)}</span>` : ""}<span>${ico("wind")}${T.wind.toFixed(1)} m/s</span>${T.land ? `<span>${ico("people")}${fmt(T.near)}</span>` : ""}</p>` : "") + verdict +
       (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
@@ -3418,7 +3435,7 @@
         ${PK.climate ? `<p class="bd-sub bd-sub2"${uiVisible("fab2") ? "" : " hidden"}>${ico("flask")}시나리오</p>
         <button type="button" class="bd-card" data-fab2="1" aria-pressed="${!!S.st.fab2}"${uiVisible("fab2") ? "" : " hidden"}>
           <span class="bd-card-ico">${ico("diesel")}</span>
-          <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>공장 5 → 10 MW</span></span>
+          <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>${SITES.filter(s => s.dem?.fab2 != null).map(s => `공장 ${s.dem.base} → ${s.dem.fab2} MW`).join(" · ") || "공장 증설 수요 정의 없음"}</span></span>
           <span class="bd-card-mark" aria-hidden="true">${S.st.fab2 ? ico("check") : ""}</span></button>` : ""}`;
     } else if (tab === "mission") {
       body.innerHTML = `<p class="bd-sub">${ico("flag")}이번 운영 미션 <b>${S.opts.league ? "선택" : "2개"}</b></p>
@@ -3522,21 +3539,27 @@
     if (!S.help) return;
     S.help.setTitle(PK.title);
     const C = PK.climate, li = t => `<li>${esc(t)}</li>`;
+    const diesel = dispOf("diesel"), bio = dispOf("biomass"), imp = dispOf("import");
+    const plants = SITES.filter(s => s.kind === "plant");
+    const leagueState = LG && KCP.league?.state?.();
+    const region = LG && (KCP.LEAGUE_REGIONS?.[(leagueState?.snap || leagueState?.S)?.region] ||
+      Object.values(KCP.LEAGUE_REGIONS || {}).find(r => r.teams.some(t => t.pack === PK.id)));
+    const scale = region ? `게임 1 MW ≈ 실제 약 ${region.mwScale} MW` : PK.scale || "";
     const model = C ? [
-      `태양광: 월별 일사량(GHI) × 성능비 0.8, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 1 · 흐림 0.45 · 비 0.2`,
-      `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, 3 m/s 아래 0 · 12 m/s 정격 · 25 m/s 넘으면 정지`,
-      "해상풍력 4 MW(100 m 풍속) · 조력 2 MW × |sin(2πt/12.42h)| · 소수력은 비 오면 ×1.3, 맑은 날 사흘 넘으면 ×0.7",
-      `기존 LNG 9.5 MW(CO₂ 0.37 t/MWh) · 외부 전력망 연결점마다 ${fmt(PK.gridCap || 4, 1)} MW(CO₂ 0.46 t/MWh)`,
-      "디젤 3 MW(최소 1 MW, CO₂ 0.75) · 바이오매스 2 MW(CO₂ 0.1로 셈 — 바이오 탄소는 회계상 일부만 셈, 축산 단지 옆은 연료비 싸짐)",
-      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×2 · 바다·호수 ×3) · ${cityName()} 밖은 못 지남`,
-      "급전 순서: 재생 → 배터리 → 싼 연료부터(LNG → 수입 → 디젤·바이오매스, 탄소세 포함)",
-      `${PK.scale || ""} · 수요는 실제 규모의 축소판`
+      `태양광: 월별 일사량(GHI) × 성능비 ${M.pvYield} × 날씨 가중치 / 월평균 날씨 가중치, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}`,
+      `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, ${M.cutin} m/s 아래 0 · ${M.rated} m/s 정격 · ${M.cutout} m/s 넘으면 정지`,
+      `해상풍력 ${BLD.offshore.mw} MW(100 m 풍속) · 조력 ${BLD.tidal.mw} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 사흘째부터 더 줄어듦), 정격 상한`,
+      [...plants.map(s => `${s.fuel === "coal" ? "기존 석탄" : "기존 LNG"} ${fmt(s.cap || dispOf("lng").cap, 1)} MW(CO₂ ${dispOf(s.fuel === "coal" ? "coal" : "lng").co2} t/MWh)`), LG ? `${leagueImportText()}(CO₂ ${imp.co2} t/MWh)` : `외부 전력망 수입 총 ${fmt(imp.cap * SITES.filter(s => s.kind === "gridpt").length, 1)} MW, 연결점마다 ${fmt(imp.cap, 1)} MW(CO₂ ${imp.co2} t/MWh)`].join(" · "),
+      `디젤 ${BLD.diesel.mw} MW(최소 ${diesel.min} MW, CO₂ ${diesel.co2}) · 바이오매스 ${BLD.biomass.mw} MW(CO₂ 총량에는 ${bio.co2}, 바이오 배출 ${bio.bioCo2} t/MWh는 별도 정보 — 축산 단지 옆은 연료비 싸짐)`,
+      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×${stepMul({ t: "mount" })} · 바다·호수 ×${stepMul({ t: "sea" })}) · ${cityName()} 밖은 못 지남`,
+      LG ? `급전 순서: 재생 → 배터리 → 도시 급전원(석탄·LNG·디젤·바이오매스·SMR 등, 연료 가격·탄소세에 따라 순서 변동) → 이웃 거래(부족 보충, 더 싸면 우리 화력 대체)${leagueMonth() ? " → 자동 계통 수입" : ""}` : "급전 순서: 재생 → 배터리 → 연료 가격·탄소세에 따라 싼 급전원부터(석탄·LNG·수입·디젤·바이오매스 등)",
+      `${scale} · 수요는 실제 규모의 축소판`
     ] : [
-      "태양광 2 MW × 일사(맑음 1 · 흐림 0.45 · 비 0.2) × 타일 계수",
-      "풍력 2 MW × (풍속/12)³, 25 m/s 넘으면 정지",
-      "디젤 3 MW(켜면 최소 1 MW) · CO₂ 0.75 t/MWh · 연료 0.01억/MWh",
-      "배터리 4 MW/16 MWh · 충전·방전 각 95% · 바닥 10%",
-      "송전 손실 1.5%/칸 · 선 0.5억/칸(산 ×2 · 바다 ×3)"
+      `태양광 ${BLD.solar.mw} MW × 일사(맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}) × 타일 계수`,
+      `풍력 ${BLD.wind.mw} MW × min(1, (풍속/${M.rated})³), ${M.cutout} m/s 넘으면 정지`,
+      `디젤 ${BLD.diesel.mw} MW(켜면 최소 ${diesel.min} MW) · CO₂ ${diesel.co2} t/MWh · 연료 ${diesel.fuel}억/MWh`,
+      `배터리 ${BLD.battery.mw} MW/${M.batMWh} MWh · 충전·방전 각 ${fmt(M.batEff * 100, 1)}%(왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%) · 바닥 ${fmt(M.socFloor * 100)}%`,
+      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(산 ×${stepMul({ t: "mount" })} · 바다 ×${stepMul({ t: "sea" })})`
     ];
     S.help.body.innerHTML = `<ol class="bd-steps">
           <li>${ico("hammer")}<b>짓기</b><span>도구 → 타일</span></li>
