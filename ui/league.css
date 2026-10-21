@@ -1306,6 +1306,8 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   }
   /* 비교 기준은 한 줄로 조작 아래에 둔다. 상세 설명은 기존 약속 비교 기준 펼침을 쓴다. */
   .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* D-82 결정 1·화면 지시서: 계통의 하루 평균·보조 월 합계는 폰에서도 잘리지 않게 줄바꿈한다. */
+  .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-grid-baseline { white-space: normal; overflow-wrap: anywhere; }
   .lg-team-map #lg-panel #lg-predict > .lg-field {
     grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
   }

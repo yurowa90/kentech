@@ -31,7 +31,7 @@ TRIAL_KEY = "kcp-build-trial-v1"
 ZERO = 0.005
 # D80-contract-A.md 확정 계약. UI의 gridSameTol을 기대값으로 호출하지 않는다.
 SAME_MWH, SAME_SHARE = 1.0, 0.05
-SAME_PER_DAY = .05  # D-82: 측정 보고서 제안 하한(MWh/일), 월 합계 표시는 보존.
+SAME_PER_DAY = .05  # D-82 결정 1·화면 지시서: 판정과 표시 모두 MWh/일, 월 합계는 보조.
 DIRECTIONS = {"up": "늘 것", "down": "줄 것", "same": "같을 것"}
 NUMBER = r"[+−–-]?\s*\d[\d,]*(?:\.\d+)?"
 WHY = "시험에서 정전이 없어서, 이번 달은 부족을 바깥 계통이 얼마나 메웠는지로 약속해요."
@@ -194,7 +194,7 @@ def oracle(page, state, result, player, tested):
         base_per_day = None  # D-82
         label = "비교 없음(시험 기록에 계통 값 없음)" if tested else "비교 없음(첫 결과)"
     delta = None if base is None else mwh - base
-    return {"mwh": mwh, "cost": mwh * price, "base": base, "label": label,
+    return {"mwh": mwh, "perDay": mwh / days, "cost": mwh * price, "base": base, "label": label,  # D-82 결정 1·화면 지시서: 달력으로 구한 하루 평균.
             "delta": delta, "deltaCost": None if delta is None else delta * price,
             "tol": max(SAME_MWH, SAME_SHARE * abs(base)) if base is not None else SAME_MWH,
             "deltaPerDay": None if base_per_day is None else mwh / days - base_per_day,  # D-82
@@ -202,34 +202,33 @@ def oracle(page, state, result, player, tested):
 
 
 def direction(values):
-    delta = values["deltaPerDay"]  # D-82: 판정만 일평균, 월 합계 표시 검사는 유지.
+    delta = values["deltaPerDay"]  # D-82 결정 1·화면 지시서: 판정·표시 같은 일평균.
     if delta is None:
         raise AssertionError("비교 기준 없는 시나리오의 방향을 단정할 수 없음")
     return "same" if abs(delta) <= values["tolPerDay"] else "up" if delta > 0 else "down"  # D-82
 
 
-def numeric_match(token, value):
+# D-82 결정 1·화면 지시서: 표시 자릿수를 고정해 일평균 검산 허용폭을 늘리지 않는다.
+def numeric_match(token, value, precision):
     raw = re.sub(r"\s|,", "", token).replace("−", "-").replace("–", "-")
     decimals = len(raw.rsplit(".", 1)[1]) if "." in raw else 0
-    half_unit = 0.5 * 10 ** -decimals
-    # 표시 자릿수의 반 단위만 허용한다. 표시된 0을 제외한 Δ에는 부호가 필요하다.
+    half_unit = 0.5 * 10 ** -precision
     signed = raw.startswith(("+", "-")) or float(raw) == 0
-    return signed and abs(float(raw) - value) <= half_unit + 1e-8
+    return decimals <= precision and signed and abs(float(raw) - value) <= half_unit + 1e-8
 
 
 def delta_pair(checks, text, values, label, summary=False):
+    # D-82 결정 1·화면 지시서: 기준 이름 바로 뒤의 하루 평균 Δ만 판정 근거로 인정한다.
     segment = text.split(values["label"], 1)[-1]
+    pattern = rf"^\s*하루 평균 {'(?:Δ)' if not summary else ''}\s*({NUMBER})\s*MWh/일"
+    match = re.search(pattern, segment)
+    valid = bool(match) and numeric_match(match[1], values["deltaPerDay"], 1)
     if summary:
-        pattern = rf"^\s*(?:Δ\s*)?({NUMBER})\s*MWh\s*\(\s*비용\s*({NUMBER})\s*억\s*\)"
-        pairs = re.findall(pattern, segment)
-        valid = len(pairs) == 1 and numeric_match(pairs[0][0], values["delta"]) and numeric_match(pairs[0][1], values["deltaCost"])
+        total = re.search(rf"월 합계 ({NUMBER}) MWh · 월 비용 약 ({NUMBER})억", segment)
     else:
-        # 계통 칸에는 총량/총비용도 있다. '기준 이름' 뒤의 부호 있는 Δ를 찾는다.
-        mwh = re.findall(rf"({NUMBER})\s*MWh", segment)
-        cost = re.findall(rf"({NUMBER})\s*억", segment)
-        valid = any(numeric_match(v, values["delta"]) for v in mwh) and any(
-            numeric_match(v, values["deltaCost"]) for v in cost)
-    checks.ok(valid, f"{label} Δ 부호·크기 = 공개 필드 월 환산: {values['delta']:.6f} MWh / {values['deltaCost']:.6f}억; 표시={segment}")
+        total = re.search(rf"이번 달 합 ({NUMBER}) MWh · 비용 약 ({NUMBER})억", segment)
+    valid = valid and bool(total) and abs(float(total[1].replace(",", "")) - values["mwh"]) <= .05 + 1e-8 and abs(float(total[2].replace(",", "")) - values["cost"]) <= .005 + 1e-8
+    checks.ok(valid, f"{label} Δ 부호·크기 = 공개 필드 하루 평균: {values['deltaPerDay']:.6f} MWh/일; 보조 월 합계·비용; 표시={segment}")
 
 
 def promise(page, checks, topic, prediction, label, values=None):
@@ -245,8 +244,8 @@ def promise(page, checks, topic, prediction, label, values=None):
         baseline = page.locator("#lg-promise-baseline").inner_text()
         checks.ok("바깥 계통에 기댄 전기 방향" in card, label + " S4 방향 문구")
         checks.ok(WHY in card, label + " S4 계통 주제를 묻는 이유 한 줄")
-        checks.ok("MWh" in baseline and "억" in baseline and values["label"] in baseline,
-                  label + " S4 기준 이름·MWh·억")
+        checks.ok("하루 평균" in baseline and "MWh/일" in baseline and "억" in baseline and values["label"] in baseline,
+                  label + " S4 기준 이름·하루 평균 MWh/일·보조 월 비용 억")  # D-82 결정 1·화면 지시서.
     page.locator('[data-evidence="grid"]').click()
     page.locator(f'[data-pred="{topic}"]').select_option(prediction)
     page.locator('[data-confidence="fairly"]').click()
@@ -284,7 +283,8 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
             checks.ok(hit == expected_hit, label + " 실제 운영에서 의도한 적중/빗나감 사례 확보")
         verdict = "예상과 같음" if hit else "예상과 다름"
         other = "예상과 다름" if hit else "예상과 같음"
-        checks.ok(bool(re.search(r"\)\s*·\s*" + verdict, text)) and other not in text,
+        # 판정은 판정 단위(하루 평균 Δ MWh/일) 바로 뒤에 오고 월 합계 괄호는 그 뒤 보조(UX 총괄 판단, D-82 결정 1).
+        checks.ok(bool(re.search(r"MWh/일\s*·\s*" + verdict + r"\s*\(", text)) and other not in text,
                   label + f" S6 판정 {verdict} (D-82 |Δ/일|≤max(0.05,|기준/일|×5%)={values['tolPerDay']:.6f}이면 same)")  # D-82
         if not hit:
             # D-80 C-5: 유의미한 원인이 하나뿐이면 S7은 카드 목록 대신 한 줄 요약(#lg-outage-single)을 보인다.
@@ -306,7 +306,7 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
     else:
         checks.ok(not shown(page, "#lg-promise-also-outage"), label + " 실제 정전 0에는 추가 정전 안내 없음")
     cell = page.locator("#lg-result-deltas [data-grid-fill]")
-    if values["mwh"] >= .05:
+    if values["perDay"] >= .05:  # D-82 결정 1·화면 지시서: 일평균 표시 반 단위.
         require(checks, cell.count() == 1 and shown(page, "#lg-result-deltas [data-grid-fill]"),
                 label + " 결과 서랍 계통 칸 표시")
         text = cell.inner_text()
@@ -318,7 +318,7 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
             checks.ok(not re.search(r"[+−–-]\s*\d[\d,.]*\s*(?:MWh|억)", tail),
                       label + " 비교 기준이 없으면 계통 칸에 Δ를 만들지 않음")
     else:
-        checks.ok(cell.count() == 0, label + " 계통 0.05 MWh 미만은 칸 없음")
+        checks.ok(cell.count() == 0, label + " 계통 0.05 MWh/일 미만은 칸 없음")
     capture(checks, page, label + "-S6")
     return values
 
@@ -336,7 +336,7 @@ def zero_plan(page, checks, initial, label):
         checks.notes[-1] += f", 실제 시험 정전 {tested['unsPct']:.8f}%"
         if tested["unsPct"] < ZERO:
             values = oracle(page, preview["S"], preview["result"], preview["id"], tested)
-            if values["mwh"] >= .05 and values["base"] is not None:
+            if values["perDay"] >= .05 and values["base"] is not None:  # D-82 결정 1·화면 지시서: 칸 표시 조건.
                 checks.notes.append(f"{label}: 평택/고정 씨앗 0, 정상 연결 배치 + 디젤 {count}개. 실제 1주 시험과 복제 운영으로 정전 0 후보 선정. 실제 판 운영은 별도로 검증.")
                 return bundle(page), tested, values
     require(checks, False, label + " 정전 0 + 계통 칸을 검증할 실제 시험/운영 후보를 만들지 못함(생략·통과 처리 금지)")
@@ -505,8 +505,8 @@ def write_report(checks, syntax):
     text += ["", "## 명세 해석", "",
              "- 정전 0은 표시 기준인 unsPct < 0.005%. 실제 1주 시험과 실제 운영 양쪽에서 확인한다.",
              "- 현금은 배치 탐색용 가상 잔액 100000억. 정상 연결 배치에 합법적 디젤을 추가한다. 모형 계수나 결과를 수정하지 않는다.",
-             "- 계통 같음 문턱은 A 계약의 임시 확정값 max(1 MWh, |기준|×5%). 값이 재합의되면 이 검사 상수를 함께 갱신한다.",
-             "- MWh/억 Δ는 표시 소수 자릿수의 반 단위까지 허용하고, 0 이외에는 부호도 확인한다.",
+             "- 계통 같음 문턱은 max(0.05 MWh/일, |기준 하루 평균|×5%)(D-82 결정 1·화면 지시서).",
+             "- 하루 평균 Δ는 소수 1자리 반 단위까지 허용하고, 0 이외에는 부호도 확인한다. 월 합계·비용은 보조로 검산한다(D-82 결정 1·화면 지시서).",
              "- S7은 grid 예측이 다른 달의 카드 존재만 검사한다. 카드 내부 단위·분해는 C 범위다.",
              "- 내보내기는 실제 운영 결과를 유지한 저장본의 phase만 end로 바꿔 마지막 화면을 연다.",
              "- 옛 기록은 결과 단계 저장본의 topic만 삭제한다. 예측/실제 결과는 유지한다.",
