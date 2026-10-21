@@ -1379,14 +1379,71 @@
       fillPoly(g, [[x - w * 0.08, y - h], [x - w * 0.32, y - h * 0.66], [x - w * 0.14, y - h * 0.72], [x + w * 0.02, y - h * 0.62], [x + w * 0.2, y - h * 0.7]], "#f3f6f8");
     }
   }
-  function house(g, x, y, s, roof) {
+  function house(g, x, y, s, roof, vacant = false) {
     const w = s * 0.42, h = s * 0.26, d = s * 0.3;
     shadow(g, x, y, w * 0.8, s * 0.12, 0.2);
-    box(g, x, y, w, d, h, "#d9cdb8", "#f1e8d8", "#c4b69e");
+    box(g, x, y, w, d, h, vacant ? "#a5a5a0" : "#d9cdb8", vacant ? "#b8b8b1" : "#f1e8d8", vacant ? "#898d8e" : "#c4b69e");
     const dx = d * 0.55, dy = d * 0.42;
     fillPoly(g, [[x - w / 2 - 1, y - h], [x, y - h - s * 0.2], [x + w / 2 + 1, y - h]], rgb(mul(roof, 1.08)));
     fillPoly(g, [[x, y - h - s * 0.2], [x + w / 2 + 1, y - h], [x + w / 2 + dx + 1, y - h - dy], [x + dx, y - h - dy - s * 0.2]], rgb(mul(roof, 0.82)));
     return [x - w * 0.22, y - h * 0.72, w * 0.18, h * 0.32];
+  }
+
+  const RESIDENTIAL = new Set(["village", "town_s", "city", "city_m", "city_l"]);
+  const TOWN_LOOK_KEY = "집 한 채 = 시작 주민 2% · 불 꺼진 창 = 최근 운영한 달에 못 보낸 전기 몫 · 마을별 인구가 아니라 도시 전체 변화를 모든 마을에 똑같이 보인 것";
+  // 공개 도시 값만 받는다. 저장 문서·계산 모형에는 붙이지 않는다.
+  function syncTownLook() {
+    const raw = S.opts.townLook?.();
+    const next = raw ? { houses: clamp(Math.trunc(raw.houses) || 0, -3, 3),
+      darkShare: Number.isFinite(raw.darkShare) ? clamp(raw.darkShare, 0, 1) : null } : null;
+    const prev = S.townAppearance;
+    if (!!prev === !!next && prev?.houses === next?.houses && prev?.darkShare === next?.darkShare) return;
+    S.townAppearance = next;
+    S.dirtyStatic = true;
+    const legend = S.root.querySelector("#bd-town-look-key");
+    if (legend) legend.hidden = !next;
+    request();
+  }
+
+  function townLook() {
+    if (!S?.townAppearance) return null;
+    return Object.freeze({ ...S.townAppearance, ...S.townWindowCounts });
+  }
+
+  // 정적 층에서만 창문 순서를 정한다. 반올림은 칸별이 아닌 도시 전체 기준이다.
+  function paintTownLights(g, rec) {
+    const look = S.townAppearance;
+    S.townLights = !curHour();
+    if (!look) { S.townWindowCounts = { darkWins: 0, totalWins: 0 }; return; }
+    const windows = rec.wins.filter(w => RESIDENTIAL.has(TOWNS[w.ti].kind)).flatMap(w =>
+      w.list.map((rect, n) => ({ rect, i: TOWNS[w.ti].tile, n, rank: hash(TOWNS[w.ti].tile, n, 83) })));
+    const totalWins = windows.length;
+    const darkWins = look.darkShare != null && S.townLights ? Math.round(totalWins * look.darkShare) : 0;
+    S.townWindowCounts = { darkWins, totalWins };
+    if (look.darkShare == null || !S.townLights) return;
+    windows.sort((a, b) => a.rank - b.rank || a.i - b.i || a.n - b.n);
+    windows.forEach(({ rect }, n) => {
+      g.fillStyle = n < darkWins ? "rgba(20,24,40,0.9)" : "rgba(255,211,107,0.85)";
+      g.fillRect(...rect);
+    });
+  }
+
+  // 주민 변화로 덧붙는 집 자리(칸 가장자리, 칸 번호로 시작 자리만 달라짐). 기존 그림 목록과 같은 깊이 순서로 그린다.
+  function extraHouses(T, K) {
+    const houses = RESIDENTIAL.has(K) ? S.townAppearance?.houses || 0 : 0;
+    if (!houses) return [];
+    const spots = [[-0.53, 0], [0, 0.66], [0.53, 0]], start = Math.floor(hash(T.i, 0, 82) * spots.length);
+    return spots.slice(start).concat(spots.slice(0, start)).slice(0, Math.abs(houses)).map(([dx, dy], n) => ({ extra: true, dx, dy, n, vacant: houses < 0 }));
+  }
+  function drawExtraHouse(g, at, E, wins) {
+    const [hx, hy] = at(E.dx, E.dy), size = V.S * 0.95 * 0.7;
+    const w = house(g, hx, hy, size, E.vacant ? [90, 94, 100] : hex2(["#c8553d", "#d7843d", "#b5483a"][E.n]), E.vacant);
+    if (!E.vacant) wins.push(w, [w[0] + size * 0.17 / 0.95, w[1], w[2], w[3]]);
+  }
+  // list의 [dx, dy, ...] 항목과 덧붙는 집을 화면 깊이로 섞어 차례로 그린다.
+  function depthDraw(list, extras, g, at, wins, draw) {
+    const depth = p => (p.extra ? uv(p.dx, p.dy) : uv(p[0], p[1]))[1];
+    list.concat(extras).sort((p, q) => depth(p) - depth(q)).forEach((p, k) => p.extra ? drawExtraHouse(g, at, p, wins) : draw(p, k));
   }
 
   // 수요지·시설: 정적 그림 + 밤 창문 자리 기록
@@ -1394,8 +1451,8 @@
     const W = SITES[T.site], [x, y] = tileTop(T), s = V.S;
     const wins = [];
     const at = (dx, dy) => scr(T.X + dx, T.Y + dy, HGT[T.t]);
-    const K = W.kind;
-    if (K !== "hospital" && K !== "village" && K !== "town_s" && K !== "city" && K !== "port") { drawFacility(g, T, W, at, wins); }
+    const K = W.kind, extras = extraHouses(T, K);
+    if (K !== "hospital" && K !== "village" && K !== "town_s" && K !== "city" && K !== "port") { drawFacility(g, T, W, at, wins, extras); }
     else if (K === "hospital") {
       const [px, py] = at(-0.45, 0.25);
       g.beginPath(); g.ellipse(px, py, s * 0.24, s * 0.24 * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#4b5966"; g.fill();
@@ -1410,15 +1467,16 @@
       for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) wins.push([bx - s * 0.3 + c * s * 0.17, by - s * 0.34 + r * s * 0.15, s * 0.09, s * 0.08]);
     } else if (K === "village" || K === "town_s") {
       const spots = [[-0.42, -0.3, "#c8553d"], [0.32, -0.38, "#d7843d"], [-0.05, 0.05, "#b5483a"], [0.45, 0.25, "#d7843d"], [-0.45, 0.38, "#c8553d"]];
-      spots.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, rc], k) => {
-        const [hx, hy] = at(dx, dy);
+      let nth = 0;
+      depthDraw(spots, extras, g, at, wins, ([dx, dy, rc]) => {
+        const k = nth++, [hx, hy] = at(dx, dy);
         const w = house(g, hx, hy, s * 0.95, hex2(rc));
         wins.push(w, [w[0] + s * 0.17, w[1], w[2], w[3]]);
         if (k === 1) roundTree(g, hx + s * 0.32, hy + s * 0.08, s * 0.5);
       });
     } else if (K === "city") {
       const towers = [[-0.35, -0.25, 1.2], [0.3, -0.35, 1.55], [0.42, 0.28, 0.95], [-0.25, 0.32, 0.8], [0.0, 0.0, 1.9]];
-      towers.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, hgt]) => {
+      depthDraw(towers, extras, g, at, wins, ([dx, dy, hgt]) => {
         const [tx, ty] = at(dx, dy), w = s * 0.32, h = s * 0.62 * hgt;
         shadow(g, tx, ty, w * 0.9, s * 0.13, 0.22);
         box(g, tx, ty, w, s * 0.26, h, "#d5dee8", "#b9c9d8", "#8ea2b6");
@@ -1448,7 +1506,7 @@
     if (rec && T.town >= 0) rec.wins.push({ ti: T.town, list: wins, x, y });
   }
   // 평택 시설 그림
-  function drawFacility(g, T, W, at, wins) {
+  function drawFacility(g, T, W, at, wins, extras = []) {
     const s = V.S, K = W.kind;
     const tower = (dx, dy, hgt, w, cols) => {
       const [tx, ty] = at(dx, dy), h = s * 0.62 * hgt;
@@ -1464,8 +1522,8 @@
     const order = list => list.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]);
     if (K === "city_l" || K === "city_m") {
       const big = K === "city_l";
-      order(big ? [[-0.4, -0.25, 1.5], [0.3, -0.38, 2.1], [0.45, 0.25, 1.2], [-0.25, 0.32, 1.0], [0.02, 0.0, 2.4]] : [[-0.32, -0.22, 1.1], [0.32, -0.3, 1.4], [0.35, 0.28, 0.9], [-0.1, 0.12, 1.7]])
-        .forEach(([dx, dy, hgt]) => tower(dx, dy, hgt, s * (big ? 0.3 : 0.28), big ? ["#dbe3ec", "#bfcedc", "#93a7ba"] : ["#e6e0d6", "#cfc6b6", "#a89c88"]));
+      depthDraw(big ? [[-0.4, -0.25, 1.5], [0.3, -0.38, 2.1], [0.45, 0.25, 1.2], [-0.25, 0.32, 1.0], [0.02, 0.0, 2.4]] : [[-0.32, -0.22, 1.1], [0.32, -0.3, 1.4], [0.35, 0.28, 0.9], [-0.1, 0.12, 1.7]], extras, g, at, wins,
+        ([dx, dy, hgt]) => tower(dx, dy, hgt, s * (big ? 0.3 : 0.28), big ? ["#dbe3ec", "#bfcedc", "#93a7ba"] : ["#e6e0d6", "#cfc6b6", "#a89c88"]));
     } else if (K === "industry") {
       order([[-0.3, -0.2], [0.3, 0.15]]).forEach(([dx, dy]) => {
         const [bx, by] = at(dx, dy), w = s * 0.62, h = s * 0.26;
@@ -1827,6 +1885,7 @@
       } else if (T.site < 0 && !T.out) drawDeco(g, T, layer);
       if (lineTiles.has(T.i)) { drawPylon(g, T); rec.pylons.set(T.i, pylonTop(T)); }
     }
+    paintTownLights(g, rec);
     // 전선(모든 타일 위)
     g.strokeStyle = "rgba(24,30,38,0.85)"; g.lineWidth = Math.max(1, V.S * 0.035);
     g.beginPath();
@@ -2281,10 +2340,11 @@
     const active = mapMotion.active(S.mapFx, now, reduced());
     if (active.length !== S.mapFx.length) { S.mapFx = active; S.dirtyStatic = true; }
     S.floaters = mapMotion.active(S.floaters, now, reduced(), 1100);
+    if (S.run && !S.run.done) stepRun(now);
+    if (S.townAppearance?.darkShare != null && S.townLights !== !curHour()) S.dirtyStatic = true;
     if (S.dirtyStatic) { paintStatic(); S.dirtyStatic = false; }
     const g = S.g, t = (now - S.born) / 1000, dpr = dprOf();
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (S.run && !S.run.done) stepRun(now);
     const ch = curHour();
     paintSea(g, reduced() ? 0 : t, ch);
     g.drawImage(S.base, 0, 0, V.W, V.H);
@@ -2923,6 +2983,7 @@
         <div class="bd-tip" id="bd-tip" hidden></div>
       </div>
       <p id="bd-keys" class="bd-sr">화살표로 타일 이동, Enter로 설치, Esc로 취소.</p>
+      <p id="bd-town-look-sr" class="bd-sr"></p>
       <header class="bd-hud" id="bd-hud">
         <a class="bd-back" href="#home" aria-label="연습실 홈으로">${ico("back")}</a>
         <div class="bd-title"><p class="v2-kicker" id="bd-kicker"></p><h1 id="bd-h1"></h1></div>
@@ -3772,6 +3833,7 @@
       opts, alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
       g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
+      townAppearance: null, townWindowCounts: { darkWins: 0, totalWins: 0 }, townLights: true,
       lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy",
       floaters: [], mapFx: [], flowView: null, rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
@@ -3783,6 +3845,9 @@
       root.querySelector(".bd-layers").append(lenses);
       const legend = document.createElement("span"); legend.className = "lg-lens-key"; legend.textContent = "하늘색: 선 닿음 · 노랑: 선 안 닿음 · 분홍 점선: 민원 반경";
       lenses.append(legend);
+      // 마을 모양 범례는 렌즈 도움말(마우스·초점 때만 보임)이 아니라 지도 위에 늘 보이게 둔다. 리그 화면은 안내 묶음으로 옮긴다.
+      const townKey = document.createElement("p"); townKey.id = "bd-town-look-key"; townKey.className = "lg-town-key"; townKey.hidden = true;
+      townKey.textContent = TOWN_LOOK_KEY; root.querySelector(".bd-stage").append(townKey);
       lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; rememberLenses(); syncLensButtons(); placeBannerValues(); request(); });
       const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
       const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
@@ -3792,6 +3857,7 @@
       root.querySelectorAll('[data-run="30"], [data-run="90"]').forEach(b => { b.hidden = !uiVisible("longTrial"); });
       root.querySelector("#bd-pm span").textContent = "정책·결과";
     }
+    syncTownLook();
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     applyPack();
     bindCanvas(S.canvas);
@@ -3876,8 +3942,8 @@
   Object.assign(KCP.buildGame, {
     powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
-    current: () => (S ? S.st : null), planIssues,
-    refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
+    current: () => (S ? S.st : null), planIssues, townLook,
+    refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
     toast: (msg, opts) => { if (S) toast(msg, opts); }
   });

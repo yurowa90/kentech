@@ -1013,6 +1013,8 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
 .lg-team-map #bd-mapbar { z-index: 28; }
 .lg-lens-key { display: none; position: absolute; left: 0; top: var(--lg-lens-key-top, 48px); width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
+.lg-town-key { position: fixed; z-index: 29; left: 8px; bottom: 120px; max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 5px 8px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; overflow-wrap: anywhere; word-break: keep-all; pointer-events: none; }
+.lg-map-guidance .lg-town-key { position: static; align-self: flex-start; }
 .lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
 .lg-map-result { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); pointer-events: none; }
@@ -1477,6 +1479,7 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   .lg-map-guidance #lg-coach,
   .lg-map-guidance #lg-plan-issues button { background: rgba(10, 25, 42, .88); }
   .lg-map-guidance .lg-map-result { font-size: 12px; padding: 6px 8px; }
+  .lg-map-guidance .lg-town-key { background: rgba(10, 25, 42, .88); font-size: 11px; padding: 4px 8px; }
   .lg-map-guidance #lg-coach { font-size: 12px; padding: 3px; }
   .lg-map-guidance #lg-coach button,
   .lg-map-guidance #lg-plan-issues button { font-size: 12px; padding-inline: 4px; }

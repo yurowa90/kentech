@@ -507,8 +507,9 @@
     const stack = document.createElement("div"); stack.className = "lg-map-guidance";
     stack.innerHTML = '<div id="lg-plan-issues" aria-label="이번 달 계획 확인" hidden></div>';
     // 기존 결과 요약도 같은 묶음에 두어 코치·서랍과 자리를 나눈다.
-    const summary = root.querySelector("#lg-map-result");
+    const summary = root.querySelector("#lg-map-result"), townKey = root.querySelector("#bd-town-look-key");
     if (summary) stack.append(summary);
+    if (townKey) stack.append(townKey);
     root.append(stack);
     stack.addEventListener("click", e => {
       const issue = e.target.closest("[data-issue]");
@@ -3519,6 +3520,7 @@
     L.viewLeft = C.publicView(S, Date.now()).teams[id].left;
     BG.mount(app, {
       packs: [t.pack], league: true,
+      townLook: () => cityTownLook(C.publicView(L.S, Date.now()), id),
       load: () => ({ v: 2, map: t.pack, maps: { [t.pack]: st }, runs: 0, jAuto: true, journal: [] }),
       save: () => {},
       budget: () => L.viewLeft + BG.capex(BG.current()),
@@ -3526,7 +3528,7 @@
       season: () => rd.season,
       ...(S.econ ? { leagueRound: () => C.roundsOf(L.S)[Math.max(0, L.S.round - 1)],
         leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), leagueOutageRisk: () => lastOutageRisk(L.snap || C.publicView(L.S, Date.now()), id), leagueTrialGoals: res => trialGoals(res, id), trialScope: trialScope(id) } : {}),
-      onMount: root => { root.querySelector('[data-cap="budget"] .v2-cap-k').textContent = "남은 돈"; viewBar(root, id); window.dispatchEvent(new Event("resize")); }
+      onMount: root => { refreshCityTownLook(C.publicView(L.S, Date.now()), id); root.querySelector('[data-cap="budget"] .v2-cap-k').textContent = "남은 돈"; viewBar(root, id); window.dispatchEvent(new Event("resize")); }
     });
   }
   function viewBar(root, id) {
@@ -3551,12 +3553,12 @@
     const st = BG.current();
     if (!st || !L.viewing) return;
     const t = C.teamDef(R(), L.viewing), plan = L.S.teams[L.viewing].plan;
-    if (!plan) return;
+    if (!plan) { refreshCityTownLook(C.publicView(L.S, Date.now()), L.viewing, false); return; }
     BG.selectPack(t.pack, "league");
     const clean = BG.sanitize(plan, 1e9);
     Object.assign(st, { builds: clean.builds, lines: clean.lines, policies: clean.policies, shed: clean.shed, fab2: clean.fab2 });
     viewStat();
-    BG.refresh();
+    refreshCityTownLook(C.publicView(L.S, Date.now()), L.viewing);
   }
 
   /* ---------- 지역 지도(개략) ---------- */
@@ -4197,7 +4199,7 @@
         const { d, n } = monthNote(); n.buildCost = newBuildCost(V); n.buildBudget = me.budget; putData(d);
       }
       // 계절이 같아도 달이 바뀌면 leagueRound()를 다시 읽어 HUD 시간을 갱신한다.
-      BG.refresh();
+      refreshCityTownLook(V, L.team);
       if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
       else if (!prev && V.phase === "plan") closePanel();
       renderBar();
@@ -4370,6 +4372,35 @@
     const input = trialInput(st, id);
     return input?.econ ? withCityPack(id, () => C.gridStatus(input, R(), BG, id, true)) : null;
   }
+  // 태블릿의 마을별 보정값 대신 이미 공개된 도시 합계만 사용한다(D-65·D-66).
+  function cityTownLook(V, id) {
+    const city = V?.econ?.cities?.[id];
+    if (!Number.isFinite(city?.pop) || !(city.pop0 > 0) || !Number.isFinite(city.pop0)) return null;
+    const r = city.pop / city.pop0;
+    const steps = Math.floor((Math.abs(r - 1) + 1e-9) / 0.02);
+    const houses = Math.max(-3, Math.min(3, r >= 1 ? steps : -steps)) || 0;
+    const uns = V.results?.at(-1)?.team?.[id]?.unsPct;
+    return { houses, darkShare: Number.isFinite(uns) ? Math.max(0, Math.min(1, uns / 100)) : null };
+  }
+  // staticChanged 기본값 true: 공개 상태가 올 때마다 정적 층을 다시 그리던 기존 동작을 유지한다.
+  function refreshCityTownLook(V, id, staticChanged = true) {
+    const canvas = document.getElementById("bd-canvas"), sr = document.getElementById("bd-town-look-sr"), look = cityTownLook(V, id), city = V?.econ?.cities?.[id];
+    if (canvas && look) {
+      const pct = (city.pop / city.pop0 - 1) * 100;
+      const text = `주민 시작 대비 ${pct >= 0 ? "+" : ""}${fmt(pct, 2)}% · ${look.darkShare == null ? "아직 운영 결과 없음" : `최근 운영한 달에 못 보낸 전기 ${fmt(look.darkShare * 100, 2)}%`}. 집 한 채 = 시작 주민 2%, 회색 빈집 = 2% 줄어듦, 최대 3채 · 불 꺼진 창 = 못 보낸 전기 몫. 마을별 인구가 아니라 도시 전체 변화를 모든 마을에 똑같이 보인 것이에요.`;
+      canvas.dataset.townPopPct = String(pct);
+      canvas.dataset.townUnsPct = look.darkShare == null ? "" : String(look.darkShare * 100);
+      // 캔버스에는 이미 aria-describedby(bd-keys)가 있어 aria-description은 낭독되지 않을 수 있다. 숨은 문단을 함께 잇는다.
+      canvas.setAttribute("aria-description", text);
+      if (sr) { sr.textContent = text; canvas.setAttribute("aria-describedby", "bd-keys bd-town-look-sr"); }
+    } else if (canvas) {
+      delete canvas.dataset.townPopPct; delete canvas.dataset.townUnsPct;
+      canvas.removeAttribute("aria-description");
+      if (sr) sr.textContent = "";
+      canvas.setAttribute("aria-describedby", "bd-keys");
+    }
+    BG.refresh({ static: staticChanged });
+  }
   function mountCity(app, resume, view) {
     L.soundAdopted = (techResearch(L.snap, L.team).adopted || []).slice();
     if (!L.snap?.teams[L.team]) return;
@@ -4388,6 +4419,7 @@
     replaceTeamMap(app);
     BG.mount(app, {
       packs: [t.pack], league: true, solo: L.role === "solo", view,
+      townLook: () => cityTownLook(L.snap, L.team),
       onFx: kind => signal(kind),
       load: () => L.doc,
       save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
@@ -4417,7 +4449,7 @@
       onTool: closePanel,
       leagueResultDays: () => L.snap?.results.at(-1)?.days,
       leagueResult: () => { const res = L.snap?.results.at(-1); return res?.team[L.team] ? { ...res.team[L.team], faded: L.snap.phase === "plan", round: res.round, month: res.month || C.roundsOf(L.snap)[res.round - 1]?.month, days: res.days } : null; },
-      onMount: root => { addBar(root); setupTeamMap(root); warnTeamSave(); window.dispatchEvent(new Event("resize")); }
+      onMount: root => { refreshCityTownLook(L.snap, L.team); addBar(root); setupTeamMap(root); warnTeamSave(); window.dispatchEvent(new Event("resize")); }
     });
     if (resume) {
       if (L.coach) showFirstGuide(document.getElementById("bd-root"));
@@ -4491,11 +4523,13 @@
     const st = BG.sanitize(L.snap?.teams[id]?.plan || {}, 1e9);
     replaceTeamMap(L.app);
     BG.mount(L.app, { packs: [t.pack], league: true,
+      townLook: () => cityTownLook(L.snap, id),
       load: () => ({ v: 2, map: t.pack, maps: { [t.pack]: st }, runs: 0, jAuto: true, journal: [] }),
       save: () => {}, locked: () => "관전 중 · 읽기 전용", season: () => curRound().season, leagueRound: curRound,
       budget: () => L.snap.teams[id].left + BG.capex(BG.current()),
       ...(L.snap?.econ ? { leagueMods: st => trialConditions(st, id), leagueGrid: st => trialGrid(st, id), leagueOutageRisk: () => lastOutageRisk(L.snap || C.publicView(L.S, Date.now()), id), leagueTrialGoals: res => trialGoals(res, id), trialScope: trialScope(id) } : {}),
       onMount: root => {
+        refreshCityTownLook(L.snap, id);
         root.classList.add("lg-peek");
         setupTeamMap(root, id);
         root.querySelectorAll("#lg-peek").forEach(el => el.remove());
@@ -4624,7 +4658,7 @@
     if (!t || !st) return;
     BG.selectPack(t.pack, "league");
     Object.assign(st, BG.sanitize(L.snap.teams[L.away]?.plan || {}, 1e9));
-    BG.setSeason(curRound().season); BG.refresh();
+    BG.setSeason(curRound().season); refreshCityTownLook(L.snap, L.away);
     document.querySelectorAll(".lg-peek #bd-drawer button, .lg-peek #bd-drawer input").forEach(el => { el.disabled = true; });
   }
   function returnTeamCity() {
@@ -5250,7 +5284,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, resultPeriod, fmt, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },
+    uiMath: { monthPoints, resultPeriod, fmt, cityTownLook, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st);
       // 실제 화면 편집처럼 건설 문서도 저장한다(mountCity의 save와 같은 모양). 안 하면 새로고침 뒤 옛 문서가 실린다.
