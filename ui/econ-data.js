@@ -148,6 +148,9 @@
       moveExponentBounds: p([-20, 20], G, "이동 로짓 지수 입력 제한 · 극단 효용차의 목표 몫을 제한하는 게임 가정 · REF 2.1"),
       offerSourceMin: p(1000, G, "기업 이전 시 출발 도시 수×1,000명을 남기는 총량 하한 · 도시별 개별 하한 보장과 다름 · REF 2.12"),
       demandMulBounds: p([0.2, 5], G, "주민·종사자 변화에 따른 전력 수요 배수의 상하한 · 게임 가정 · REF 4.11"),
+      scoreFinOverCap: p(0, G, "기존 지방채 한도 초과 재정 점수 · 점수식의 0을 값 변경 없이 옮김 · REF 13.4"),
+      subsidyPayMonths: p([1, 4, 7, 10], G, "기존 재정지원금 지급 월 · 분기 초 지급 규칙을 값 변경 없이 옮김 · REF 6.5"),
+      smrMonthsReal: p(55, "P", "SMR 공사 현실 비교값 · NREL ATB(2024) 시나리오 43/55/71개월 [I13] · 배속표·기술 자료 미적재 시 환산에 쓰는 55개월 비교 기준, 인허가 기간 아님 · REF 12.6", ["I13"]),
       scoreFinDebtMarks: p([0.10, 0.25], G, "재정 점수 정규화: d≤0.10에서 100점, d=0.25에서 neutralScore(50점), 0점 지점은 marks[0]+100×(marks[1]−marks[0])/(100−neutralScore)(현재 0.40)이며 debtCrisisRatio를 읽지 않음; 지방채 한도 초과 때는 별도로 0점 · 0.25는 법정 주의 비율 [L07], 건전 0.10은 전국 10.1% [S09] 참고 · 점수 대응은 설계 선택(G) · REF 13.4", ["L07", "S09"]),
       priceScoreIntercept: p(2, G, "주민 요금 점수의 선형 절편 · 평균 원가에서 neutralScore가 되는 설계 정규화 · REF 3.5"),
       incentiveWorkersUnit: p(1e4, G, "유치 보조 점수의 종사자 정규화 단위 1만 명 · 종사자당 보조 효과를 정하는 설계 눈금 · REF 4.11"),
@@ -171,15 +174,15 @@
       cbamEuShare: p(0.154, "M", "EU 철강 수출 몫 · 무역 통계 환산 15.4% · 배속: 없음 · REF 7.13", ["S30"]),
       indTaxLag: p(12, "O", "산업세 과세 시차 · 지방세법 연간 소득 과세 구조 · 계산: 최근 12달 산출 평균 · 배속: 없음 · REF 5.3", ["L01"]),
       budgetToRevenue: p(2.2, "M", "예산/게임 연 세입 환산 · 지방재정365 예산 자료 · 배속: 없음 · REF 6.12", ["X28"]),
-      lngSpikeFrequency: p(3, "M", "LNG 급등 빈도 비교: 연 약 0.36회/현실 약 0.12회≈3배 [S16] · REF 7.8; 배속표 표시만"),
-      outageHoursPerPercent: p(87.6, "M", "연간 정전율 1% = 연 87.6시간(8760×1%, 정의·회계); 배속표 표시만 · REF 5.10"),
+      lngSpikeFrequency: p(3, "M", "LNG 급등 빈도 현실 비교 추정: 연 약 0.36회/현실 약 0.12회≈3배(실제 사건 추첨에 곱하는 값 아님) [S16] · REF 7.8; 배속표 표시만"),
+      outageHoursPerPercent: p(87.6, "M", "연 에너지 미공급률 1%를 같은 수요의 등가 시간으로 환산: 연 87.6시간(8760×1%); 실제 정전시간과 다름; 배속표 표시만 · REF 5.10"),
       koreaOutageHours2019: p(0.04, "O", "World Bank Doing Business SAIDI, 한국 연 0.04시간(2019, 최대 상업도시 기준) [S27]; 배속표 표시만"),
       islandLineLoss: p(3, "G", "섬 연습 지도 1.5%/칸 / 리그 0.5%/칸 = 3배; 손실 관찰용 교육 확대 · REF 8.9 [S20][S25]; 배속표 표시만"),
       researchYears: p([10, 30], "P", "IEA Clean Energy Innovation(2020): 시제품→대량 시장 10~30년 [I09] · REF 12.8; 게임 수 달로의 압축은 G, 배속표 표시만"),
       // D-81: 배속표 표시만. 게임 규칙(SMR만 공사 12달, 나머지 즉시 건설·접속 대기)은 바꾸지 않는다.
       buildLeadYears: p({ solar: 2, wind: 3, ess: 1, biomass: 4, diesel: 2, smr: 6 }, "P", "착공~가동 lead time(년) · EIA AEO2022 EMM 가정 Table 3 [I35], 원문 확인 2026-10-21(인허가 포함 여부 정의 미확인) · 디젤은 21MW 내연기관 값 · SMR 600MW · 배속표 표시만 · _briefs/lanes/q8/W6-report.md"),
       buildLeadKorea: p({ lngMonths: [27, 32], windPermitYears: 10, gridYears: [5, 15] }, "O*", "등급은 한국 사례 기준: 기후부 발표·발전사업 공표 일정을 보도로만 확인해 O*(대장 인정 규칙상 보도 X는 보조) · 송전망 값은 IEA라 P, 화면에 따로 표기 · 한국 LNG 복합 착공→운전 27~32개월(포천 [X31]·안동 2호기 [X32] 보도의 착공일과 목표·예정 운전일로 계산, 실제 운전 실적 아님. 포천은 민자 사업자 일정), 육상풍력 계측~준공 약 10년(기후부 발표 보도 2025-12-03 [X33]), 송전망 계획·인허가·완공 5~15년(IEA 2023 [I36], P) · REF 12.6 · 배속표 표시만"),
-      complaintPoliticalEffect: p([50, 200], "G", "민원 정치 효과 약 50~200배: 인구 비례 환산 어림, 실증 계수 없음 · 근거 문서: docs/ECON-REFERENCES.md §10.8; 배속표 표시만", ["docs/ECON-REFERENCES.md"]),
+      complaintPoliticalEffect: p([50, 200], "G", "민원 정치 효과 현실 비교 추정 약 50~200배(계산 배수 아님): 인구 비례 환산 어림, 실증 계수 없음 · 근거 문서: docs/ECON-REFERENCES.md §10.8; 배속표 표시만", ["docs/ECON-REFERENCES.md"]),
       debtCrisisRatio: p(0.40, "M", "채무 위기 문턱 · 지방재정법 시행령 예산 대비 40% [L07] · 게임 예산 환산(budgetToRevenue) 비율에 적용, 경계 이상 판정은 기존 규칙 · 배속: 없음 · REF 6.12, 13.4 · RECAL-SPEC F14 · D-66", ["L07"]),
       debtWarnRatio: p(0.55, "M", "채무 주의 문턱 · 지방재정법 시행령 예산 대비 25% · 계산: 2.2×0.25 · 배속: 없음 · REF 6.12", ["L07"]),
       fiscalTargetRev: p(0.3, "G", "설계 선택: 보통 조건 연 운영 수지 / 시작 연 세입 0.3 · G4: 판매가 정상화 뒤 2차 값 복원 · REF 6.10", []),
@@ -369,7 +372,7 @@
       intlSigmaFx: p(0.019, M, "환율 표준화 월 잡음 · 원/달러 월 표준편차 1.90% · 배속: 없음 · REF 7.6", ["S29"]),
       intlSigmaShip: p(0.012, G, "해운 표준화 월 잡음 · 월 운임 원자료 미확보, 기존 실효 변동 유지의 게임 가정 · REF 7.7", []),
       intlSigmaExport: p(0.025, G, "수출 표준화 월 잡음 · 연 수출 관측을 그대로 쓰지 않고 배경 변동을 축소한 게임 가정 · REF 7.7", []),
-      intlEventP: p(0.12, G, "자유 국제 사건 월 추첨 확률 · 게임 가정, LNG 급등 빈도는 현실 비교 약 3배 · REF 7.8", []),
+      intlEventP: p(0.12, G, "자유 국제 사건 월 추첨 확률 · 게임 가정, LNG 급등 빈도는 현실 비교 추정 약 3배 · REF 7.8", []),
       intlMaxActive: p(2, G, "자유 국제 사건 동시 활성 수 상한 · 900턴 이상 사건은 기존 규칙대로 제외 · 게임 가정", []),
       intlWalkBounds: p({ lng: [0.4, 2.5], fx: [0.6, 1.6], ship: [0.4, 1.6], export: [0.4, 2] }, G, "국제 배경 지수 걷기의 상하한 · 극단값 제한을 위한 게임 가정, 사건 합산 뒤 범위와 별개 · REF 7.5, 7.6, 7.7", []),
       // 기업 이전 희망
@@ -389,11 +392,11 @@
       // 사건 효과 손잡이: lng·fx·ship는 지수에 더함, export는 부문별로 더함, cbam은 켜짐(1).
       events: [
         { id: "eu_indirect", name: "EU, 철강 간접배출 포함 결정(가상)", dur: [999, 999], fx: { eu_indirect: 1 }, disabled: true, carbonWeight: 0.3, grade: G, note: "설계 선택: 실제 CBAM과 분리한 가상 시나리오 · 기간 999달은 상시 적용용 표지(G), carbonWeight 0.3은 가상 가중(G) · REF 7.15", text: "가상 결정: 철강 수출에 전력 탄소도 반영해요" },
-        { id: "ship_red", name: "홍해 해운 차질", dur: [3, 6], fx: { ship: -0.3 }, grade: M, note: "홍해 차질 · World Bank 2023.12~2024.6 LNG Japan 14.44→12.13으로 하락 [S28][S16] · ship 크기 −0.3은 G · 기간 3~6달은 게임 가정(G) · 배속: 없음 · REF 7.9", text: "물류비가 오르고 항만 산출이 줄어요" },
+        { id: "ship_red", name: "홍해 해운 차질", dur: [3, 6], fx: { ship: -0.3 }, grade: M, note: "홍해 차질 · World Bank 2023.12~2024.6 LNG Japan 14.44→12.13으로 하락 [S28][S16] · ship 크기 −0.3은 G · 기간 3~6달은 게임 가정(G) · 배속: 없음 · REF 7.9", text: "항구가 있는 도시의 물류 여건과 산업 산출이 줄어요(물류비 지출은 따로 계산하지 않아요)" },
         { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, grade: G, note: "효과 크기 G(+0.5)·지속 기간 G(2~5달): 급등 관측 범위 [S16]를 참고한 게임 사건이며 인과 추정값은 아님 · REF 7.8", text: "LNG·디젤 연료비가 크게 올라요" },
         { id: "export_boom", name: "반도체 수출 호황", dur: [4, 8], fx: { export: { semi: 0.25, display: 0.1 } }, grade: G, note: "효과 크기 G(반도체 +0.25·디스플레이 +0.1)·지속 기간 G(4~8달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "반도체 도시 산출이 늘어요" },
         { id: "auto_slump", name: "자동차 수출 둔화", dur: [3, 6], fx: { export: { auto: -0.2 } }, grade: G, note: "효과 크기 G(자동차 −0.2)·지속 기간 G(3~6달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "자동차 도시 산출이 줄어요" },
-        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, grade: G, note: "효과 크기 G(cbam=1은 켜짐 표시)·지속 기간 G(999달은 상시 적용용): 실제 감소율·도입 일정은 등급 있는 cbamDrop·cbamPhase로 계산 · REF 7.13, 7.15", text: "철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)" }
+        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, grade: G, note: "효과 크기 G(cbam=1은 켜짐 표시)·지속 기간 G(999달은 상시 적용용): 실제 감소율·도입 일정은 등급 있는 cbamDrop·cbamPhase로 계산 · REF 7.13, 7.15", text: "철강 비중과 수출 비중에 따라 산출이 깎여요(EU 몫은 모든 도시 같음, 단계 도입, 공정별 직접배출 차이는 생략한 근사)" }
       ],
       // 정해진 때 오는 사건(t = 몇 번째 턴, 0부터)
       schedule: [{ t: 0, id: "cbam" }]

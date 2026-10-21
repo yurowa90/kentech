@@ -416,10 +416,11 @@
   function yearStart(E, data) {
     data = data || DATA();
     const quarter = `${E.year}:${E.month}`;
-    if (![1, 4, 7, 10].includes(E.month) || E.paidQuarter === quarter) return { E, subsidy: {} };
+    const payMonths = pv(data, "subsidyPayMonths");
+    if (!payMonths.includes(E.month) || E.paidQuarter === quarter) return { E, subsidy: {} };
     const E2 = restoreDefaults(clone(E), data), subsidy = {};
     prepareYear(E2, data);
-    E2.order.forEach(id => { const C = E2.cities[id], s = C.subsidy / 4; C.cash += s; C.paidSubsidy = s; subsidy[id] = s; });
+    E2.order.forEach(id => { const C = E2.cities[id], s = C.subsidy / payMonths.length; C.cash += s; C.paidSubsidy = s; subsidy[id] = s; });
     E2.paidQuarter = quarter;
     return { E: E2, subsidy };
   }
@@ -601,11 +602,11 @@
     if (announce) {
       ids.forEach(id => { subOffset[id] = subsidyOffset(C[id], data); equalize[id] = equalizeOf(C[id], data); });
       E.announcedYear = E.year;
-      news.push(`국가 재정지원금 연액: ${ids.map(id => `${C[id].name} ${Math.round(C[id].subsidy)}억(분기별 1/4 지급)`).join(" · ")}`);
+      news.push(`국가 재정지원금 연액: ${ids.map(id => `${C[id].name} ${Math.round(C[id].subsidy)}억(지급 월마다 1/${P("subsidyPayMonths").length} 지급)`).join(" · ")}`);
     }
     const quarter = `${E.year}:${E.month}`;
-    if ([1, 4, 7, 10].includes(E.month) && E.paidQuarter !== quarter) {
-      ids.forEach(id => { sub[id] = C[id].subsidy / 4; });
+    if (P("subsidyPayMonths").includes(E.month) && E.paidQuarter !== quarter) {
+      ids.forEach(id => { sub[id] = C[id].subsidy / P("subsidyPayMonths").length; });
       E.paidQuarter = quarter;
     }
     // 2) 국제
@@ -680,7 +681,7 @@
       // 정액 지원은 제외하며, 소액·음수 기여를 보존하도록 억 단위 반올림하지 않는다.
       const fixedSubsidy = fin(c.subsidyFixed, P("subBase") + equalizeOf(c, data));
       const perResidentNet = (rev.resTax + (c.subsidy - fixedSubsidy) / 12 + rev.tariff * e.residentDemandShare - exp.service) / Math.max(1, c.pop);
-      if (over || stage !== "ok") news.push(`${c.name} 재정 ${stage === "crisis" || over ? "위기: 새 건설·유료 대응 제한, 재정 점수 0" : "주의: 채무비율 25% 이상"}${over ? " — 운영 적자로 한도 초과 부채가 계속 쌓이고 있어요" : ""}`);
+      if (over || stage !== "ok") news.push(`${c.name} 재정 ${stage === "crisis" || over ? `위기: 새 건설·유료 대응 제한, 재정 점수 ${r1(finScore(c, data), data)}` : `주의: 채무비율 ${+(100 * P("debtWarnRatio") / P("budgetToRevenue")).toFixed(2)}% 이상`}${over ? " — 운영 적자로 한도 초과 부채가 계속 쌓이고 있어요" : ""}`);
       fiscal[id] = { tariffGross: r3(servedOf(e) * reg.otherCost[id] * (1 + P("tariffMarkup")), data), eventBonus: r3(e.bonus, data), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: revT, expTotal: expT, cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, debtRatio: ratio, debtStage: stage, spendable: spendable(c, data), out: o };
       fiscal[id].perResidentNet = perResidentNet;
       // 지연 추적(정전·CO₂·재생)
@@ -787,10 +788,14 @@
   }
 
   /* ---------- 점수 · 순위 ---------- */
+  function finScore(c, data) {
+    const P = k => pv(data, k), marks = P("scoreFinDebtMarks");
+    return c.cash < -c.debtCap ? P("scoreFinOverCap") : c100(100 - Math.max(0, debtRatio(c, data) - marks[0]) * (100 - P("neutralScore")) / (marks[1] - marks[0]));
+  }
   function score(E, data) {
     data = data || DATA();
     const P = k => pv(data, k), w = P("wScore"), K = P("scoreGrowthK")[E.len] || P("scoreGrowthK")[36], T = E.totals;
-    const floor = clamp(fin(P("scorePartFloor"), 1), 1, 100), finMarks = P("scoreFinDebtMarks");
+    const floor = clamp(fin(P("scorePartFloor"), 1), 1, 100);
     const list = E.order.map(id => {
       const c = E.cities[id];
       // 증가율은 지역 총량 증가를 뺀 몫 변화(경쟁)
@@ -798,7 +803,7 @@
       const gi = (c.ind / Math.max(1, c.ind0)) / (T.ind / Math.max(1, T.ind0)) - 1;
       const parts = {
         pop: c100(P("neutralScore") + K.pop * gp), ind: c100(P("neutralScore") + K.ind * gi),
-        fin: c.cash < -c.debtCap ? 0 : c100(100 - Math.max(0, debtRatio(c, data) - finMarks[0]) * (100 - P("neutralScore")) / (finMarks[1] - finMarks[0])),
+        fin: finScore(c, data),
         co2: carbonScore(c, data),
         appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("scoreUnsZero")))
       };
