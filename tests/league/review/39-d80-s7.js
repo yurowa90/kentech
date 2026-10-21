@@ -36,8 +36,8 @@ const fillMWh = row => Math.max(0, row.isolated.uns - row.uns - row.imp + row.su
 // 월 일수는 core의 공개 라운드 표로 읽고 S7 resultPeriod를 기대값에 쓰지 않는다.
 const monthDays = (V, res) => C.roundsOf(V)[res.round - 1].mdays;
 const mul = (V, res) => monthDays(V, res) / res.days;
-const actualMWh = f => fillMWh(f.res.team[id]) * mul(f.V, f.res);
-const sameTol = base => Math.max(1, .05 * Math.abs(base));
+const actualMWh = f => fillMWh(f.res.team[id]) / f.res.days; // D-82: S7은 MWh/일.
+const sameTol = base => Math.max(.05, .05 * Math.abs(base)); // D-82: 측정 보고서의 제안 식.
 const sum = a => a.parts.reduce((n, p) => n + p.value, 0);
 let checks = 0, failures = 0;
 function check(label, fn) {
@@ -46,8 +46,8 @@ function check(label, fn) {
   catch (e) { failures++; console.error(`FAIL ${label}: ${e.message}`); }
 }
 function near(actual, expected) {
-  // D-80 §2 C-2: 월 환산과 순차 차분의 부동소수 누적만 허용한다.
-  // 화면 반올림이나 누락 잔차를 허용하는 값이 아니다. 원시값 항등식은 1e-6 MWh/%p.
+  // D-82: 하루 평균과 순차 차분의 부동소수 누적만 허용한다(D-80 C-2 잔차 규칙 유지).
+  // 화면 반올림이나 누락 잔차를 허용하는 값이 아니다. 원시값 항등식은 1e-6 MWh/일 또는 %p.
   assert.ok(Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= 1e-6,
     `${actual} != ${expected} (1e-6)`);
 }
@@ -118,8 +118,8 @@ for (const options of [{ season: 'winter', trialSeed: 1 }, { season: 'winter', t
   check(`1 ${label} keys`, () => keys(a, trialKeys));
   check(`2 ${label} identity`, () => near(sum(a) + a.replay, a.total));
   check(`2 ${label} public actual`, () => near(a.actual, actualMWh(f)));
-  check(`2 ${label} trial month conversion`, () => near(a.trial, f.trial.gridMWh * monthDays(f.V, f.res) / f.trial.days));
-  check(`2 ${label} total`, () => near(a.total, actualMWh(f) - f.trial.gridMWh * monthDays(f.V, f.res) / f.trial.days));
+  check(`2 ${label} trial per day`, () => near(a.trial, f.trial.gridMWh / f.trial.days)); // D-82: 시험 원기간 직접 평균.
+  check(`2 ${label} total`, () => near(a.total, actualMWh(f) - f.trial.gridMWh / f.trial.days)); // D-82
   check(`2 ${label} nonnegative`, () => assert.ok(a.actual >= 0 && a.trial >= 0));
   costs(label, a);
 }
@@ -183,7 +183,7 @@ for (const empty of [false, true]) {
 // 합성 frozen은 표시 계약 전용. 수치·키는 새 구현 출력에서 복사하지 않는다.
 function synthetic(f, target, values, base = 1000) {
   const parts = trialKeys.map((key, i) => ({ key, value: values[i] }));
-  return { id, round: f.res.round, basis: 'trial', target, trial: base,
+  return { id, round: f.res.round, basis: 'trial', target, ...(target === 'grid' ? { unit: 'MWh/일' } : {}), trial: base, // D-82: 새 단위 고정본.
     actual: base + values.reduce((n, v) => n + v, 0), total: values.reduce((n, v) => n + v, 0),
     replay: 0, parts, simulations: 4, gridFills: 4, ms: 0,
     grid: { value: 0, waitingMW: 0 }, clues: Object.fromEntries(trialKeys.map(k => [k, '가상 단서'])),
@@ -206,12 +206,12 @@ function synthetic(f, target, values, base = 1000) {
     for (const region of ['cards', 'waterfall', 'verdict']) {
       const area = elementHTML(text, 'lg-outage-' + region);
       assert.ok(area, region + ' exists');
-      assert.ok(area.includes('MWh'), region + ' MWh');
+      assert.ok(area.includes('MWh/일'), region + ' MWh/일'); // D-82
       assert.ok(!area.includes('%p'), region + ' no %p');
     }
     const sizes = [...text.matchAll(/class="lg-out-size"[^>]*>([^<]+)</g)];
     assert.ok(sizes.length >= 2);
-    assert.ok(sizes.every(m => /[+−-]?[\d,]+\.\d MWh/.test(m[1])), '몫 소수 첫째 자리 MWh');
+    assert.ok(sizes.every(m => /[+−-]?[\d,]+\.\d MWh\/일/.test(m[1])), '몫 소수 첫째 자리 MWh/일'); // D-82
   });
   check('8 largest includes cost', () => assert.ok((text.match(/<p>가장 큰 것[^]*?<\/p>/)?.[0] || '').includes('억'), '최대 몫 판정 줄의 비용'));
   for (const base of [0, 10, 1000, -1000]) {

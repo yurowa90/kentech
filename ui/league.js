@@ -907,18 +907,20 @@
     const rounded = Number(Number(x).toFixed(2)) + 0;
     return `${rounded < 0 ? "−" : sign && rounded > 0 ? "+" : ""}${Math.abs(rounded).toFixed(2)}`;
   };
-  const outageUnit = (a, level = false) => a?.target === "grid" ? "MWh" : level ? "%" : "%p";
+  const outageUnit = (a, level = false) => a?.target === "grid" ? a.unit || "MWh" : level ? "%" : "%p";
+  const outageGridRounded = x => Number(x.toFixed(1)) + 0;
+  const outageLegacyGrid = a => a?.target === "grid" && a.unit !== "MWh/일";
   const outageValue = (x, unit, sign = false) => {
-    if (unit !== "MWh") return `${outageNumber(x, sign)}${unit}`;
-    if (!Number.isFinite(x)) return "– MWh";
-    const rounded = Number(x.toFixed(1)) + 0;
-    return `${rounded < 0 ? "−" : sign && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MWh`;
+    if (unit !== "MWh" && unit !== "MWh/일") return `${outageNumber(x, sign)}${unit}`;
+    if (!Number.isFinite(x)) return `– ${unit}`;
+    const rounded = outageGridRounded(x);
+    return `${rounded < 0 ? "−" : sign && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
   };
   const outageCost = (x, a) => a?.target === "grid" ? ` (비용 ${outageNumber(x * params("normalCost") * params("gridImportMarkup"), true)}억)` : "";
   // D-80 C-5 임시(G): 계통 '같음' 문턱의 1/10. 옛 기록은 정전 문턱 그대로 읽는다.
-  // 재현 차이를 보일 최소 크기: 표시 자릿수의 절반(정전 0.005%p, 계통 0.05 MWh).
+  // 재현 차이를 보일 최소 크기: 표시 자릿수의 절반(정전 0.005%p, 계통 0.05 MWh/일).
   const outageReplayShown = (a, x) => Number.isFinite(x) && Math.abs(x) >= (a?.target === "grid" ? .05 : .005);
-  const outageMinPart = a => a?.target === "grid" ? gridSameTol(a.trial ?? a.base) / 10 : .05;
+  const outageMinPart = a => a?.target === "grid" ? gridSameTolPerDay(a.trial ?? a.base) / 10 : .05;
   // 직접: 해당 물리 입력을 바꾸는 단계. 같은 단계: 함께 바뀌지만 해당 근거만의 효과는 아니다.
   // 간접: 비용·다른 수요·이웃 조건을 통한 관련성만 있다.
   // 연료 배수는 급전 한계비용을 바꾼다. 고립 정전 효과가 보장되지 않으므로 growth도 간접이다.
@@ -936,7 +938,7 @@
     const min = outageMinPart(a);
     const largest = ranked[0] && Math.abs(ranked[0].value) >= min ? ranked[0] : null;
     // 대상의 표시 자릿수(정전 0.01, 계통 0.1)에서 크기가 같은 몫은 모두 가장 큰 몫으로 보인다. 저장하는 largest는 첫 몫 하나 그대로.
-    const shown = p => Number(Math.abs(p.value).toFixed(a?.target === "grid" ? 1 : 2));
+    const shown = p => a?.target === "grid" ? Math.abs(outageGridRounded(p.value)) : Number(Math.abs(p.value).toFixed(2));
     const tied = largest ? ranked.filter(p => Math.abs(p.value) >= min && shown(p) === shown(largest)).map(p => p.key) : [];
     return { ranked, largest, tied };
   }
@@ -1146,21 +1148,33 @@
     strip.innerHTML = `<span>지난달 ${old.answer === "keep" ? "유지하겠다" : "고치겠다"}: ${esc(old.askReason.trim().replace(/\s+/g, " "))}</span><button type="button" id="lg-plan-reminder-close" aria-label="지난달 이유 띠 닫기">×</button>`;
     if (created) window.dispatchEvent(new Event("resize"));
   }
-  // 계획 때는 지난달 실제나 같은 달 시험을 월 일수로 환산해 계통 약속의 기준을 구한다.
+  // 월 합계 계약은 유지하고 약속 비교용 하루 평균은 시험 원기간에서 직접 구한다.
   function promiseGridBaseline(V, n = monthNote().n) {
     const previous = V.results.find(x => x.round === V.round - 1);
-    if (previous) return { ...gridReliance(V, previous, L.team), label: "지난달 대비" };
+    if (previous) {
+      // days는 비교 기준인 지난달의 월 일수다.
+      const { mwh, cost, days, perDay, unit } = gridReliance(V, previous, L.team);
+      return { label: "지난달 대비", mwh, cost, days, perDay, unit,
+        base: { kind: "last", label: "지난달 대비", mwh, cost, days, perDay },
+        delta: null, deltaCost: null, tol: gridSameTol(mwh), deltaPerDay: null, deltaPerDayCost: null, tolPerDay: gridSameTolPerDay(perDay) };
+    }
     const res = { ...curRound(), round: V.round }, trial = n?.confirmed && Number.isFinite(n.trial?.gridMWh) && n.trial.days > 0 ? n.trial : matchingTrial(V, res, L.team);
-    const mwh = Number.isFinite(trial?.gridMWh) ? trial.gridMWh * resultPeriod(V, { ...res, days: trial.days }).days / trial.days : null;
-    return { label: "시험 1주 대비", mwh, cost: mwh == null ? null : mwh * params("normalCost") * params("gridImportMarkup") };
+    const days = resultPeriod(V, res).days, perDay = Number.isFinite(trial?.gridMWh) && trial.days > 0 ? trial.gridMWh / trial.days : null;
+    const mwh = perDay == null ? null : perDay * days, cost = mwh == null ? null : mwh * params("normalCost") * params("gridImportMarkup");
+    return { label: "시험 1주 대비", mwh, cost, days, perDay, unit: "MWh/일",
+      base: { kind: perDay == null ? null : "trial", label: "시험 1주 대비", mwh, cost, days: perDay == null ? null : trial.days, perDay },
+      delta: null, deltaCost: null, tol: gridSameTol(mwh), deltaPerDay: null, deltaPerDayCost: null, tolPerDay: gridSameTolPerDay(perDay) };
   }
   // 첫 달 계통 기준은 약속 확정 때 남긴 시험 값(n.trial)을 쓴다. 약속 뒤 시험을 다시 돌려도 판정 기준이 바뀌지 않는다.
   function promiseGridReliance(V, res, id, n) {
     const g = gridReliance(V, res, id), t = n?.trial;
     if (V.results.some(x => x.round === res.round - 1) || !Number.isFinite(t?.gridMWh) || !(t.days > 0)) return g;
     const price = params("normalCost") * params("gridImportMarkup"), mwh = t.gridMWh * resultPeriod(V, res).days / t.days;
-    const delta = g.mwh == null ? null : g.mwh - mwh;
-    return { ...g, base: { kind: "trial", label: "시험 1주 대비", mwh, cost: mwh * price }, delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(mwh) };
+    const delta = g.mwh == null ? null : g.mwh - mwh, perDay = t.gridMWh / t.days;
+    const deltaPerDay = g.perDay == null ? null : g.perDay - perDay;
+    return { ...g, base: { kind: "trial", label: "시험 1주 대비", mwh, cost: mwh * price, days: t.days, perDay },
+      delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(mwh),
+      deltaPerDay, deltaPerDayCost: deltaPerDay == null ? null : deltaPerDay * price, tolPerDay: gridSameTolPerDay(perDay) };
   }
   // 근거·방향·확신과 약속 주제에 맞는 비교 기준을 표시한다.
   function predictionHTML(V) {
@@ -1190,7 +1204,7 @@
     const beforeCash = V.econ.before?.[L.team]?.cash;
     const delta = topic === "cash" ? Number.isFinite(c.cash) && Number.isFinite(beforeCash) ? c.cash - beforeCash : null
       : grid ? grid.delta : Number.isFinite(comparison.value) && Number.isFinite(r?.unsPct) ? r.unsPct - comparison.value : null;
-    const actual = delta == null ? null : grid ? Math.abs(delta) <= grid.tol ? "same" : delta > 0 ? "up" : "down" : direction(delta);
+    const actual = grid ? grid.deltaPerDay == null ? null : Math.abs(grid.deltaPerDay) <= grid.tolPerDay ? "same" : grid.deltaPerDay > 0 ? "up" : "down" : delta == null ? null : direction(delta);
     const hit = actual == null ? null : n.pred[topic] === actual;
     return { result, r, topic, comparison, grid, delta, actual, hit };
   }
@@ -1664,10 +1678,10 @@
           if (!shownOutageElement(document.getElementById("lg-panel"), "#lg-outage-single")) return true;
           n.outageSingleShown = true;
         } else if (!opened) return true;
-        n.missedCarry = { basis: a.basis || "trial", ...(a.target ? { target: a.target } : {}), missed: frozenPicked ? n.missed : largest ? single ? "고르기 생략" : n.missed : outageNoCauseLabel(a),
+        n.missedCarry = { basis: a.basis || "trial", ...(a.target ? { target: a.target } : {}), ...(a.unit ? { unit: a.unit } : {}), missed: frozenPicked ? n.missed : largest ? single ? "고르기 생략" : n.missed : outageNoCauseLabel(a),
           ...(largest ? { largest: { ...largest } } : {}) };
       }
-      n.outageFrozen ||= structuredClone(a);
+      if (!n.outageFrozen || outageLegacyGrid(n.outageFrozen)) n.outageFrozen = structuredClone(a);
       n.outageNoCause = !largest;
       if (largest) n.outageLargest = { ...largest };
       else { delete n.outageLargest; if (n.missedCarry) delete n.missedCarry.largest; }
@@ -2543,7 +2557,8 @@
     });
   }
   // 순차 반사실(G). 공개 상태·요청 본문에는 붙이지 않고 현재 기기 세션에서만 캐시한다.
-  const outageCacheKey = (res, id, trial) => JSON.stringify([id, res.round, trial && [trial.seed, trial.days, trial.unsPct, trial.gridMWh, trial.plan], "d80"]);
+  const outageCacheKey = (res, id, trial, promisedTrial) => JSON.stringify([id, res.round,
+    trial && [trial.seed, trial.days, trial.unsPct, trial.gridMWh, trial.plan], promisedTrial && [promisedTrial.gridMWh, promisedTrial.days], "d82"]);
   // flow는 손실 뒤 도착량이며 화력 대체도 포함한다. 기존 결과로 계통 수입 전
   // 거래 단계를 복원한다. 시간별 공급 식은 core만 소유하고 반올림 잔차는 마지막 몫에 둔다.
   // D-74: 이번 결과의 공급이 모두 바깥 계통에서 왔는지(자체 발전·이웃 구매 0). 결과 서랍의 계통 수입 역산과 같은 공개 필드만 쓴다.
@@ -2577,21 +2592,32 @@
   // D-80: 정전 0은 표시 자릿수(소수 둘째 자리)에서 0. '같을 것' 문턱은 A-3 측정 전 임시값(G).
   const ZERO_OUTAGE_PCT = 0.005, GRID_SAME_MWH = 1, GRID_SAME_SHARE = 0.05;
   const gridSameTol = baseMwh => Math.max(GRID_SAME_MWH, Number.isFinite(baseMwh) ? GRID_SAME_SHARE * Math.abs(baseMwh) : 0);
+  // D-82 G 잠정 제안. 실제 영상 표본·후보·한계: tests/league/review/D82-gridtol-report.md.
+  const GRID_SAME_MWH_PER_DAY = 0.05, GRID_SAME_SHARE_PER_DAY = 0.05;
+  const gridSameTolPerDay = basePerDay => Math.max(GRID_SAME_MWH_PER_DAY,
+    Number.isFinite(basePerDay) ? GRID_SAME_SHARE_PER_DAY * Math.abs(basePerDay) : 0);
   // 계통이 메운 전기의 월 환산과 비교 기준. 공개 결과 필드와 기기 안 시험 기록만 읽는 순수 함수다.
   function gridReliance(V, res, id) {
     const price = params("normalCost") * params("gridImportMarkup"), costOf = mwh => mwh == null ? null : mwh * price;
-    const own = gridFillMWh(res?.team?.[id]), mwh = own == null ? null : own * resultPeriod(V, res).mul;
+    const period = resultPeriod(V, res), days = period.days;
+    const own = gridFillMWh(res?.team?.[id]), mwh = own == null ? null : own * period.mul, perDay = mwh == null ? null : mwh / days;
     const previous = V.results?.find(x => x.round === res.round - 1), last = gridFillMWh(previous?.team?.[id]);
-    let base = { kind: null, label: previous ? "비교 없음(지난달 계통 값 없음)" : "비교 없음(첫 결과)", mwh: null, cost: null };
-    if (last != null) base = { kind: "last", label: "지난달 대비", mwh: last * resultPeriod(V, previous).mul };
+    let base = { kind: null, label: previous ? "비교 없음(지난달 계통 값 없음)" : "비교 없음(첫 결과)", mwh: null, cost: null, days: null, perDay: null };
+    if (last != null) {
+      const prevPeriod = resultPeriod(V, previous), previousMWh = last * prevPeriod.mul;
+      base = { kind: "last", label: "지난달 대비", mwh: previousMWh, days: prevPeriod.days, perDay: previousMWh / prevPeriod.days };
+    }
     else if (!previous) {
       const trial = matchingTrial(V, res, id);
-      if (trial && Number.isFinite(trial.gridMWh)) base = { kind: "trial", label: "시험 1주 대비", mwh: trial.gridMWh * resultPeriod(V, res).days / trial.days };
+      if (trial && Number.isFinite(trial.gridMWh)) base = { kind: "trial", label: "시험 1주 대비", mwh: trial.gridMWh * days / trial.days, days: trial.days, perDay: trial.gridMWh / trial.days };
       else if (trial) base.label = "비교 없음(시험 기록에 계통 값 없음)";
     }
     base.cost = costOf(base.mwh);
     const delta = mwh != null && base.mwh != null ? mwh - base.mwh : null;
-    return { mwh, cost: costOf(mwh), base, delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(base.mwh) };
+    const deltaPerDay = perDay != null && base.perDay != null ? perDay - base.perDay : null;
+    return { mwh, cost: costOf(mwh), base, delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(base.mwh),
+      days, perDay, deltaPerDay, deltaPerDayCost: deltaPerDay == null ? null : deltaPerDay * price,
+      tolPerDay: gridSameTolPerDay(base.perDay), unit: "MWh/일" };
   }
   function gridOnlyServed(V, r) {
     if (!V.econ || !r || !Number.isFinite(r.dem)) return false;
@@ -2647,17 +2673,18 @@
     return { filledUnsPct: filled.tot.dem > 0 ? 100 * filled.unsTotal / filled.tot.dem : 0,
       gridMWh: filled.tot.by.import - raw.tot.by.import };
   }
-  const outageStageValue = (stage, target, mul) => target === "grid" ? stage.gridMWh * mul : stage.filledUnsPct;
+  const outageStageValue = (stage, target, days) => target === "grid" ? stage.gridMWh / days : stage.filledUnsPct;
   function outageAttribution(V, res, id, note) {
     if (!L || !res?.team?.[id]) return null;
     const n = note || (id === L.team ? tdata().interview?.months?.[res.round] : null);
     // 실제로 연 분해는 기기 메모에 고정한다. 새 시험·캐시보다 먼저 읽는다(D-65).
-    if ((n?.outageOpened || n?.outageSingleShown) && n.outageFrozen?.round === res.round && n.outageFrozen.id === id) return n.outageFrozen;
+    if ((n?.outageOpened || n?.outageSingleShown) && n.outageFrozen?.round === res.round && n.outageFrozen.id === id &&
+        !outageLegacyGrid(n.outageFrozen)) return n.outageFrozen;
     if (V.econ && res.round > 1) return outageAttributionMonthly(V, res, id, note);
     L.outCache ||= {};
     const trial = matchingTrial(V, res, id);
     // 같은 달 시험을 다시 돌리면 새 분해를 계산한다. 시험 계획 전체도 식별에 포함한다.
-    const key = outageCacheKey(res, id, trial);
+    const key = outageCacheKey(res, id, trial, n?.trial);
     if (Object.hasOwn(L.outCache, key)) return L.outCache[key];
     if (V.round !== res.round || !["review", "end"].includes(V.phase) || !V.teams[id]?.plan) return null;
     const before = V.econ?.before?.[id];
@@ -2692,7 +2719,6 @@
         BG.selectPack(C.teamDef(R(), id).pack, "league");
         const normalMods = C.modsFor({ ...input, events: [] }, R(), id), eventMods = C.modsFor(input, R(), id);
         const target = trial.unsPct < ZERO_OUTAGE_PCT && res.team[id].unsPct < ZERO_OUTAGE_PCT ? "grid" : "uns";
-        const period = resultPeriod(V, res), mul = period.mul;
         let simulations = 0, gridFills = 0;
         const sim = (plan, seed, days, mods) => {
           const st = BG.sanitize(plan, 1e9);
@@ -2714,15 +2740,16 @@
         const reCap = Object.fromEntries((grid?.entries || []).map(b => [b.key, b.mw]));
         const waitingMW = res.team[id].grid?.waitingMW ?? grid.waitingMW;
         const connected = waitingMW > 0 ? sim(plan, res.seed, res.days, { ...eventMods, reCap }) : event;
-        const value = stage => outageStageValue(stage, target, mul);
-        // 시험 단계는 모두 이번 달 일수로 환산한다. 실제 단계는 대표 운영 기간이다.
-        const baseValue = outageStageValue(base, target, period.days / trial.days);
-        const choiceValue = outageStageValue(choice, target, period.days / trial.days);
+        const value = stage => outageStageValue(stage, target, res.days);
+        // 시험·실제 각 대표기간의 하루 평균으로 비교해 달 길이 효과를 제거한다.
+        const baseValue = outageStageValue(base, target, trial.days);
+        const choiceValue = outageStageValue(choice, target, trial.days);
         const weatherValue = value(weather), eventValue = value(event);
-        const trialValue = target === "grid" ? Number.isFinite(trial.gridMWh) ? trial.gridMWh * period.days / trial.days : null : trial.unsPct;
+        const trialValue = target === "grid" ? Number.isFinite(n?.trial?.gridMWh) && n.trial.days > 0 ? n.trial.gridMWh / n.trial.days
+          : Number.isFinite(trial.gridMWh) ? trial.gridMWh / trial.days : null : trial.unsPct;
         const actual = target === "grid" ? gridFillMWh(res.team[id]) : res.team[id].unsPct;
         if (!Number.isFinite(actual)) throw new Error("outage actual");
-        const actualValue = target === "grid" ? actual * mul : actual;
+        const actualValue = target === "grid" ? actual / res.days : actual;
         const total = trialValue == null ? null : actualValue - trialValue;
         const replay = trialValue == null ? null : baseValue - trialValue;
         const neighbor = outageNeighborStage(res, id, event.unsPct);
@@ -2747,7 +2774,7 @@
           trade: `이웃 구매 ${fmt(neighbor.imported * resultPeriod(V, res).mul, 1)} / 판매 ${fmt(res.team[id].exp * resultPeriod(V, res).mul, 1)} MWh(월 환산)${target === "grid" ? " · 이웃에게 산 만큼 바깥 계통에 덜 기대요" : ""}`
         };
         delete L.outFailures[key];
-        return L.outCache[key] = { basis: "trial", target, base: baseValue, round: res.round, id, trialIdentity: key,
+        return L.outCache[key] = { basis: "trial", target, ...(target === "grid" ? { unit: "MWh/일" } : {}), base: baseValue, round: res.round, id, trialIdentity: key,
           trial: trialValue, actual: actualValue, total, replay, parts, clues, clueMore: { event: eventClue.full, weather: weatherClue.full },
           hasConnectedWind: weather.hasConnectedWind,
           grid: { value: value(connected) - eventValue, waitingMW },
@@ -2910,12 +2937,13 @@
       L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
     }
   }
-  const monthlyOutageKey = (res, id) => JSON.stringify(["monthly", id, res.round, res.team[id].unsPct, res.seed, res.days, res.season, "d80"]);
+  const monthlyOutageKey = (res, id) => JSON.stringify(["monthly", id, res.round, res.team[id].unsPct, res.seed, res.days, res.season, "d82"]);
   function outageAttributionMonthly(V, res, id, note) {
     if (!L || !res?.team?.[id] || res.round < 2) return null;
     const n = note || (id === L.team ? tdata().interview?.months?.[res.round] : null);
     if ((n?.outageOpened || n?.outageSingleShown) && n.outageFrozen &&
-        n.outageFrozen.round === res.round && n.outageFrozen.id === id) return n.outageFrozen;
+        n.outageFrozen.round === res.round && n.outageFrozen.id === id &&
+        !outageLegacyGrid(n.outageFrozen)) return n.outageFrozen;
     const key = monthlyOutageKey(res, id);
     L.outCache ||= {}; L.outFailures ||= {};
     if (Object.hasOwn(L.outCache, key)) return L.outCache[key];
@@ -2929,16 +2957,15 @@
     try {
       return withCityPack(id, () => {
         const target = previous.unsPct < ZERO_OUTAGE_PCT && res.team[id].unsPct < ZERO_OUTAGE_PCT ? "grid" : "uns";
-        const mul = resultPeriod(V, res).mul, oldMul = resultPeriod(V, previousResult).mul;
         let simulations = hadCurrent ? 0 : 1, gridFills = hadCurrent ? 0 : 1;
-        const sim = (plan, seed, season, days, mods, weatherMetrics, scale = mul) => {
+        const sim = (plan, seed, season, days, mods, weatherMetrics) => {
           const output = {};
           simulations++;
           outageSim(plan, seed, season, days, mods, weatherMetrics, output);
           gridFills++;
-          return outageStageValue(outageFilled(output.raw), target, scale);
+          return outageStageValue(outageFilled(output.raw), target, days);
         };
-        const base = sim(old.plan, old.seed, old.season, old.days, old.mods, null, oldMul);
+        const base = sim(old.plan, old.seed, old.season, old.days, old.mods);
         const oldBuilds = new Set(old.plan.builds.map(b => `${b.t}:${b.i}`)), newBuilds = new Set(current.plan.builds.map(b => `${b.t}:${b.i}`));
         const input = outageOperatingInput(V, res, id, { fuelMul: old.facts.fuel }), grid = input.grid[id];
         const ports = outageTiePorts(id, current.plan);
@@ -2985,7 +3012,7 @@
           rounds: C.roundsOf(input).map((rd, i) => i === res.round - 1 ? { ...rd, season } : rd) }, R(), id).curtailP;
         choiceMods.curtailP = choiceCurtail(old.season);
         const choiceWeather = {}, currentWeather = {};
-        const choice = sim(current.plan, old.seed, old.season, old.days, choiceMods, choiceWeather, oldMul);
+        const choice = sim(current.plan, old.seed, old.season, old.days, choiceMods, choiceWeather);
         const weatherMods = { ...choiceMods, hydroMonth: current.mods.hydroMonth,
           curtailP: choiceCurtail(current.season) };
         const weather = sim(current.plan, current.seed, current.season, current.days, weatherMods, currentWeather);
@@ -3008,18 +3035,18 @@
         const progress = sim(current.plan, current.seed, current.season, current.days, progressMods);
         // ⑤ 현재 사본의 계통 반영값을 재사용한다. 옛 사본은 한 번 더 계산한다.
         const growth = [current.filledUnsPct, current.gridMWh].every(Number.isFinite) ?
-          outageStageValue(current, target, mul) : sim(current.plan, current.seed, current.season, current.days, current.mods);
+          outageStageValue(current, target, current.days) : sim(current.plan, current.seed, current.season, current.days, current.mods);
         const connected = current.waitingMW > 0 ? sim(current.plan, current.seed, current.season, current.days, { ...current.mods, reCap: current.fullReCap }) : growth;
         const actualGrid = gridFillMWh(res.team[id]), previousGrid = gridFillMWh(previous);
         if (target === "grid" && ![actualGrid, previousGrid].every(Number.isFinite)) throw new Error("outage actual");
-        const actual = target === "grid" ? actualGrid * mul : res.team[id].unsPct;
-        const trialValue = target === "grid" ? previousGrid * oldMul : previous.unsPct;
+        const actual = target === "grid" ? actualGrid / res.days : res.team[id].unsPct;
+        const trialValue = target === "grid" ? previousGrid / previousResult.days : previous.unsPct;
         const neighbor = outageNeighborStage(res, id, current.isolatedUnsPct), oldNeighbor = outageNeighborStage(previousResult, id, old.isolatedUnsPct);
         const parts = [{ key: "choice", value: choice - base }, { key: "weather", value: weather - choice },
           { key: "event", value: event - weather }, { key: "progress", value: progress - event }, { key: "growth", value: growth - progress },
           // Σ앞단계 = growth − base. 양쪽 실제 잔차를 빼 Σ몫 = 실제 − 지난달 실제 보장.
           { key: "trade", value: (actual - growth) - (trialValue - base) }];
-        const oldFilled = outageStageValue(old, target, oldMul);
+        const oldFilled = outageStageValue(old, target, old.days);
         const connectedMW = [...oldBuilds].filter(k => newBuilds.has(k)).reduce((sum, k) => sum + Math.max(0, (current.mods.reCap[k] || 0) - (old.mods.reCap[k] || 0)), 0);
         const completed = (old.mods.disabledBuilds || []).filter(k => oldBuilds.has(k) && newBuilds.has(k) && !(current.mods.disabledBuilds || []).includes(k)).length;
         const adopted = (current.mods.tech || []).filter(k => !(old.mods.tech || []).includes(k)).length;
@@ -3036,7 +3063,7 @@
           trade: `이웃 구매 ${fmt(oldNeighbor.imported * resultPeriod(V, previousResult).mul, 1)} → ${fmt(neighbor.imported * resultPeriod(V, res).mul, 1)} / 판매 ${fmt(previous.exp * resultPeriod(V, previousResult).mul, 1)} → ${fmt(res.team[id].exp * resultPeriod(V, res).mul, 1)} MWh(월 환산)${target === "grid" ? " · 이웃에게 산 만큼 바깥 계통에 덜 기대요" : ""}`
         };
         delete L.outFailures[key];
-        return L.outCache[key] = { basis: "monthly", target, base, round: res.round, id, trial: trialValue, actual,
+        return L.outCache[key] = { basis: "monthly", target, ...(target === "grid" ? { unit: "MWh/일" } : {}), base, round: res.round, id, trial: trialValue, actual,
           total: actual - trialValue,
           hasConnectedWind: currentWeather.hasConnectedWind,
           replay: Number.isFinite(oldFilled) ? base - oldFilled : null, replayOutsideSum: true, parts, clues, clueMore: { event: `지난달: ${old.facts.event} / 이번 달: ${current.facts.event}`, weather: weatherClue.full },
@@ -3126,7 +3153,7 @@
     const comparisonNote = monthly ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.</p>' :
       V.econ && res.round > 1 ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정은 지난달 대비, 아래 나누기는 시험 대비예요.</p>' : "";
     const trial = !a && !monthly && matchingTrial(V, res, id);
-    const failed = L.outFailures?.[monthly ? monthlyOutageKey(res, id) : outageCacheKey(res, id, trial)] ||
+    const failed = L.outFailures?.[monthly ? monthlyOutageKey(res, id) : outageCacheKey(res, id, trial, n?.trial)] ||
       (monthly && L.outFailures?.[`snapshot:${id}:${res.round}`]);
     const old = monthly && s7data().outageSnapshots?.[res.round - 1];
     const missing = monthly && (!validOutageSnapshot(old, res.round - 1) ||
@@ -4920,11 +4947,11 @@
     const { d, n } = monthNote();
     if (pending.round !== L.snap.round) return;
     const changed = (pending.single && !n.outageSingleShown) ||
-      !n.outageFrozen || n.outageNoCause !== !pending.largest ||
+      !n.outageFrozen || outageLegacyGrid(n.outageFrozen) || n.outageNoCause !== !pending.largest ||
       n.outageLargest?.key !== pending.largest?.key || n.outageLargest?.value !== pending.largest?.value ||
       (!pending.largest && !!n.missedCarry?.largest);
     if (pending.single) n.outageSingleShown = true;
-    n.outageFrozen ||= structuredClone(pending.frozen);
+    if (!n.outageFrozen || outageLegacyGrid(n.outageFrozen)) n.outageFrozen = structuredClone(pending.frozen);
     n.outageNoCause = !pending.largest;
     if (pending.largest) n.outageLargest = { ...pending.largest };
     else { delete n.outageLargest; if (n.missedCarry) delete n.missedCarry.largest; }
