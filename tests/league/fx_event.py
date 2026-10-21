@@ -411,6 +411,14 @@ def remains_closed(page, milliseconds=500):
 
 
 def dismiss_forecast(checks, page, state, label, reload_check):
+    # 총괄 결정(160fc06 검토): Esc 한 번에 하나만 닫힌다. 첫 달 코치가 열려 있으면 Esc1은 코치만 닫고
+    # 예보는 남으며, Esc2가 예보를 닫는다.
+    coach = page.locator('#lg-coach')
+    if coach.count() and coach.is_visible():
+        page.keyboard.press('Escape')
+        checks.ok(not coach.is_visible() and
+                  (observe(page)['fx'] or {}).get('forecastOpen') is True,
+                  f'{label} 코치가 열린 첫 Esc는 코치만 닫고 예보 유지')
     page.keyboard.press('Escape')
     checks.test(f'{label} Esc로 예보 닫힘', lambda: bool(page.wait_for_function(
         '() => KCP.fxTurn?.state?.().forecastOpen === false', timeout=1000)))
@@ -791,7 +799,11 @@ def forecast_marks(page):
 
 
 def forecast_before_visible(checks, page, label, month, previous_marks):
-    """총괄 추가 9항: 숨은 예보는 소비하지 않고 같은 달 새로고침 뒤 다시 표시."""
+    """총괄 추가 9항: 숨은 예보는 소비하지 않고 같은 달 새로고침 뒤 다시 표시.
+
+    서랍 없이 보류된 예보는 Esc 한 번에 닫힌다. 서랍에 가려 보류된 예보는 Esc 한 번에 하나만
+    닫힌다는 규칙(160fc06 검토 총괄 결정)에 따라 Esc1에 서랍이 닫히며 보이게 되고, Esc2에 닫힌다.
+    """
     data = page.evaluate("""month => {
       const dom=(""" + DOM_JS + """);
       const record=window.__fxEventProbe.find(r=>r.round===month && r.forecast);
@@ -843,19 +855,6 @@ def inspect_forecast_strip(checks, page, label, reduced):
     pointer_press(page, page.locator('#lg-panel-fold'))
     checks.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
               label + ' 서랍 펼치기 단추 터치 뒤 예보 유지')
-    # 총괄 결정(4872ebd 검토 minor 2): 서랍이 열린 채 Esc 한 번은 서랍만 닫고 예보는 남긴다.
-    # 초점을 예보 밖(서랍 접기 단추)에 둔 상태에서 누른다.
-    page.locator('#lg-panel-fold').focus()
-    page.keyboard.press('Escape')
-    page.wait_for_timeout(300)
-    checks.ok(not page.locator('#lg-panel').is_visible() and
-              (observe(page)['fx'] or {}).get('forecastOpen') is True,
-              label + ' 서랍 열린 상태 Esc 한 번 → 서랍만 닫히고 예보 남음')
-    # 남은 띠 검사를 위해 도시 탭을 실제 터치로 다시 연다.
-    pointer_press(page, page.locator('#lg-bar [data-panel="city"]'))
-    page.wait_for_timeout(300)
-    if not page.locator('#lg-panel').is_visible():
-        return True
     if (observe(page)['fx'] or {}).get('strip'):
         return expand_strip(checks, page, label + ' 예보')
     return True
