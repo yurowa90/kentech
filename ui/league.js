@@ -509,9 +509,8 @@
     const stack = document.createElement("div"); stack.className = "lg-map-guidance";
     stack.innerHTML = '<div id="lg-plan-issues" aria-label="이번 달 계획 확인" hidden></div>';
     // 기존 결과 요약도 같은 묶음에 두어 코치·서랍과 자리를 나눈다.
-    const summary = root.querySelector("#lg-map-result"), townKey = root.querySelector("#bd-town-look-key");
+    const summary = root.querySelector("#lg-map-result");
     if (summary) stack.append(summary);
-    if (townKey) stack.append(townKey);
     root.append(stack);
     stack.addEventListener("click", e => {
       const issue = e.target.closest("[data-issue]");
