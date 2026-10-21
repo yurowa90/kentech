@@ -280,7 +280,7 @@
     const lead = KCP.ECON_DATA.params.buildLeadYears?.v, kr = KCP.ECON_DATA.params.buildLeadKorea?.v;
     if (!lead || !kr) return "";
     const names = [["solar", "태양광"], ["wind", "육상풍력"], ["ess", "배터리(ESS)"], ["biomass", "바이오매스"], ["diesel", "디젤"], ["smr", "SMR"]];
-    return `<p id="lg-build-lead">실제 공사 기간(착공~가동, 미국 에너지정보청 가정값 · ${esc(gradeWords("P"))}): ${names.map(([k, n]) => `${esc(n)} ${esc(lead[k])}년`).join(" · ")}. 한국 사례 · ${esc(gradeWords("O*"))}: LNG 복합 ${esc(kr.lngMonths.join("~"))}개월, 육상풍력은 인허가까지 약 ${esc(kr.windPermitYears)}년. 송전망은 계획·인허가부터 완공까지 ${esc(kr.gridYears.join("~"))}년(국제에너지기구 · ${esc(gradeWords("P"))}).</p><p id="lg-build-rule">이 게임은 SMR만 공사 ${esc(KCP.TECH_DATA?.params.smrTurns.v ?? 12)}달을 기다리고, 다른 설비는 바로 지어져 전력망 접속만 기다려요. 그래서 SMR이 현실보다 상대적으로 불리하게 그려져 있어요(${esc(gradeWords("G"))}).</p>`;
+    return `<p id="lg-build-lead">실제 공사 기간(착공~가동, 미국 에너지정보청 가정값 · ${esc(gradeWords("P"))}): ${names.map(([k, n]) => `${esc(n)} ${esc(lead[k])}년`).join(" · ")}. 한국 사례 · ${esc(gradeWords("O*"))}: LNG 복합 ${esc(kr.lngMonths.join("~"))}개월(계획 기준), 육상풍력은 인허가까지 약 ${esc(kr.windPermitYears)}년. 송전망은 계획·인허가부터 완공까지 ${esc(kr.gridYears.join("~"))}년(국제에너지기구 · ${esc(gradeWords("P"))}).</p><p id="lg-build-rule">이 게임은 SMR만 공사 ${esc(KCP.TECH_DATA?.params.smrTurns.v ?? 12)}달을 기다리고, 다른 설비는 바로 지어져 전력망 접속만 기다려요. 그래서 SMR이 현실보다 상대적으로 불리하게 그려져 있어요(${esc(gradeWords("G"))}).</p>`;
   }
   const bioCo2Text = value => `바이오 CO₂ ${fmt(value, 2)} t(국가 총량 밖 · IPCC 정보 항목)`;
   function recalHTML(rep, id) {

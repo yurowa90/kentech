@@ -10,6 +10,7 @@ const plain = x => JSON.parse(JSON.stringify(x));
 const clone = structuredClone;
 let assertions = 0;
 const failures = [];
+const mutations = [];
 const ok = (value, label) => { assertions++; assert.ok(value, label); };
 const eq = (actual, expected, label) => { assertions++; assert.deepEqual(plain(actual), plain(expected), label); };
 function test(label, fn) {
@@ -22,7 +23,7 @@ const read = name => fs.readFileSync(path.join(ROOT, 'ui', `${name}.js`), 'utf8'
 
 // 36-h03-h04.js와 같은 IIFE 노출 방식. 함수 본문은 바꾸지 않는다.
 // build.js가 제공하는 실제 gradeWords를 사용하며 등급 대역은 넣지 않는다.
-function engine(ref) {
+function engine(ref, overrides = {}) {
   const ctx = vm.createContext({ console, structuredClone, performance,
     document: { documentElement: {}, addEventListener() {} }, addEventListener() {},
     KCP: { route() {}, on() {}, esc: String, leagueNet: {} } });
@@ -30,7 +31,7 @@ function engine(ref) {
   vm.runInContext('Math.random = () => { throw Error("씨앗 없는 난수 금지"); };', ctx);
   for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core',
     ...(ref ? [] : ['league'])]) {
-    let source = ref ? gitSource(ref, name) : read(name);
+    let source = overrides[name] ?? (ref ? gitSource(ref, name) : read(name));
     if (name === 'league') {
       const end = /\}\)\(\);\s*$/;
       ok(end.test(source), 'league IIFE 노출 연결점');
@@ -133,9 +134,107 @@ test('D-81 커밋: smrTurns·공사 대기·발전 계산 코드 불변', () => 
   for (const name of ['tech-data', 'league-core', 'build']) {
     const before = gitSource(BEFORE, name);
     ok(gitSource(IMPLEMENTATION, name) === before, `${name}: D-81이 기존 규칙 코드를 바꾸지 않음`);
-    ok(read(name) === before, `${name}: 검사 대상 작업 파일도 기존 규칙과 동일`);
   }
   eq(K.TECH_DATA.params.smrTurns.v, 12, 'SMR 공사 12달 유지');
+  // 작업 파일은 실제 착공→계획 재전송→대기→발전만 비교한다. HUD 등의 변경은
+  // 이 계약과 무관하다. 양쪽 엔진 모두 같은 고정 씨앗의 합법 SMR 한 기를 운전한다.
+  function smrTrace(runtime) {
+    const core = runtime.leagueCore, bg = runtime.buildGame, state = game(runtime);
+    const id = state.active[0], region = core.regionOf(state.region), token = 'd81-smr-trace';
+    ok(core.host(state, 'next', 0), 'SMR 비교: 첫 달 시작');
+    ok(core.reduce(state, { type: 'claim', team: id, token }, 0).ok, 'SMR 비교: 팀 입장');
+    bg.selectPack(core.teamDef(region, id).pack, 'league');
+    const anchor = bg.SITES.find(s => s.dem).tile;
+    const tile = bg.TILES.find(t => !t.out && t.site < 0 && !bg.siteRule('smr', t) && bg.routePath(anchor, t.i));
+    ok(tile, 'SMR 비교: 냉각수·내부 연결을 갖춘 입지');
+    const plan = { builds: [{ t: 'smr', i: tile.i }], lines: [{ p: bg.routePath(anchor, tile.i) }] };
+    // bg 인수 없이도 실제 reduce의 공사 등록을 사용한다(입지 검증은 위에서 수행).
+    ok(core.reduce(state, { type: 'plan', team: id, token, rev: 1, plan }, 0).ok, 'SMR 비교: 착공');
+    state.teams[id].research = { adopted: ['smr'] };
+    const trace = [];
+    for (const round of [1, 5, 12, 13, 14]) {
+      state.round = round;
+      if (round === 5) ok(core.reduce(state, { type: 'plan', team: id, token, rev: 2, plan }, 0).ok,
+        'SMR 비교: 재전송에도 착공 기록 유지');
+      const mods = core.modsFor(state, region, id);
+      const sim = bg.simulate(bg.sanitize({ ...plan, season: 'winter', seed: 8101 }, 1e9), 1, { league: true, mods });
+      const smrMWh = sim.tot.by.smr || 0;
+      ok(round < 13 ? smrMWh === 0 : smrMWh > 0, `${round}달: 실제 SMR 완공 전 0·완공 후 발전`);
+      trace.push({ round, construction: clone(state.teams[id].construction),
+        disabledBuilds: mods.disabledBuilds || [], smrMWh, fuel: sim.tot.fuel, co2: sim.tot.co2 });
+    }
+    return trace;
+  }
+  eq(smrTrace(K), smrTrace(engine(BEFORE)), '777805a 대비 SMR 착공·readyRound·disabledBuilds·발전량·연료·CO₂ 불변');
+});
+
+// 천안의 실제 지도·기준 피크에서 2달째 태양광 한 기를 짓는다. 접속이 5달째
+// 끝나므로 4달째부터 속도가 달라지는 회귀도 진행량과 가동 시점으로 검출한다.
+// 경제·사건은 고정하고 reduce → gridStatus → modsFor → simulate를 매달 실행한다.
+function solarTrace(runtime, plan) {
+  const core = runtime.leagueCore, bg = runtime.buildGame, state = game(runtime);
+  const id = 'cheonan', region = core.regionOf(state.region), token = 'd81-solar-trace';
+  ok(core.host(state, 'next', 0), '태양광 비교: 첫 달 시작');
+  ok(core.reduce(state, { type: 'claim', team: id, token }, 0).ok, '태양광 비교: 팀 입장');
+  state.events = [];
+  const trace = [];
+  for (let round = 1; round <= 8; round++) {
+    state.round = round;
+    if (round === 2 || round === 4) {
+      const out = core.reduce(state, { type: 'plan', team: id, token, rev: round, plan: clone(plan) }, 0, bg);
+      ok(out.ok, `태양광 비교 ${round}달: ${round === 2 ? '착공' : '계획 재전송'} (${out.err || 'ok'})`);
+      eq(state.teams[id].plan.builds.map(({ t, i }) => ({ t, i })), plan.builds, '실제 승인된 태양광 한 기');
+    }
+    state.grid[id] = core.gridStatus(state, region, bg, id, true);
+    const mods = core.modsFor(state, region, id);
+    const sim = bg.simulate(bg.sanitize({ ...(state.teams[id].plan || {}), season: 'winter', seed: 8101 }, 1e9),
+      1, { league: true, mods });
+    // 재생 발전은 by(급전 발전원별 집계)가 아니라 ren에 모인다. 이 계획의
+    // 유일한 재생 설비가 태양광이므로 실제 태양광 발전량을 그대로 읽는다.
+    const solarMWh = sim.tot.ren;
+    trace.push({ round, construction: clone(state.teams[id].construction || {}),
+      grid: clone(state.grid[id]), disabledBuilds: clone(mods.disabledBuilds || []),
+      solarMWh, running: solarMWh > 0 });
+  }
+  return trace;
+}
+function assertSolarTrace(actual, expected) {
+  assert.deepEqual(plain(actual), plain(expected), '777805a 대비 태양광 착공·접속 진행·disabledBuilds·가동 불변');
+}
+test('777805a 대비 태양광 8달: 즉시 건설·접속 대기·발전, 4달째 속도 변형 검출', () => {
+  const previous = engine(BEFORE), bg = previous.buildGame, core = previous.leagueCore;
+  bg.selectPack(core.teamDef(core.regionOf('south'), 'cheonan').pack, 'league');
+  const anchor = bg.SITES.find(s => s.dem).tile;
+  const tile = bg.TILES.find(t => !t.out && t.site < 0 && !bg.siteRule('solar', t) && bg.routePath(anchor, t.i));
+  ok(tile, '태양광 비교: 합법 입지·내부 전선');
+  // 기준 판에서 한 번 만든 동일 입력을 작업 판·변형 판에도 복사해 전달한다.
+  const plan = { builds: [{ t: 'solar', i: tile.i }], lines: [{ p: bg.routePath(anchor, tile.i) }] };
+  const baseline = solarTrace(previous, plan), current = solarTrace(K, plan);
+  assertions++;
+  assertSolarTrace(current, baseline);
+  for (const step of current) {
+    eq(step.construction, {}, `${step.round}달: 태양광 공사·readyRound 대기 없음`);
+    eq(step.disabledBuilds, [], `${step.round}달: 태양광 공사 차단 없음`);
+    eq(step.running, step.round >= 5, `${step.round}달: 전량 접속 전 대기·5달째부터 발전`);
+    if (step.round >= 2 && step.round < 5) {
+      ok(step.grid.entries[0].allocatedMW > 0 && step.grid.entries[0].allocatedMW < step.grid.entries[0].mw,
+        `${step.round}달: 실제 부분 접속 진행`);
+    }
+  }
+
+  const source = read('league-core');
+  const speed = 'const monthlyMW = local.peakMW * (P.connPerMonthReal.v * P.eduConn.v);';
+  eq(source.split(speed).length - 1, 1, '속도 변형 연결점 한 곳');
+  const changed = source.replace(speed, speed.replace(';', ' * (S.round >= 4 ? 2 : 1);'));
+  const mutant = solarTrace(engine(undefined, { 'league-core': changed }), plan);
+  eq(mutant.slice(0, 3), baseline.slice(0, 3), '속도 변형은 첫 3달에 영향 없음');
+  ok(mutant[3].grid.entries[0].allocatedMW > baseline[3].grid.entries[0].allocatedMW,
+    '4달째 속도 2배 변형이 실제 접속 진행량을 바꿈');
+  eq(mutant.find(step => step.running)?.round, 4, '속도 변형은 4달째 조기 가동');
+  assertions++;
+  assert.throws(() => assertSolarTrace(mutant, baseline), assert.AssertionError,
+    '본 태양광 동작 비교가 소스 사본의 접속 속도 회귀를 거부');
+  mutations.push({ kind: '4달째부터 접속 속도 2배', detected: true, baselineOnline: 5, mutantOnline: 4 });
 });
 
 test('공사 규칙 실행: SMR만 12달 대기·완공 경계', () => {
@@ -180,5 +279,5 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
   } finally { D.params.buildLeadYears.v = years; D.params.buildLeadKorea.v = korea; }
 });
 
-console.log(JSON.stringify({ suite: '38-d81-buildlead', assertions, failures: failures.length, details: failures }));
+console.log(JSON.stringify({ suite: '38-d81-buildlead', assertions, failures: failures.length, details: failures, mutations }));
 process.exitCode = failures.length ? 1 : 0;
