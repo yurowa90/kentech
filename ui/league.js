@@ -34,6 +34,26 @@
     set(v) { try { window.sessionStorage.setItem(K_TAB, JSON.stringify(v)); return true; } catch (e) { return false; } }
   };
   const dataKey = () => `${K_DATA}:${L.room}:${L.team}`;
+  // 팀 기기 자료(하루 전 약속·확신·일지·S7 사본, D-65로 기기 안에만 있음)와 접속 정보의 저장 실패를 종류마다 기억하고,
+  // 혼자 하기와 같은 경고 토스트로 알린다. 실패한 종류가 모두 다시 저장되면 해제해, 다음 실패 때 다시 알린다.
+  // 방이 바뀌어도 남지 않게 키 전체가 아니라 종류(팀 자료·S7 사본·탭·이어서 하기)로 센다.
+  const teamSaveFailed = new Set();
+  let teamSaveWarned = false;
+  function warnTeamSave() {
+    if (L?.role !== "team" || !teamSaveFailed.size || teamSaveWarned || !document.getElementById("lg-bar")) return;
+    teamSaveWarned = true;
+    BG.toast("진행을 저장하지 못했어요. 브라우저 저장 공간·설정을 확인해요.", { warn: true });
+  }
+  function teamWrote(kind, ok) {
+    // 성공하던 종류가 새로 실패하면, 다른 종류가 실패로 남아 있어도 다시 알린다.
+    if (!ok && !teamSaveFailed.has(kind)) teamSaveWarned = false;
+    if (ok) teamSaveFailed.delete(kind); else teamSaveFailed.add(kind);
+    if (!teamSaveFailed.size) teamSaveWarned = false;
+    // mountCity 안의 teamSave는 곧 지워질 옛 화면에 토스트를 띄우므로, 같은 동작이 끝난 뒤(새 화면) 알린다.
+    queueMicrotask(warnTeamSave);
+    return ok;
+  }
+  const teamSet = (k, v) => teamWrote(k.split(":")[0], store.set(k, v));
   // 저장값이 숫자·문자열·배열로 깨져 있으면 속성을 붙일 수 없어 상태 수신이 멈춘다 — 일반 객체가 아니면 빈 자료로 시작한다.
   const tdata = () => { const raw = L?.role === "solo" ? L.interview : store.get(dataKey()); const d = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}; d.docs = d.docs && typeof d.docs === "object" ? d.docs : {}; d.journal = d.journal && typeof d.journal === "object" ? d.journal : {}; return d; };
   // S7 월간 사본(계획 때 국제 지수·운영 조건)은 팀 자료와 다른 키에 둔다. 같은 키에 두면 이 기기가 새 방의
@@ -47,20 +67,20 @@
     const stale = d && S7_FIELDS.some(k => Object.hasOwn(d, k));
     if (saved && typeof saved === "object") {
       // 분리 키가 이미 있으면 팀 자료 키의 옛 사본은 버린다(2달 보관 정리 밖에 남지 않게).
-      if (stale) { S7_FIELDS.forEach(k => delete d[k]); store.set(dataKey(), d); }
+      if (stale) { S7_FIELDS.forEach(k => delete d[k]); teamSet(dataKey(), d); }
       return saved;
     }
     // 분리 전 판(팀 자료 키에 사본이 있던 기기)은 한 번 옮긴다.
     const moved = {};
     if (stale) {
       S7_FIELDS.forEach(k => { if (Object.hasOwn(d, k)) { moved[k] = d[k]; delete d[k]; } });
-      if (store.set(s7Key(), moved)) store.set(dataKey(), d);
+      if (teamSet(s7Key(), moved)) teamSet(dataKey(), d);
     }
     return moved;
   }
   function putS7(d) {
     if (L.role === "solo") { putData(d); return; }
-    store.set(s7Key(), Object.fromEntries(S7_FIELDS.filter(k => d[k] !== undefined).map(k => [k, d[k]])));
+    teamSet(s7Key(), Object.fromEntries(S7_FIELDS.filter(k => d[k] !== undefined).map(k => [k, d[k]])));
   }
   // 이전 판정용: S7 사본·안내 표시(guideSeen)·빈 묶음만 있으면 학생이 쓴 자료가 없는 것으로 본다.
   // 그 밖의 값(자동 기록 interview.causes 등 포함)은 보수적으로 '자료 있음'으로 보아 덮어쓰지 않는다.
@@ -98,6 +118,7 @@
   function close() {
     if (!L) return;
     saveSolo();
+    teamSaveFailed.clear(); teamSaveWarned = false;
     flushHost();
     L.resultReplayWait?.();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
@@ -215,7 +236,7 @@
   }
   function putData(d) {
     if (L.role === "solo") soloMutate(() => { L.interview = d; });
-    else store.set(dataKey(), d);
+    else teamSet(dataKey(), d);
   }
   function monthNote() {
     const d = tdata(), rd = L.snap?.round || 0;
@@ -3814,7 +3835,7 @@
     });
     return pending;
   }
-  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat, migrationFrom: L.migrationFrom }; const saved = tab.set(s); if (L.team) store.set(K_TEAM, s); return saved; }
+  function teamSave() { if (L.role === "solo") { saveSolo(); return; } const s = { room: L.room, net: L.net, team: L.team, identity: L.identity, fingerprint: L.fingerprint, hostKey: L.hostKey, hostN: L.hostN, sid: L.sid, seat: L.seat, migrationFrom: L.migrationFrom }; const saved = teamWrote(K_TAB, tab.set(s)); if (L.team) teamSet(K_TEAM, s); return saved; }
   function seatPicker(app) {
     lobbyStop?.();
     document.documentElement.classList.remove("v2-league-lobby", "v2-league-host");
@@ -3919,10 +3940,10 @@
         if (old?.team === L.team && old.room !== L.room && !hasTeamContent(store.get(dataKey()))) {
           const data = store.get(`${K_DATA}:${old.room}:${L.team}`);
           s7data(); // 새 방 키에 남은 분리 전 사본을 덮어쓰기 전에 분리 키로 옮긴다.
-          if (data) store.set(dataKey(), data);
+          if (data) teamSet(dataKey(), data);
           // 옛 방에서 이어 온 판이면 분리 키 사본도 따라온다(새 방 사본이 없을 때만).
           const oldS7 = store.get(`${K_S7}:${old.room}:${L.team}`);
-          if (oldS7 && !store.get(s7Key())) store.set(s7Key(), oldS7);
+          if (oldS7 && !store.get(s7Key())) teamSet(s7Key(), oldS7);
           s7data(); // 옛 방 자료에 들어 있던 분리 전 사본도 정리한다.
         }
         if (L.snap?.teams[L.team]?.seatVersion === L.seat) onSnap(L.snap, true);
@@ -4261,7 +4282,7 @@
       onTool: closePanel,
       leagueResultDays: () => L.snap?.results.at(-1)?.days,
       leagueResult: () => { const res = L.snap?.results.at(-1); return res?.team[L.team] ? { ...res.team[L.team], faded: L.snap.phase === "plan", round: res.round, month: res.month || C.roundsOf(L.snap)[res.round - 1]?.month, days: res.days } : null; },
-      onMount: root => { addBar(root); setupTeamMap(root); window.dispatchEvent(new Event("resize")); }
+      onMount: root => { addBar(root); setupTeamMap(root); warnTeamSave(); window.dispatchEvent(new Event("resize")); }
     });
     if (resume) {
       if (L.coach) showFirstGuide(document.getElementById("bd-root"));

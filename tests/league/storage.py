@@ -15,7 +15,7 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 from econui import (BOOT_JS, Checks, HOST_JS, SYNC_JS, context_for, diagnostics,
-                    local_address, monitored_page, overflow, shown)
+                    local_address, monitored_page, open_panel, overflow, shown)
 from league_flow import confirm_seat, select_mode
 from solo import KEY, STATE_READY_JS, click_next, read
 
@@ -53,8 +53,10 @@ SCREEN_SELECTORS = {"lobby": ".lg-modes", "solo": "#lg-bar",
 # league.js startSolo의 valid는 initial·previous·seedKey·seedMode·salt를
 # 요구하지 않는다. 이 필드만 뺀 옛 판본 조리법은 반드시 restore여야 한다.
 
-QUOTA_JS = """([key, selector]) => {
+QUOTA_JS = """([key, selector, prefix = false]) => {
   const original = Storage.prototype.setItem;
+  const matches = (storage, k) => storage === localStorage &&
+    (prefix ? String(k).startsWith(key) : k === key);
   const probe = window.__storageProbe = {key, failed:0, succeeded:0,
     warningSeen:false, failedAt:null, warningAt:null, warningText:''};
   // 진행 중 화면이 다시 그려져도 실제 표시된 짧은 토스트를 놓치지 않는다.
@@ -72,10 +74,12 @@ QUOTA_JS = """([key, selector]) => {
     probe.warningSeen = false; probe.failedAt = null; probe.warningAt = null;
     probe.warningText = '';
     Storage.prototype.setItem = function(k, v) {
-      if (this === localStorage && k === key) {
+      if (matches(this, k)) {
         probe.failed++;
         if (probe.failedAt === null) probe.failedAt = performance.now();
       }
+      // 기존 solo·host는 모든 쓰기를 실패시킨다. 팀은 팀 자료 키만 막는다.
+      if (prefix && !matches(this, k)) return original.call(this, k, v);
       throw new DOMException('검사용 저장 공간 부족', 'QuotaExceededError');
     };
   };
@@ -83,7 +87,7 @@ QUOTA_JS = """([key, selector]) => {
   probe.restore = () => {
     Storage.prototype.setItem = function(k, v) {
       const result = original.call(this, k, v);
-      if (this === localStorage && k === key) probe.succeeded++;
+      if (matches(this, k)) probe.succeeded++;
       return result;
     };
   };
@@ -504,14 +508,106 @@ def solo_quota_warning(checks, page, label):
     }"""), label + " 실패 직후 2초 안에 저장 토스트 표시")
 
 
+def team_quota_step(host, team, month, phase):
+    # 저장 함수·진행 함수를 호출하지 않고 진행자 화면의 실제 버튼으로 진행한다.
+    host.locator("#lg-next").click()
+    for page in (host, team):
+        page.wait_for_function(SYNC_JS, arg=[month, phase])
+    expect(team.locator("#lg-bphase")).to_have_text(
+        {"plan": "계획·협상", "review": "결과·일지"}[phase])
+
+
+def team_quota(checks, host, page, label):
+    prefix = "kcp-league-data-v1:"
+    message = "진행을 저장하지 못했어요. 브라우저 저장 공간·설정을 확인해요."
+
+    def write_note(text):
+        open_panel(page, "journal")
+        # 약속 카드의 decision 칸은 2월 계획 단계에 없다(브라우저 확인 2026-10-21). 일지 질문 칸은 매달 있으므로
+        # e2e.py와 같은 [data-j="why"]에 쓴다. 일지도 D-65에 따라 기기 안 팀 자료 키에만 저장된다.
+        field = page.locator('[data-j="why"]')
+        field.fill(text)
+        field.press("Tab")  # 기존 e2e·econui 검사와 같이 화면의 입력·변경 이벤트로 저장한다.
+
+    def warning(title):
+        solo_quota_warning(checks, page, title)
+        checks.ok(page.evaluate("() => __storageProbe.warningText") == message,
+                  title + " 혼자 하기와 같은 저장 실패 문구")
+
+    team_quota_step(host, page, 1, "plan")
+    if shown(page, "#lg-guide-close"):
+        page.locator("#lg-guide-close").click()
+    initial_note = "가상 팀의 저장 전 기준을 기록한다"
+    write_note(initial_note)
+    page.wait_for_function("""([prefix, note]) => Object.keys(localStorage).some(k =>
+      k.startsWith(prefix) && localStorage.getItem(k).includes(note))
+    """, arg=[prefix, initial_note])
+    data_keys = page.evaluate("prefix => Object.keys(localStorage).filter(k => k.startsWith(prefix))", prefix)
+    if not checks.ok(len(data_keys) == 1, label + " 팀 자료 접두어 키 1개 발견"):
+        raise AssertionError("격리된 진행자 1·팀 1 컨텍스트에 팀 자료 키 1개 필요")
+    key = data_keys[0]
+    raw_before = page.evaluate("key => localStorage.getItem(key)", key)
+    checks.ok(raw_before is not None and initial_note in raw_before,
+              label + " 화면 입력으로 기존 팀 자료 저장 생성")
+    page.evaluate(QUOTA_JS, [prefix, TOAST, True])
+    write_note("가상 팀의 첫 저장 실패를 확인한다")
+    page.wait_for_function("() => __storageProbe.failed > 0")
+    warning(label)
+    team_quota_step(host, page, 1, "review")
+    team_quota_step(host, page, 2, "plan")
+    checks.ok(page.evaluate("""() => {
+      const s = KCP.league.state().snap;
+      return s.round === 2 && s.phase === 'plan' && s.results.length === 1;
+    }"""), label + " 실패 중에도 진행자와 팀이 다음 달로 진행")
+    checks.ok(page.evaluate("() => __storageProbe.failed > 0") and
+              page.evaluate("key => localStorage.getItem(key)", key) == raw_before,
+              label + " 실제 setItem 실패·기존 팀 자료 보존")
+
+    page.evaluate("() => __storageProbe.restore()")
+    successes = page.evaluate("() => __storageProbe.succeeded")
+    recovered_note = "가상 팀의 복구 뒤 기준을 새로 기록한다"
+    write_note(recovered_note)
+    page.wait_for_function("n => __storageProbe.succeeded > n", arg=successes)
+    page.wait_for_function("""([key, note]) => localStorage.getItem(key)?.includes(note)
+    """, arg=[key, recovered_note])
+    raw_recovered = page.evaluate("key => localStorage.getItem(key)", key)
+    checks.ok(raw_recovered != raw_before and recovered_note in raw_recovered,
+              label + " 복구 뒤 화면 입력으로 팀 자료 저장 성공·입력값 일치")
+    # 첫 표시가 실제로 숨은 뒤에만 프로브를 초기화해 재실패 표시를 관찰한다.
+    page.locator(TOAST).wait_for(state="hidden")
+    checks.ok(not failed_warning(page, TOAST), label + " 다음 성공 뒤 실패 경고 해제")
+    # 토스트가 숨는 동안(약 2초) 다른 정상 저장이 더 일어날 수 있으므로, 보존 비교 기준은 재실패 직전에 읽는다.
+    raw_refail = page.evaluate("key => localStorage.getItem(key)", key)
+    failures = page.evaluate("() => __storageProbe.failed")
+    page.evaluate("() => __storageProbe.fail()")
+    write_note("가상 팀의 두 번째 저장 실패를 확인한다")
+    page.wait_for_function("n => __storageProbe.failed > n", arg=failures)
+    warning(label + " 재실패")
+    team_quota_step(host, page, 2, "review")
+    team_quota_step(host, page, 3, "plan")
+    checks.ok(page.evaluate("""() => {
+      const s = KCP.league.state().snap;
+      return s.round === 3 && s.phase === 'plan' && s.results.length === 2;
+    }"""), label + " 재실패 중에도 진행자와 팀이 다음 달로 진행")
+    checks.ok(page.evaluate("() => __storageProbe.failed") > failures and
+              page.evaluate("key => localStorage.getItem(key)", key) == raw_refail,
+              label + " 재실패 때 실제 setItem 실패·성공 팀 자료 보존")
+
+
 def quota(checks, browser, base, keys, role):
-    label = "S3 " + ("혼자 하기" if role == "solo" else "진행자")
+    label = "S3 " + {"solo": "혼자 하기", "host": "진행자", "team": "팀"}[role]
     if not selected(label):
         return
     context, external = new_context(browser, base)
     pages = []
     page = None
     try:
+        if role == "team":
+            host, _, _ = create_host(context, base, keys, pages, join=True)
+            page = pages[-1][0]
+            team_quota(checks, host, page, label)
+            check_screen(checks, page, label)
+            return
         key = KEY if role == "solo" else keys["K_HOST"]
         if role == "solo":
             page, events = monitored_page(context)
@@ -614,6 +710,7 @@ def main():
                 # 정상 저장 생성 실패가 별개의 공간 부족 검사까지 생략하게 하지 않는다.
                 quota(checks, browser, base, keys, "solo")
                 quota(checks, browser, base, keys, "host")
+                quota(checks, browser, base, keys, "team")
             finally:
                 browser.close()
     except Exception as exc:
