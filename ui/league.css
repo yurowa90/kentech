@@ -1097,6 +1097,22 @@ html.bd-drawer-open #lg-plan-reminder,
 #lg-timeline [data-change] text { font-size: 11px; }
 #lg-decisions li { margin: 8px 0; }
 #lg-evidence-focus { border-left: 3px solid var(--ui-gold); padding-left: 10px; }
+/* S1: S7과 같은 카드 언어. 후보의 표시 순서는 고정하고 선택한 카드만 강조한다. */
+.lg-s1-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; }
+.lg-s1-card { display: grid; gap: 6px; width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 10px; border: 1px solid var(--ui-border); border-top: 3px solid var(--ui-cyan); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.lg-s1-card[aria-pressed="true"] { outline: 2px solid var(--ui-cyan); outline-offset: -2px; }
+.lg-s1-card:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
+.lg-s1-card small { color: var(--ui-muted); font-size: 12px; line-height: 1.6; }
+.lg-s1-tag { justify-self: start; max-width: 100%; box-sizing: border-box; padding: 3px 6px; border: 1px dashed var(--ui-border); border-radius: var(--ui-radius); font-size: 12px; }
+.lg-s1-condition { margin: 0 0 8px; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
+.lg-s1-fold { min-width: 0; }
+/* #lg-panel summary(display:flex)보다 우선하도록 같은 id 범위로 쓴다. */
+#lg-panel .lg-s1-fold > summary { display: none; }
+.lg-s1-promise { min-height: 44px; max-width: 100%; margin-top: 10px; white-space: normal; overflow-wrap: anywhere; }
+.lg-s1-mark { display: inline-block; margin-left: 4px; color: inherit; font-size: 11px; }
+@media (max-width: 760px) {
+  #lg-panel .lg-s1-fold > summary { display: flex; min-height: 44px; justify-content: space-between; }
+}
 #lg-watch [data-evidence-focus="true"] { border-color: var(--ui-gold); color: var(--ui-gold); }
 .lg-host-details [data-host-card]:not([open]) { align-self: start; }
 @media (min-width: 761px) and (max-width: 1279px) {

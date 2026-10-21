@@ -117,67 +117,128 @@ def s1(checks, page, label):
             and bool(neighbor), label + ' S1 다섯 근거·이웃 id fixture 확보')
     saved = page.evaluate("() => localStorage.getItem('kcp-league-solo-v1')")
 
-    def case(values, neighbor_id=neighbor, missing=False):
-        restore(page, saved, {'values': values, 'neighbor': neighbor_id,
-                             'missing': missing, 's4': {k: 99999 for k in KEYS}})
+    focus = page.locator('#lg-evidence-focus')  # D-82-3: 카드 영역과 약속 단추의 공통 범위.
+    group = focus.get_by_role('group', name='근거 후보', exact=True)  # D-82-3: 접근성 묶음으로 한정.
+    cards = group.get_by_role('button', include_hidden=True)  # D-82-3: 접힌 세 번째 카드도 수·순서 검사.
+    hud = page.locator('#lg-watch [data-evidence-focus="true"]')  # D-82-3: 선택 전후 같은 머리 배지.
+    old_note = page.evaluate(NOTES)['1']  # D-82-3: 후보 결과 대신 지난달 S7 원기록만 사용.
+    linked = {'weather': 'evening', 'progress': 'grid', 'choice': 'grid',  # D-82-3: 부록의 event 제외.
+              'trade': 'neighbor', 'growth': 'fuel'}  # D-82-3: 규칙 2의 명세상 연결표.
+
+    def card(key):  # D-82-3: 첫 b나 영역 전체 버튼 대신 이름이 같은 카드 하나.
+        found = cards.filter(has_text=SHORT_NAMES[key])  # D-82-3: 약속 단추는 묶음 밖이므로 제외.
+        expect(found).to_have_count(1)  # D-82-3: 중복 후보를 첫 항목 선택으로 숨기지 않음.
+        return found  # D-82-3: 숨겨진 마지막 카드에도 같은 조회 적용.
+
+    def case(values, neighbor_id=neighbor, missing=False, source=saved):  # D-82-3: 사건 없는 달도 같은 검사.
+        restore(page, source, {'values': values, 'neighbor': neighbor_id,  # D-82-3: 원자료 fixture만 변경.
+                              'missing': missing, 's4': {k: 99999 for k in KEYS}})  # D-82-3: S4 대체 방지 유지.
         open_panel(page, 'deal')
         checks.ok(page.locator('[data-resp]').count() == 0,
-                  label + ' S1 규제만 있고 대응 선택 없음')
+                  label + ' S1 우리 도시에 대응 선택 없음')  # D-82-3: 무사건·규제 달 공통 조건.
+        expect(group).to_be_visible()  # D-82-3: role=group·접근성 이름까지 요구.
+        require(checks, cards.count() in (2, 3), label + ' S1 근거 카드 2~3개')  # D-82-3: 단일 후보 금지.
+        comparable = [] if missing else [k for k in KEYS  # D-82-3: 지난달 값 없으면 규칙 1만 건너뜀.
+                                         if k != 'neighbor' or neighbor_id == neighbor]  # D-82-3: 같은 이웃만 비교.
+        largest = max(comparable, key=lambda k: (abs((baseline[k] - values[k]) / abs(values[k]))  # D-82-3: 독립 변화율.
+                      if values[k] else float('inf') if baseline[k] else 0), default=None)  # D-82-3: 0·동률 순서 유지.
+        cause = (old_note.get('outageLargest') or (old_note.get('missedCarry') or {}).get('largest') or {}).get('key')  # D-82-3: S7 원기록.
+        picked = []  # D-82-3: 선발 순위와 화면의 고정 순서를 분리해 검산.
+        for k in (largest, linked.get(cause), 'wind', 'fuel', *KEYS):  # D-82-3: 부록대로 세 개까지 채움.
+            if k in KEYS and k not in picked and len(picked) < 3:  # D-82-3: fixture의 다섯 값은 모두 숫자.
+                picked.append(k)  # D-82-3: 중복을 제외한 후보 집합.
+        actual = [next((k for k in KEYS if SHORT_NAMES[k] in (cards.nth(i).text_content() or '')), None)  # D-82-3: DOM 이름 관찰.
+                  for i in range(cards.count())]  # D-82-3: 접힌 카드도 포함한 실제 순서.
+        checks.ok(actual == [k for k in KEYS if k in picked],  # D-82-3: 포함 여부만으로 변화율 검사를 완화하지 않음.
+                  label + ' S1 규칙 1~4 후보·중복 없음·고정 순서')  # D-82-3: 후보 집합을 정확히 대조.
+        checks.ok(all(cards.nth(i).get_attribute('aria-pressed') == 'false' for i in range(cards.count())),  # D-82-3: 전부 미선택.
+                  label + ' S1 처음에는 고른 카드 없음')  # D-82-3: 자동 정답 선택 금지.
+        expect(focus.get_by_role('button', name='근거를 하나 고르면 약속으로 이어져요', exact=True)).to_be_disabled()  # D-82-3: 약속 구별.
+        expect(hud).to_have_count(1)  # D-82-3: 머리 배지 하나 유지.
+        expect(hud).to_have_text('근거 고르기')  # D-82-3: 고르기 전 짧은 근거 이름 표시 금지.
         overflow(checks, page, label + ' S1 사건 서랍')
+
+    def choose(key):  # D-82-3: 카드 선택부터 같은 약속 근거까지 공통 사용자 흐름.
+        chosen = card(key)  # D-82-3: 묶음 안의 유일한 해당 카드.
+        full_name, value = chosen.locator('strong').text_content().rsplit(' · ', 1)  # D-82-3: 카드의 전체 이름·값·단위.
+        expected_title = f'{full_name}: {value}'  # D-82-3: 첫 b 대신 선택 카드 전체 설명과 배지 title 대조.
+        if not chosen.is_visible():  # D-82-3: 좁은 화면의 마지막 후보도 실제 조작으로 선택.
+            chosen.locator('xpath=ancestor::details[1]').locator('summary').click()  # D-82-3: 강제 클릭 없이 펼침.
+        chosen.click()  # D-82-3: 약속 단추와 구별한 카드 클릭.
+        expect(chosen).to_have_attribute('aria-pressed', 'true')  # D-82-3: 클릭한 카드 선택.
+        expect(group.locator('button[aria-pressed="true"]')).to_have_count(1)  # D-82-3: 그 카드만 선택.
+        checks.ok(all(cards.nth(i).get_attribute('aria-pressed') in ('true', 'false') for i in range(cards.count())),  # D-82-3: 속성 누락 금지.
+                  label + ' S1 모든 카드 선택 상태 명시 ' + key)  # D-82-3: 나머지는 false여야 함.
+        checks.ok(hud.inner_text() == SHORT_NAMES[key] and hud.get_attribute('title') == expected_title,  # D-82-3: 짧은 이름·전체 설명.
+                  label + ' S1 선택한 카드의 짧은 배지 이름·title 전체 설명 일치 ' + key)  # D-82-3: 예전 title 대조 유지.
+        mobile_header(checks, page, label + '-' + key)  # D-82-3: 선택 뒤 좁은 머리 막대 검사 유지.
+        open_panel(page, 'deal')  # D-82-3: 머리 막대 검사가 닫은 카드 서랍을 다시 엶.
+        short_name = SHORT_NAMES[key]  # D-82-3: 이웃 도시 이름·풍속 부연 없는 약속 이름.
+        jong = (ord(short_name[-1]) - 0xac00) % 28  # D-82-3: 제품 함수를 부르지 않고 조사 검산.
+        promise_name = short_name + ('로' if jong in (0, 8) else '으로') + ' 약속하기'  # D-82-3: 부록의 받침 규칙.
+        promise = focus.get_by_role('button', name=promise_name, exact=True)  # D-82-3: 카드와 구별한 정확한 약속 단추.
+        expect(promise).to_be_enabled()  # D-82-3: 선택 후에만 활성.
+        require(checks, not page.evaluate(NOTES)['2'].get('evidence'), label + ' S1 약속 근거 미선택 fixture')  # D-82-3: 자동 선택 조건.
+        promise.click()  # D-82-3: 영역 전체의 role=button 클릭 제거.
+        expect(page.locator('#lg-panel')).to_have_attribute('data-tab', 'journal')  # D-82-3: 일지로 연결.
+        chip = page.locator(f'#lg-evidence [data-evidence="{key}"]')  # D-82-3: 같은 근거의 일지 칩 하나.
+        expect(chip).to_be_visible()  # D-82-3: 기존 도착 단언 유지.
+        expect(chip).to_be_focused()  # D-82-3: 같은 근거로 초점 이동.
+        expect(chip).to_have_attribute('aria-pressed', 'true')  # D-82-3: 비어 있던 약속 근거를 미리 선택.
+        expect(chip).to_have_attribute('aria-label', re.compile(r' · S1에서 고름$'))  # D-82-3: 부록의 접근성 표지.
+        note = page.evaluate(NOTES)['2']  # D-82-3: 기기 안 실제 저장값 확인.
+        checks.ok(note.get('s1Pick') == key and note.get('evidence', {}).get('key') == key,  # D-82-3: 같은 키로 저장.
+                  label + ' S1 카드 선택·약속 근거 저장 일치 ' + key)  # D-82-3: DOM 이동만으로 통과 금지.
 
     for key in KEYS:
         previous = dict(baseline)
         previous[key] = baseline[key] / 2 if baseline[key] else 10
         case(previous)
-        focus = page.locator('#lg-evidence-focus')
-        require(checks, shown(page, '#lg-evidence-focus'), label + ' S1 후보 존재 ' + key)
-        text = focus.inner_text()
-        name = chips[key].split(':', 1)[0]
-        checks.ok(name in text and '이번 달 볼 것' in text,
-                  label + ' 유일하게 변한 근거가 후보·약속 칩과 같은 이름 ' + key)
-        hud = page.locator('#lg-watch [data-evidence-focus="true"]')
-        require(checks, hud.count() == 1, label + ' S1 머리 후보 칩 하나 ' + key)
-        checks.ok(hud.inner_text() == SHORT_NAMES[key]
-                  and hud.get_attribute('title') == focus.locator('b').first.inner_text(),
-                  label + ' S1 짧은 칩 이름·title 전체 후보 설명 일치 ' + key)
-        mobile_header(checks, page, label + '-' + key)
-        open_panel(page, 'deal')
+        text = card(key).text_content()  # D-82-3: 변화 근거 카드 하나의 이름·값·차이만 검사.
+        name = SHORT_NAMES[key] if key == 'wind' else chips[key].split(':', 1)[0]  # D-82-3: 풍속은 짧은 카드 이름.
+        checks.ok(name in text and '이번 달 볼 것' in focus.inner_text(),  # D-82-3: 약속 칩과 같은 근거 이름 유지.
+                  label + ' 유일하게 변한 근거가 후보·약속 칩과 같은 이름 ' + key)  # D-82-3: 단일 후보를 해당 카드로 치환.
         if key == 'neighbor':
             difference = baseline[key] - previous[key]
-            match = re.search(r'([+−-]?[\d,.]+)\s*%p', text)
+            match = re.search(r'([+−-]?[\d,.]+)\s*%p', card(key).locator('.lg-s1-tag').text_content())  # D-82-3: 닫힌 details 안 카드도 숫자·단위를 읽음.
             checks.ok(bool(match) and abs(float(match[1].replace(',', '').replace('−', '-')) - difference) <= .011,
                       label + ' 같은 이웃 정전은 독립 차이값 %p [A6]')
-        focus.get_by_role('button').click()
-        expect(page.locator(f'[data-evidence="{key}"]')).to_be_visible()
+        choose(key)  # D-82-3: 미선택 → 카드 선택 → 활성 약속 → 같은 일지 칩.
 
-    # 두 변화가 있을 때도 가장 큰 변화가 선택되어야 한다. 동일 배율 비교로
-    # 절대량/변화율의 명세 해석과 무관한 한 항목만 변한 검사도 위에서 유지한다.
+    # D-82-3: 가장 큰 변화는 규칙 1 카드로 포함되며, 학생 선택과 구별한다.
+    # D-82-3: 단일 변화의 원래 검산을 유지하고, 두 변화는 규칙 1 꼬리표까지 확인한다.
     previous = dict(baseline)
     previous['fuel'] = baseline['fuel'] / 10
     previous['wind'] = baseline['wind'] / 1.01
     case(previous)
-    checks.ok(chips['fuel'].split(':', 1)[0] in page.locator('#lg-evidence-focus').inner_text(),
-              label + ' S1 작은 풍속 변화보다 큰 LNG 변화 강조')
+    change = round((baseline['fuel'] - previous['fuel']) / abs(previous['fuel']) * 100, 2)  # D-82-3: 원자료로 변화율 독립 계산(+900%).
+    sign = '+' if change > 0 else '−' if change < 0 else ''  # D-82-3: 증가 +·감소 유니코드 − 규칙.
+    expect(card('fuel').locator('.lg-s1-tag')).to_have_text(f'지난달보다 {sign}{abs(change):g}%')  # D-82-3: 부호·수치까지 규칙 1 대조.
 
     previous = dict(baseline)
     previous['neighbor'] = 0
     previous['fuel'] = baseline['fuel'] / 2
     different = next(k for k in page.evaluate(STATE)['teams'] if k != neighbor)
     case(previous, neighbor_id=different)
-    # 설명에 나오는 '같은 이웃'은 제외하고 강조된 근거 이름만 확인한다.
-    checks.ok(chips['fuel'].split(':', 1)[0] in page.locator('#lg-evidence-focus b').first.inner_text(),
-              label + ' 다른 이웃의 큰 정전 차이를 비교 후보에서 제외 [A6]')
+    change = round((baseline['fuel'] - previous['fuel']) / abs(previous['fuel']) * 100, 2)  # D-82-3: 원자료로 변화율 독립 계산(+100%).
+    sign = '+' if change > 0 else '−' if change < 0 else ''  # D-82-3: 증가 +·감소 유니코드 − 규칙.
+    expect(card('fuel').locator('.lg-s1-tag')).to_have_text(f'지난달보다 {sign}{abs(change):g}%')  # D-82-3: 다른 이웃 비교 제외·부호 검산 [A6].
     case(dict(baseline))
-    checks.ok('지난달과 같음' in page.locator('#lg-evidence-focus').inner_text(),
-              label + ' 모든 비교 가능한 변화 0 → 지난달과 같음 [A6]')
+    expect(card('evening').locator('.lg-s1-tag')).to_have_text('지난달과 같음')  # D-82-3: 동률 첫 카드의 꼬리표로 확인 [A6].
     case(dict(baseline), missing=True)
-    checks.ok(not shown(page, '#lg-evidence-focus'),
-              label + ' 계획 시작 이력 없음 → 후보 없음, S4로 대체 안 함 [A6]')
+    checks.ok(all('지난달 값 없음' in (cards.nth(i).text_content() or '') for i in range(cards.count())),  # D-82-3: 예보·보충 카드 유지.
+              label + ' 계획 시작 이력 없음 → 비교값 없음, S4로 대체 안 함 [A6]')  # D-82-3: 가짜 S4 이력을 쓰면 실패.
+
+    no_events = page.evaluate("saved => {const d=JSON.parse(saved);d.state.events=d.state.events.filter(e=>e.round!==2);return JSON.stringify(d);}", saved)  # D-82-3: 사건 0개 fixture.
+    case(dict(baseline), source=no_events)  # D-82-3: 무사건 달도 후보 수·순서·미선택·배지·disabled 동일 검사.
+    require(checks, not [e for e in page.evaluate(STATE)['events'] if e['round'] == 2], label + ' S1 사건 0개 확인')  # D-82-3: 전제 검증.
+    checks.ok('이번 달 조건 · ' not in focus.inner_text(), label + ' S1 사건 없는 달 조건 요약 없음')  # D-82-3: 규제와 구별.
+    choose('wind')  # D-82-3: 무사건 달에도 실제 카드 선택부터 약속 연결까지 확인.
 
     previous = dict(baseline)
     previous['evening'] = baseline['evening'] / 2
     case(previous)
-    original_text = page.locator('#lg-evidence-focus b').first.inner_text()
+    original_text = cards.all_text_contents()  # D-82-3: 첫 b 대신 카드 전체의 이름·값·비교·꼬리표·순서.
     original_notes = {m: page.evaluate(NOTES)[m]['s1EvidenceValues'] for m in ('1', '2')}
     for change in ('policy', 'fab2'):
         before_plan = page.evaluate('() => KCP.buildGame.current()')
@@ -190,8 +251,8 @@ def s1(checks, page, label):
         require(checks, before_plan[field] != after_plan[field], label + ' S1 ' + field + ' 변경 확인')
         close_drawer(page)
         open_panel(page, 'deal')
-        checks.ok(page.locator('#lg-evidence-focus b').first.inner_text() == original_text,
-                  label + ' S1 ' + change + ' 변경 뒤 후보 이름·값·차이 불변')
+        checks.ok(cards.all_text_contents() == original_text,  # D-82-3: 접힌 카드까지 전체 내용 불변.
+                  label + ' S1 ' + change + ' 변경 뒤 후보 이름·값·차이 불변')  # D-82-3: 기존 계획 시작 값 보호 유지.
         checks.ok({m: page.evaluate(NOTES)[m]['s1EvidenceValues'] for m in ('1', '2')} == original_notes,
                   label + ' S1 양쪽 달 계획 시작 입력 불변 ' + change)
 
@@ -210,6 +271,22 @@ def s1(checks, page, label):
               label + ' S1 대응 사건이면 근거 후보·머리 후보 칩 없음')
     checks.ok(not private_keys(page.evaluate(PUBLIC)), label + ' S1 사적 비교 입력 공개 상태에 없음 [D-65]')
     screenshot(checks, page, 'v3a-' + label + '-s1.png')
+
+    from econui import setup_pair  # D-82-3: S1 내부에서만 기존 진행자·팀 fixture 재사용.
+    host_pages = []  # D-82-3: 추가한 페이지의 진단·정리 범위.
+    try:  # D-82-3: 진행자 제외 조건도 실제 역할 화면에서 확인.
+        host, _, _ = setup_pair(page.context, page.url.split('#', 1)[0], 12, host_pages)  # D-82-3: 기존 로컬 방 생성 경로.
+        require(checks, host.evaluate('() => KCP.league.state().role') == 'host', label + ' S1 진행자 fixture')  # D-82-3: 역할 전제.
+        for month, phase in ((1, 'plan'), (1, 'review'), (2, 'plan')):  # D-82-3: 첫 달 대응 사건 유무와 무관한 다음 달까지.
+            next_phase(host, month, phase)  # D-82-3: 기존 진행자 달 진행 조작.
+        expect(host.locator('.lg-phase-chip')).to_have_text('계획·협상')  # D-82-3: 계획 화면 렌더 뒤 부재 검사.
+        checks.ok(host.locator('#lg-evidence-focus').count() == 0  # D-82-3: 진행자에게 학생 근거 카드 없음.
+                  and host.locator('#lg-watch [data-evidence-focus="true"]').count() == 0,  # D-82-3: 근거 배지도 없음.
+                  label + ' S1 진행자에게 근거 카드·머리 근거 배지 없음')  # D-82-3: 대응 사건 달 제외 단언은 위에 유지.
+    finally:  # D-82-3: 실패해도 추가 페이지를 남기지 않음.
+        for host_page, events, role in host_pages:  # D-82-3: 진행자·팀 둘 다 기존 진단 적용.
+            diagnostics(checks, events, label + '-S1-' + role)  # D-82-3: 추가 페이지 오류도 누락하지 않음.
+            host_page.close()  # D-82-3: 원래 시나리오 페이지·컨텍스트는 보존.
 
 
 def demand_distances(tiles, towns):

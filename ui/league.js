@@ -856,9 +856,61 @@
     n.s1EvidenceNeighborId = options.find(x => x.key === "neighbor")?.neighborId || null;
     putData(d);
   }
+  // S1 후보는 기기 안의 계획 시작 값과 지난달 S7만 읽는다. 공개 상태에는 넣지 않는다.
+  function evidenceCandidates(V) {
+    if (!V?.econ || V.phase !== "plan" || L.away || !["team", "solo"].includes(L.role) || !BG.current()) return null;
+    const events = (V.events || []).filter(ev => ev.round === V.round).map(ev => C.eventDef(R(), ev.id)).filter(Boolean);
+    if (events.some(ev => C.hits(R(), ev, L.team) && ev.opts?.length)) return null;
+    const months = tdata().interview?.months, old = months?.[V.round - 1], n = months?.[V.round];
+    const previous = old?.s1EvidenceValues, current = n?.s1EvidenceValues;
+    const options = evidenceOptions(V).map(x => {
+      const value = current ? current[x.key] : x.value;
+      const neighborId = current ? n.s1EvidenceNeighborId : x.neighborId;
+      const before = x.key !== "neighbor" || neighborId && neighborId === old?.s1EvidenceNeighborId ? previous?.[x.key] : undefined;
+      const delta = value - before, ratio = before !== 0 ? delta / Math.abs(before) : null;
+      const shortName = x.key === "wind" ? "풍속" : EVIDENCE_NAMES[x.key];
+      const name = x.key === "neighbor" && neighborId ? `${teamName(neighborId)} · ${shortName}` : shortName;
+      const unit = { evening: " MW", wind: " m/s", grid: " MW", fuel: "", neighbor: "%" }[x.key];
+      // 이웃이 바뀐 달은 값이 없는 것이 아니라 다른 도시 값이므로 따로 밝힌다.
+      const otherNeighbor = x.key === "neighbor" && neighborId && old?.s1EvidenceNeighborId && neighborId !== old.s1EvidenceNeighborId ? old.s1EvidenceNeighborId : null;
+      return { key: x.key, value, before, delta, ratio, shortName, name, unit, otherNeighbor,
+        text: `${name}: ${fmt(value, 2)}${unit}`,
+        size: before === 0 ? delta === 0 ? 0 : Infinity : Math.abs(ratio) };
+    }).filter(x => Number.isFinite(x.value));
+    const picked = new Map();
+    const add = (item, tag) => { if (item && picked.size < 3 && !picked.has(item.key)) picked.set(item.key, { ...item, tag }); };
+    // 1. 변화율 절댓값: 0에서 새 변화 우선, 동률은 기존 근거 목록 순서. 이웃은 같은 도시만 비교.
+    const changed = options.filter(x => Number.isFinite(x.before)).sort((a, b) => b.size - a.size)[0];
+    if (changed) add(changed, changed.delta === 0 ? "지난달과 같음" : changed.key === "neighbor" ? `지난달보다 ${signed(changed.delta, 2)}%p` : changed.ratio === null ? "지난달 0에서 바뀜" : `지난달보다 ${signed(changed.ratio * 100, 2)}%`);
+    // 2. 지난달 S7의 가장 큰 몫과 연결된 근거(없으면 건너뜀).
+    const largest = old?.outageLargest || old?.missedCarry?.largest;
+    // 사건은 장마·석탄 상한처럼 저녁 수요와 무관한 경우가 많아 잇지 않는다(검토 지적).
+    const linked = { weather: "evening", progress: "grid", choice: "grid", trade: "neighbor", growth: "fuel" }[largest?.key];
+    add(options.find(x => x.key === linked), `지난달 가장 큰 몫(${outageNames(old?.outageFrozen || old?.missedCarry || { basis: old?.missedBasis })[largest?.key] || ""})과 이어짐`);
+    // 3. 풍속(계절 대표값), LNG 지수 순서로 남는 자리 채우기.
+    add(options.find(x => x.key === "wind"), "계절 대표값");
+    add(options.find(x => x.key === "fuel"), "국제 지수");
+    // 4. 숫자인 근거가 남아 있으면 세 개까지 채운다. 반환/화면 순서는 항상 evidenceOptions의 고정 순서다.
+    for (const item of options) { if (picked.size >= 3) break; add(item, ""); }
+    return options.filter(x => picked.has(x.key)).map(x => picked.get(x.key));
+  }
+  const s1Narrow = typeof matchMedia === "function" ? matchMedia("(max-width: 760px)") : null;
+  // 옛 iPad Safari(iOS 14 전)의 MediaQueryList에는 addEventListener가 없어 addListener로 받는다.
+  const s1NarrowChange = e => {
+    const fold = document.getElementById("lg-s1-more");
+    if (fold) fold.open = !e.matches;
+  };
+  if (typeof s1Narrow?.addEventListener === "function") s1Narrow.addEventListener("change", s1NarrowChange);
+  else if (typeof s1Narrow?.addListener === "function") s1Narrow.addListener(s1NarrowChange);
   function evidenceFocusHTML(V) {
-    const focus = evidenceFocus(V);
-    return focus ? `<section id="lg-evidence-focus" class="lg-sec"><h3>이번 달 볼 것 · 근거 후보 하나</h3><p><b>${esc(focus.text)}</b></p><p class="lg-hint">대응을 고를 사건이 없어요. ${focus.unchanged ? "비교 가능한 근거는 모두 지난달과 같아요." : "계획 시작 값끼리 비교해 변화율의 절댓값이 가장 큰 근거예요. 같은 이웃의 정전만 비교하며 차이는 %p로 표시해요. 지난달이 0이면 새 변화부터, 변화가 같으면 목록 순서로 봐요."} 이 값 하나가 원인이라는 뜻은 아니에요.</p><button type="button" class="v2-btn" data-hud-panel="journal">약속에서 ${esc(focus.name)} 살펴보기</button></section>` : "";
+    const candidates = evidenceCandidates(V);
+    if (!candidates) return "";
+    const pick = tdata().interview?.months?.[V.round]?.s1Pick;
+    const selected = candidates.find(x => x.key === pick);
+    const conditions = (V.events || []).filter(ev => ev.round === V.round).map(ev => C.eventDef(R(), ev.id))
+      .filter(ev => ev && C.hits(R(), ev, L.team) && !ev.opts?.length);
+    const card = x => `<button type="button" id="lg-s1-${x.key}" class="lg-s1-card" data-s1-pick="${x.key}" aria-pressed="${selected?.key === x.key}"><strong>${esc(x.name)} · ${esc(fmt(x.value, 2) + x.unit)}</strong><small>${Number.isFinite(x.before) ? `지난달 ${esc(fmt(x.before, 2))} → ${esc(fmt(x.value, 2) + x.unit)}` : x.otherNeighbor ? `지난달은 다른 이웃(${esc(teamName(x.otherNeighbor))})` : "지난달 값 없음"}</small>${x.tag ? `<span class="lg-s1-tag">${esc(x.tag)}</span>` : ""}</button>`;
+    return `<section id="lg-evidence-focus" class="lg-sec">${conditions.length ? `<p class="lg-s1-condition">이번 달 조건 · ${conditions.map(ev => `${esc(ev.name)}: ${esc(turnText(ev.text || "", V))}`).join(" · ")}</p>` : ""}<h3>이번 달 볼 것 · 근거 후보 ${candidates.length}개</h3><div class="lg-s1-cards" role="group" aria-label="근거 후보">${candidates.map((x, i) => candidates.length === 3 && i === 2 ? `<details id="lg-s1-more" class="lg-s1-fold lg-out-fold" data-wide-open${wideOpen()}><summary>후보 하나 더</summary>${card(x)}</details>` : card(x)).join("")}</div><p class="lg-hint">대응을 고를 사건이 없는 달이에요. 이번 달에 눈여겨볼 근거 하나를 골라요. 고른 근거는 약속의 '근거 하나'에 미리 표시돼요. 이 값 하나가 원인이라는 뜻은 아니에요.</p><button type="button" class="v2-btn lg-s1-promise" data-hud-panel="journal" ${selected ? "" : "disabled"}>${selected ? `${esc(withParticle(selected.shortName, "으로"))} 약속하기` : "근거를 하나 고르면 약속으로 이어져요"}</button></section>`;
   }
   function needsLoop(V) { return !!V.econ && V.phase === "plan"; }
   function needsExplanation(V) { return firstStrategy(V) || largeDecision(); }
@@ -1189,7 +1241,7 @@
     const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"} 방향`;
     return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
       const label = x.key === "wind" ? x.text.replace(EVIDENCE_NAMES.wind, "풍속") : x.key === "neighbor" ? x.text.slice(x.text.indexOf(EVIDENCE_NAMES.neighbor)) : x.text;
-      return `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text)}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}</button>`;
+      return `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text + (n.s1Pick === x.key ? " · S1에서 고름" : ""))}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}${n.s1Pick === x.key ? ' <small class="lg-s1-mark">S1에서 고름</small>' : ""}</button>`;
     }).join("")}</div>
       <p id="lg-promise-baseline" class="lg-hint" title="${esc(baseline)}">${esc(baseline)}</p>
       ${topic === "grid" ? `<p class="lg-hint">${matchingTrial(V, { ...curRound(), round: V.round }, L.team) ? "시험에서" : "지난달에"} 정전이 없어서, 이번 달은 부족을 바깥 계통이 얼마나 메웠는지로 약속해요.</p>` : ""}
@@ -1281,7 +1333,9 @@
   }
   function withParticle(name, pair) {
     const ch = name.codePointAt(name.length - 1), final = ch >= 0xac00 && ch <= 0xd7a3 && (ch - 0xac00) % 28 !== 0;
-    return name + ({ "이가": final ? "이" : "가", "을를": final ? "을" : "를", "이라고": final ? "이라고" : "라고", "은는": final ? "은" : "는" }[pair] || "");
+    // '으로/로'는 받침 ㄹ(종성 8)도 '로'를 쓴다.
+    const rieul = final && (ch - 0xac00) % 28 === 8;
+    return name + ({ "이가": final ? "이" : "가", "을를": final ? "을" : "를", "이라고": final ? "이라고" : "라고", "은는": final ? "은" : "는", "으로": final && !rieul ? "으로" : "로" }[pair] || "");
   }
   const questionText = (key, x = {}) => (QUESTIONS[key] || "").replace(/\{(city|nb)\}([이가을를])?/g, (_, who, particle) => {
     const name = teamName(who === "city" ? L.team : x.nb || L.team);
@@ -4734,7 +4788,9 @@
     // 태블릿에서는 칩 폭을 줄여 말줄임할 수 있어 전체 문구를 title에도 둔다.
     if (chips && city) { const pop = `주민 변화 ${signed(V.econ.report?.cities?.[L.team]?.dPop || 0)}명(지난달 대비)`; chips.innerHTML = `<span>지지 ${esc(fmt(city.approval, 1))}%</span><span title="${esc(pop)}">${esc(pop)}</span>`; }
     const grid = city?.grid || V.grid?.[L.team];
-    const focus = evidenceFocus(V);
+    const candidates = evidenceCandidates(V), s1Pick = tdata().interview?.months?.[V.round]?.s1Pick;
+    const selectedEvidence = candidates?.find(x => x.key === s1Pick);
+    const focus = candidates ? { shortName: selectedEvidence?.shortName || "근거 고르기", text: selectedEvidence?.text || "이번 달에 눈여겨볼 근거 하나를 골라요" } : null;
     const badges = [focus ? [focus.shortName, "deal", focus.text] : evCards(V, V.round, L.team) ? ["사건", "deal"] : null, grid?.waitingMW > 0 ? ["접속 대기", "city"] : null, me.left < 0 || city?.cash < 0 ? ["현금 위험", "city"] : null, inc ? ["이웃 제안", "deal"] : null].filter(Boolean).slice(0, 3);
     if (watch) watch.innerHTML = badges.length ? `<span>이번 달 볼 것</span>${badges.map(([text, tab, title]) => `<button type="button" class="lg-bbtn" data-hud-panel="${tab}" title="${esc(title || text)}"${title ? ' data-evidence-focus="true"' : ""}>${esc(text)}</button>`).join("")}` : "";
     const bd = document.getElementById("lg-badge");
@@ -5032,11 +5088,24 @@
       }
       return;
     }
+    const s1Card = e.target.closest("#lg-evidence-focus [data-s1-pick]");
+    if (s1Card) {
+      const item = evidenceCandidates(L.snap)?.find(x => x.key === s1Card.dataset.s1Pick);
+      if (!item) return;
+      const { d, n } = monthNote(); n.s1Pick = item.key; putData(d);
+      const badge = document.querySelector('#lg-watch [data-evidence-focus="true"]');
+      if (badge) { badge.textContent = item.shortName; badge.title = item.text; }
+      renderPanel();
+      return;
+    }
     const focusLink = e.target.closest("#lg-evidence-focus [data-hud-panel]");
     if (focusLink) {
-      const focus = evidenceFocus(L.snap);
+      const { n } = monthNote(), focus = evidenceCandidates(L.snap)?.find(x => x.key === n.s1Pick);
+      if (!focus || focusLink.disabled) return;
       openPanel("journal");
-      const chip = focus && document.querySelector(`#lg-evidence [data-evidence="${focus.key}"]`);
+      let chip = document.querySelector(`#lg-evidence [data-evidence="${focus.key}"]`);
+      // 기존 칩 클릭과 같은 저장 경로. 먼저 고른 S4 근거는 덮어쓰지 않는다.
+      if (!n.evidence && chip) { chip.click(); chip = document.querySelector(`#lg-evidence [data-evidence="${focus.key}"]`); }
       if (chip) { scrollPanelTo(chip); chip.focus({ preventScroll: true }); }
       return;
     }
@@ -5110,7 +5179,7 @@
   KCP.league = {
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, resultPeriod, fmt, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation },
+    uiMath: { monthPoints, resultPeriod, fmt, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st);
       // 실제 화면 편집처럼 건설 문서도 저장한다(mountCity의 save와 같은 모양). 안 하면 새로고침 뒤 옛 문서가 실린다.
