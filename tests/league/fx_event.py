@@ -7,8 +7,8 @@
 1280×900/390×844 밝음 × 일반/reduce마다 두 고정 방 코드로 12달 진행한다.
 fx_event_seeds.js가 D-64 room 규칙으로 만든 lobby 시작 저장본만 기존
 혼자 하기 복원 경로로 넣는다(s8n.py restore_solo와 같은 저장 형식).
-사건·계획·라운드를 주입하지 않는다. Esc1 보조 판에서만 monthStart의 실제
-호출을 잠시 붙잡아 서랍을 연 뒤 원래 인자로 풀고, 검사 후 함수를 복원한다.
+사건·계획·라운드를 주입하지 않는다. Esc1 보조 판과 보류→예보 재로딩에서 monthStart의 실제
+호출을 잠시 붙잡아 화면 조건을 만든 뒤 원래 인자로 풀고, 검사 후 함수를 복원한다.
 분위기 표는 w4-event-cards.md 3절의 독립 기대값이다. 여러 사건은 자료
 순서의 첫 유효 분위기를 비교한다. 8항목 모두 계획·실제 예보·결과/재생
 검사를 수행해야 하며, 고정 판의 사건이 달라지거나 항목이 빠지면 실패한다.
@@ -190,8 +190,8 @@ def wait_state(page, round_number, phases):
     }""", arg=[round_number, phases], timeout=WAIT, polling='raf').json_value()
 
 
-def click_progress(page, before, preserve_drawer=False, after_progress=None):
-    """fx_replay.py와 같은 준비→문제 확인→약속→결과의 화면 조작."""
+def click_progress(page, before, preserve_drawer=False, after_progress=None, keyboard=False):
+    """화면 단추로 진행한다. 보류 검사는 w4c2의 자리 없는 상태를 Enter 입력까지 유지한다."""
     if not preserve_drawer:
         close_drawer(page)
     previous = [before['round'], before['phase'], before['count']]
@@ -205,7 +205,12 @@ def click_progress(page, before, preserve_drawer=False, after_progress=None):
             if not button.is_visible() or not button.is_enabled():
                 continue
             ready = button.get_attribute('id') == 'lg-ready'
-            button.click()
+            if keyboard:
+                # 보류 검사의 극소 창에서도 실제 진행 단추를 키보드로 활성화한다.
+                # 클릭을 위해 창을 복원하면 지난달 보류가 먼저 풀리므로 Enter를 쓴다.
+                button.press('Enter')
+            else:
+                button.click()
             if ready:
                 pass_issue_check(page)
             if ready and before['phase'] == 'plan':
@@ -562,6 +567,20 @@ def strip_stays_open(checks, page, label):
     }"""), label + ' strip true·cardsOpen true·띠 실제 표시')
 
 
+def deck_stays_open(checks, page, label):
+    # D-83: 서랍을 닫는 Esc는 그 한 층만 닫는다. 서랍이 사라져 자리가 생기면 place()가 덱을
+    # 카드로 다시 펼치는 것은 의도한 배치이고(총괄 판단 10-21, ui/fx-turn.js place의 drawers.length 분기),
+    # 띠가 접힌 채 남아야 한다는 명세는 없다. 그래서 띠 모양은 묻지 않고 덱이 열려 실제로 보이는지만 본다.
+    # 다시 배치된 카드가 움직임과 함께 나타나는 동안은 잠깐 보이지 않을 수 있어 1초 안의 조건 대기로 본다.
+    # 그 사이 cardsOpen이 false가 되면(서랍과 함께 덱이 닫힌 회귀) 즉시 실패한다.
+    return checks.test(label + ' cardsOpen true·덱 실제 표시(띠 또는 카드)', lambda: page.wait_for_function("""() => {
+      const dom=(""" + DOM_JS + """);
+      if (KCP.fxTurn?.state?.().cardsOpen!==true) throw Error('cardsOpen false: 덱이 서랍과 함께 닫힘');
+      return dom.cards().some(c=>c.visible) ||
+        [...document.querySelectorAll('.fx-turn-layer[data-strip="true"]')].some(dom.visible);
+    }""", timeout=1000).json_value())
+
+
 def strip_title(checks, page, label, forecast=False):
     # 총괄 추가 6항: 결산을 제외한 첫 사건 제목. DOM 순서는 표시 자료 순서이다.
     data = page.evaluate("""forecast => {
@@ -642,46 +661,44 @@ def map_touch(checks, page, label):
 
 
 def deferred_probe(checks, page, label, recover=True):
-    """총괄 추가 8항: 화면 크기만 변경하고 fx/리그 상태는 주입하지 않는다."""
-    for width, height in ((320, 640), (390, 360), (320, 240)):
-        page.set_viewport_size({'width': width, 'height': height})
-        page.wait_for_timeout(200)
-        fx = observe(page)['fx'] or {}
-        if fx.get('deferred') is not True:
-            continue
-        checks.ok(fx.get('cardsOpen') is True,
-                  f'{label} 보류 중 cardsOpen true: {fx}')
-        checks.ok(page.evaluate("""() => {
-          const dom=(""" + DOM_JS + """);
-          return !dom.cards().some(c=>c.visible) &&
-            ![...document.querySelectorAll('.fx-turn-layer')].some(dom.visible);
-        }"""), label + ' 보류 중 덧층·카드 화면 표시 0')
-        if not recover:
-            return True  # 보류를 유지한 채 화면 '다음 달' 단추로 진행한다.
-        fold = page.locator('#lg-panel-fold')
-        reachable = fold.evaluate("""el => { const r=el.getBoundingClientRect();
-          return r.top>=0 && r.left>=0 && r.bottom<=innerHeight && r.right<=innerWidth; }""")
-        if reachable:
-            pointer_press(page, fold)
-            how = '화면 접기'
-        else:
-            # 아주 작은 창에서는 접기 단추도 화면 밖이다. w4c2 1절 '자리 확보 뒤 재표시'를
-            # 창 크기 복원으로 확인한다(서랍은 열린 채이므로 띠·칩으로 돌아와야 한다).
-            page.set_viewport_size({'width': 390, 'height': 844})
-            how = '창 크기 복원'
-        checks.test(f'{label} {how} 뒤 카드·띠 표시 복귀', lambda: bool(
-            page.wait_for_function("""() => {
-              const dom=(""" + DOM_JS + """);
-              return KCP.fxTurn?.state?.().cardsOpen===true &&
-                (dom.cards().some(c=>c.visible) ||
-                 [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible));
-            }""", timeout=2000)))
-        page.set_viewport_size({'width': 390, 'height': 844})
-        return True
+    """w4c2 1절: 자리 없는 동안 숨기고, 자리 확보 뒤 다시 표시한다.
+
+    열린 결과 서랍에서 320×48로 줄인다. place()의 상하 8px 여백을 빼면
+    높이 32px이므로 최소 44px 띠·칩 자리도 없다. 보류는 상태 주입 없이
+    창 크기로 만들며, 두 RAF 뒤 조건 대기로 재배치 결과를 확인한다.
+    이 표본은 '보류 → 숨김 → 자리 확보 뒤 재표시' 상태 전환만 검사한다. place()의 자리
+    탐색(막대 옆·막대 사이·결과 칩 자리)이 실제 기기 크기에서 보류를 맞게 고르는지와
+    서랍 접기(#lg-panel-fold)로 되돌아오는 경로는 여기서 검사하지 않는다(남은 범위).
+    """
+    checks.ok(page.locator('#lg-panel').is_visible() and
+              page.locator('#lg-panel').get_attribute('data-tab') == 'result',
+              label + ' 보류 준비: 결과 서랍 열린 상태')
+    page.set_viewport_size({'width': 320, 'height': 48})
+    page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+    page.wait_for_function('() => KCP.fxTurn?.state?.().deferred === true',
+                           timeout=2000, polling='raf')
+    fx = observe(page)['fx'] or {}
+    checks.ok(fx.get('deferred') is True and fx.get('cardsOpen') is True,
+              f'{label} 보류 중 deferred true·cardsOpen true: {fx}')
+    checks.ok(page.evaluate("""() => {
+      const dom=(""" + DOM_JS + """);
+      return !dom.cards().some(c=>c.visible) &&
+        ![...document.querySelectorAll('.fx-turn-layer')].some(dom.visible);
+    }"""), label + ' 보류 중 덧층·카드 화면 표시 0')
+    if not recover:
+        return True  # 같은 작은 창에서 실제 '다음 달' 단추를 Enter로 누른다.
+    # 복원 방식도 고정한다. 서랍은 유지하므로 띠·칩으로 복귀할 수 있다.
     page.set_viewport_size({'width': 390, 'height': 844})
-    print(f'INFO {label} 보류 재현 실패: 320×640/390×360/320×240; '
-          '일반 띠에서 다음 달 지난 카드 제거를 검사', flush=True)
-    return False
+    page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+    checks.test(f'{label} 창 크기 복원 뒤 카드·띠 표시 복귀', lambda: bool(
+        page.wait_for_function("""() => {
+          const dom=(""" + DOM_JS + """);
+          const fx=KCP.fxTurn?.state?.();
+          return fx?.cardsOpen===true && fx.deferred===false &&
+            (dom.cards().some(c=>c.visible) ||
+             [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible));
+        }""", timeout=2000)))
+    return True
 
 
 def plan_cleanup(checks, page, month, label):
@@ -800,12 +817,19 @@ def forecast_marks(page):
       .map(k=>[k,sessionStorage.getItem(k)]))""")
 
 
-def forecast_before_visible(checks, page, label, month, previous_marks):
+def forecast_before_visible(checks, page, label, month, previous_marks, reduced):
     """총괄 추가 9항: 숨은 예보는 소비하지 않고 같은 달 새로고침 뒤 다시 표시.
 
-    서랍 없이 보류된 예보는 Esc 한 번에 닫힌다. 서랍에 가려 보류된 예보는 Esc 한 번에 하나만
-    닫힌다는 규칙(160fc06 검토 총괄 결정)에 따라 Esc1에 서랍이 닫히며 보이게 되고, Esc2에 닫힌다.
+    monthStart를 붙잡은 동안 서랍을 닫고 작은 창을 유지한다. 서랍 없이
+    보류된 예보는 Esc 한 번에 닫힌다(160fc06 'Esc 한 번에 한 겹').
+    재로딩은 390×844에서 시작해 최초 표시도 일반 예보와 같은 배치 규칙으로
+    검사한다. 성공하면 inspect_cards의 (면 이름, 범위 이름)을, 실패하면 None을 돌려준다.
     """
+    page.wait_for_function("""month => {
+      const fx=KCP.fxTurn?.state?.();
+      return fx?.forecastOpen===true && fx.deferred===true &&
+        window.__fxEventProbe.some(r=>r.round===month && r.forecast);
+    }""", arg=month, timeout=WAIT, polling='raf')
     data = page.evaluate("""month => {
       const dom=(""" + DOM_JS + """);
       const record=window.__fxEventProbe.find(r=>r.round===month && r.forecast);
@@ -813,32 +837,49 @@ def forecast_before_visible(checks, page, label, month, previous_marks):
         visible:dom.cards().some(c=>c.visible) ||
           [...document.querySelectorAll('.fx-turn-layer')].some(dom.visible)};
     }""", month)
-    if (not data['record'] or data['record']['firstVisibleAt'] is not None or data['visible']):
-        print(f'INFO {label} 예보 표시 전 닫힘 재현 불가(미표시 예보 표본 없음)', flush=True)
-        return False
+    if not checks.ok(data['record'] is not None and
+                     data['record']['firstVisibleAt'] is None and not data['visible'] and
+                     not page.locator('#lg-panel').is_visible() and
+                     not page.locator('#bd-drawer').is_visible(),
+                     label + ' 서랍 없는 보류 예보: firstVisibleAt null·실제 표시 0'):
+        return None
     checks.ok(forecast_marks(page) == previous_marks,
               label + ' 실제 표시 전 sessionStorage 예보 소비 기록 추가 0')
-    if (data['fx'] or {}).get('forecastOpen'):
-        page.keyboard.press('Escape')
+    page.keyboard.press('Escape')
     checks.test(label + ' 미표시 예보 Esc 닫힘', lambda: bool(page.wait_for_function(
         '() => KCP.fxTurn?.state?.().forecastOpen===false', timeout=1000)))
+    return forecast_reload_shows(checks, page, label, month, previous_marks, reduced)
+
+
+def forecast_reload_shows(checks, page, label, month, previous_marks, reduced):
+    """총괄 추가 9항의 뒤 절반: 표시 전에 닫힌 예보는 소비 기록 없이 같은 달 새로고침 뒤 실제로 다시 뜬다.
+
+    보류 경로(forecast_before_visible)와 보조 판의 '보이기 전 닫힘' 분기가 함께 쓴다.
+    성공하면 inspect_cards의 (면 이름, 범위 이름)을, 실패하면 None을 돌려준다.
+    """
     page.wait_for_timeout(400)
+    # 이미 닫힌 예보를 복원 크기에서 새로 읽는다. 숨겨진 최초 표본을
+    # reduce의 '처음부터 보이는 확정 면' 검사에 잘못 쓰지 않게 한다.
+    page.set_viewport_size({'width': 390, 'height': 844})
     page.reload()
     page.wait_for_function(BOOT_JS)
     page.locator('#lg-bar').wait_for(state='visible', timeout=30000)
-    wait_state(page, month, ['plan'])
-    page.set_viewport_size({'width': 390, 'height': 844})
-    checks.test(label + ' 표시 전에 닫은 예보가 같은 달 새로고침 뒤 실제 표시',
-                lambda: bool(page.wait_for_function("""() => {
+    state = wait_state(page, month, ['plan'])
+    if not checks.test(label + ' 표시 전에 닫은 예보가 같은 달 새로고침 뒤 실제 표시',
+                       lambda: bool(page.wait_for_function("""() => {
                   const dom=(""" + DOM_JS + """);
                   return KCP.fxTurn?.state?.().forecastOpen===true &&
                     (dom.cards().some(c=>c.visible) ||
                     [...document.querySelectorAll('.fx-turn-strip')].some(dom.visible));
-                }""", timeout=WAIT)))
+                }""", timeout=WAIT))):
+        return None
     marks = forecast_marks(page)
     checks.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
               label + ' 실제 예보 표시 뒤 sessionStorage 예보 소비 기록 생성')
-    return True
+    # 재로딩 직후에는 서랍이 닫혀 있어 띠 조건(열린 서랍)이 성립하지 않는다. 일반 카드 면으로 검사한다.
+    # 면 이름과 범위 이름을 돌려줘 다음 달 결과 카드의 앞·뒷면·'범위→확정' 단언과 분위기 표 실적에 쓴다.
+    return inspect_cards(checks, page, [e['name'] for e in state['events'] if e['mine']],
+                         True, label + ' 재로딩 예보', True, reduced)
 
 
 def inspect_forecast_strip(checks, page, label, reduced):
@@ -901,12 +942,15 @@ def restore_fixture(checks, page, base, label, fixture):
 
 
 def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
+    """W4 예보·결과와 w4c2 1절 자리 확보 뒤 재표시·w4c4 3의 작은 창 띠를 검사한다."""
     restore_fixture(checks, page, base, label, fixture)
     saw_forecast, saw_result, saw_empty, saw_range = False, False, False, False
     strip_click, strip_expand = False, False
-    small_viewport = False  # 직전 달 보류 재현으로 작은 창인 채 넘어왔는지
+    small_viewport = False  # 직전 달 보류→미표시 예보 재로딩 검사를 수행했는지
+    reload_seen = None  # 그 재로딩 예보에서 inspect_cards가 돌려준 (면 이름, 범위 이름)
     for month in range(1, 13):
-        small_carry = small_viewport
+        small_carry, carried = small_viewport, reload_seen
+        reload_seen = None
         state = wait_state(page, month, ['plan'])
         prefix = f'{label} {month}월'
         checks.ok([e['id'] for e in state['events']] ==
@@ -931,10 +975,14 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
             if target == month:
                 checks.ok(selected == key, f'{prefix} 필수 표 항목 {key}가 내 도시 우선 사건')
         if mine and small_carry:
-            # 직전 달 보류 재현(deferred-next)으로 작은 창인 채 이 달 예보가 처음 떴다. w4c4 3에 따라
-            # 그때는 일반 카드 대신 띠·칩이 맞으므로 '최초 카드' 기하 단언을 이 달에는 적용하지 않는다.
-            print(f'INFO {prefix} 작은 창에서 처음 뜬 예보: 최초 카드 기하 단언 생략(띠·칩 규칙)', flush=True)
-            forecast_names = set(mine)  # 띠로 예보는 실제로 표시됐다: 결과 카드 앞·뒷면 단언은 그대로 적용
+            # 이전 반복 끝의 forecast_before_visible에서 재로딩 예보의 실제 면·배치를
+            # 이미 검사했다. 그 결과로 면·범위 이름과 분위기 표 실적을 채우고(배정 달에 따라
+            # 필수 표 항목이 이 달에만 있을 수 있다), 중복 순회 없이 같은 예보를 닫는다.
+            forecast_names, forecast_range_names = carried or (set(), set())
+            if selected and any(e['id'] == selected and e['name'] in forecast_names
+                                for e in state['events'] if e['mine']):
+                coverage['forecast'].add(selected)
+            saw_range = saw_range or bool(forecast_range_names)
             dismiss_forecast(checks, page, state, prefix, False)
             mood(checks, observe(page), prefix + ' 예보 닫은 뒤', set())
         elif mine:
@@ -985,7 +1033,9 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                 action = next((name for name in
                                ('map', 'esc', 'timeout', 'late-tab', 'deferred-recover', 'deferred-next')
                                if name not in coverage['paths'] and
-                               (month < 12 or not name.startswith('deferred'))), 'expand')
+                               (month < 12 or not name.startswith('deferred')) and
+                               (name != 'deferred-next' or
+                                fixture['months'][month]['selected'] is not None)), 'expand')
             if reduced and action != 'late-tab' and (observe(page)['fx'] or {}).get('cardsOpen'):
                 # 움직임 줄이기는 재생·결산 없이 카드가 즉시 뜬다(W4 reduce 계약). '카드가 뜨기 전에
                 # 서랍 열기' 창이 없으므로, 결과 단계가 자동으로 연 결과 서랍 그대로 띠를 검사한다.
@@ -1047,7 +1097,7 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                     if drawer_open:
                         checks.ok(not page.locator('#lg-panel').is_visible(),
                                   prefix + ' 별도 달 Esc1 서랍만 닫힘')
-                        strip_stays_open(checks, page, prefix + ' 별도 달 Esc1 띠 유지')
+                        deck_stays_open(checks, page, prefix + ' 별도 달 Esc1 덱 유지')
                         page.keyboard.press('Escape')
                     result_closed(checks, page, prefix + ' 별도 달 Esc')
                     coverage['paths'].add(action)
@@ -1055,16 +1105,12 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                     strip_timeout(checks, page, prefix, shown_at)
                     coverage['paths'].add(action)
                 elif strip_ready and action.startswith('deferred'):
-                    reproduced = deferred_probe(checks, page, prefix,
-                                                recover=action == 'deferred-recover')
+                    deferred_probe(checks, page, prefix,
+                                   recover=action == 'deferred-recover')
                     coverage['paths'].add(action)
-                    if reproduced:
-                        coverage['paths'].add('deferred-observed')
-                    small_viewport = reproduced and action == 'deferred-next'
+                    coverage['paths'].add('deferred-observed')
+                    small_viewport = action == 'deferred-next'
                     next_with_cards = True
-                    if not reproduced:
-                        page.wait_for_timeout(200)
-                        strip_stays_open(checks, page, prefix + ' 보류 미재현 대체 경로')
                 else:
                     page.keyboard.press('Escape')
             else:
@@ -1089,14 +1135,54 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
             if next_with_cards:
                 checks.ok((observe(page)['fx'] or {}).get('cardsOpen') is True,
                           prefix + ' 다음 달 단추 입력 직전 지난달 카드 열린 상태')
-            click_progress(page, observe(page), preserve_drawer=next_with_cards)
-            if next_with_cards:
-                plan_cleanup(checks, page, month + 1, prefix)
-                coverage['paths'].add('plan-cleanup')
             if small_viewport:
-                if forecast_before_visible(checks, page, prefix, month + 1, previous_marks):
-                    coverage['paths'].add('forecast-reload')
-                page.set_viewport_size({'width': 390, 'height': 844})
+                # Esc1 보조 판과 같은 호출 붙잡기. 다음 달의 실제 인자·receiver를
+                # 보존하고, 작은 창·서랍 닫힘을 확인한 뒤 최초 예보를 마운트한다.
+                page.evaluate("""() => {
+                  const held={original:KCP.fxTurn.monthStart, calls:[]};
+                  window.__fxDeferredMonthStart=held;
+                  KCP.fxTurn.monthStart=function(...args) {
+                    held.calls.push({receiver:this, args});
+                  };
+                }""")
+                try:
+                    click_progress(page, observe(page), preserve_drawer=True, keyboard=True)
+                    plan_cleanup(checks, page, month + 1, prefix)
+                    coverage['paths'].add('plan-cleanup')
+                    page.wait_for_function("""month =>
+                      window.__fxDeferredMonthStart.calls.some(c=>c.args[0]?.round===month)
+                    """, arg=month + 1, timeout=WAIT)
+                    # plan 전환은 결과 서랍과 건설 서랍을 닫는다. 예보 호출을 풀기
+                    # 전에 그 조건을 기다려 Esc1이 서랍에 소비되지 않게 한다.
+                    page.wait_for_function("""() =>
+                      !document.querySelector('#lg-panel:not([hidden])') &&
+                      !document.documentElement.classList.contains('bd-drawer-open')
+                    """, timeout=2000)
+                    page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+                    page.evaluate("""() => {
+                      const held=window.__fxDeferredMonthStart;
+                      KCP.fxTurn.monthStart=held.original;
+                      for (const call of held.calls.splice(0))
+                        held.original.apply(call.receiver, call.args);
+                    }""")
+                    reload_seen = forecast_before_visible(checks, page, prefix, month + 1,
+                                                          previous_marks, reduced)
+                    if reload_seen is not None:
+                        coverage['paths'].add('forecast-reload')
+                finally:
+                    try:
+                        page.evaluate("""() => {
+                          const held=window.__fxDeferredMonthStart;
+                          if (held) KCP.fxTurn.monthStart=held.original;
+                          delete window.__fxDeferredMonthStart;
+                        }""")
+                    except Exception:
+                        pass  # 재로딩 중 예외면 문맥이 사라졌다. 원래 예외를 가리지 않는다.
+            else:
+                click_progress(page, observe(page), preserve_drawer=next_with_cards)
+                if next_with_cards:
+                    plan_cleanup(checks, page, month + 1, prefix)
+                    coverage['paths'].add('plan-cleanup')
     checks.ok(saw_forecast and saw_result,
               f'{label} 자연 사건 예보·확정·Esc·중복·새로고침·클릭 전달 실행')
     checks.ok(saw_range, f'{label} 실제 범위 예보→확정 문장 검사 실행')
@@ -1311,7 +1397,7 @@ def esc_one_layer(checks, page, base, label, reduced, fixture, coverage):
                         page.keyboard.press('Escape')
                         timed.ok(not panel.is_visible(), prefix + ' Esc1 결과 서랍만 닫힘')
                         if touch:
-                            strip_stays_open(timed, page, prefix + ' Esc1 결과 카드·띠 유지')
+                            deck_stays_open(timed, page, prefix + ' Esc1 결과 덱 유지')
                         else:
                             timed.ok((observe(page)['fx'] or {}).get('cardsOpen') is True and
                                      page.locator('.fx-turn-card-row:visible').count() == 1,
@@ -1381,9 +1467,15 @@ def run_forecast_case(checks, page, base, label, reduced, fixture, coverage):
             marks = forecast_marks(page)
             checks.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
                       prefix + ' 예보 실제 표시 뒤 sessionStorage 소비 기록 있음')
-        elif record and record['firstVisibleAt'] is None:
-            if forecast_before_visible(checks, page, prefix, month + 1, previous_marks):
-                coverage['paths'].add('forecast-reload')
+        elif record and record['firstVisibleAt'] is None and fx.get('forecastOpen') is False:
+            # 서랍을 여는 누름이 예보가 보이기 전에 닫은 경우(보류 아님). 보조 판은 타이밍에 따라
+            # 이 분기를 탈 수도 있다. 필수 'forecast-reload'는 run_case의 결정적 경로에서만 채워지도록
+            # 다른 이름을 쓴다. 보류 상태를 기다리는 forecast_before_visible은 여기 맞지 않는다.
+            checks.ok(forecast_marks(page) == previous_marks,
+                      prefix + ' 보이기 전 닫힌 예보: sessionStorage 소비 기록 추가 0')
+            if forecast_reload_shows(checks, page, prefix, month + 1, previous_marks,
+                                     reduced) is not None:
+                coverage['paths'].add('forecast-reload-probe')
         else:
             print(f'INFO {prefix} 예보 띠 재현 불가: 서랍 열기보다 예보 표시가 먼저였음',
                   flush=True)
@@ -1480,14 +1572,9 @@ def main():
                                       f'{label} Esc1 forecast-strip 경로 실행')
                             opens = ('auto-open',) if reduced else ('mouse-open', 'touch-open')
                             for path in opens + ('map', 'esc', 'timeout',
-                                         'late-tab', 'deferred-recover', 'deferred-next', 'plan-cleanup'):
+                                         'late-tab', 'deferred-recover', 'deferred-next',
+                                         'deferred-observed', 'forecast-reload', 'plan-cleanup'):
                                 checks.ok(path in coverage['paths'], f'{label} {path} 경로 실행')
-                            if 'deferred-observed' not in coverage['paths']:
-                                print(f'INFO {label} 보류 재현 실패; 다음 달 제거는 일반 띠에서 단언',
-                                      flush=True)
-                            if 'forecast-reload' not in coverage['paths']:
-                                print(f'INFO {label} 예보 표시 전 닫힘·같은 달 재로딩 재현 불가',
-                                      flush=True)
             finally:
                 browser.close()
     except Exception as exc:

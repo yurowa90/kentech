@@ -93,6 +93,10 @@ def _edit(c, p):
 
 def _game(c):
     c.wait_saved()
+    # 저장 대기열이 3초 안에 비지 않을 만큼 렌더러가 밀리면 wait_saved는 그냥 넘어간다(harness.py).
+    # 페이지 시계로 300ms 타이머를 하나 더 기다리면 마감이 앞선 250ms 저장 타이머가 반드시 먼저 돈다
+    # (accept_probe._state와 같은 보호, 2026-10-21 재발 경로 재조사의 부수 발견).
+    c.page.evaluate("() => new Promise(r => setTimeout(r, 300))")
     return (c.ls(KEY) or {}).get("game", {})
 
 

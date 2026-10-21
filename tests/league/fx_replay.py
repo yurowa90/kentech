@@ -509,7 +509,7 @@ def escape(checks, page, label, skipped=False):
                 perf_counter() - begin <= 0.3)
 
 
-def cards(checks, page, state, label):
+def cards(checks, page, state, label, expect_drawer=False):
     checks.ok(bool(state['fx']) and (bool(state['events']) or
               state['fx']['cardsOpen'] is False), f'{label} 사건 없는 달에 cardsOpen 금지')
     if state['events']:
@@ -523,6 +523,18 @@ def cards(checks, page, state, label):
                 s.cardTags.includes('사건');
             }""", timeout=2000, polling='raf')))
         overflow(checks, page, label + ' 사건 카드')
+        # D-83: Esc 한 번에 한 층. ⑤ 리그 서랍이 ⑥ 펼치지 않은 덱(1280 카드 모양, 390 접힌 띠)보다 위다.
+        # 서랍이 열려 있고 덱이 펼쳐지지 않았으며 초점이 덱 밖이면 Esc는 서랍만 닫고, 다음 Esc가 카드를 닫는다.
+        drawer = page.evaluate("""() => document.querySelector('#lg-panel')?.hidden===false &&
+          !document.querySelector('.fx-turn-expand[aria-expanded="true"]') &&
+          !document.activeElement?.closest('.fx-turn-cards')""")
+        if expect_drawer:
+            checks.ok(drawer, f'{label} Esc 전 결과 서랍 열림·펼치지 않은 덱·덱 밖 초점')
+        if drawer:
+            page.keyboard.press('Escape')
+            checks.test(f'{label} Esc 결과 서랍만 닫힘·카드 유지(D-83)', lambda: bool(
+                page.wait_for_function("""() => document.querySelector('#lg-panel')?.hidden!==false &&
+                  KCP.fxTurn?.state?.().cardsOpen===true""", timeout=1000, polling='raf')))
         escape(checks, page, label)
         return True
     # 앱 상태/DOM에 기록하지 않는 읽기 전용 지역 관측이다.
@@ -566,7 +578,7 @@ def desktop(checks, page, base):
             # 300ms Esc 판정은 재계산 비용과 분리한다. 여전히 같은 달 결과 단계다.
             device_equality(checks, page, state, label, compare_engine=True)
         storage(checks, page, label)
-        saw_event = cards(checks, page, state, label) or saw_event
+        saw_event = cards(checks, page, state, label, expect_drawer=month <= 2) or saw_event
         if month == 1:
             replay_events(checks, page, state, label, ended=True)
         if month < 12:
@@ -602,7 +614,7 @@ def first_month(checks, page, base, label, reduced=False):
                   f'{label} 1월 결과 진입 순간 재생 중')
         if (state['fx'] or {}).get('playing'):
             escape(checks, page, label, skipped=True)
-        cards(checks, page, state, label)
+        cards(checks, page, state, label, expect_drawer=True)
     storage(checks, page, label)
     if reduced:
         replay_events(checks, page, state, label, reduced=True)
