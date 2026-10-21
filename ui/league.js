@@ -2790,7 +2790,7 @@
     const differentDays = oldDays !== days;
     const hot = differentDays ? `무더위 ${fmt(100 * before.hotDays / oldDays, 0)}% → ${fmt(100 * after.hotDays / days, 0)}% 날` : `무더위 ${before.hotDays} → ${after.hotDays}일`;
     const short = [...physical, hot, ...wind, `계절 ${SEASON_NAME[oldSeason]} → ${SEASON_NAME[season]}`].join(" · ");
-    return { short, full: `${short} · 최대 수요 ${fmt(before.peakDemand, 2)} → ${fmt(after.peakDemand, 2)} MW · 하루 재생 공급량 ${fmt(before.renPerDay, 1)} → ${fmt(after.renPerDay, 1)} MWh/일 · 대표 운전 ${oldDays} → ${days}일. ${monthly ? "지난달 → 이번 달" : "시험 → 실제"} 날씨를 같은 이번 운영 계획·접속 조건으로 비교해요. 사건·주민·산업 조건도 고정해요. 수요에는 기온·계절 영향이 포함되고, 무더위는 모형의 일 최고기온 28℃ 초과 ${differentDays ? "날의 비율이에요" : "일수예요"}. 재생 공급량은 접속 할당·출력제어를 반영해 실제 공급한 양이에요. 풍속은 접속된 풍력 종류만 표시하며 설치 위치별 보정은 제외해요. 단서 순서는 평균 수요·재생 공급 변화의 절댓값으로 정해요(게임 가정).` };
+    return { short, full: `${short} · 최대 수요 ${fmt(before.peakDemand, 2)} → ${fmt(after.peakDemand, 2)} MW · 하루 재생 공급량 ${fmt(before.renPerDay, 1)} → ${fmt(after.renPerDay, 1)} MWh/일 · 대표 운전 ${oldDays} → ${days}일. ${monthly ? "지난달 → 이번 달" : "시험 → 실제"} 날씨를 같은 이번 운영 계획·접속 조건으로 비교해요. 사건·주민·산업 조건도 고정해요. 수요에는 기온·계절 영향이 포함되고, 무더위는 모형의 일 최고기온 ${BG.M.hotTmax}℃ 초과 ${differentDays ? "날의 비율이에요" : "일수예요"}. 재생 공급량은 접속 할당·출력제어를 반영해 실제 공급한 양이에요. 풍속은 접속된 풍력 종류만 표시하며 설치 위치별 보정은 제외해요. 단서 순서는 평균 수요·재생 공급 변화의 절댓값으로 정해요(게임 가정).` };
   }
   // D-80 / 계약 A: 지도 수입 설비의 출력을 제외한 계통 보충량만 읽는다.
   function outageFilled(raw) {
