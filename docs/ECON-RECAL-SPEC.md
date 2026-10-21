@@ -126,7 +126,7 @@
 | `ui/econ-data.js` intl.events ship_red | fx {ship −0.3, lng 0.1} | {ship −0.3} | M | 7.9 | R1 |
 | `ui/econ-data.js` intl.schedule | [{t: 12, id: cbam}] | [{t: 0, id: cbam}] | O | 7.14 | R2(F16과 함께) |
 | `ui/econ-data.js` intl.events cbam text | '철강 수출 도시는 쓰는 전력의 탄소 배출이 많을수록…' | '철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)' | — | 7.14 | R1 |
-| `ui/econ-data.js` intl.theta | 0.15(하나) | {lng 0.03, fx 0.015, ship 0.15, export 0.05} | M(ship G) | 7.5–7.7 | R2(F15) |
+| `ui/econ-data.js` intl.theta | 0.15(하나) | {lng 0.03, fx 0.015, ship 0.15, export 0.05} | M(ship·export G — 대장 §7.7, 2026-10-21 정정) | 7.5–7.7 | R2(F15) |
 | `ui/econ-data.js` intl.sigma | {lng .05, fx .02, ship .03, export .04} | {lng .07, fx .019, ship .012, export .025}(표준화 잡음 기준) | M(ship·export G) | 7.5–7.7 | R2(F15) |
 | `ui/econ-data.js` start.* | — | natShare(화성·평택·안성 0, 아산·천안 0.45, 당진 0.65), landCapMul(충남 1.3, 화성·평택 1.15, 안성 1.1), univ0·lab0(실제 대학·연구소 수, 기존 uni·lab에서 이름 변경) | O·G·O\* | 4.7, 4.9, 4.8 | R2 |
 | `ui/league-data.js` 지역 | scale 문자열('게임 1 MW ≈ 실제 약 230 MW')만 | 숫자 필드 mwScale 230 추가 | G(지도 설계) | 5.9, 6.14 | R3(H03·H04) |
