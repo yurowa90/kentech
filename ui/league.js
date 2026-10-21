@@ -50,7 +50,8 @@
     if (ok) teamSaveFailed.delete(kind); else teamSaveFailed.add(kind);
     if (!teamSaveFailed.size) teamSaveWarned = false;
     // mountCity 안의 teamSave는 곧 지워질 옛 화면에 토스트를 띄우므로, 같은 동작이 끝난 뒤(새 화면) 알린다.
-    queueMicrotask(warnTeamSave);
+    // Promise 마이크로태스크: Node vm 검사 샌드박스에는 queueMicrotask가 없다.
+    Promise.resolve().then(warnTeamSave);
     return ok;
   }
   const teamSet = (k, v) => teamWrote(k.split(":")[0], store.set(k, v));
