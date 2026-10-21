@@ -11,9 +11,10 @@ import argparse
 import json
 import re
 import sys
+import time
 from urllib.parse import urlsplit
 
-from playwright.sync_api import expect
+from playwright.sync_api import Error, expect
 from league_flow import confirm_seat, select_mode, start_solo
 
 
@@ -333,6 +334,32 @@ def evaluated_plan_co2(state, checks, fixture):
               'S8 계획 때 보인 값 = 결과 뒤 그 달 평가 목표')
 
 
+def money_tolerance(value):
+    precision = len(value["text"].split(".")[1]) if "." in value["text"] else 0
+    return 0.5 * 10 ** (-precision) + 1e-8
+
+
+def read_left_labels(host, team, fixture):
+    host_labels = visible(host.get_by_text(re.compile(r"남은\s*돈")))
+    team_labels = visible(team.get_by_text(re.compile(r"남은\s*돈")))
+    values_h = [value for value in (money_near_label(node) for node in host_labels) if value is not None]
+    values_t = [value for value in (money_near_label(node) for node in team_labels) if value is not None]
+    # If the host displays multiple city cards, restrict the label to the
+    # smallest ancestor containing this city's name and one 남은 돈 label.
+    relevant_h = []
+    for node in host_labels:
+        belongs = node.evaluate(r"""(n,name) => {
+          for (let p=n, d=0; p && d<7; p=p.parentElement,d++) {
+            const t=p.innerText || '';
+            if (t.includes(name) && (t.match(/남은\s*돈/g)||[]).length===1) return true;
+          } return false;
+        }""", fixture["names"][0])
+        value = money_near_label(node)
+        if belongs and value:
+            relevant_h.append(value)
+    return values_h, values_t, relevant_h
+
+
 def left_consistency(host, team, checks, fixture):
     state = advance(host, team, "plan")
     plan_co2(host, team, checks, fixture)
@@ -354,34 +381,32 @@ def left_consistency(host, team, checks, fixture):
         cities[0].click()
     elif len(cities) > 1:
         raise AssertionError("ambiguous host city-card action")
-    host_labels = visible(host.get_by_text(re.compile(r"남은\s*돈")))
     panel(team, r"도시")
-    team_labels = visible(team.get_by_text(re.compile(r"남은\s*돈")))
-    values_h = [money_near_label(node) for node in host_labels]
-    values_t = [money_near_label(node) for node in team_labels]
-    values_h = [value for value in values_h if value is not None]
-    values_t = [value for value in values_t if value is not None]
+    # 진행자는 상태를 바꾼 뒤 묶음 대기(ui/league.js changed(), 150ms)를 거쳐 자기 화면을 다시 그리고
+    # 팀에 공개 상태를 보낸다. PLAN_SYNC는 진행자 상태만 보므로, 두 화면이 그 상태로 다시 그려질 때까지
+    # 조건 대기한다(기대값 left는 그대로). WAIT 안에 옛 값이 남으면 아래 단언이 그대로 실패한다.
+    started = time.monotonic()
+    deadline = started + WAIT / 1000
+    values_h = values_t = relevant_h = []
+    while True:
+        try:
+            values_h, values_t, relevant_h = read_left_labels(host, team, fixture)
+        except Error:
+            # 다시 그리는 중 떨어져 나간 요소: 다음 읽기에서 새 요소를 찾는다.
+            pass
+        shown = relevant_h + values_t
+        if (relevant_h and values_t and isinstance(expected, (int, float)) and
+                all(abs(value["number"] - expected) <= money_tolerance(value) for value in shown)) or \
+                time.monotonic() > deadline:
+            break
+        host.wait_for_timeout(50)
+    print(f"INFO left_consistency 화면 반영 대기 {round((time.monotonic() - started) * 1000)}ms", flush=True)
     checks.ok(bool(values_h), "host card has labeled remaining money")
     checks.ok(bool(values_t), "team HUD/drawer has labeled remaining money")
-    # If the host displays multiple city cards, restrict the label to the
-    # smallest ancestor containing this city's name and one 남은 돈 label.
-    relevant_h = []
-    for node in host_labels:
-        belongs = node.evaluate(r"""(n,name) => {
-          for (let p=n, d=0; p && d<7; p=p.parentElement,d++) {
-            const t=p.innerText || '';
-            if (t.includes(name) && (t.match(/남은\s*돈/g)||[]).length===1) return true;
-          } return false;
-        }""", fixture["names"][0])
-        value = money_near_label(node)
-        if belongs and value:
-            relevant_h.append(value)
     checks.ok(bool(relevant_h), "host remaining money belongs to selected city card")
     if relevant_h and values_t and isinstance(expected, (int, float)):
         for value in relevant_h + values_t:
-            precision = len(value["text"].split(".")[1]) if "." in value["text"] else 0
-            tolerance = 0.5 * 10 ** (-precision) + 1e-8
-            checks.ok(abs(value["number"] - expected) <= tolerance,
+            checks.ok(abs(value["number"] - expected) <= money_tolerance(value),
                       "host/team displayed money equals same-month left", f"shown={value['number']}, left={expected}")
         checks.ok(relevant_h[0]["number"] == values_t[0]["number"], "host card remaining money == team remaining money")
     no_overflow(team, checks, "team money / indicators")
