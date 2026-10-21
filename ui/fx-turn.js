@@ -577,7 +577,7 @@
       const t0 = performance.now();
       const count = now => {
         if (token !== epoch || !keepCurrentCards()) return;
-        const p = Math.min(1, (now - t0) / 600), eased = 1 - Math.pow(1 - p, 3);
+        const p = Math.min(1, (now - t0) / 400), eased = 1 - Math.pow(1 - p, 3);
         fields.forEach(({ item, value }) => { value.textContent = item.format(item.value * eased); });
         if (p < 1) raf = requestAnimationFrame(count); else { raf = 0; final(); }
       };
@@ -605,7 +605,7 @@
         lastMonth.sid === sid && lastMonth.team === opts.team) return true;
     clear();
     const token = epoch, root = document.querySelector(".lg-team-map");
-    // 준비부터 요약 숫자가 최종값이 될 때까지 3초 안(시각 기준표 V3·§4): 재생 뒤 숫자 굴림 600ms와 운영 계산·첫 프레임 약 130ms(헤드리스 실측)를 더한다.
+    // 준비부터 요약 숫자가 최종값이 될 때까지 3초 안(시각 기준표 V3·§4): 재생 뒤 숫자 굴림 400ms와 운영 계산·첫 프레임(헤드리스 1배 약 130ms)을 더한다.
     status = { playing: false, skipped: false, ms: reduced() ? 0 : opts.round === 1 ? 2200 : 2000,
       replayed: false, cardsOpen: false, source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
     if (!root) return false;
