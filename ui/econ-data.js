@@ -125,6 +125,30 @@
       }
     },
     params: {
+      inputPriceMulBounds: p([0.1, 2], G, "입력 전기요금 배수 허용 범위 · 결과에 닿는 입력 제한의 게임 규칙(G)"),
+      inputCostPerMWhMax: p(10, G, "입력 MWh당 원가 허용 상한 · 입력 제한의 게임 규칙(G)"),
+      inputCo2IntMax: p(5, G, "입력·배출량 역산 CO₂ 집약도의 공통 허용 상한 · 둘 다 같은 tCO₂/MWh 집약도의 유효 범위를 제한하므로 키를 공유 · 입력 제한의 게임 규칙(G)"),
+      inputHospHoursMax: p(1e4, G, "병원 정전 시간 입력 허용 상한(시간) · 입력 제한의 게임 규칙(G)"),
+      inputIncentiveMax: p(1e4, G, "유치 보조 입력 허용 상한(억) · 입력 제한의 게임 규칙(G)"),
+      inputUniMax: p(20, G, "대학 입력 수의 허용 상한(개) · 입력 제한의 게임 규칙(G)"),
+      inputLabMax: p(20, G, "연구소 입력 수의 허용 상한(개) · 입력 제한의 게임 규칙(G)"),
+      inputPolicyStepBounds: p([-2, 2], G, "주민세·산업세·공공서비스 정책 단계 입력 허용 범위 · 입력 제한의 게임 규칙(G)"),
+      offerWorkersStep: p(100, G, "기업 이전 제안의 종사자 추첨 단위(명) · 판정에 쓰이는 추첨 눈금의 게임 규칙(G)"),
+      offerMwStep: p(0.1, G, "기업 이전 제안의 필요 전력 추첨 단위(MW) · 판정에 쓰이는 추첨 눈금의 게임 규칙(G)"),
+      offerReStep: p(5, G, "기업 이전 제안의 재생 전기 비중 추첨 단위(%p) · 판정에 쓰이는 추첨 눈금의 게임 규칙(G)"),
+      intlCurrentBounds: p({ export: [0.3, 3], lng: [0.3, 4], fx: [0.5, 2], ship: [0.2, 2] }, G, "국제 사건 합산 뒤 지수 상하한 · 배경 걷기 범위와 별개의 극단값 제한 · 게임 가정"),
+      fsrDefault: p(0.4, G, "시작 재정자립도 누락 기본값 · 도시 실측값을 대신하는 게임 가정 · REF 6.8"),
+      fsrExponent: p(0.5, G, "종사자/주민 비 변화의 재정자립도 지수 · 제곱근 꼴의 실증 근거 없음 · REF 6.8"),
+      fsrBounds: p([0.1, 0.9], G, "재정자립도 동학의 상하한 · 게임 가정 · REF 6.8"),
+      exportShareDefault: p(0.4, G, "산업 산출 계산의 수출 비중 누락 기본값 · 도시별 실측값 아님 · 게임 가정"),
+      moveUtilityScale: p(10, G, "이동 로짓 효용차 나눗수 · 점수 단위를 효용으로 환산하는 설계 눈금 · REF 2.1"),
+      moveExponentBounds: p([-20, 20], G, "이동 로짓 지수 입력 제한 · 극단 효용차의 목표 몫을 제한하는 게임 가정 · REF 2.1"),
+      offerSourceMin: p(1000, G, "기업 이전 시 출발 도시 수×1,000명을 남기는 총량 하한 · 도시별 개별 하한 보장과 다름 · REF 2.12"),
+      demandMulBounds: p([0.2, 5], G, "주민·종사자 변화에 따른 전력 수요 배수의 상하한 · 게임 가정 · REF 4.11"),
+      scoreFinDebtMarks: p([0.10, 0.25], G, "재정 점수 정규화: d≤0.10에서 100점, d=0.25에서 neutralScore(50점), 0점 지점은 marks[0]+100×(marks[1]−marks[0])/(100−neutralScore)(현재 0.40)이며 debtCrisisRatio를 읽지 않음; 지방채 한도 초과 때는 별도로 0점 · 0.25는 법정 주의 비율 [L07], 건전 0.10은 전국 10.1% [S09] 참고 · 점수 대응은 설계 선택(G) · REF 13.4", ["L07", "S09"]),
+      priceScoreIntercept: p(2, G, "주민 요금 점수의 선형 절편 · 평균 원가에서 neutralScore가 되는 설계 정규화 · REF 3.5"),
+      incentiveWorkersUnit: p(1e4, G, "유치 보조 점수의 종사자 정규화 단위 1만 명 · 종사자당 보조 효과를 정하는 설계 눈금 · REF 4.11"),
+      coopCo2Path: p({ baseYear: 2018, rampYears: 12 }, G, "공동 탄소목표 선형 경로의 설계 선택(G) · 2018 기준·2030 목표는 법정 기준 [L12], 그 사이 12년 선형 경사는 게임 가정 · REF 13.6", ["L12"]),
       aiVollMul: p(5, "M", "정전 회피 계획 가치 · 산업 VoLL/전력요금 약 5 · 계산: normalCost×5 · 배속: 없음 · REF 5.8", ["L35", "P37", "S18", "P15", "P38"]),
       eduCurtail: p(3.3, "G", "설계 선택: 출력제어 손실 3.3배 · REF 8.14", []),
       curtailLossReal: p(0.018, "M", "출력제어일 손실 · 전력거래소 2025 육지 제어량 환산 1.8% · 배속: eduCurtail · REF 8.14", ["X25"]),
@@ -134,7 +158,7 @@
       coopEase: p(1, "G", "설계 선택: 지역 탄소 목표 조정 배수 · REF 13.6", []),
       coopCo2Cut: p(0.40, "O", "2030 감축 목표 · 탄소중립기본법 시행령 2018 대비 40% · 배속: 없음 · REF 13.6", ["L12"]),
       scoreCo2Best: p(0.25038, "M", "탄소 절대 눈금의 중간점 · 2023년 소비단 계수 0.4173×(1−0.4)=0.25038 tCO₂eq/MWh [S36][L12] · 목표를 전력 집약도에 대응한 것은 G · 배속: 없음 · D-73 REF 13.5"),
-      scoreCo2Worst: p(0.82, "M", "탄소 점수 하한 · 석탄 0.82t/MWh · 배속: 없음 · REF 13.5", ["I07"]),
+      scoreCo2Worst: p(0.82, "M", "탄소 점수 하한 · 석탄 0.82t/MWh(직접 연소) · 배속: 없음 · REF 13.5, 9.1", ["L14", "I06"]),
       scoreCo2Mid: p(80, "G", "탄소 절대·상대 눈금의 세 기준점 중 중간 점수 · 저탄소·작은 감축의 변화를 보이게 하는 선택 · D-73 REF 13.5"),
       scoreCo2RelCut: p(0.4, "M", "2030 국가 감축목표 40% [L12]를 상대 눈금 목표로 사용 · 2018 대비 총배출 목표를 게임 시작 대비 전력 집약도 감축률로 쓰는 것은 G 단순화 · D-73 REF 13.5"),
       scoreUnsZero: p(16, "G", "설계 선택: 점수용 정전 16%에서 신뢰 0점 · REF 5.10", []),
@@ -153,6 +177,7 @@
       buildLeadYears: p({ solar: 2, wind: 3, ess: 1, biomass: 4, diesel: 2, smr: 6 }, "P", "착공~가동 lead time(년) · EIA AEO2022 EMM 가정 Table 3 [I35], 원문 확인 2026-10-21(인허가 포함 여부 정의 미확인) · 디젤은 21MW 내연기관 값 · SMR 600MW · 배속표 표시만 · _briefs/lanes/q8/W6-report.md"),
       buildLeadKorea: p({ lngMonths: [27, 32], windPermitYears: 10, gridYears: [5, 15] }, "O*", "등급은 한국 사례 기준: 기후부 발표·발전사업 공표 일정을 보도로만 확인해 O*(대장 인정 규칙상 보도 X는 보조) · 송전망 값은 IEA라 P, 화면에 따로 표기 · 한국 LNG 복합 착공→운전 27~32개월(포천 [X31]·안동 2호기 [X32] 보도의 착공일과 목표·예정 운전일로 계산, 실제 운전 실적 아님. 포천은 민자 사업자 일정), 육상풍력 계측~준공 약 10년(기후부 발표 보도 2025-12-03 [X33]), 송전망 계획·인허가·완공 5~15년(IEA 2023 [I36], P) · REF 12.6 · 배속표 표시만"),
       complaintPoliticalEffect: p([50, 200], "G", "민원 정치 효과 약 50~200배: 인구 비례 환산 어림, 실증 계수 없음 · 근거 문서: docs/ECON-REFERENCES.md §10.8; 배속표 표시만", ["docs/ECON-REFERENCES.md"]),
+      debtCrisisRatio: p(0.40, "M", "채무 위기 문턱 · 지방재정법 시행령 예산 대비 40% [L07] · 게임 예산 환산(budgetToRevenue) 비율에 적용, 경계 이상 판정은 기존 규칙 · 배속: 없음 · REF 6.12, 13.4 · RECAL-SPEC F14 · D-66", ["L07"]),
       debtWarnRatio: p(0.55, "M", "채무 주의 문턱 · 지방재정법 시행령 예산 대비 25% · 계산: 2.2×0.25 · 배속: 없음 · REF 6.12", ["L07"]),
       fiscalTargetRev: p(0.3, "G", "설계 선택: 보통 조건 연 운영 수지 / 시작 연 세입 0.3 · G4: 판매가 정상화 뒤 2차 값 복원 · REF 6.10", []),
       svcCostSenior: p(2.0e-5, "M", "노령 서비스 비용 · 노령 인구 비중에 따른 추가 지출 가정 · 배속: 없음 · REF 6.11", ["L05", "S06", "S11"]),
@@ -242,7 +267,7 @@
       curtailKnee: p(0.64, "M", "출력제어 시작점 · 전력거래소(서울경제 2025) 봄 제어 2023 2일·2025 30/93일, 태양광 25.9·33.6GW 가정으로 두 점 맞춤 [S22][X25][X26] · 배속: 없음 · REF 8.13"),
       curtailMax: p(0.6, G, "B18 · EVIDENCE §11.6: 제어일 비율 상한"),
       curtailOffSeason: p(0.3, G, "B18 · EVIDENCE §11.6: 여름·겨울 제어일 비율 배수"),
-      essCap: p(0.9, "O", "ESS 충전 상한 · 산업통상자원부 보도설명자료(2022.2.21) p2: 2차 안전대책('20.2) 충전율 제한 옥내 80%·옥외 90%(게임 ESS는 옥외로 봄, G) · 현행 KEC는 정격 범위만 규정 [X22][L27] · 배속: 없음 · REF 8.8"),
+      essCap: p(0.9, "O", "ESS 충전 상한 · 산업통상자원부 보도설명자료(2022.2.21) p2: 2차 안전대책('20.2) 충전율 제한 옥내 80%·옥외 90%(게임 ESS는 옥외로 봄, G) · 현행 KEC는 정격 범위만 규정 [X22][L27] · 배속: 없음 · REF 8.8", ["S37", "X22", "L27"]),
       historyMonths: p(48, G, "경제 이력 보관 길이"),
       // 시간·지연
       lambdaFast: p(0.5, G, "GAMES E3: 정전·요금·세금·집단 만족의 월 반영률; 근거 약함: 게임 시차"),
@@ -332,6 +357,18 @@
       reviewEvery: p(12, "O", "주민 평가 주기 · 지방자치법(2026) 단체장 임기 4년 [L30][L31] · 계산: 48달×1/4=12턴 · 배속: 평가 시간 ×4 · REF 11.8"),
       unrestMonths: p(12, G, "시위 켜짐을 기존 화면에 전달하는 양수 값; 회복 문턱까지 유지"),
       polChangeCost: p(2, G, "시위 기간에 정책 단계 하나 바꿀 때 드는 억"),
+      // 국제 계수 원장. intl의 기존 접근은 아래 별칭으로 유지한다(사본의 무충격 검사 포함).
+      intlThetaLng: p(0.03, M, "LNG 평균 회귀 · 원화 연료비 θ 0.030·LNG Japan θ 0.031 · 배속: 없음 · REF 7.5", ["S16", "S28", "P48"]),
+      intlThetaFx: p(0.015, M, "환율 평균 회귀 · 원/달러 월자료 θ 0.015 · 배속: 없음 · REF 7.6", ["S29"]),
+      intlThetaShip: p(0.15, G, "해운 평균 회귀 · 월 운임 원자료 미확보, 게임 가정 · REF 7.7", []),
+      intlThetaExport: p(0.05, G, "수출 평균 회귀 · 학생 결정 대비 배경 변동을 줄이는 게임 가정 · REF 7.7", []),
+      intlSigmaLng: p(0.07, M, "LNG 표준화 월 잡음 · LNG Japan 월 표준편차 6.97%·원화 연료비 7.8% · 배속: 없음 · REF 7.5", ["S28", "S16"]),
+      intlSigmaFx: p(0.019, M, "환율 표준화 월 잡음 · 원/달러 월 표준편차 1.90% · 배속: 없음 · REF 7.6", ["S29"]),
+      intlSigmaShip: p(0.012, G, "해운 표준화 월 잡음 · 월 운임 원자료 미확보, 기존 실효 변동 유지의 게임 가정 · REF 7.7", []),
+      intlSigmaExport: p(0.025, G, "수출 표준화 월 잡음 · 연 수출 관측을 그대로 쓰지 않고 배경 변동을 축소한 게임 가정 · REF 7.7", []),
+      intlEventP: p(0.12, G, "자유 국제 사건 월 추첨 확률 · 게임 가정, LNG 급등 빈도는 현실 비교 약 3배 · REF 7.8", []),
+      intlMaxActive: p(2, G, "자유 국제 사건 동시 활성 수 상한 · 900턴 이상 사건은 기존 규칙대로 제외 · 게임 가정", []),
+      intlWalkBounds: p({ lng: [0.4, 2.5], fx: [0.6, 1.6], ship: [0.4, 1.6], export: [0.4, 2] }, G, "국제 배경 지수 걷기의 상하한 · 극단값 제한을 위한 게임 가정, 사건 합산 뒤 범위와 별개 · REF 7.5, 7.6, 7.7", []),
       // 기업 이전 희망
       offerGap: p([3, 6], G, "기업 이전 희망 사이 턴 수"),
       offerLife: p(2, G, "제안이 열려 있는 턴 수"),
@@ -345,29 +382,26 @@
     intl: {
       // 지수 기본값(1 = 2026년 수준). 무작위 걷기 + 평균 회귀.
       base: { lng: 1, fx: 1, ship: 1, export: { semi: 1, display: 1, auto: 1, steel: 1, chem: 1, bio: 1, other: 1 } },
-      theta: { lng: 0.03, fx: 0.015, ship: 0.15, export: 0.05 },
-      sigma: { lng: 0.07, fx: 0.019, ship: 0.012, export: 0.025 },
-      eventP: 0.12,
-      maxActive: 2,
+      // theta·sigma·eventP·maxActive는 params 원장의 호환 별칭(아래에서 연결).
       // 사건 효과 손잡이: lng·fx·ship는 지수에 더함, export는 부문별로 더함, cbam은 켜짐(1).
       events: [
-        { id: "eu_indirect", name: "EU, 철강 간접배출 포함 결정(가상)", dur: [999, 999], fx: { eu_indirect: 1 }, disabled: true, carbonWeight: 0.3, grade: G, note: "설계 선택: 실제 CBAM과 분리한 가상 시나리오 · REF 7.15", text: "가상 결정: 철강 수출에 전력 탄소도 반영해요" },
-        { id: "ship_red", name: "홍해 해운 차질", dur: [3, 6], fx: { ship: -0.3 }, grade: M, note: "홍해 차질 · World Bank 2023.12~2024.6 LNG Japan 14.44→12.13으로 하락 [S28][S16] · ship 크기 −0.3은 G · 배속: 없음 · REF 7.9", text: "물류비가 오르고 항만 산출이 줄어요" },
-        { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, text: "LNG·디젤 연료비가 크게 올라요" },
-        { id: "export_boom", name: "반도체 수출 호황", dur: [4, 8], fx: { export: { semi: 0.25, display: 0.1 } }, text: "반도체 도시 산출이 늘어요" },
-        { id: "auto_slump", name: "자동차 수출 둔화", dur: [3, 6], fx: { export: { auto: -0.2 } }, text: "자동차 도시 산출이 줄어요" },
-        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, text: "철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)" }
+        { id: "eu_indirect", name: "EU, 철강 간접배출 포함 결정(가상)", dur: [999, 999], fx: { eu_indirect: 1 }, disabled: true, carbonWeight: 0.3, grade: G, note: "설계 선택: 실제 CBAM과 분리한 가상 시나리오 · 기간 999달은 상시 적용용 표지(G), carbonWeight 0.3은 가상 가중(G) · REF 7.15", text: "가상 결정: 철강 수출에 전력 탄소도 반영해요" },
+        { id: "ship_red", name: "홍해 해운 차질", dur: [3, 6], fx: { ship: -0.3 }, grade: M, note: "홍해 차질 · World Bank 2023.12~2024.6 LNG Japan 14.44→12.13으로 하락 [S28][S16] · ship 크기 −0.3은 G · 기간 3~6달은 게임 가정(G) · 배속: 없음 · REF 7.9", text: "물류비가 오르고 항만 산출이 줄어요" },
+        { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, grade: G, note: "효과 크기 G(+0.5)·지속 기간 G(2~5달): 급등 관측 범위 [S16]를 참고한 게임 사건이며 인과 추정값은 아님 · REF 7.8", text: "LNG·디젤 연료비가 크게 올라요" },
+        { id: "export_boom", name: "반도체 수출 호황", dur: [4, 8], fx: { export: { semi: 0.25, display: 0.1 } }, grade: G, note: "효과 크기 G(반도체 +0.25·디스플레이 +0.1)·지속 기간 G(4~8달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "반도체 도시 산출이 늘어요" },
+        { id: "auto_slump", name: "자동차 수출 둔화", dur: [3, 6], fx: { export: { auto: -0.2 } }, grade: G, note: "효과 크기 G(자동차 −0.2)·지속 기간 G(3~6달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "자동차 도시 산출이 줄어요" },
+        { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, grade: G, note: "효과 크기 G(cbam=1은 켜짐 표시)·지속 기간 G(999달은 상시 적용용): 실제 감소율·도입 일정은 등급 있는 cbamDrop·cbamPhase로 계산 · REF 7.13, 7.15", text: "철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)" }
       ],
       // 정해진 때 오는 사건(t = 몇 번째 턴, 0부터)
       schedule: [{ t: 0, id: "cbam" }]
     },
     // 기업 이전 희망 틀: workers 명, mw 게임 MW, re 재생 요구 %, uns 허용 정전 %
     offers: [
-      { id: "semi_pkg", name: "반도체 후공정 공장", sector: "semi", workers: [2500, 5000], mw: [1.5, 3], re: [30, 60], uns: 0.5 },
-      { id: "dc", name: "데이터센터", sector: "other", workers: [300, 800], mw: [1, 2.5], re: [40, 80], uns: 0.2 },
-      { id: "battery", name: "배터리 공장", sector: "auto", workers: [2000, 4000], mw: [1, 2], re: [20, 50], uns: 1 },
-      { id: "bio", name: "바이오 의약품 공장", sector: "bio", workers: [1000, 2500], mw: [0.5, 1], re: [10, 40], uns: 0.5 },
-      { id: "steel_proc", name: "철강 가공 공장", sector: "steel", workers: [800, 2000], mw: [1, 2], re: [0, 10], uns: 2 }
+      { id: "semi_pkg", name: "반도체 후공정 공장", sector: "semi", workers: [2500, 5000], mw: [1.5, 3], re: [30, 60], uns: 0.5, grade: G, note: "workers·mw·re 범위와 uns 상한은 실측 근거가 없는 게임 가정(G)" },
+      { id: "dc", name: "데이터센터", sector: "other", workers: [300, 800], mw: [1, 2.5], re: [40, 80], uns: 0.2, grade: G, note: "workers·mw·re 범위와 uns 상한은 실측 근거가 없는 게임 가정(G)" },
+      { id: "battery", name: "배터리 공장", sector: "auto", workers: [2000, 4000], mw: [1, 2], re: [20, 50], uns: 1, grade: G, note: "workers·mw·re 범위와 uns 상한은 실측 근거가 없는 게임 가정(G)" },
+      { id: "bio", name: "바이오 의약품 공장", sector: "bio", workers: [1000, 2500], mw: [0.5, 1], re: [10, 40], uns: 0.5, grade: G, note: "workers·mw·re 범위와 uns 상한은 실측 근거가 없는 게임 가정(G)" },
+      { id: "steel_proc", name: "철강 가공 공장", sector: "steel", workers: [800, 2000], mw: [1, 2], re: [0, 10], uns: 2, grade: G, note: "workers·mw·re 범위와 uns 상한은 실측 근거가 없는 게임 가정(G)" }
     ],
     sources: [
       { id: "placeholder", text: "시작값은 2025.12 주민등록 인구·2025 재정자립도(2026-10-13 원문 대조 O), 2022/2023 사업체조사(검색 요약 O*)와 추정(G)이 섞임. start.src에 항목별 기준·출처·등급, 원문 대조는 남음." },
@@ -375,13 +409,44 @@
       { id: "cbam", text: "EU CBAM: 2026년 본격 시행, 철강·시멘트·알루미늄 등. 게임 시작부터 법정 도입 비율 적용." }
     ]
   };
+  // intl은 기존 읽기·쓰기용 호환 별칭이며 엔진은 params를 읽는다.
+  // 사본에서는 getter가 숫자로 굳으므로 복제 시 params 값도 보관한다.
+  // 엔진은 그 값에서 달라진 별칭만 명시적 재정의로 취급한다(사본의 sigma=0 계약).
+  const intl = KCP.ECON_DATA.intl, params = KCP.ECON_DATA.params;
+  const intlKeys = [];
+  const alias = key => {
+    intlKeys.push(key);
+    return { enumerable: true, get: () => params[key].v, set: v => { params[key].v = v; } };
+  };
+  ["theta", "sigma"].forEach(kind => {
+    intl[kind] = {};
+    ["lng", "fx", "ship", "export"].forEach(index => {
+      const key = "intl" + kind[0].toUpperCase() + kind.slice(1) + index[0].toUpperCase() + index.slice(1);
+      Object.defineProperty(intl[kind], index, alias(key));
+    });
+  });
+  Object.defineProperties(intl, { eventP: alias("intlEventP"), maxActive: alias("intlMaxActive") });
+  Object.defineProperty(intl, "paramSnapshot", {
+    enumerable: true, get: () => Object.fromEntries(intlKeys.map(key => [key, params[key].v]))
+  });
   // ECON-DATA §1의 기존 값만 구조화. null 연도는 추정값의 기준연도가 확인되지 않았다는 뜻.
   Object.entries(KCP.ECON_DATA.start).forEach(([id, city]) => {
     const employmentYear = { pyeongtaek: 2022, anseong: 2023, cheonan: 2023 }[id];
+    const employmentNote = employmentYear ? "원문 대조 미완료(2026-10-17 기록): KOSIS 중계 서버 504·화면 조작 실패로 보도·검색 요약만 확인" + (id === "anseong" ? "; 120,000명은 반올림 의심" : "") : null;
     city.src = {
       pop0: { year: "2025.12", source: "행정안전부 주민등록 인구통계(jumin.mois.go.kr, 2026-10-13 원문 대조)", grade: "O", unit: "명" },
-      ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사" : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명" },
+      ind0: { year: employmentYear || null, source: employmentYear ? "전국사업체조사 · " + employmentNote : "산업 종사자 추정", grade: employmentYear ? "O*" : "G", unit: "명", ...(employmentNote ? { note: employmentNote } : {}) },
       fsr0: { year: 2025, source: "지방재정365 재정자립도[당초] 2025(2026-10-13 원문 대조)" + (id === "hwaseong" ? " · 두 도시 자체수입 합÷예산 합(M)" : ""), grade: id === "hwaseong" ? "M" : "O", unit: "%" }
+    };
+    // 숫자를 표시하는 src와 구분해 구성 비중·설계 계수의 항목별 근거를 보존한다.
+    city.grades = {
+      natShare: { grade: "O", source: "ECON-REFERENCES §4.7 [L15]: 수도권 제외·천안/아산 국비 최대 45%·당진 최대 65%", refs: ["L15"], note: "법정 상한값의 등급 O; 투자 규모·업종 요건을 생략하고 상한을 일률 적용한 것은 G" },
+      landCapMul: { grade: "G", source: "ECON-REFERENCES §4.9: 수도권 입지 제약의 방향은 [L16][L17], 도시별 1.1·1.15·1.3의 크기는 게임 가정", refs: ["L16", "L17"] },
+      exportShare: { grade: "G", source: "ECON-DATA §1 주요 산업과 수출 성향: 방향 참고, 도시별 0.30~0.60의 수출 비중 실측 근거 없음" },
+      mix: { grade: "G", source: "ECON-DATA §1 주요 산업과 수출 성향: 산업 종류만 참고, 업종별 구성 비중은 게임 가정" },
+      groups: { grade: "G", source: "ECON-REFERENCES §11.1: 합 1로 정규화하는 집단 구성은 게임 가정, 노년 원비중만 O*", shares: Object.fromEntries(Object.keys(city.groups).map(group => [group, group === "senior"
+        ? { grade: "O*", source: "ECON-DATA §1 65세 이상 비중(경기 2025.9·충남 2025.5), 보도·검색 요약으로 확인; 소수 셋째 자리 반올림", note: "정규화 전 원비중의 등급; 집단 전체 합으로 나눈 최종 몫은 G" }
+        : { grade: "G", source: "ECON-REFERENCES §11.1: 도시별 집단 원자료 미확보, 게임 가정" }])) }
     };
   });
   // T3: 기술 계수의 원장은 TECH_DATA. 공통 경제 자료에서도 같은 등급 레코드를 제공한다.

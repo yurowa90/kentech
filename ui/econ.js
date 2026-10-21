@@ -62,15 +62,17 @@
 
   /* ---------- 입력 정리 ---------- */
   const has = (o, k) => o && Object.prototype.hasOwnProperty.call(o, k) && typeof o[k] === "number" && isFinite(o[k]);
-  function cleanInput(raw, C, S) {
+  function cleanInput(raw, C, S, data) {
+    data = data || DATA();
+    const P = k => pv(data, k), priceBounds = P("inputPriceMulBounds"), policyBounds = P("inputPolicyStepBounds");
     const I = raw || {}, e = I.energy || {}, po = I.policy || {}, as = I.assets || {};
     const BIG = 1e7;
     const energy = {
       // H01: 생산 기준 월 MWh. 누락은 무배출과 구분하며 CO₂로 역산하지 않는다.
       genMWh: e.genMWh && typeof e.genMWh === "object" && !Array.isArray(e.genMWh)
         ? Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, num(e.genMWh[f], 0, BIG, 0)])) : null,
-      residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, 0.1, 2, 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, 1e4, 0),
-      costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, 10) : null,
+      residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, priceBounds[0], priceBounds[1], 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, P("inputHospHoursMax"), 0),
+      costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, P("inputCostPerMWhMax")) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
       co2: has(e, "co2") ? clamp(e.co2, 0, BIG) : null,
       renPct: num(e.renPct, 0, 100, 0), tradeNet: num(e.tradeNet, -BIG, BIG, 0), royalty: num(e.royalty, 0, BIG, 0),
@@ -79,16 +81,16 @@
       demMWh: has(e, "demMWh") ? clamp(e.demMWh, 0, BIG) : null,
       servedMWh: has(e, "servedMWh") ? clamp(e.servedMWh, 0, BIG) : null,
       buyCost: num(e.buyCost, 0, BIG, Math.max(0, -fin(e.tradeNet, 0))),
-      co2Int: has(e, "co2Int") ? clamp(e.co2Int, 0, 5) : null,
+      co2Int: has(e, "co2Int") ? clamp(e.co2Int, 0, P("inputCo2IntMax")) : null,
       fossilMWh: has(e, "fossilMWh") ? clamp(e.fossilMWh, 0, BIG) : null,
       spareMW: has(e, "spareMW") ? clamp(e.spareMW, 0, BIG) : null,
       exportMWh: num(e.exportMWh, 0, BIG, 0), importMWh: num(e.importMWh, 0, BIG, 0), tieCost: num(e.tieCost, 0, BIG, 0),
       cpList: (Array.isArray(e.cpList) ? e.cpList : []).filter(c => c && ["noise", "view", "smoke", "forest"].includes(c.kind)).map(c => ({ kind: c.kind, score: num(c.score, 0, BIG, 0), near: c.near, src: c.src }))
     };
-    const old = C.policy, step = (x, d) => Math.round(num(x, -2, 2, d));
-    const policy = { taxRes: step(po.taxRes, old.taxRes), taxInd: step(po.taxInd, old.taxInd), service: step(po.service, old.service), incentive: num(po.incentive, 0, 1e4, old.incentive) };
+    const old = C.policy, step = (x, d) => Math.round(num(x, policyBounds[0], policyBounds[1], d));
+    const policy = { taxRes: step(po.taxRes, old.taxRes), taxInd: step(po.taxInd, old.taxInd), service: step(po.service, old.service), incentive: num(po.incentive, 0, P("inputIncentiveMax"), old.incentive) };
     const assets = {
-      uni: num(as.uni, 0, 20, S.univ0 || 0), lab: num(as.lab, 0, 20, S.lab0 || 0),
+      uni: num(as.uni, 0, P("inputUniMax"), S.univ0 || 0), lab: num(as.lab, 0, P("inputLabMax"), S.lab0 || 0),
       port: as.port == null ? !!S.port : !!as.port, site: as.site == null ? !!S.site : !!as.site,
       houseCap: has(as, "houseCap") && as.houseCap > 0 ? as.houseCap : null,
       indCap: has(as, "indCap") && as.indCap > 0 ? as.indCap : null
@@ -139,11 +141,11 @@
   const ctxOf = (E, ins, data, id, reg) => ({ inp: ins[id], reg: reg || regionCtx(E, ins, data), intl: E.intl.cur, data, start: data.start[id] || {} });
   const mixOf = S => S.mix || { other: 1 };
   function re100Of(S, data) { const m = mixOf(S); return sum(Object.keys(m).map(k => m[k] * (pv(data, "sectorRe100")[k] ?? pv(data, "sectorRe100").other))); }
-  const wsum = (parts, w) => { let a = 0, b = 0; Object.keys(w).forEach(k => { if (parts[k] != null) { a += w[k] * parts[k]; b += w[k]; } }); return b > 0 ? c100(a / b) : 50; };
+  const wsum = (parts, w, data) => { let a = 0, b = 0; Object.keys(w).forEach(k => { if (parts[k] != null) { a += w[k] * parts[k]; b += w[k]; } }); return b > 0 ? c100(a / b) : pv(data, "neutralScore"); };
   // 넘침 꼴: 수용의 90%까지 90점 이상, 넘으면 빠르게 감점(SimCity 'R 수요' 포화)
   const crowdScore = (over, data) => { const knee = pv(data, "crowdKnee"), base = pv(data, "crowdBase"); return c100(over <= knee ? base + (100 - base) * (knee - over) / knee : base - pv(data, "crowdSlope") * (over - knee)); };
   const servedOf = e => e.servedMWh != null ? Math.min(e.servedMWh, e.demMWh == null ? e.servedMWh : e.demMWh) : (e.demMWh || 0) * (1 - e.unsPct / 100);
-  const priceScore = (e, reg, data, previous) => servedOf(e) <= 0 ? fin(previous, pv(data, "neutralScore")) : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (2 - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
+  const priceScore = (e, reg, data, previous) => servedOf(e) <= 0 ? fin(previous, pv(data, "neutralScore")) : !reg.avgCost ? pv(data, "neutralScore") : c100(pv(data, "neutralScore") * (pv(data, "priceScoreIntercept") - Math.max(fin(e.costPerMWh, reg.avgCost), reg.avgCost * pv(data, "priceFloor")) / reg.avgCost));
   const taxSatisfaction = (step, average, data) => { const d = step - pv(data, "taxYardstick") * fin(average, 0); return c100(pv(data, "taxBase") + pv(data, "taxGain") * -d * (d > 0 ? pv(data, "lossAversion") : 1)); };
   const carbonScore = (C, data) => {
     const W = pv(data, "scoreCo2Worst"), T = pv(data, "scoreCo2Best");
@@ -160,7 +162,7 @@
   };
   const serviceBase = (C, data) => C.pop * (pv(data, "svcCost") + C.groups.senior.share * pv(data, "svcCostSenior"));
   const debtRatio = (C, data) => Math.max(0, -C.cash) / Math.max(1e-9, pv(data, "budgetToRevenue") * C.revYear);
-  const debtStage = (c, data = KCP.ECON_DATA) => c.cash < -c.debtCap || debtRatio(c, data) >= 0.40 - 1e-12 ? "crisis" :
+  const debtStage = (c, data = KCP.ECON_DATA) => c.cash < -c.debtCap || debtRatio(c, data) >= pv(data, "debtCrisisRatio") - 1e-12 ? "crisis" :
     -c.cash >= pv(data, "debtWarnRatio") * c.revYear - 1e-12 ? "warn" : "ok";
   const approvalRelative = E => { const ds = E.order.map(id => E.cities[id].approval - E.cities[id].approval0); const avg = ds.length > 1 ? sum(ds) / ds.length : 0; return Object.fromEntries(E.order.map((id, i) => [id, ds[i] - avg])); };
   const lagRate = (key, data) => pv(data, ["svc", "re", "crowd", "talent", "land", "labor", "air"].includes(key) ? "lambdaSlow" : "lambdaFast");
@@ -168,7 +170,7 @@
   const fossilOf = e => e.fossilMWh != null ? e.fossilMWh : (e.demMWh || 0) * Math.max(0, 1 - (e.unsPct + e.renPct) / 100);
   function co2IntOf(e, data) {
     if (servedOf(e) <= 0) return pv(data, "co2IntDef");
-    if (e.co2 != null) return clamp(e.co2 / servedOf(e), 0, 5);
+    if (e.co2 != null) return clamp(e.co2 / servedOf(e), 0, pv(data, "inputCo2IntMax"));
     if (e.co2Int != null) return e.co2Int;
     return pv(data, "co2IntDef");
   }
@@ -190,7 +192,7 @@
       crowd: c100(P("neutralScore") - P("crowdK") * 100 * (pop / Math.max(1, city.pop0) - reg.popGrowth))
     };
     const w = P("wL");
-    return { score: wsum(parts, w), parts, w };
+    return { score: wsum(parts, w, data), parts, w };
   }
 
   /* ---------- 산업 매력 A ---------- */
@@ -206,7 +208,7 @@
       talent: c100(P("talentBase") + P("talentUni") * as.uni + P("talentLab") * as.lab),
       logi: c100(P("logiBase") + (as.port ? P("logiPortPoints") * fin(I.ship, 1) : 0) + (as.site ? P("logiSitePoints") : 0)),
       tax: c100(P("taxBase") - P("taxPoints") * (pol.taxInd - fin(reg.taxIndAvg, 0))),
-      inc: c100(100 * (1 - Math.exp(-pol.incentive / (P("incRef") * ind / 1e4)))),
+      inc: c100(100 * (1 - Math.exp(-pol.incentive / (P("incRef") * ind / P("incentiveWorkersUnit"))))),
       land: crowdScore(ind / (as.indCap || city.ind0 * (S.landCapMul || P("landCapMul"))), data),
       carbon: c100(100 * (1 - co2IntOf(e, data) / (P("carbonRefMul") * P("co2IntRef"))))
     };
@@ -215,7 +217,7 @@
     w.re = w0.re * (P("reWeightBase") + re100Of(S, data));
     if (ctx.inp.policy.re100) w.re *= P("re100PolicyWeight");
     w.carbon = w0.carbon + (I.eu_indirect ? data.intl.events.find(e => e.id === "eu_indirect").carbonWeight * steelX : P("carbonWeight") * steelX);
-    return { score: wsum(parts, w), parts, w };
+    return { score: wsum(parts, w, data), parts, w };
   }
 
   /* ---------- 국제 지수 ---------- */
@@ -226,25 +228,32 @@
     return I;
   }
   function intlCur(I, data) {
+    const bounds = pv(data, "intlCurrentBounds");
     const ev = I.active.map(a => (data.intl.events.find(x => x.id === a.id) || {}).fx || {});
     const add = k => sum(ev.map(f => fin(f[k], 0)));
     const exp = {};
-    Object.keys(I.walk.export).forEach(s => { exp[s] = r3(clamp(I.walk.export[s] + sum(ev.map(f => fin((f.export || {})[s], 0))), 0.3, 3)); });
-    const lng = r3(clamp(I.walk.lng + add("lng") + fin(I.marketLng, 0), 0.3, 4)), fx = r3(clamp(I.walk.fx + add("fx"), 0.5, 2));
+    Object.keys(I.walk.export).forEach(s => { exp[s] = r3(clamp(I.walk.export[s] + sum(ev.map(f => fin((f.export || {})[s], 0))), bounds.export[0], bounds.export[1])); });
+    const lng = r3(clamp(I.walk.lng + add("lng") + fin(I.marketLng, 0), bounds.lng[0], bounds.lng[1])), fx = r3(clamp(I.walk.fx + add("fx"), bounds.fx[0], bounds.fx[1]));
     return {
-      marketLng: fin(I.marketLng, 0), lng, fx, ship: r3(clamp(I.walk.ship + add("ship"), 0.2, 2)), export: exp,
+      marketLng: fin(I.marketLng, 0), lng, fx, ship: r3(clamp(I.walk.ship + add("ship"), bounds.ship[0], bounds.ship[1])), export: exp,
       cbam: add("cbam") > 0 ? 1 : 0, eu_indirect: add("eu_indirect") > 0 ? 1 : 0,
       fuelMul: r3(lng * fx), active: I.active.map(a => ({ id: a.id, name: a.name, until: a.until }))
     };
   }
   function intlStep(E, data) {
-    const I = E.intl, D = data.intl, R = rngOf(E, "intl:" + E.t), n = () => (R() + R() - 1) * Math.sqrt(6);
-    const rev = (k, x, m, s, lo, hi) => clamp(x + D.theta[k] * (m - x) + s * n(), lo, hi);
+    const I = E.intl, D = data.intl, bounds = pv(data, "intlWalkBounds"), R = rngOf(E, "intl:" + E.t), n = () => (R() + R() - 1) * Math.sqrt(6);
+    // params가 원장. JSON/structuredClone 사본에서 복제 시점과 달라진 별칭만 우선한다.
+    // params만 수정하면 새 params, 별칭도 수정하면 별칭 우선(sigma=0 등 기존 검사 계약).
+    const snapshot = D.paramSnapshot;
+    const P = (key, legacy) => snapshot && legacy !== snapshot[key] ? legacy : pv(data, key);
+    const theta = k => P("intlTheta" + k[0].toUpperCase() + k.slice(1), D.theta[k]);
+    const sigma = k => P("intlSigma" + k[0].toUpperCase() + k.slice(1), D.sigma[k]);
+    const rev = (k, x, m, s, lo, hi) => clamp(x + theta(k) * (m - x) + s * n(), lo, hi);
     I.marketLng = fin(I.nextMarketLng, 0);
-    I.walk.lng = rev("lng", I.walk.lng, D.base.lng, D.sigma.lng, 0.4, 2.5);
-    I.walk.fx = rev("fx", I.walk.fx, D.base.fx, D.sigma.fx, 0.6, 1.6);
-    I.walk.ship = rev("ship", I.walk.ship, D.base.ship, D.sigma.ship, 0.4, 1.6);
-    Object.keys(I.walk.export).forEach(s => { I.walk.export[s] = rev("export", I.walk.export[s], fin(D.base.export[s], 1), D.sigma.export, 0.4, 2); });
+    I.walk.lng = rev("lng", I.walk.lng, D.base.lng, sigma("lng"), bounds.lng[0], bounds.lng[1]);
+    I.walk.fx = rev("fx", I.walk.fx, D.base.fx, sigma("fx"), bounds.fx[0], bounds.fx[1]);
+    I.walk.ship = rev("ship", I.walk.ship, D.base.ship, sigma("ship"), bounds.ship[0], bounds.ship[1]);
+    Object.keys(I.walk.export).forEach(s => { I.walk.export[s] = rev("export", I.walk.export[s], fin(D.base.export[s], 1), sigma("export"), bounds.export[0], bounds.export[1]); });
     I.active = I.active.filter(a => a.until > E.t);
     const started = [];
     const start = ev => {
@@ -256,7 +265,7 @@
     (D.schedule || []).filter(s => s.t === E.t).forEach(s => { const ev = D.events.find(x => x.id === s.id); if (ev) start(ev); });
     const free = D.events.filter(ev => !ev.sched && !ev.disabled && !I.active.some(a => a.id === ev.id));
     const roll = R(), pick = R();
-    if (I.active.filter(a => a.until < E.t + 900).length < D.maxActive && free.length && roll < D.eventP) start(free[Math.floor(pick * free.length)]);
+    if (I.active.filter(a => a.until < E.t + 900).length < P("intlMaxActive", D.maxActive) && free.length && roll < P("intlEventP", D.eventP)) start(free[Math.floor(pick * free.length)]);
     I.cur = intlCur(I, data);
     return started;
   }
@@ -274,7 +283,7 @@
         id, name: S.name || id, pop: Math.round(S.pop0), ind: Math.round(S.ind0), pop0: Math.round(S.pop0), ind0: Math.round(S.ind0),
         cash: fin((opts.cash || {})[id], S.cash0 || 0), cash0: 0, equalize: 0, debtCap: 0, revYear: 0, revenueHistory: [], subsidy: 0,
         policy: { taxRes: 0, taxInd: 0, service: 0, incentive: 0 },
-        groups, approval: P("neutralScore"), L: 50, A: 50, Leff: 0, Aeff: 0, lagL: {}, lagA: {}, baseL: {}, baseA: {},
+        groups, approval: P("neutralScore"), L: P("neutralScore"), A: P("neutralScore"), Leff: 0, Aeff: 0, lagL: {}, lagA: {}, baseL: {}, baseA: {},
         out: 1, unsS: 0, co2pc: 0, renS: 0, unrest: 0, hist: []
       };
     });
@@ -295,7 +304,7 @@
   // 지금 분포는 이미 시작 조건의 균형이라 보고 anchor만큼 상쇄한다 → 시작 뒤 '달라진 것'이 이동을 만든다.
   function setBase(E, raw, data) {
     const P = k => pv(data, k), ins = {};
-    E.order.forEach(id => { ins[id] = cleanInput(raw[id], E.cities[id], data.start[id] || {}); });
+    E.order.forEach(id => { ins[id] = cleanInput(raw[id], E.cities[id], data.start[id] || {}, data); });
     const reg = regionCtx(E, ins, data);
     E.intl.fossilBase = sum(E.order.map(id => fossilOf(ins[id].energy)));
     E.intl.marketLng = 0; E.intl.nextMarketLng = 0;
@@ -336,7 +345,10 @@
   /* ---------- 재정 ---------- */
   function fsrOf(C, data) {
     const S = data.start[C.id] || {}, j = (C.ind / Math.max(1, C.pop)) / Math.max(1e-6, C.ind0 / Math.max(1, C.pop0));
-    return clamp(fin(S.fsr0, 0.4) * Math.sqrt(Math.max(0, j)), 0.1, 0.9);
+    const exponent = pv(data, "fsrExponent"), bounds = pv(data, "fsrBounds");
+    // 기존 지수 1/2에서는 sqrt 연산을 유지해 부동소수점 계산 경로도 보존한다.
+    const change = exponent === 0.5 ? Math.sqrt(Math.max(0, j)) : Math.pow(Math.max(0, j), exponent);
+    return clamp(fin(S.fsr0, pv(data, "fsrDefault")) * change, bounds[0], bounds[1]);
   }
   function subsidyBase(C, data) {
     const P = k => pv(data, k);
@@ -413,7 +425,7 @@
 
   /* ---------- 산업 산출 지수 ---------- */
   function outIdx(C, inp, I, data, year = data.startYear) {
-    const P = k => pv(data, k), S = data.start[C.id] || {}, mix = mixOf(S), xs = fin(S.exportShare, 0.4), e = inp.energy;
+    const P = k => pv(data, k), S = data.start[C.id] || {}, mix = mixOf(S), xs = fin(S.exportShare, P("exportShareDefault")), e = inp.energy;
     const exportEff = xs * (sum(Object.keys(mix).map(s => mix[s] * (fin((I.export || {})[s], 1) - 1))) + P("fxExport") * (fin(I.fx, 1) - 1));
     const logi = inp.assets.port ? P("logiPort") * (fin(I.ship, 1) - 1) : 0;
     const phases = P("cbamPhase"), years = Object.keys(phases).map(Number);
@@ -431,13 +443,13 @@
   // 실효 매력 = 지금 − anchor × 기준(시작 차이 상쇄)
   const effOf = (C, which, w, data) => {
     const lag = which === "L" ? C.lagL : C.lagA, base = which === "L" ? C.baseL : C.baseA, a = pv(data, "anchor");
-    return wsum(lag, w) - a * wsum(base, w);
+    return wsum(lag, w, data) - a * wsum(base, w, data);
   };
   function move(E, key, eff, beta, kappa, totNew, data) {
     const ids = E.order, cur = ids.map(id => E.cities[id][key]), T = sum(cur);
     const m = sum(eff) / Math.max(1, eff.length);
-    const mix = pv(data, "startMix"), total0 = E.totals[key + "0"];
-    const raw = cur.map((c, i) => ((1 - mix) * c / T + mix * E.cities[ids[i]][key + "0"] / total0) * Math.exp(clamp((beta * (eff[i] - m)) / 10, -20, 20)));
+    const mix = pv(data, "startMix"), total0 = E.totals[key + "0"], bounds = pv(data, "moveExponentBounds");
+    const raw = cur.map((c, i) => ((1 - mix) * c / T + mix * E.cities[ids[i]][key + "0"] / total0) * Math.exp(clamp((beta * (eff[i] - m)) / pv(data, "moveUtilityScale"), bounds[0], bounds[1])));
     const Z = sum(raw) || 1, s = raw.map(x => x / Z);
     const mig = roundSum(cur.map((c, i) => kappa * (s[i] * T - c)), 0);
     const grow = roundSum(cur.map(c => (c / T) * (totNew - T)), totNew - T);
@@ -460,10 +472,14 @@
   /* ---------- 기업 이전 희망 ---------- */
   function makeOffer(E, data) {
     const R = rngOf(E, "offer:" + E.t), T = data.offers[Math.floor(R() * data.offers.length)];
-    const pick = (r, step) => Math.round((r[0] + R() * (r[1] - r[0])) / step) * step;
+    const pick = (r, step, mw) => {
+      const ticks = Math.round((r[0] + R() * (r[1] - r[0])) / step);
+      // MW는 역수로 나눠 현재 0.1 눈금의 부동소수 표현을 유지하고 더 작은 눈금도 허용한다.
+      return mw ? ticks / (1 / step) : ticks * step;
+    };
     return {
       id: "of" + E.t, tpl: T.id, name: T.name, sector: T.sector,
-      workers: pick(T.workers, 100), mw: r1(pick(T.mw, 0.1)), rePct: pick(T.re, 5), unsMax: T.uns,
+      workers: pick(T.workers, pv(data, "offerWorkersStep")), mw: pick(T.mw, pv(data, "offerMwStep"), true), rePct: pick(T.re, pv(data, "offerReStep")), unsMax: T.uns,
       t: E.t, until: E.t + pv(data, "offerLife")
     };
   }
@@ -472,7 +488,7 @@
     data = data || DATA();
     const out = {};
     E.order.forEach(id => {
-      const C = E.cities[id], inp = cleanInput((inputs || {})[id], C, data.start[id] || {}), e = inp.energy;
+      const C = E.cities[id], inp = cleanInput((inputs || {})[id], C, data.start[id] || {}, data), e = inp.energy;
       const pool = Math.round(C.pop * (C.groups.worker.share + C.groups.youth.share) * pv(data, "seekRate"));
       const checks = {
         mw: { need: offer.mw, have: e.spareMW, ok: e.spareMW != null && e.spareMW >= offer.mw },
@@ -496,7 +512,7 @@
     if (!of || !E2.cities[cityId]) return { E: E2, ok: false, moved: 0 };
     const others = E2.order.filter(id => id !== cityId);
     const take = (key) => {
-      const have = others.map(id => E2.cities[id][key]), n = Math.min(of.workers, Math.max(0, sum(have) - others.length * 1000));
+      const have = others.map(id => E2.cities[id][key]), n = Math.min(of.workers, Math.max(0, sum(have) - others.length * pv(data, "offerSourceMin")));
       const part = roundSum(have.map(h => (n * h) / Math.max(1, sum(have))), n);
       others.forEach((id, i) => { E2.cities[id][key] -= part[i]; });
       E2.cities[cityId][key] += n;
@@ -508,9 +524,10 @@
   }
 
   /* ---------- 전력 수요 배수 ---------- */
-  function demandMul(city, city0) {
+  function demandMul(city, city0, data) {
+    const bounds = pv(data || DATA(), "demandMulBounds");
     const p0 = city0 ? city0.pop : city.pop0, i0 = city0 ? city0.ind : city.ind0;
-    return { res: r3(clamp(city.pop / Math.max(1, p0), 0.2, 5)), ind: r3(clamp(city.ind / Math.max(1, i0), 0.2, 5)) };
+    return { res: r3(clamp(city.pop / Math.max(1, p0), bounds[0], bounds[1])), ind: r3(clamp(city.ind / Math.max(1, i0), bounds[0], bounds[1])) };
   }
 
   /* ---------- 집단 만족 ---------- */
@@ -594,7 +611,7 @@
     const ins = {}, polCost = {};
     ids.forEach(id => {
       const before = C[id].policy;
-      ins[id] = cleanInput(inputs[id], C[id], data.start[id] || {});
+      ins[id] = cleanInput(inputs[id], C[id], data.start[id] || {}, data);
       const p = ins[id].policy, steps = Math.abs(p.taxRes - before.taxRes) + Math.abs(p.taxInd - before.taxInd) + Math.abs(p.service - before.service);
       polCost[id] = C[id].unrest > 0 ? steps * P("polChangeCost") : 0;
       C[id].policy = p;
@@ -607,10 +624,10 @@
       Object.keys(a.parts).forEach(k => { c.lagA[k] = fin(c.lagA[k], a.parts[k]) + lagRate(k, data) * (a.parts[k] - fin(c.lagA[k], a.parts[k])); });
       const hospRel = l.parts.rel - c100(100 * (1 - ins[id].energy.unsPct / P("unsZeroL")));
       c.hospRel = fin(c.hospRel, 0) + lagRate("rel", data) * (hospRel - fin(c.hospRel, 0));
-      c.L = wsum(c.lagL, l.w); c.A = wsum(c.lagA, a.w);
+      c.L = wsum(c.lagL, l.w, data); c.A = wsum(c.lagA, a.w, data);
       c.Leff = effOf(c, "L", l.w, data);
       // 유치 순위는 시작 매력을 전부 빼서 같은 개선은 동점으로 취급한다.
-      c.Aeff = wsum(c.lagA, a.w) - wsum(c.baseA, a.w);
+      c.Aeff = wsum(c.lagA, a.w, data) - wsum(c.baseA, a.w, data);
       Lr[id] = { now: l, eff: c.Leff }; Ar[id] = { now: a, eff: c.Aeff };
     });
     const fossil = sum(ids.map(id => fossilOf(ins[id].energy)));
@@ -734,7 +751,7 @@
         pm25: reg.pm25[id], // ㎍/㎥ 증분. complete=false이면 알려진 발전량만의 부분 추정.
         causes: causes[id], L: r1(c.L), A: r1(c.A), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff), Aeff: r1(Ar[id].eff),
         pop: c.pop, ind: c.ind, dPop: c.pop - before[id].pop, dInd: c.ind - before[id].ind,
-        co2Intensity: c.co2Intensity, bioCo2: ins[id].energy.bioCo2, out: c.out, demandMul: demandMul(c), cash: r1(c.cash)
+        co2Intensity: c.co2Intensity, bioCo2: ins[id].energy.bioCo2, out: c.out, demandMul: demandMul(c, undefined, data), cash: r1(c.cash)
       };
     });
     const net = {};
@@ -746,7 +763,7 @@
     };
     // 지역 실적은 월 MWh/t, 연계선 분담은 누적 투자 억. 감축은 실제 공급량 × 보통 배출계수 − 소비 배출(수입 포함, 음수 보존).
     const demand = sum(ids.map(id => ins[id].energy.demMWh || 0));
-    const goal = inputs.region && inputs.region.goal || { uns: P("coopUnsGoal"), co2: demand * P("normalCo2") * (1 - P("coopCo2Cut") * Math.min(1, (E.year - 2018) / 12)) * P("coopEase") };
+    const goal = inputs.region && inputs.region.goal || { uns: P("coopUnsGoal"), co2: demand * P("normalCo2") * (1 - P("coopCo2Cut") * Math.min(1, (E.year - P("coopCo2Path").baseYear) / P("coopCo2Path").rampYears)) * P("coopEase") };
     const uns = sum(ids.map(id => Math.max(0, (ins[id].energy.demMWh || 0) - servedOf(ins[id].energy))));
     const co2 = sum(ids.map(id => fin(ins[id].energy.co2Local, 0)));
     report.region = { unsPct: demand > 0 ? 100 * uns / demand : 0, co2, goal: clone(goal), met: { uns: demand > 0 && 100 * uns / demand <= goal.uns, co2: co2 <= goal.co2 } };
@@ -769,15 +786,15 @@
   function score(E, data) {
     data = data || DATA();
     const P = k => pv(data, k), w = P("wScore"), K = P("scoreGrowthK")[E.len] || P("scoreGrowthK")[36], T = E.totals;
-    const floor = clamp(fin(P("scorePartFloor"), 1), 1, 100);
+    const floor = clamp(fin(P("scorePartFloor"), 1), 1, 100), finMarks = P("scoreFinDebtMarks");
     const list = E.order.map(id => {
       const c = E.cities[id];
       // 증가율은 지역 총량 증가를 뺀 몫 변화(경쟁)
       const gp = (c.pop / Math.max(1, c.pop0)) / (T.pop / Math.max(1, T.pop0)) - 1;
       const gi = (c.ind / Math.max(1, c.ind0)) / (T.ind / Math.max(1, T.ind0)) - 1;
       const parts = {
-        pop: c100(50 + K.pop * gp), ind: c100(50 + K.ind * gi),
-        fin: c.cash < -c.debtCap ? 0 : c100(100 - Math.max(0, debtRatio(c, data) - 0.10) * 50 / 0.15),
+        pop: c100(P("neutralScore") + K.pop * gp), ind: c100(P("neutralScore") + K.ind * gi),
+        fin: c.cash < -c.debtCap ? 0 : c100(100 - Math.max(0, debtRatio(c, data) - finMarks[0]) * (100 - P("neutralScore")) / (finMarks[1] - finMarks[0])),
         co2: carbonScore(c, data),
         appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("scoreUnsZero")))
       };
