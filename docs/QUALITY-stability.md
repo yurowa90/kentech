@@ -76,7 +76,7 @@ A~G 모두 8이라 전체도 8이다(A·D는 자체 평가, 2026-10-21 총괄 �
 
 ## 5. 채점자 확인 방법
 
-채점자는 아래를 그대로 따라 하면 §2의 근거를 다시 낼 수 있다. 공통 조건은 다음과 같다.
+채점자는 아래를 그대로 따라 하면 §2의 근거를 다시 낼 수 있다. 기준 커밋은 4141f9a(2026-10-21 push)다. 표의 괄호 안 커밋은 그 수치를 처음 기록한 곳이다. 공통 조건은 다음과 같다.
 - 맥 로컬, 샌드박스 밖에서 실행한다. 브라우저는 `tests/.venv`의 Playwright(Chromium headless shell, WebKit)를 쓴다.
 - 브라우저 검사는 한 번에 하나만 돌린다. 시작할 때 1분 부하(`uptime`)가 150 미만인지 확인하고, 150 이상에서 잰 시간·간헐 결과는 판정에 쓰지 않는다.
 - 통과 기준은 단언 실패·콘솔 error/warning·페이지 오류·가로 스크롤·예외가 모두 0인 것이다. 각 검사의 마지막 줄 `checks N fail 0` 또는 `problems: 0`으로 판정한다.
@@ -88,6 +88,12 @@ A~G 모두 8이라 전체도 8이다(A·D는 자체 평가, 2026-10-21 총괄 �
 | A 간헐 원인 | `tests/.venv/bin/python tests/league/econui.py $U` | 2,052/0(1128f23) | U5: `econui.py`의 도움말 close 대기(690919c). wait_shown: 같은 파일 주석(1128f23) |
 | A 3회 연속 | `KCP_PORT_BASE=<포트> tests/run.sh s-riverdeal`, `... tests/run.sh probe`를 번갈아 3회씩 | 6회 모두 problems 0(3ca0aa4, 2026-10-21) | §4 표. 부하 150 이상에서 난 시간 초과는 판정에 쓰지 않는다(s-riverdeal 원인 분류 참고) |
 | A probe A3 경합 | `tests/.venv/bin/python tests/probe_a3_race.py $U 10 500`, 대조군 `... $U 10 0` | 500: old None 9/10·new None 0/10, 0: 둘 다 None 0/10(2026-10-21, 부하 60→32). old의 None 개수는 부하에 따라 다를 수 있고, new가 0이어야 한다 | `tests/probe_a3_race.py` 머리말, `tests/accept_probe.py` `_state` |
+| A riverdeal 굶주림 | `RD_AFTER=400 KCP_BASE=$U tests/.venv/bin/python tests/riverdeal_starve.py tests/accept_s-riverdeal.py 100 -k t_12_2_cancel_restore --cfg desktop-light`, 대조군은 같은 명령에 `RD_AFTER=0` | 0: 통과(`#rd-root` 대기 약 4초). 400: 10-13과 같은 단계·오류(`Page.wait_for_selector` `#rd-root` 30초 초과)(2026-10-21, 부하 6~10) | `tests/riverdeal_starve.py` 머리말, §4 s-riverdeal 행. 같은 증상의 재현이며 10-13 원인의 증명이 아니다. 저장 읽기 보호는 `accept_s-riverdeal._game`·`accept_s-shuttle-permit._state`의 페이지 300ms 타이머(a421671, 두 검사 problems 0) |
+| A 남은 돈 일치 | `tests/.venv/bin/python tests/league/next.py $U` | 159/0(4141f9a). 출력의 `INFO left_consistency 화면 반영 대기 Nms`는 1초보다 훨씬 작아야 한다(53b5560 기록 97~111ms) | `next.py` left_consistency의 조건 대기와 `read_left_labels`(53b5560) |
+| A 남은 돈 반영 시간 | `tests/.venv/bin/python tests/league/left_lag.py $U 3 1 4`(필요하면 끝에 `20`) | 배수마다 `MAX`가 1,000ms 이하(총괄 기준: 넘으면 학생이 1초 넘게 옛 돈을 보는 화면 결함). 4141f9a 부하 5~6: 1배 최대 191ms·4배 최대 277ms(진행자 149~172ms, 팀 177~277ms). 53b5560 기록 20배 943ms | `tests/league/left_lag.py` 머리말, `ui/league.js` changed()의 150ms 묶음 대기 |
+| A fx_event 고정 경로 | `tests/.venv/bin/python tests/league/fx_event.py $U > 1.txt`, 같은 명령으로 `2.txt`, 이어서 `diff <(grep -oE '^(PASS\|FAIL) [^:]*' 1.txt \| sort) <(grep -oE '^(PASS\|FAIL) [^:]*' 2.txt \| sort)` | 두 번 모두 3,467/0(5448fbe·4141f9a), diff 빈 출력(검사 이름 집합 같음). 390 motion·reduce 각각 `deferred-observed`·`forecast-reload`·`plan-cleanup`·`Esc1 forecast-strip` 경로 실행 줄이 PASS | `fx_event.py` deferred_probe(320×48 보류)·forecast_before_visible·forecast_reload_shows, main의 필수 경로. 남은 비결정 분기는 5448fbe 본문 |
+| A Esc 변이 | `python3 tests/league/esc_mutant.py <폴더>` → `(cd <폴더> && python3 <저장소>/tests/srv.py <포트2> .)` → `tests/.venv/bin/python tests/league/fx_event.py http://127.0.0.1:<포트2>/index.html` | Esc 단언이 여러 건 실패해야 한다(4141f9a: 3,468/40, 그중 Esc 39건. 5448fbe: 37건). 0이면 Esc 블록이 'Esc 한 번에 여러 층' 회귀를 놓치는 것 | `tests/league/esc_mutant.py`(topEscape 본문을 '덱을 닫고 전파는 막지 않음'으로 바꾼 사본), D-83, `fx_event.py` esc_one_layer·deck_stays_open |
+| A fx_replay | `tests/.venv/bin/python tests/league/fx_replay.py $U` | 423/0(4141f9a) | D-83 '건너뛰기 → Esc 서랍 → Esc 카드'(`cards()`의 서랍 단계), 첫 달 2200ms(d0a3e80) |
 | A 감속 | `KCP_UI_WAIT=20000 tests/.venv/bin/python tests/league/throttle_repro.py tests/league/econui.py $U 4 <기록파일>` | 2,052/0 | 근거 실행은 같은 CDP 감속(`Emulation.setCPUThrottlingRate` 4)을 거는 임시 래퍼로 했다. `throttle_repro.py`는 같은 감속에 진단 기록을 더한 저장소 도구다 |
 | B WebKit | `tests/.venv/bin/python tests/league/webkit.py $U` | 148/0(5339a40, 2026-10-21, 부하 12) | `tests/league/webkit.py` |
 | C 36달 | `tests/.venv/bin/python tests/league/long36.py $U`, `node tests/league/size-budget.js` | long36 268/0, size-budget 문제 0(5339a40, 2026-10-21, 부하 11~15). 압축 공개 상태 최대 균형 149,721·신중 153,241B(목표선 165,000B·회귀선 155,099B·바닥 하드선 178,000B), 혼자 하기 저장 최대 1,493,124자(한도 2,080,000자) | 두 파일의 예산 상수 |
