@@ -9,8 +9,10 @@ import sys
 
 from playwright.sync_api import expect, sync_playwright
 
+from d82ux import click_tile, point
 from econui import (Checks, context_for, diagnostics, local_address, monitored_page,
                     open_panel, overflow, screenshot, shown)
+from fx_map import tool
 from league_flow import select_mode, start_solo, wait_unfolded
 from solo import click_next, close_drawer, read
 
@@ -57,6 +59,32 @@ def promise_text(short_name):
     return f'{name}{particle} 약속하기'
 
 
+def add_grid_connection(checks, page, label):
+    # 3월에 화면으로 태양광 1기를 추가한다. 4월에는 지난달 접속 처리로
+    # 접속 여유가 변하므로 grid 후보를 검증할 수 있다. 저장/결과 주입 없음.
+    close_drawer(page)
+    tool(page, 'solar')
+    tiles = page.evaluate("""() => {
+      const B=KCP.buildGame, used=new Set(B.current().builds.map(b=>b.i));
+      return B.TILES.filter(t=>!t.out && t.site<0 && !used.has(t.i) &&
+        !B.siteRule('solar',t)).map(t=>t.i);
+    }""")
+    required(checks, bool(tiles), label + ' 태양광 추가용 합법적 빈 칸')
+    # 서랍 닫기·도구 선택 뒤 현재 화면에서 바로 누를 수 있는 칸을 우선한다.
+    # 모두 가려진 경우에만 첫 후보를 click_tile의 지도 드래그로 드러낸다.
+    tile = tiles[0]
+    for candidate in tiles:
+        xy = point(page, candidate)
+        if page.evaluate("([x,y])=>document.elementFromPoint(x,y)?.id==='bd-canvas'", xy):
+            tile = candidate
+            break
+    count = page.evaluate('() => KCP.buildGame.current().builds.length')
+    click_tile(page, tile)
+    page.wait_for_function('n => KCP.buildGame.current().builds.length === n+1', arg=count)
+    required(checks, page.evaluate('i => KCP.buildGame.current().builds.some(b=>b.i===i && b.t==="solar")', tile),
+             label + ' 화면 조작으로 태양광 1기 추가')
+
+
 def scenario(checks, page, base, width, label):
     page.goto(base + '#league')
     # 선택 버튼은 기존 로비 계약(data-select/data-value)을 사용한다.
@@ -85,6 +113,8 @@ def scenario(checks, page, base, width, label):
         if state['round'] == NO_EVENT_MONTH and state['phase'] == 'plan':
             break
         required(checks, state['round'] <= NO_EVENT_MONTH, label + ' 목표 달 이전의 정상 흐름')
+        if state['round'] == NO_EVENT_MONTH - 1 and state['phase'] == 'plan':
+            add_grid_connection(checks, page, label)
         observation = click_next(page, state)
     else:
         raise AssertionError('12번 진행 안에 사건 없는 4월 계획 단계에 도착하지 못함')
@@ -101,6 +131,19 @@ def scenario(checks, page, base, width, label):
     required(checks, count in (2, 3), label + ' 후보 2~3개')
     names = [card_key(cards.nth(i)) for i in range(count)]
     required(checks, names == sorted(set(names), key=ORDER.index), label + ' 후보 중복 없이 고정 순서')
+    expect(group.locator('#lg-s1-grid')).to_have_count(1)
+    basis = focus.locator('p#lg-s1-grid-basis')
+    expect(page.locator('#lg-s1-grid-basis')).to_have_count(1)
+    expect(basis).to_be_visible()
+    required(checks, basis.evaluate('el => !el.closest("details, [role=group]")'),
+             label + ' 접속 기준 문장은 카드 묶음·접힘 밖')
+    s1_grid_basis = basis.text_content()
+    required(checks, bool(s1_grid_basis) and '새 접속' in s1_grid_basis and '지도 칩' in s1_grid_basis,
+             label + ' 접속 전 값·지도 칩 기준 설명')
+    required(checks, '다를 수 있어요' in s1_grid_basis, label + ' S1 양방향 차이 설명 포함')
+    required(checks, '더 작을 수' not in s1_grid_basis, label + ' S1 한 방향 설명 없음')
+    required(checks, '보통' not in s1_grid_basis, label + ' S1 측정 근거 없는 빈도 설명 없음')
+    expect(group.locator('#lg-s1-grid')).to_have_attribute('aria-describedby', 'lg-s1-grid-basis')
     required(checks, all(cards.nth(i).get_attribute('aria-pressed') == 'false' for i in range(count)),
              label + ' 처음에는 아무 카드도 고르지 않음')
     promise = focus.get_by_role('button', name='근거를 하나 고르면 약속으로 이어져요', exact=True)
@@ -118,6 +161,8 @@ def scenario(checks, page, base, width, label):
         expect(summary).to_have_text('후보 하나 더')
         expect(summary).to_be_visible()
         expect(fold).not_to_have_attribute('open', '')
+        expect(basis).to_be_visible()
+        required(checks, basis.is_visible(), label + ' 390 접힘을 열기 전 기준 문장 표시')
         required(checks, summary.bounding_box()['height'] >= 44, label + ' summary 높이 44px')
         folded = fold.get_by_role('button', include_hidden=True)
         expect(folded).to_have_count(1)
@@ -176,6 +221,14 @@ def scenario(checks, page, base, width, label):
     page.locator('#lg-evidence-focus').get_by_role('button', name=promise_name, exact=True).click()
     wait_unfolded(page)
     expect(page.locator('#lg-panel')).to_have_attribute('data-tab', 'journal')
+    s4_grid_basis = page.locator('#lg-evidence-grid-basis')
+    expect(s4_grid_basis).to_have_count(1)
+    s4_grid_basis_text = s4_grid_basis.text_content()
+    required(checks, s4_grid_basis_text == s1_grid_basis,
+             label + ' 같은 달 S1·S4 접속 기준 글자 완전 동일')
+    required(checks, '다를 수 있어요' in s4_grid_basis_text, label + ' S4 양방향 차이 설명 포함')
+    required(checks, '더 작을 수' not in s4_grid_basis_text, label + ' S4 한 방향 설명 없음')
+    required(checks, '보통' not in s4_grid_basis_text, label + ' S4 측정 근거 없는 빈도 설명 없음')
     chip = page.locator(f'#lg-evidence [data-evidence="{pick}"]')
     expect(chip).to_have_attribute('aria-pressed', 'true')
     required(checks, (chip.get_attribute('aria-label') or '').endswith(' · S1에서 고름'),

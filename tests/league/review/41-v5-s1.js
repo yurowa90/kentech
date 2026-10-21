@@ -161,7 +161,8 @@ function makeHarness(source, baseline = false, legacyMedia = false) {
     querySelectorAll: () => [] };
   const ctx = vm.createContext({ console, performance, structuredClone, URL, __session: L, document,
     addEventListener() {}, setTimeout() { return 0; }, clearTimeout() {},
-    matchMedia: q => ({ matches: /max-width:\s*(\d+)/.test(q) && L.width <= +q.match(/max-width:\s*(\d+)/)[1],
+    matchMedia: q => ({ matches: /max-width:\s*(\d+)/.test(q) ? L.width <= +q.match(/max-width:\s*(\d+)/)[1] :
+      /min-width:\s*(\d+)/.test(q) && L.width >= +q.match(/min-width:\s*(\d+)/)[1],
       ...(legacyMedia ? { addListener() {} } : { addEventListener() {} }) }),
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     KCP: { route() {}, on() {}, esc: escape, gradeWords: x => x, leagueNet: {
@@ -182,7 +183,8 @@ function makeHarness(source, baseline = false, legacyMedia = false) {
   const { leagueCore: C, buildGame: B, league: U, ECON_DATA: D } = ctx.KCP;
   return { ctx, L, U, C, B, D, storage, wire, nodes, baseline, R: C.regionOf('south') };
 }
-const source = fs.readFileSync(path.join(ROOT, 'ui/league.js'), 'utf8');
+// 선택 인자는 변이 검사용 사본 경로. 기본 실행은 작업 중인 구현을 읽는다.
+const source = fs.readFileSync(process.argv[2] || path.join(ROOT, 'ui/league.js'), 'utf8');
 const h = makeHarness(source);
 const old = makeHarness(execFileSync('git', ['show', `${BASE}:ui/league.js`], { cwd: ROOT, encoding: 'utf8' }), true);
 const standard = { evening: 100, wind: 5, grid: 20, fuel: 100, neighbor: 10 };
@@ -274,6 +276,115 @@ function assertCandidates(h, f) {
   assert.ok(v.focus.textContent.includes(`이번 달 볼 것 · 근거 후보 ${wanted.length}개`));
   return v;
 }
+
+// 접속 여유 기준 한 줄 계약 1~7. S1 문장 변이·연결 누락·잘못된 노출을 잡는다.
+// 문장은 복사하지 않는다. 같은 입력의 S4를 렌더해 읽는다.
+// S4 원문은 fb8b48b에서 승인된 끝 구절을 한 번만 교체한 HTML에 고정한다.
+function s4GridBasis(h) {
+  const html = api(h, 'predictionHTML')(h.L.snap), root = htmlTree(html);
+  const elements = root.querySelectorAll('#lg-evidence-grid-basis');
+  assert.equal(elements.length, 1, 'S4 기준 요소 정확히 하나');
+  const element = elements[0];
+  assert.equal(element.tagName, 'P');
+  assert.ok(element.closest('#lg-promise-rules'), 'S4 약속 비교 기준 자세히 안');
+  const raw = html.match(/<p\b[^>]*\bid="lg-evidence-grid-basis"[^>]*>[\s\S]*?<\/p>/)?.[0];
+  assert.ok(raw, '바이트 비교할 S4 원문 HTML');
+  return { element, raw };
+}
+const gridCases = [
+  ['세 후보 중간', { previous: standard, values: { grid: 3.65 } }],
+  ['세 후보 마지막(390에서는 접힘)', { values: { fuel: null } }],
+  ['두 후보', { values: { wind: null, fuel: null, neighbor: null } }],
+  ['grid만 숫자', { values: { evening: null, wind: null, fuel: null, neighbor: null } }],
+];
+for (const role of ['team', 'solo']) for (const width of [1280, 390]) for (const [label, opt] of gridCases)
+  test(`접속 기준 계약 1·2·3 ${role}/${width}/${label}`, () => {
+    const f = fixture(h, { ...opt, role, width }), v = assertCandidates(h, f);
+    assert.ok(v.keys.includes('grid'), 'grid 포함 합성 입력');
+    const all = v.root.querySelectorAll('#lg-s1-grid-basis');
+    assert.equal(all.length, 1, 'S1 기준 문장 정확히 하나');
+    const basis = all[0];
+    assert.equal(basis.tagName, 'P');
+    assert.ok(v.focus.contains(basis), '#lg-evidence-focus 안');
+    assert.equal(basis.closest('[role="group"]'), null, '카드 묶음 밖');
+    assert.equal(basis.closest('details'), null, '접힘 밖(390 포함)');
+    for (let el = basis; el; el = el.parentElement) {
+      assert.ok(!el.hasAttribute('hidden'), '숨김 속성 없음');
+      assert.notEqual(el.getAttribute('aria-hidden'), 'true', '접근성 트리에서 숨기지 않음');
+    }
+    assert.equal(basis.textContent, s4GridBasis(h).element.textContent, '같은 입력 S1·S4 글자 완전 동일');
+    assert.match(basis.textContent, /새 접속/);
+    assert.match(basis.textContent, /지도 칩/);
+    const grid = v.group.querySelector('#lg-s1-grid');
+    assert.ok(grid, 'grid 카드 단추');
+    assert.equal(grid.getAttribute('aria-describedby'), 'lg-s1-grid-basis');
+    for (const card of v.cards.filter(c => c !== grid))
+      assert.ok(!card.hasAttribute('aria-describedby'), '다른 카드에 설명 연결 속성 없음');
+    if (width === 390 && label.startsWith('세 후보 마지막')) {
+      const fold = grid.closest('details');
+      assert.ok(fold, 'grid 단추가 접힌 마지막 후보인 입력');
+      assert.ok(!fold.hasAttribute('open'), '390에서 실제 접힘 마크업');
+      assert.ok(!fold.contains(basis), 'grid 단추가 접혀도 설명은 밖');
+    }
+  });
+for (const role of ['team', 'solo']) for (const width of [1280, 390]) for (const [label, opt] of gridCases)
+  test(`접속 기준 문구 ${role}/${width}/${label}/S1·S4 양방향 차이`, () => {
+    fixture(h, { ...opt, role, width });
+    const s1 = view(h).focus.querySelector('#lg-s1-grid-basis');
+    assert.ok(s1, 'S1 기준 요소 존재');
+    for (const [surface, text] of [['S1', s1.textContent], ['S4', s4GridBasis(h).element.textContent]]) {
+      assert.ok(text.includes('다를 수 있어요'), `${surface} 양방향 차이 설명 포함`);
+      assert.ok(!text.includes('더 작을 수'), `${surface} 한 방향 설명 없음`);
+      assert.ok(!text.includes('보통'), `${surface} 측정 근거 없는 빈도 설명 없음`);
+    }
+  });
+for (const width of [1280, 390]) for (const [label, opt] of [
+  ['grid 값은 있으나 후보에서 탈락', {}],
+  ['grid 값 없음', { values: { grid: null } }],
+  ['모든 값 없음', { values: Object.fromEntries(order.map(k => [k, null])) }],
+]) test(`접속 기준 계약 3·4 ${width}/${label}`, () => {
+  const f = fixture(h, { ...opt, width }), v = assertCandidates(h, f);
+  assert.ok(!v.keys.includes('grid'), 'grid 미포함 합성 입력');
+  assert.equal(v.root.querySelectorAll('#lg-s1-grid-basis').length, 0, 'grid 없는 후보에는 기준 문장 없음');
+  for (const card of v.cards) assert.ok(!card.hasAttribute('aria-describedby'), '다른 카드에 설명 속성 없음');
+});
+for (const [label, opt] of [
+  ['대응 사건/team', { event: 'response' }],
+  ['대응 사건/solo', { event: 'response', role: 'solo' }],
+  ['진행자', { role: 'host' }],
+  ['진행자 관전', { role: 'host', viewing: 'dangjin' }],
+  ['팀 away', { away: true }],
+  ['solo away', { role: 'solo', away: true }],
+]) test(`접속 기준 계약 5 ${label}`, () => {
+  // 제외 조건을 제거하면 grid가 나올 입력을 사용해 단순 후보 탈락과 구별한다.
+  fixture(h, { ...opt, previous: standard, values: { grid: 3.65 } });
+  const v = view(h);
+  assert.ok(!v.group, '카드 묶음 없음');
+  assert.equal(v.root.querySelectorAll('#lg-s1-grid-basis').length, 0, '기준 문장 없음');
+});
+for (const role of ['team', 'solo']) test(`접속 기준 계약 6 ${role}/처리 전 3.65 MW 유지`, () => {
+  fixture(h, { role, previous: standard, values: { grid: 3.65 } });
+  // 기기에 저장한 처리 전 값과 현재 도시의 처리 뒤 값을 의도적으로 다르게 둔다.
+  h.L.snap.econ.cities[h.L.team].grid.headroomMW = 2.4;
+  const card = view(h).group.querySelector('#lg-s1-grid');
+  assert.equal(card.querySelector('strong').textContent, '접속 여유 · 3.65 MW');
+  click(h, card);
+  assert.equal(view(h).group.querySelector('#lg-s1-grid strong').textContent, '접속 여유 · 3.65 MW');
+  assert.equal(note(h).s1EvidenceValues.grid, 3.65, '저장한 약속 판정 기준 값 불변');
+  assert.equal(h.L.snap.econ.cities[h.L.team].grid.headroomMW, 2.4, '처리 뒤 도시 값 불변');
+});
+const gridBasisOriginal = makeHarness(execFileSync('git', ['show', 'fb8b48b:ui/league.js'],
+  { cwd: ROOT, encoding: 'utf8' }), true);
+for (const role of ['team', 'solo']) for (const width of [1280, 390])
+  test(`접속 기준 계약 7 ${role}/${width}/S4 HTML = fb8b48b 끝 구절 1회 교체`, () => {
+    const opt = { role, width, previous: standard, values: { grid: 3.65 } };
+    for (const a of [h, gridBasisOriginal]) fixture(a, opt);
+    const original = s4GridBasis(gridBasisOriginal).raw;
+    assert.equal(original.split('더 작을 수 있어요').length - 1, 1, 'fb8b48b S4 원문에 옛 구절 정확히 한 번');
+    const expectedHTML = original.replace('더 작을 수 있어요', '다를 수 있어요');
+    assert.deepEqual(Buffer.from(s4GridBasis(h).raw, 'utf8'),
+      Buffer.from(expectedHTML, 'utf8'), '승인된 구절 1회 교체 외 S4 HTML UTF-8 바이트 동일');
+  });
 
 test('하네스 HTML 파서: 그룹·속성·조상 클릭·이스케이프', () => {
   const root = htmlTree('<section id="lg-evidence-focus"><div role="group" aria-label="근거 후보"><button type="button" aria-pressed="false" data-any-key="wind">풍속 &lt;img&gt;</button></div></section>');
