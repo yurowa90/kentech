@@ -122,9 +122,9 @@
   };
   function closeCards(restoreFocus = false) {
     const active = document.activeElement;
-    const restore = restoreFocus && !!deck && (!active || active === document.body || deck.contains(active));
-    // Esc·닫기처럼 사용자가 직접 닫을 때만 초점을 옮긴다. 초점이 덱 안이거나 이미 body로 떨어졌으면
-    // 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾고, 덱 밖 요소에 있으면 그대로 둔다.
+    const restore = !!deck && (deck.contains(active) || (restoreFocus && (!active || active === document.body)));
+    // 덱 안 초점은 어떻게 닫히든 복귀시킨다(자동 닫힘·화면 낭독기 훑기 포함). 이미 body로 떨어진 초점은
+    // Esc·닫기처럼 사용자가 직접 닫을 때만 옮긴다. 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾는다.
     const focus = restore ? [expandFocus, document.querySelector('#lg-bar [data-panel="result"]'),
       ...(document.querySelector("#lg-bar")?.querySelectorAll("button") || [])].find(target =>
       target?.isConnected && target !== document.body && !deck.contains(target) && visibleRect(target)) : null;
@@ -525,7 +525,26 @@
       if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
     }, true);
     // 예보는 보류 중에도 Esc로 닫는다. 보이기 전에 닫은 예보는 기록하지 않아 새로고침 뒤 다시 뜬다.
-    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(true); }, true);
+    // 열린 대화상자에는 양보한다. window 단계는 document의 어느 처리기보다 먼저 돌므로, 여기서 누르기 직전의
+    // 열린 서랍 수를 기록한다. 초점이 예보 안(펼친 띠의 닫기 등)이면 예보만 닫고 서랍 쪽으로 넘기지 않는다.
+    let drawersAtEsc = 0;
+    listen(window, "keydown", e => {
+      if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+      drawersAtEsc = openDrawers(root).length;
+      if (!deck?.contains(document.activeElement)) return;
+      e.preventDefault(); e.stopPropagation(); closeCards(true);
+    }, true);
+    // 같은 Esc가 도시 서랍을 닫았으면 예보는 남긴다(서랍과 예보가 한 번에 사라지지 않게). 코치 닫기처럼
+    // 서랍이 그대로인 Esc는 예보도 닫는다. 처리기 순서와 무관하게 디스패치 뒤 서랍 수로 판정한다.
+    listen(document, "keydown", e => {
+      if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+      const owner = deck, drawers = drawersAtEsc;
+      if (!drawers) { closeCards(true); return; }
+      setTimeout(() => {
+        if (!deck || deck !== owner || (e.defaultPrevented && openDrawers(root).length < drawers)) return;
+        closeCards(true);
+      }, 0);
+    }, true);
     return true;
   }
   function showSummary(opts, root) {
@@ -612,7 +631,7 @@
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
     // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다. 재생 건너뛰기는 그대로 둔다.
-    listen(document, "keydown", e => { if (e.key === "Escape") { if (status.playing || pending) skip(); else if (!status.deferred) { closeCards(true); hideSummary(); } } }, true);
+    listen(document, "keydown", e => { if (e.key === "Escape" && !document.querySelector("dialog[open]")) { if (status.playing || pending) skip(); else if (!status.deferred) { closeCards(true); hideSummary(); } } }, true);
     let finished = false;
     const done = info => {
       if (token !== epoch || !keepCurrentCards()) return;

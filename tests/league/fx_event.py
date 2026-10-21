@@ -843,6 +843,19 @@ def inspect_forecast_strip(checks, page, label, reduced):
     pointer_press(page, page.locator('#lg-panel-fold'))
     checks.ok((observe(page)['fx'] or {}).get('forecastOpen') is True,
               label + ' 서랍 펼치기 단추 터치 뒤 예보 유지')
+    # 총괄 결정(4872ebd 검토 minor 2): 서랍이 열린 채 Esc 한 번은 서랍만 닫고 예보는 남긴다.
+    # 초점을 예보 밖(서랍 접기 단추)에 둔 상태에서 누른다.
+    page.locator('#lg-panel-fold').focus()
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(300)
+    checks.ok(not page.locator('#lg-panel').is_visible() and
+              (observe(page)['fx'] or {}).get('forecastOpen') is True,
+              label + ' 서랍 열린 상태 Esc 한 번 → 서랍만 닫히고 예보 남음')
+    # 남은 띠 검사를 위해 도시 탭을 실제 터치로 다시 연다.
+    pointer_press(page, page.locator('#lg-bar [data-panel="city"]'))
+    page.wait_for_timeout(300)
+    if not page.locator('#lg-panel').is_visible():
+        return True
     if (observe(page)['fx'] or {}).get('strip'):
         return expand_strip(checks, page, label + ' 예보')
     return True
