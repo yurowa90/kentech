@@ -3476,9 +3476,17 @@
         <small>${esc(who)}${mine === true ? idle ? ` · 우리 도시 해당 · 우리 지도에 ${esc(idle)} 설비가 없어 우리 발전엔 영향 없음(이웃 거래로는 닿을 수 있음)` : " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${gradeClass(E.grade)}" title="사건의 근거: ${esc(gradeWords(E.grade))}. 크기와 대응 효과: ${esc(gradeWords("G"))}">근거 ${esc(gradeWords(E.grade))} · 크기 ${esc(gradeWords("G"))}</abbr></small>${eventSourceHTML(E)}</li>`;
     }).join("")}</ul>`;
   }
+  // 자료의 ISO 구간 "시작/끝"은 학생이 읽는 '시작~끝'으로 보인다(league-data.js 사건 asOf 계약).
+  function eventSourceTimeText(E) {
+    // 목록 안은 ', '로 이어 출처 줄의 ' · ' 필드 구분과 섞이지 않게 한다. null은 '시점을 확정할 수 없음'이라는
+    // 계약 뜻만 보인다(정책 발표가 아닌 null 사건도 있다).
+    const dates = list => list.map(x => String(x).replace("/", "~")).join(", ");
+    const observed = E.asOf === null ? "자료 시점 없음"
+      : E.asOf === undefined ? "자료 시점 미기재" : `자료 시점 ${dates(E.asOf)}`;
+    return observed + (E.published === undefined ? "" : ` · 발표 ${dates(E.published)}`);
+  }
   function eventSourceHTML(E) {
-    const dates = [...new Set((E.why || "").match(/(?:19|20)\d{2}(?:[.\/-]\d{1,2}(?:[.\/-]\d{1,2})?)?/g) || [])];
-    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · 기준연월 ${esc(dates.join(" · ") || "자료 없음")} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
+    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
   }
 
   /* ---------- 팀 카드: 건설 속도(투자 누적)와 축소 지도 ---------- */
