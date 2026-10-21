@@ -115,13 +115,14 @@ const number = (v, sign = false, digits = 2) => { // D-80: C-4의 MWh 한 자리
 };
 const publicMWh = r => Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub); // D-80: 계약 A, 공개 필드만.
 const periodDays = res => res.month ? new Date(Date.UTC(res.year, res.month, 0)).getUTCDate() : res.days; // D-80: 월 일수 독립 계산.
-const resultValue = (res, target) => target === 'grid' ? publicMWh(res.team[id]) * periodDays(res) / res.days : res.team[id].unsPct; // D-80: C-1.
+const resultValue = (res, target) => target === 'grid' ? publicMWh(res.team[id]) / res.days : res.team[id].unsPct; // D-82: 월 합계 환산을 빼고 공개 보충량/대표 일수로 독립 계산.
 function filledValue(raw, target, mul) { // D-80: S7 대신 core 공개 모델로 검산.
   const filled = C.gridFill(raw); // D-80: 모든 단계 동일 계통 상한.
   return target === 'grid' ? (filled.tot.by.import - raw.tot.by.import) * mul : uns(filled); // D-80: C §2, 기존 수입 설비 제외.
 } // D-80: 독립 단계 값.
-const minPart = a => a?.target === 'grid' ? Math.max(1, .05 * Math.abs(a.trial)) / 10 : .05; // D-80: C-5.
-const unitNumber = (a, value, sign = false, rate = false) => a.target === 'grid' ? number(value, sign, 1) + ' MWh' : number(value, sign) + (rate ? '%' : '%p'); // D-80: C-4.
+const minPart = a => a?.target === 'grid' ? Math.max(.05, .05 * Math.abs(a.trial)) / 10 : .05; // D-82: 기준 하루 평균의 같음 문턱/10, 정전은 유지.
+const unitNumber = (a, value, sign = false, rate = false) => a.target === 'grid' ? number(value, sign, 1) + ' MWh/일' : number(value, sign) + (rate ? '%' : '%p'); // D-82: 계통 하루 평균 표시.
+const eventText = (text, target) => target === 'grid' ? text.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는') : text; // D-82: 명세 (b)의 표시 기대 문구, 사본 원문은 유지.
 const topCards = (parts, a) => [...parts].filter(p => Math.abs(p.value) >= minPart(a)) // D-80: 대상별 문턱.
   .sort((x, y) => Math.abs(y.value) - Math.abs(x.value)).slice(0, 3);
 function weatherMetrics(s, plan, mods) {
@@ -204,7 +205,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   const showSmall = grid.waitingMW > 0 && Number.isFinite(grid.value) && Math.abs(grid.value) < threshold; // D-80: C-1·2·4·5 대상별 검사.
   eq(!!small, showSmall, `${label}: 작은 대기 줄은 양의 대기·유한 효과·0.05%p 미만`);
   if (small) { // D-80: 계통 단위도 작은 효과 문구에서 검사.
-    if (isGrid) ok(small[1].includes('MWh') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-80: C-4.
+    if (isGrid) ok(small[1].includes('MWh/일') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-82: 작은 반사실도 하루 평균 단위.
     else eq(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 미만)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
   } // D-80: 작은 효과.
 
@@ -217,7 +218,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   ok(box[1].includes(`접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW`) &&
     box[1].includes('대기가 없었다면') && box[1].includes(isGrid ? '계통' : '정전') && box[1].includes('분해 합계 밖'), `${label}: 병목량·반사실·합계 밖 설명`); // D-80: C-1·2·4·5 대상별 검사.
   ok(!/data-out-value=|data-missed=|data-out-tag=|가장 큰/.test(box[0]) &&
-    (box[1].match(/[+−-]?\d[\d,]*\.\d+(?: MWh|%p)/g) || []).join('') === unitNumber(a, grid.value, true), // D-80: C-4, 계통/정전 모두 단위 수치 하나만 허용.
+    (box[1].match(/[+−-]?\d[\d,]*\.\d+(?: MWh\/일|%p)/g) || []).join('') === unitNumber(a, grid.value, true), // D-82: 하루 평균 반사실 수치 하나만 허용.
     `${label}: 병목 상자는 반사실 수치만 공개, 카드 몫/정답 없음`);
   ok(html.indexOf(box[0]) < html.indexOf(html.includes('id="lg-outage-cards"') ? 'id="lg-outage-cards"' : 'id="lg-outage-single"'),
     `${label}: 카드/요약 위 별도 상자`);
@@ -372,7 +373,7 @@ function oracle(old, current, { legacyTies = false } = {}) {
   ];
   const results = stages.map(args => simulation(...args)); // D-80: 독립 원시 시뮬레이션 유지.
   const target = prev.team[id].unsPct < .005 && now.team[id].unsPct < .005 ? 'grid' : 'uns'; // D-80: C 명세 §1.
-  const values = results.map((raw, i) => filledValue(raw, target, periodDays(i < 2 ? prev : now) / raw.days)); // D-80: C-1·계약 A, 달 길이는 날씨·기간 단계부터 이번 달로 교체.
+  const values = results.map(raw => filledValue(raw, target, 1 / raw.days)); // D-82: 단계별 대표 일수로 나누어 달 길이가 몫에 섞이지 않게 독립 계산.
   const base = resultValue(prev, target), actual = resultValue(now, target); // D-80: 공개 필드 기준.
   const parts = values.slice(1).map((v, i) => ({ key: causes[i], value: v - values[i] }));
   parts.push({ key: 'trade', value: (actual - values.at(-1)) - (base - values[0]) }); // D-80: C-2의 월간 잔차, 계통 몫 없음.
@@ -381,7 +382,7 @@ function oracle(old, current, { legacyTies = false } = {}) {
 }
 function rows(html) {
   return [...html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g)]
-    .map(m => ({ key: m[1], raw: +m[2], visible: +m[3].replace(/ MWh|[,%p]/g, '').replace('−', '-') // D-80: C-4, MWh 원시 숫자.
+    .map(m => ({ key: m[1], raw: +m[2], visible: +m[3].replace(/ MWh(?:\/일)?|[,%p]/g, '').replace('−', '-') // D-82: 하루 평균 표시 숫자를 단위와 분리; 단위 자체는 별도 엄격 비교.
       })); // D-80: C-1·2·4·5 대상별 검사.
 }
 function cards(html, expectedParts, a) { // D-80: C-5.
@@ -397,13 +398,14 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   // 운영 입력·지난달 실제·이번 달 사본은 그대로 두고 지난달 저장 고립값만 바꾼다.
   const target = expected.target; // D-80: 시험값 대신 두 달 실제로 결정.
   const replayField = target === 'grid' ? 'gridMWh' : 'filledUnsPct'; // D-80: 새 사본의 계통 포함 진단값.
-  savedOld[replayField] += replayOffset / (target === 'grid' ? periodDays(old.res) / old.res.days : 1); // D-80: replayOffset은 월 환산 단위.
+  savedOld[replayField] += replayOffset * (target === 'grid' ? old.res.days : 1); // D-82: 하루 평균 오프셋을 원래 대표기간 합계로 환산하여 사본 진단값만 변형.
   save(d); resetCache(); calls = [];
   const a = U.uiMath.outageAttributionMonthly(V, res, id);
   ok(a, '사본 있는 2월 이후 월간 분해');
   if (!a) return;
   eq(a.basis, 'monthly', '시험 분해로 우회하지 않음');
   eq(a.target, target, '대상은 두 달 실제의 0.005% 경계'); // D-80: C §1.
+  if (target === 'grid') eq(a.unit, 'MWh/일', '월간 계통 S7 객체 단위'); // D-82: 계약의 리터럴 단위 대조.
   near(a.trial, expected.base, '분해 출발 = 대상별 지난달 실제'); // D-80: C-1.
   near(a.actual, expected.actual, '도착 = 대상별 이번 실제'); // D-80: C-1.
   near(a.total, expected.actual - expected.base, '지난달 → 이번 달 차이'); // D-80: C-1·2.
@@ -430,7 +432,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   if (waiting) inputEq(calls.at(-1), [connectedPlan, res.days, { league: true, mods: { ...model.mods, reCap: full } }],
     '마지막 실제 실행 = 이번 조건 접속 대기 반사실');
   const expectedGrid = { waitingMW: model.grid.waitingMW,
-    value: waiting ? filledValue(simulation(model.plan, res.seed, res.season, res.days, { ...model.mods, reCap: full }), target, periodDays(res) / res.days) - expected.values.at(-1) : 0 }; // D-80: C-1 반사실도 계통 포함.
+    value: waiting ? filledValue(simulation(model.plan, res.seed, res.season, res.days, { ...model.mods, reCap: full }), target, 1 / res.days) - expected.values.at(-1) : 0 }; // D-82: 전량 접속 반사실도 대표기간 합계/일수.
   near(a.grid.waitingMW, expectedGrid.waitingMW, '대기량 = 독립 운영 접속 상태');
   near(a.grid.value, expectedGrid.value,
     '접속 대기 별도 반사실(합계 밖)');
@@ -476,13 +478,13 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.visible, 0), Object.entries(expectedRows).filter(([k]) => k !== 'actual').reduce((n, [,v]) => n + Number(v.toFixed(target === 'grid' ? 1 : 2)), 0), '표시 합계 = 각 독립 반올림값의 합'); // D-80: 한 자리 반올림도 허용 오차 확대 없음.
   ok(html.includes('약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)'), '판정·분해 기준 안내');
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
-  eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= .005, '대상별 재현 설명 표시 문턱'); // D-80: C-4.
+  eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= (target === 'grid' ? .05 : .005), '대상별 재현 설명 표시 문턱'); // D-82: 계통 표시 반 눈금 0.05 MWh/일, 정전 유지.
   ok(html.includes(`이번 달 계산 순서: ${causes.map(k => names[k]).join(' → ')}`) &&
     html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), '실제 여섯 단계 계산 순서·순서 의존 안내'); // D-80: C-1·2·4·5 대상별 검사.
   for (const m of html.matchAll(/data-missed="([^"]+)"[^>]*><strong>([^<]+)<\/strong>/g))
     eq(m[2], names[m[1]], '카드 이름 = 월간 기준');
   const eventClue = html.match(/data-missed="event"[^>]*>[\s\S]*?<span class="lg-out-clue">([^<]+)<\/span>/)?.[1];
-  if (eventClue) eq(eventClue, a.clues.event, '사건 카드에는 짧은 지난달→이번달 단서');
+  if (eventClue) eq(eventClue, eventText(a.clues.event, target), '사건 카드에는 대상에 맞는 짧은 지난달→이번달 단서'); // D-82: 계통 대상 표시 문구; 정전 기대값은 원문 그대로.
   const monthlyMWh = (result, kind) => {
     const days = C.roundsOf(V)[result.round - 1]?.mdays || result.days;
     const amount = kind === 'imp' ? neighbor(result, id, 100).delivered : result.team[id][kind];
@@ -490,7 +492,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   };
   ok(a.clues.trade.startsWith(`이웃 구매 ${monthlyMWh(old.res, 'imp')} → ${monthlyMWh(res, 'imp')} / 판매 ${monthlyMWh(old.res, 'exp')} → ${monthlyMWh(res, 'exp')} MWh(월 환산)`) && (target !== 'grid' || /이웃.*바깥 계통/.test(a.clues.trade)), // D-80: C §4 계통 대상의 이웃 보충 설명.
     '거래 단서는 두 달의 실제 구매·판매를 월 환산');
-  ok(/^지난달 .+ → 이번 달 .+$/.test(a.clues.event) && html.includes(a.clueMore.event), '사건 전체 단서는 단서 더 보기');
+  ok(/^지난달 .+ → 이번 달 .+$/.test(a.clues.event) && html.includes(eventText(a.clueMore.event, target)), '사건 전체 단서는 대상에 맞는 문구로 단서 더 보기'); // D-82: 상세 사건 단서도 (b)의 표시 문구로 대조.
   const candidates = [...html.matchAll(/data-(?:missed|out-other)="([^"]+)"/g)].map(m => m[1]);
   ok(candidates.every(k => causes.includes(k)), '되돌림·재현은 카드/나머지 후보 밖');
   if (!model.grid.waitingMW) ok(!html.includes('접속 대기'), '0 MW 달 접속 대기 문장 없음');
@@ -502,7 +504,8 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   frozenData.interview.months[res.round] = note; saveTeam(frozenData);
   // 연 뒤 시험 교체·캐시 제거에도 공개 당시 분해 고정.
   storage.set('kcp-build-trial-v1', '{}'); resetCache(); calls = [];
-  eq(U.uiMath.outageAttributionMonthly(V, res, id), a, '연 뒤 기기 저장 분해 고정');
+  const expectedFrozen = { ...clone(a), clues: { ...clone(a.clues), event: eventText(a.clues.event, target) }, clueMore: { ...clone(a.clueMore), event: eventText(a.clueMore.event, target) } }; // D-82: 표시 시 고정본에는 대상별 사건 문구가 보존됨; 수치는 독립 검산값 그대로.
+  eq(U.uiMath.outageAttributionMonthly(V, res, id), expectedFrozen, '연 뒤 기기 저장 분해 고정'); // D-82: 문구 (b) 이외 모든 필드도 엄격 대조, 정전 기대값 유지.
   eq(calls.length, 0, '고정된 분해 재실행 0');
   const timeline = U.uiMath.trendHTML(V, id, true);
   if (note.outageLargest) {
@@ -559,7 +562,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
     [-3.5, -.05, .050001, 0, 0, 0],
     [-3.5, 1.25, -.05, .050001, .8, 0]
   ]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       parts: causes.map((key, i) => ({ key, value: values[i] ?? 0 })) }; // D-80: C-1·2·4·5 대상별 검사.
     const html = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
     cards(html, frozen.parts);
@@ -570,7 +573,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
   }
   const parts = causes.map((key, i) => ({ key, value: [-3.5, 1.25, 0, 0, 0, 0, 0][i] }));
   for (const waitingMW of [0, 2]) for (const value of [0, .049999, .05, .050001, -.049999, -.05, -.050001, -8.76, NaN, Infinity, -Infinity]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       parts, trial: 6.65, actual: 4.4, total: -2.25, // D-80: C-1·2·4·5 대상별 검사.
       grid: { waitingMW, value } };
     const html = U.uiMath.outageCardsHTML(V, res, id,
@@ -616,7 +619,7 @@ test('근거 5종 × 원인 6종 × 방향·풍력 플래그: 직접/같은 단�
         (evidence === 'wind' && !windFlag) ? 0 :
         (mode === 'down' ? -1 : 1) * effect[evidence];
       const parts = causes.map((key, i) => ({ key, value: key === cause ? largestSign * 9.43 : (i + 1) / 10 }));
-      const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+      const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       parts, grid: { waitingMW: 0, value: 0 } }; // D-80: C-1·2·4·5 대상별 검사.
       if (windFlag === undefined) delete frozen.hasConnectedWind;
       else frozen.hasConnectedWind = windFlag;
@@ -660,7 +663,7 @@ test('지시서 근거 연결 짝: grid 직접·fuel/풍력 없음 간접·eveni
     for (const [evidence, cause, kind] of [['grid', 'progress', '직접'],
       ['fuel', 'growth', '간접'], ['fuel', 'event', '간접'],
       ['wind', 'weather', '간접'], ['wind', 'event', '간접'], ['evening', 'choice', '같은 단계와']]) {
-      const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+      const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       hasConnectedWind: false, // D-80: C-1·2·4·5 대상별 검사.
         parts: [{ key: cause, value: -3.5 }] };
       const html = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen,
@@ -696,7 +699,7 @@ test('연료 지수만 변경: 비용은 바뀌지만 고립 정전 변화는 0'
 test('비유한 숫자는 –: NaN·양/음 Infinity의 비율·몫', () => {
   const { V, res } = months.at(-1), base = U.uiMath.outageAttribution(V, res, id);
   for (const value of [NaN, Infinity, -Infinity]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: value, actual: value, // D-80: C-1·2·4·5 대상별 검사.
       parts: causes.map((key, i) => ({ key, value: i === 0 ? value : i / 10 })) };
     const html = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
@@ -852,7 +855,7 @@ test('월간 높은 정전 5% 경계·표시 반올림', () => {
     [4.994, 4.994], [4.995, 4.995], [4.994, 5], [5, 4.994], [4.995, 5], [5, 4.995],
     [4.999, 5], [5, 4.999]]) {
     const high = shownHigh(before) && shownHigh(after), actualHigh = shownHigh(after), label = `지난달 ${before}% → 이번 달 ${after}%`;
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: before, actual: after, total: after - before, replay: 0, // D-80: C-1·2·4·5 대상별 검사.
       parts: base.parts.map(p => ({ ...p, value: (after - before) / 6 })) };
     for (const opened of [false, true]) {
@@ -877,7 +880,7 @@ test('수정 5 사례 B: outageSingleShown + missed 고정본의 붙이기·선�
   // 브라우저 없는 실제 핸들러 실행. getElementById는 null을 반환해 요약 DOM을 제공하지 않는다.
   for (const tiny of [0, .049999, -.049999]) for (const large of [0, 1]) {
     const label = `B 월간 고정본 선택 ${tiny}, 최대 ${large}`;
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: 6, actual: 6 + large + tiny, total: large + tiny, replay: 0, // D-80: C-1·2·4·5 대상별 검사.
       parts: causes.map(key => ({ key, value: key === 'choice' ? large : key === 'trade' ? tiny : 0 })) };
     const note = { outageSingleShown: true, missed: 'trade', missedBasis: 'monthly', outageFrozen: frozen };
@@ -1013,7 +1016,10 @@ test('풍속은 실제 접속 풍력만: 육상·해상·혼합·접속 대기·
 function noFalseCancellation(a, label) {
   const part = k => a.parts.find(p => p.key === k).value;
   const magnitude = Math.abs(part('choice')) + Math.abs(part('growth'));
-  // 검토자 결함의 수십 배 상쇄를 잡는 보수적인 상한. 수치 자체를 결과에서 복사하지 않는다.
+  // D-82: 비율 상한은 choice·growth < 0인 ①/⑤ 역부호 상쇄에만 적용한다.
+  // SMR 착공의 월 합계 +117.77 MWh는 지난달 하루 평균 P≈125.6 MWh/일에
+  // 하루가 더해진 효과(31(P−0.2529)−30P = P−7.84)였다. 하루 평균 변화는
+  // −0.2529로 작으며 choice=0이라 ①/⑤ 거짓 상쇄가 생길 수 없다.
   // D-74: |실제 변화|>0 고정 → 계통이 부족을 다 메우면 실제 변화=0도 정상.
   // 이때 비율 상한 적용은 부적절하다. ①/⑤ 사이의 거짓 상쇄는 계속 금지하고,
   // 자체 원인 전체를 계통 효과가 정확히 상쇄하는지 검사한다(대상 제외 아님).
@@ -1023,12 +1029,38 @@ function noFalseCancellation(a, label) {
     ok(part('choice') * part('growth') >= -1e-9, `${label} choice/growth 거짓 역방향 상쇄 없음`);
     near(a.parts.reduce((sum, p) => sum + p.value, 0), a.total, `${label} 여섯 원인의 합계 항등식`); // D-80: C-2, 별도 계통 상쇄 없음.
   } else {
-    ok(Number.isFinite(ratio), `${label} 유한 비율`);
-    ok(ratio <= 2, `${label} (|choice|+|growth|)/|total| ≤2: ${ratio}`);
+    near(a.parts.reduce((sum, p) => sum + p.value, 0), a.total, `${label} 여섯 원인의 합계 항등식`);
+    if (part('choice') * part('growth') < 0) {
+      ok(Number.isFinite(ratio), `${label} 유한 비율`);
+      ok(ratio <= 2, `${label} (|choice|+|growth|)/|total| ≤2: ${ratio}`);
+    }
   }
   console.log(JSON.stringify({ regression: label, total: a.total, choice: part('choice'),
     progress: part('progress'), growth: part('growth'), ratio }));
 }
+test('거짓 상쇄 변이: ①/⑤ 역부호는 실패, choice=0인 날씨/성장 상쇄는 허용', () => {
+  const capture = (a, label) => {
+    const originalOk = ok, records = [];
+    ok = (value, message) => { records.push({ passed: !!value, message }); return !!value; };
+    try { noFalseCancellation(a, label); }
+    finally { ok = originalOk; }
+    return records;
+  };
+  // X=100, total=1: 여섯 몫의 합은 맞지만 ①/⑤가 실제 변화의 100배씩 거짓 상쇄한다.
+  const opposite = capture({ total: 1, parts: [
+    { key: 'choice', value: 100 }, { key: 'weather', value: 1 },
+    { key: 'event', value: 0 }, { key: 'progress', value: 0 },
+    { key: 'growth', value: -100 }, { key: 'trade', value: 0 }
+  ] }, '합성 거짓 상쇄');
+  ok(opposite.some(r => !r.passed), '①/⑤ 거짓 상쇄 객체는 실패를 1건 이상 기록');
+  const weatherGrowth = capture({ total: -.25, parts: [
+    { key: 'choice', value: 0 }, { key: 'weather', value: -100.25 },
+    { key: 'event', value: 0 }, { key: 'progress', value: 0 },
+    { key: 'growth', value: 100 }, { key: 'trade', value: 0 }
+  ] }, '합성 SMR 착공 형태');
+  ok(weatherGrowth.length > 0 && weatherGrowth.every(r => r.passed),
+    'choice=0인 날씨/성장 상쇄 객체는 실제 단언을 실행하고 실패 없음');
+});
 test('SMR 착공·완공: 새 공사 키는 ①, 기존 공사 완료는 ④', () => {
   const S = game({ solarCount: 0, cityIds: [id, 'dangjin', 'asan'], turns: 24 });
   let previous, constructionKey;
@@ -1298,7 +1330,7 @@ test('월간 재현 표시 문턱: 양·음 0.004999/0.005/0.005001%p', () => {
   const base = U.uiMath.outageAttributionMonthly(second.V, second.res, id);
   for (const value of [.004999, .005, .005001, -.004999, -.005, -.005001]) {
     // 계산 픽스처와 분리한 저장 분해 렌더링 검사: 정확한 경계값을 전달한다.
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 검증의 대상 명시.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       replay: value }; // D-80: C-1·2·4·5 대상별 검사.
     const html = U.uiMath.outageCardsHTML(second.V, second.res, id, { outageOpened: true, outageFrozen: frozen });
     eq(rows(html).some(r => r.key === 'replay'), false, `${value} 재현은 폭포 합계에 없음`);
