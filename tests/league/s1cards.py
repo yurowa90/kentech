@@ -140,6 +140,9 @@ def scenario(checks, page, base, width, label):
     s1_grid_basis = basis.text_content()
     required(checks, bool(s1_grid_basis) and '새 접속' in s1_grid_basis and '지도 칩' in s1_grid_basis,
              label + ' 접속 전 값·지도 칩 기준 설명')
+    required(checks, '다를 수 있어요' in s1_grid_basis, label + ' S1 양방향 차이 설명 포함')
+    required(checks, '더 작을 수' not in s1_grid_basis, label + ' S1 한 방향 설명 없음')
+    required(checks, '보통' not in s1_grid_basis, label + ' S1 측정 근거 없는 빈도 설명 없음')
     expect(group.locator('#lg-s1-grid')).to_have_attribute('aria-describedby', 'lg-s1-grid-basis')
     required(checks, all(cards.nth(i).get_attribute('aria-pressed') == 'false' for i in range(count)),
              label + ' 처음에는 아무 카드도 고르지 않음')
@@ -220,8 +223,12 @@ def scenario(checks, page, base, width, label):
     expect(page.locator('#lg-panel')).to_have_attribute('data-tab', 'journal')
     s4_grid_basis = page.locator('#lg-evidence-grid-basis')
     expect(s4_grid_basis).to_have_count(1)
-    required(checks, s4_grid_basis.text_content() == s1_grid_basis,
+    s4_grid_basis_text = s4_grid_basis.text_content()
+    required(checks, s4_grid_basis_text == s1_grid_basis,
              label + ' 같은 달 S1·S4 접속 기준 글자 완전 동일')
+    required(checks, '다를 수 있어요' in s4_grid_basis_text, label + ' S4 양방향 차이 설명 포함')
+    required(checks, '더 작을 수' not in s4_grid_basis_text, label + ' S4 한 방향 설명 없음')
+    required(checks, '보통' not in s4_grid_basis_text, label + ' S4 측정 근거 없는 빈도 설명 없음')
     chip = page.locator(f'#lg-evidence [data-evidence="{pick}"]')
     expect(chip).to_have_attribute('aria-pressed', 'true')
     required(checks, (chip.get_attribute('aria-label') or '').endswith(' · S1에서 고름'),

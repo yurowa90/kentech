@@ -278,7 +278,8 @@ function assertCandidates(h, f) {
 }
 
 // 접속 여유 기준 한 줄 계약 1~7. S1 문장 변이·연결 누락·잘못된 노출을 잡는다.
-// 문장은 복사하지 않는다. 같은 입력의 S4를 렌더해 읽고, S4 원문은 fb8b48b에 고정한다.
+// 문장은 복사하지 않는다. 같은 입력의 S4를 렌더해 읽는다.
+// S4 원문은 fb8b48b에서 승인된 끝 구절을 한 번만 교체한 HTML에 고정한다.
 function s4GridBasis(h) {
   const html = api(h, 'predictionHTML')(h.L.snap), root = htmlTree(html);
   const elements = root.querySelectorAll('#lg-evidence-grid-basis');
@@ -326,6 +327,17 @@ for (const role of ['team', 'solo']) for (const width of [1280, 390]) for (const
       assert.ok(!fold.contains(basis), 'grid 단추가 접혀도 설명은 밖');
     }
   });
+for (const role of ['team', 'solo']) for (const width of [1280, 390]) for (const [label, opt] of gridCases)
+  test(`접속 기준 문구 ${role}/${width}/${label}/S1·S4 양방향 차이`, () => {
+    fixture(h, { ...opt, role, width });
+    const s1 = view(h).focus.querySelector('#lg-s1-grid-basis');
+    assert.ok(s1, 'S1 기준 요소 존재');
+    for (const [surface, text] of [['S1', s1.textContent], ['S4', s4GridBasis(h).element.textContent]]) {
+      assert.ok(text.includes('다를 수 있어요'), `${surface} 양방향 차이 설명 포함`);
+      assert.ok(!text.includes('더 작을 수'), `${surface} 한 방향 설명 없음`);
+      assert.ok(!text.includes('보통'), `${surface} 측정 근거 없는 빈도 설명 없음`);
+    }
+  });
 for (const width of [1280, 390]) for (const [label, opt] of [
   ['grid 값은 있으나 후보에서 탈락', {}],
   ['grid 값 없음', { values: { grid: null } }],
@@ -364,11 +376,14 @@ for (const role of ['team', 'solo']) test(`접속 기준 계약 6 ${role}/처리
 const gridBasisOriginal = makeHarness(execFileSync('git', ['show', 'fb8b48b:ui/league.js'],
   { cwd: ROOT, encoding: 'utf8' }), true);
 for (const role of ['team', 'solo']) for (const width of [1280, 390])
-  test(`접속 기준 계약 7 ${role}/${width}/S4 HTML = fb8b48b`, () => {
+  test(`접속 기준 계약 7 ${role}/${width}/S4 HTML = fb8b48b 끝 구절 1회 교체`, () => {
     const opt = { role, width, previous: standard, values: { grid: 3.65 } };
     for (const a of [h, gridBasisOriginal]) fixture(a, opt);
+    const original = s4GridBasis(gridBasisOriginal).raw;
+    assert.equal(original.split('더 작을 수 있어요').length - 1, 1, 'fb8b48b S4 원문에 옛 구절 정확히 한 번');
+    const expectedHTML = original.replace('더 작을 수 있어요', '다를 수 있어요');
     assert.deepEqual(Buffer.from(s4GridBasis(h).raw, 'utf8'),
-      Buffer.from(s4GridBasis(gridBasisOriginal).raw, 'utf8'), 'S4 기준 요소 원문 HTML UTF-8 바이트 동일');
+      Buffer.from(expectedHTML, 'utf8'), '승인된 구절 1회 교체 외 S4 HTML UTF-8 바이트 동일');
   });
 
 test('하네스 HTML 파서: 그룹·속성·조상 클릭·이스케이프', () => {

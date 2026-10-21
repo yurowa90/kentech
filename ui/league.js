@@ -814,7 +814,7 @@
   const EVIDENCE_STEP = { evening: .01, grid: .02, fuel: .01, wind: .02, neighbor: .02, floor: .01, neighborFloor: .5 }; // 기기 안 비교 눈금(G)
   const EVIDENCE_RULE = `고른 근거는 저녁 수요 ${EVIDENCE_STEP.evening * 100}%·LNG ${EVIDENCE_STEP.fuel * 100}%, 접속 여유 ${EVIDENCE_STEP.grid * 100}%·풍속 ${EVIDENCE_STEP.wind * 100}% 이상 바뀌면 변화로 봐요(${gradeWords("G")}). 이웃 정전은 이전 값의 ${EVIDENCE_STEP.neighbor * 100}%와 ${EVIDENCE_STEP.neighborFloor}%p 중 큰 값 이상 바뀌어야 해요. 그보다 작으면 비교하지 않아요.`;
   // 근거 접속 여유와 지도 칩의 기준 차이. S1 카드와 S4 약속 기준이 같은 문장을 쓴다.
-  const EVIDENCE_GRID_BASIS = "근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 더 작을 수 있어요.";
+  const EVIDENCE_GRID_BASIS = "근거의 접속 여유는 이번 달 새 접속을 처리하기 전 값이에요. 지도 칩은 지금 배치에 이번 달 접속 처리까지 반영한 값이라 다를 수 있어요.";
   const EVIDENCE_NAMES = { evening: "저녁 수요", grid: "접속 여유", fuel: "LNG 지수", wind: `풍속(계절 대표값·높이 환산, ${gradeWords("G")})`, neighbor: "이웃 정전" };
   const direction = x => { const rounded = Number(x.toFixed()); return rounded > 0 ? "up" : rounded < 0 ? "down" : "same"; };
   const PREDICTION_RULE = "같을 것: 정전 변화는 ±0.5%p 미만, 현금 변화는 ±0.5억 미만(게임 비교 기준).";
@@ -840,7 +840,7 @@
       { key: "evening", text: `${EVIDENCE_NAMES.evening}: ${fmt(evening, 2)} MW`, value: evening },
       { key: "wind", text: `${EVIDENCE_NAMES.wind}: ${fmt(wind, 2)} m/s`, value: wind },
       // 공개 상태의 grid는 진행자가 refreshGrid(advance=false)로 만든 값: 이번 달 새 접속을 처리하기 전(지난달까지 접속된 몫).
-      // 지도 칩(build leagueGrid → trialGrid)은 gridStatus(…, true)로 이번 달 접속 처리까지 반영해 더 작을 수 있다. 달마다 같은 시점끼리 비교하려고 근거는 처리 전 값을 쓴다.
+      // 지도 칩(build leagueGrid → trialGrid)은 gridStatus(…, true)로 이번 달 접속 처리까지 반영해 다를 수 있다(접속 처리로 작아지고, 계획 중 ESS·연계선을 더하면 커질 수 있다). 달마다 같은 시점끼리 비교하려고 근거는 처리 전 값을 쓴다.
       { key: "grid", text: `${EVIDENCE_NAMES.grid}: ${fmt(grid?.headroomMW, 2)} MW`, value: grid?.headroomMW },
       { key: "fuel", text: `${EVIDENCE_NAMES.fuel}: ${fmt(lng, 2)}`, value: lng },
       { key: "neighbor", neighborId: other?.id, text: `${other ? teamName(other.id) + " · " : ""}${EVIDENCE_NAMES.neighbor}: ${fmt(V.results.at(-1)?.team[other?.id]?.unsPct, 2)}%`, value: V.results.at(-1)?.team[other?.id]?.unsPct }
