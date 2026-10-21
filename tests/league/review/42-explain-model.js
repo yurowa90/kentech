@@ -372,13 +372,22 @@ for (const [variant, values] of [['baseline', {}], ['mutation', { subsidyPayMont
     }
   });
   if (variant === 'baseline') number('C30', 'league.helpHTML', variant, U.help(), rx('1/#씩'), p(data, 'subsidyPayMonths').length, 'subsidyPayMonths.length');
+  if (variant === 'baseline') check('C30', 'league.helpHTML', variant, '기본 지급 월은 분기 초', () =>
+    assert.match(U.help(), /분기 초\(1·4·7·10월\)/));
   // helpHTML는 VM의 D를 읽으므로, 독립 data와 같은 변형을 VM 사본에도 적용한다.
   if (variant === 'mutation') mutate(D, 'subsidyPayMonths', p(data, 'subsidyPayMonths'), () => {
     number('C30', 'league.helpHTML.liveParams', variant, U.help(), rx('1/#씩'), p(D, 'subsidyPayMonths').length, 'subsidyPayMonths.length');
     check('C30', 'league.helpHTML.liveParams', variant, '지급 월 목록', () => {
-      const match = U.help().match(/분기 초\(([^)]*)월\)/);
+      const match = U.help().match(/(?:분기 초|지급 월)\(([^)]*)월\)/);
       assert.ok(match, '지원금 지급 월 목록');
       assert.deepEqual(match[1].split('·').map(Number), clone(p(D, 'subsidyPayMonths')));
+    });
+    check('C30', 'league.helpHTML.liveParams', variant, '분기 지급이 아니면 분기 초 표현 금지', () => {
+      const months = p(D, 'subsidyPayMonths');
+      // 명세상 분기 초 지급 월은 1·4·7·10월 네 개뿐이다.
+      if (months.length !== 4 || [1, 4, 7, 10].some((month, i) => months[i] !== month)) {
+        assert.doesNotMatch(U.help(), /분기 초/);
+      }
     });
   });
 }

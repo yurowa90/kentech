@@ -430,8 +430,10 @@ def results(host, team, checks, fixture):
     panel(team, r"결과")
     annual = [line for line in host.locator('#lg-log li').all_inner_texts()
               if line.startswith('국가 재정지원금 연액:')]
+    pay_month_count = host.evaluate('() => KCP.ECON_DATA.params.subsidyPayMonths.v.length')
+    payout_suffix = f'(지급 월마다 1/{pay_month_count} 지급)'
     checks.ok(len(annual) == 1 and all(name in annual[0] for name in fixture['names']) and
-              annual[0].count('(분기별 1/4 지급)') == 1 and len(annual[0]) <= 120,
+              annual[0].count(payout_suffix) == 1 and len(annual[0]) <= 120,
               'D-A5 120자 안에서 지원금 여섯 도시·지급 설명 모두 표시')
     goals = host.locator('#lg-host-goals').inner_text()
     target = state['results'][-1]['econ']['region']['goal']['co2']

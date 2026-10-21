@@ -264,6 +264,15 @@ test('끝 화면 12달 합과 월별 기기 저장은 월 합계', () => {
 });
 test('정전 회귀: 3dca4f9와 같은 입력의 첫 달/월간 판정·분해', () => {
   const old = load(null, OLD), S = game(h, true), oldS = game(old, true);
+  // E1 의도 변경인 뉴스 배열과 시작 사건의 text만 제외하고 나머지 필드·원소 수는 계속 비교한다.
+  const withoutDisplayText = results => {
+    const copy = clone(results);
+    for (const result of copy) {
+      delete result.econ?.news;
+      for (const started of result.econ?.intl?.started || []) delete started.text;
+    }
+    return copy;
+  };
   eq(S, oldS, '두 판의 최초 입력 동일');
   for (let month = 1; month <= 2; month++) {
     if (month > 1) { h.C.host(S, 'next', 0); old.C.host(oldS, 'next', 0); }
@@ -273,7 +282,7 @@ test('정전 회귀: 3dca4f9와 같은 입력의 첫 달/월간 판정·분해',
       const V = clone(env.C.publicView(state, 0)), res = V.results.at(-1);
       use(env, V); record(env, V, res, { unsPct: 50 }); env.api.receive(V);
     }
-    eq(S.results, oldS.results, '두 판 공개 운전 결과 동일');
+    eq(withoutDisplayText(S.results), withoutDisplayText(oldS.results), '두 판 공개 운전 결과 동일');
     const V = h.session.snap, ov = old.session.snap, res = V.results.at(-1), ores = ov.results.at(-1);
     const n = note('uns', 'same', { unsPct: 50, days: 7 });
     const a = h.api.attribution(V, res, id, n), b = old.api.attribution(ov, ores, id, n);
