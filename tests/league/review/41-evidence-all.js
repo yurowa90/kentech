@@ -41,6 +41,8 @@ const expected = {
   outageHoursPerPercent: [87.6, 'M', '5.10', []],
   koreaOutageHours2019: [.04, 'O', '5.10', ['S27']],
   researchYears: [[10, 30], 'P', '12.8', ['I09']],
+  // REF §12.6: I13의 43/55/71개월 중 배속표 비교값 55개월(P).
+  smrMonthsReal: [55, 'P', '12.6', ['I13']],
   // REF §1.3 I35의 설비별 값, §12.6 D-81의 키·등급에서 전사.
   buildLeadYears: [{ solar: 2, wind: 3, ess: 1, biomass: 4, diesel: 2, smr: 6 },
     'P', '12.6', ['I35']],
@@ -270,11 +272,12 @@ check(result, '변형 확인', '새 근거 계수', () => {
   assert.ok(rerun.unmapped.includes('syntheticEvidenceParam'));
   assert.ok(rerun.failures.some(f => f.key === 'syntheticEvidenceParam' && f.kind === '대장 대응'));
 });
-check(result, '변형 확인', '대장 키 삭제', () => {
-  const rerun = inspect(structuredClone(D), references.replace(/\baiVollMul\b/g, 'REMOVED_KEY'),
-    spec.replace(/\baiVollMul\b/g, 'REMOVED_KEY'));
-  assert.ok(rerun.missingLedger.includes('aiVollMul'));
-  assert.ok(rerun.failures.some(f => f.key === 'aiVollMul' && f.kind === '대장 키'));
+for (const key of ['aiVollMul', 'smrMonthsReal']) check(result, '변형 확인', `${key}/대장 키 삭제`, () => {
+  const pattern = new RegExp(`\\b${key}\\b`, 'g');
+  const rerun = inspect(structuredClone(D), references.replace(pattern, 'REMOVED_KEY'),
+    spec.replace(pattern, 'REMOVED_KEY'));
+  assert.ok(rerun.missingLedger.includes(key));
+  assert.ok(rerun.failures.some(f => f.key === key && f.kind === '대장 키'));
 });
 check(result, '변형 확인', '정의식 삭제', () => {
   const rerun = inspect(structuredClone(D), references.replace('8,760시간 × 1%', '정의식 삭제'));

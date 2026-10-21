@@ -254,6 +254,14 @@ test('공사 규칙 실행: SMR만 12달 대기·완공 경계', () => {
 
 test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
   const previous = engine(BEFORE), oldC = previous.leagueCore, old = game(previous), current = game(K);
+  // E1(10-21) 근사 표시 추가, 문장 비교 제외. speeds.items.note와 공개
+  // 뉴스의 문장은 바뀔 수 있다. 공개 키 구조와 모든 숫자 값은 계속 비교한다.
+  const numericValues = (value, prefix = '', values = {}) => {
+    if (typeof value === 'number') values[prefix] = value;
+    else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value))
+      numericValues(child, `${prefix}.${key}`, values);
+    return values;
+  };
   eq(previous.TECH_DATA.params.smrTurns.v, K.TECH_DATA.params.smrTurns.v, '이전 SMR 달 수 동일');
   for (const phase of ['lobby', 'plan', 'review']) {
     if (phase === 'plan') {
@@ -265,7 +273,9 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
     const before = plain(oldC.publicView(old, 0)), after = plain(C.publicView(current, 0));
     eq(keyPaths(after), keyPaths(before), `${phase}: 중첩 공개 키 집합 동일`);
     eq(Object.keys(after.econ.speeds).sort(), Object.keys(before.econ.speeds).sort(), `${phase}: speeds 키 집합 동일`);
-    eq(after, before, `${phase}: 공개 상태 값도 동일`);
+    eq(after.econ.speeds.items.map(item => item.key), before.econ.speeds.items.map(item => item.key),
+      `${phase}: speeds.items 키·순서 동일`);
+    eq(numericValues(after), numericValues(before), `${phase}: 공개 상태 숫자 값도 동일`);
     const stateBefore = clone(current), dataBefore = clone(D);
     U.speedsHTML(after.econ);
     eq(current, stateBefore, `${phase}: 표시 후 게임 상태 불변`);
