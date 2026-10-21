@@ -30,7 +30,7 @@ from econui import (Checks, context_for, diagnostics, local_address, monitored_p
                    open_panel, overflow, screenshot, shown)
 from solo import click_next, close_drawer, read
 
-VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*(?:%(?:p)?|MWh)")  # D-80: C-4.
+VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*(?:%(?:p)?|MWh(?:/일)?)")  # D-80: C-4. D-82: 일평균 단위.
 S7_SHARE = re.compile(r"[+−]?\d+\.\d{2}%p")
 S7_RATE = re.compile(r"\d+\.\d{2}%")
 # D-80: C-2·4 우선. 새 계산은 시험 4몫·월간 6몫, 계통 수입 이름은 옛 기록용.
@@ -41,11 +41,11 @@ MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기�
 # D-80: C-4, 옛 기록 표시 이름은 새 계산 후보와 분리해서 보존.
 LEGACY_NAMES = {**NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
 LEGACY_MONTHLY_NAMES = {**MONTHLY_NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
-S7_MWH = re.compile(r"[+−]?[\d,]+\.\d MWh")  # D-80: C-1·2·4·5 대상별 검사.
+S7_MWH = re.compile(r"[+−]?[\d,]+\.\d MWh/일")  # D-82: 새 S7의 표시 단위.
 
 
 def part_min(a):  # D-80: C-5, 독립 문턱 식.
-    return max(1, .05 * abs(a["trial"])) / 10 if a.get("target") == "grid" else .05  # D-80: C-1·2·4·5 대상별 검사.
+    return max(max(.05, .05 * abs(a["trial"])) / 10, .05) if a.get("target") == "grid" else .05  # D-82 수정 2(총괄 결정): 하한 0.05 = 표시 눈금 절반.
 
 
 def rounded_share(value, a):  # D-80: C-4, 허용 오차 확대 없이 표시 반올림값과 대조.
@@ -65,7 +65,7 @@ def attribution_endpoints(page, a):  # D-80: C-1·계약 A, 공개 결과/시험
     days = lambda r: calendar.monthrange(r["year"], r["month"])[1] if r.get("month") else r["days"]  # D-80: C-1·2·4·5 대상별 검사.
     def public_value(result):  # D-80: C-1·2·4·5 대상별 검사.
         row = result["team"][player]  # D-80: C-1·2·4·5 대상별 검사.
-        return (max(0, row["isolated"]["uns"] - row["uns"] - row["imp"] + row["sub"]) * days(result) / result["days"]  # D-80: C-1·2·4·5 대상별 검사.
+        return (max(0, row["isolated"]["uns"] - row["uns"] - row["imp"] + row["sub"]) / result["days"]  # D-82: 공개 대표기간 하루 평균.
                 if a.get("target") == "grid" else row["unsPct"])  # D-80: C-1·2·4·5 대상별 검사.
     if a.get("basis") == "monthly":  # D-80: C-1·2·4·5 대상별 검사.
         return public_value(previous), public_value(current)  # D-80: C-1·2·4·5 대상별 검사.
@@ -73,7 +73,7 @@ def attribution_endpoints(page, a):  # D-80: C-1·계약 A, 공개 결과/시험
       const L=KCP.league.state(), V=L.snap || L.S, C=KCP.leagueCore; // D-80: C-1·2·4·5 대상별 검사.
       return KCP.buildGame.lastTrial(C.teamDef(C.regionOf(V.region),id).pack, JSON.stringify([L.room,id])); // D-80: C-1·2·4·5 대상별 검사.
     }""", player)  # D-80: C-1·2·4·5 대상별 검사.
-    base = record["gridMWh"] * days(current) / record["days"] if a.get("target") == "grid" else record["unsPct"]  # D-80: C-1·2·4·5 대상별 검사.
+    base = record["gridMWh"] / record["days"] if a.get("target") == "grid" else record["unsPct"]  # D-82: 시험 원기간 직접 평균.
     return base, public_value(current)  # D-80: C-1·2·4·5 대상별 검사.
 
 
@@ -136,7 +136,7 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
     summary = page.locator("#lg-outage-single").text_content()
     pattern = r"지난달 ([\d.]+)% → 이번 달 ([\d.]+)%" if monthly else r"시험 ([\d.]+)% → 실제 ([\d.]+)%"
     if grid_target:  # D-80: C-1·2·4·5 대상별 검사.
-        pattern = r"지난달 ([\d,.]+) MWh → 이번 달 ([\d,.]+) MWh" if monthly else r"시험 ([\d,.]+) MWh → 실제 ([\d,.]+) MWh"  # D-80: C-1·2·4·5 대상별 검사.
+        pattern = r"지난달 ([\d,.]+) MWh/일 → 이번 달 ([\d,.]+) MWh/일" if monthly else r"시험 ([\d,.]+) MWh/일 → 실제 ([\d,.]+) MWh/일"  # D-82
     quoted = re.search(pattern, summary)
     checks.ok(quoted is not None and abs(float(quoted[1].replace(",", "")) - rounded_share(before, a)) <= 1e-9 and  # D-80: C-1·2·4·5 대상별 검사.
               abs(float(quoted[2].replace(",", "")) - rounded_share(after, a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
@@ -249,8 +249,11 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
         baseline = 0 if topic == "cash" else baseline if baseline is not None else trial["unsPct"]  # D-80: 현금은 운영 전 대비.
     actual = expected[topic]  # D-80: 주제별 복제 운영 기대값.
     delta = actual - baseline  # D-80: UI promiseComparison/gridReliance 호출 없이 계산한다.
-    same = abs(delta) <= max(1, .05 * abs(baseline)) if topic == "grid" else abs(delta) < .5  # D-80: 계통 경계는 ≤, 정전·현금은 정수 반올림.
-    direction = "same" if same else "up" if delta > 0 else "down"  # D-80: 명세의 독립 기대 방향.
+    # D-82: 방향은 두 기간 각각의 일평균으로, S6 기존 월 합계 표시 단언은 유지한다.
+    base_per_day = (public_grid_mwh(previous, player) / period_days(previous) if previous else trial["gridMWh"] / trial["days"]) if topic == "grid" else None  # D-82
+    same = abs(actual / expected["days"] - base_per_day) <= max(.05, .05 * abs(base_per_day)) if topic == "grid" else abs(delta) < .5  # D-82
+    direction_delta = actual / expected["days"] - base_per_day if topic == "grid" else delta  # D-82
+    direction = "same" if same else "up" if direction_delta > 0 else "down"  # D-82: 일평균 부호.
     prediction = direction if hit else ("down" if direction != "down" else "up")  # D-80: 모든 주제에서 맞히기/틀리기 의도 유지.
     select.select_option(prediction)  # D-80: 화면에 존재하는 주제만 조작한다.
     page.locator('[data-confidence="fairly"]').click()
@@ -448,7 +451,7 @@ def number_format(checks, row, key, label, page):  # D-80: C-1·2·4·5 대상�
     a = current_attribution(page)  # D-80: C-4, 행이 속한 현재 대상.
     pattern = S7_MWH if a.get("target") == "grid" else S7_RATE if key in ("trial", "previous", "actual") else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
     raw = float(row.get_attribute("data-out-value"))
-    valid = pattern.fullmatch(text) is not None if math.isfinite(raw) else text == ("– MWh" if a.get("target") == "grid" else "–%" if key in ("trial", "previous", "actual") else "–%p")  # D-80: C-1·2·4·5 대상별 검사.
+    valid = pattern.fullmatch(text) is not None if math.isfinite(raw) else text == ("– MWh/일" if a.get("target") == "grid" else "–%" if key in ("trial", "previous", "actual") else "–%p")  # D-82
     checks.ok(valid, f"{label} {key} 숫자 형식·비유한 숫자는 –")
 
 
@@ -914,8 +917,7 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
     def snapshot_value(snap, result):  # D-80: C-1·2·4·5 대상별 검사.
         if not grid_target:  # D-80: C-1·2·4·5 대상별 검사.
             return snap['filledUnsPct']  # D-80: C-1·2·4·5 대상별 검사.
-        days = calendar.monthrange(result['year'], result['month'])[1] if result.get('month') else result['days']  # D-80: C-1·2·4·5 대상별 검사.
-        return snap['gridMWh'] * days / result['days']  # D-80: C-1·2·4·5 대상별 검사.
+        return snap['gridMWh'] / result['days']  # D-82: 사본 대표기간 일평균, 정전 분기는 보존.
     old_recalculated = snapshot_value(old_snap, previous_result) + a['replay']  # D-80: C-1·2·4·5 대상별 검사.
     growth = snapshot_value(current_snap, current_result)  # D-80: C-1·2·4·5 대상별 검사.
     shares = {p['key']: p['value'] for p in a['parts']}
