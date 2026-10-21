@@ -1217,6 +1217,21 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map #lg-panel { bottom: calc(var(--bd-dock, 100px) + 8px); max-height: none; }
 }
 
+/* 폰 결과를 읽는 동안 도구 자리를 본문에 돌려준다. 접으면 도구도 즉시 복원한다.
+   visibility는 dock의 실측 높이(--bd-dock)를 보존해 계획·다른 서랍의 배치를 유지한다. */
+@media (max-width: 760px) {
+  #bd-root.lg-team-map[data-result-drawer="true"] #lg-panel:not([data-folded="true"]) {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-dock {
+    visibility: hidden; pointer-events: none;
+  }
+  /* 서랍이 화면 아래까지 오므로 알림은 서랍 머리 쪽에 띄워 이유 칸·마지막 줄을 가리지 않는다. */
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-toast {
+    top: calc(var(--bd-top, 180px) + 8px); bottom: auto;
+  }
+}
+
 /* 계획: 필수 렌즈는 바깥에, 자료 지도 네 개만 한 펼침 안에 둔다. */
 .lg-team-map .lg-map-views { position: relative; }
 .lg-team-map .lg-map-views > summary { min-width: 44px; min-height: 44px; box-sizing: border-box; }

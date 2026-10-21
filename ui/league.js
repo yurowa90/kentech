@@ -1682,7 +1682,7 @@
     const group = e.target.closest("[data-group]");
     if (group) { L.group = L.group === group.dataset.group ? null : group.dataset.group; renderPanel(); return true; }
     const answer = e.target.closest("[data-answer]");
-    if (answer) { n.answer = answer.dataset.answer; putData(d); renderPanel(); return true; }
+    if (answer) { n.answer = answer.dataset.answer; putData(d); renderPanel(); revealDecisionReason(); return true; }
     if (e.target.closest("#lg-ready-confirm")) { readyAction(false); return true; }
     if (e.target.closest("#lg-predict-skip") && freeExperiment()) { readyAction(true); return true; }
     if (e.target.closest("#lg-quarter-skip")) { n.quarterSkip = true; putData(d); BG.toast("분기 질문을 건너뛰었어요"); return true; }
@@ -4722,6 +4722,20 @@
     const tabs = p.querySelector(".lg-ptabs")?.offsetHeight || 0;
     const body = p.querySelector(".lg-pbody");
     if (body) body.scrollTop += el.getBoundingClientRect().top - p.getBoundingClientRect().top - tabs - 8;
+  }
+  // S8 선택 뒤 다시 그린 이유 묶음을 읽을 위치로 옮긴다. 입력 초점은 건드리지 않는다.
+  function revealDecisionReason() {
+    if (!matchMedia("(max-width: 1024px)").matches) return;
+    const p = document.getElementById("lg-panel"), body = p?.querySelector(".lg-pbody");
+    const field = p?.querySelector('.lg-result-decision [data-note="askReason"]');
+    if (!body || !field || p.dataset.folded === "true") return;
+    const label = field.closest(".lg-jq") || field, starts = label.parentElement?.querySelector(".lg-reason-starts") || label;
+    const box = body.getBoundingClientRect(), top = box.top + body.clientTop;
+    if (starts.getBoundingClientRect().top >= top && label.getBoundingClientRect().bottom <= top + body.clientHeight) return;
+    // 방금 누른 고치기·유지 단추가 위로 밀려 가리지 않게, 단추 줄부터 이유 칸까지 들어가면 단추 줄에 맞춘다.
+    const actions = p.querySelector(".lg-result-decision .lg-decision-actions");
+    const fits = actions && label.getBoundingClientRect().bottom - actions.getBoundingClientRect().top <= body.clientHeight - 8;
+    scrollPanelTo(fits ? actions : starts);
   }
   function syncResultMapSpace() {
     const root = document.getElementById("bd-root"), p = document.getElementById("lg-panel");
