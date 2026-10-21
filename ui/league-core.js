@@ -18,7 +18,9 @@
   const SALV = 0.3;
   // 실제 운영 재생은 이 기기의 메모리에만 둔다(D-65).
   let lastRun = null, replayCache = null;
-  const isOutHour = (uns, del, dem, k) => uns[k] - del[k] > Math.max(0.005, 0.02 * dem[k]);
+  // 시간 정전 문턱: 일반 정전 시간과 병원 정전 시간이 같은 규칙을 쓴다.
+  const outageFloor = dem => Math.max(KCP.ECON_DATA.params.outageHourMinMW.v, KCP.ECON_DATA.params.outageHourShare.v * dem);
+  const isOutHour = (uns, del, dem, k) => uns[k] - del[k] > outageFloor(dem[k]);
   function replayOf(round, id, salt = KCP.league?.state?.()?.S?.salt ?? 0, room = KCP.league?.state?.()?.room) {
     const data = replayCache?.round === round && replayCache.salt === salt && replayCache.room === room
       ? replayCache.data : null, t = data?.teams[id];
@@ -33,8 +35,8 @@
   const tieId = T => T.a + "~" + T.b;
   const isTeam = (R, id, S) => !!teamDef(R, id) && (!S || Object.hasOwn(S.teams, id));
   const num = (x, lo, hi, d) => (typeof x === "number" && isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d);
-  const r2 = x => Math.round(x * 100) / 100;
-  const r3 = x => Math.round(x * 1000) / 1000;
+  const r2 = x => { const mul = KCP.ECON_DATA.params.ledgerRound2.v; return Math.round(x * mul) / mul; };
+  const r3 = x => { const mul = KCP.ECON_DATA.params.ledgerRound3.v; return Math.round(x * mul) / mul; };
 
   // 참가 도시 고르기: 2~6곳, 꼭 들어갈 도시(R.must, 평택) 포함, 육상·만 횡단 연계선으로 서로 이어져야 한다(해저 연계선 후보는 이웃으로 치지 않음).
   const ALL = R => R.teams.map(t => t.id);
@@ -91,8 +93,9 @@
 
   function log(S, text, now) {
     let message = String(text);
-    const prefix = "국가 재정지원금 연액: ", suffix = "(분기별 1/4 지급)";
-    if (message.startsWith(prefix)) {
+    const econ = KCP.econ, prefix = econ?.subsidyNewsPrefix;
+    if (prefix && message.startsWith(prefix) && typeof econ.subsidyPayNote === "function" && KCP.ECON_DATA) {
+      const suffix = econ.subsidyPayNote(KCP.ECON_DATA);
       const cities = message.slice(prefix.length).replaceAll(suffix, "").split(" · ");
       let shown = cities.length;
       const compact = () => prefix + cities.slice(0, shown).join(" · ") + (shown < cities.length ? ` 외 ${cities.length - shown}곳` : "") + ` ${suffix}`;
@@ -1201,7 +1204,7 @@
       let outH = 0, hospH = 0;
       for (let k = 0; k < H; k++) {
         if (isOutHour(s.uns, o.del, s.dem, k)) outH++;
-        if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > Math.max(0.005, 0.02 * (s.hospDem?.[k] || 0))) hospH++;
+        if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > outageFloor(s.hospDem?.[k] || 0)) hospH++;
       }
       const uns = Math.max(0, K.uns - o.del.reduce((sum, amount) => sum + amount, 0));
       const tie = tieShare(S, R, t.id), Tm = S.teams[t.id], loss = r2((Tm.sunk || 0) + lossOf(Tm.base, Tm.plan));

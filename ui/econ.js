@@ -369,6 +369,8 @@
     return Math.floor(Math.min(Math.max(0, fin(C.equalize, 0)), base * cap / (1 - cap)) * mul) / mul;
   }
   const subsidyOf = (C, data) => r3(Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)) + equalizeOf(C, data), data);
+  const subsidyNewsPrefix = "국가 재정지원금 연액: ";
+  const subsidyPayNote = (data = DATA()) => `(지급 월마다 1/${pv(data, "subsidyPayMonths").length} 지급)`;
   // 예전 저장의 차익 포함 세입 이력은 v1.2 세금·지원금 이력으로 넘기지 않는다.
   function restoreDefaults(E, data) {
     E.order.forEach(id => {
@@ -602,7 +604,7 @@
     if (announce) {
       ids.forEach(id => { subOffset[id] = subsidyOffset(C[id], data); equalize[id] = equalizeOf(C[id], data); });
       E.announcedYear = E.year;
-      news.push(`국가 재정지원금 연액: ${ids.map(id => `${C[id].name} ${Math.round(C[id].subsidy)}억(지급 월마다 1/${P("subsidyPayMonths").length} 지급)`).join(" · ")}`);
+      news.push(`${subsidyNewsPrefix}${ids.map(id => `${C[id].name} ${Math.round(C[id].subsidy)}억${subsidyPayNote(data)}`).join(" · ")}`);
     }
     const quarter = `${E.year}:${E.month}`;
     if (P("subsidyPayMonths").includes(E.month) && E.paidQuarter !== quarter) {
@@ -818,6 +820,7 @@
 
   KCP.econ = {
     initCities, calibrate, livability, industryAttract, yearStart, monthStep, demandMul, score,
+    subsidyNewsPrefix, subsidyPayNote,
     evalOffer, acceptOffer, spendable, debtStage, outIdx, regionCtx, ctxOf, cleanInput,
     seasonOfMonth, monthsInGame, daysOf, weekMul, monthLabel, roundSum, pairFlows, hashStr, rng
   };
