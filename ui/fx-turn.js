@@ -120,9 +120,11 @@
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards(restoreFocus = true) {
-    const restore = restoreFocus && deck?.contains(document.activeElement);
-    // 덱 안의 초점만 복귀시킨다. 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾는다.
+  function closeCards(restoreFocus = false) {
+    const active = document.activeElement;
+    const restore = restoreFocus && !!deck && (!active || active === document.body || deck.contains(active));
+    // Esc·닫기처럼 사용자가 직접 닫을 때만 초점을 옮긴다. 초점이 덱 안이거나 이미 body로 떨어졌으면
+    // 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾고, 덱 밖 요소에 있으면 그대로 둔다.
     const focus = restore ? [expandFocus, document.querySelector('#lg-bar [data-panel="result"]'),
       ...(document.querySelector("#lg-bar")?.querySelectorAll("button") || [])].find(target =>
       target?.isConnected && target !== document.body && !deck.contains(target) && visibleRect(target)) : null;
@@ -147,8 +149,9 @@
     return true;
   }
   // 보류 중에는 타이머·배치가 돌지 않아도 단계 전환에서 결과 연출을 즉시 걷는다.
+  // 끝 화면은 같은 달이어도 별도 화면이라 마지막 달 카드를 걷는다(lastMonth는 남겨 다시 띄우지 않는다).
   function phase(nextPhase, round) {
-    if (currentResult && (phaseOf(nextPhase) !== "review" || lastMonth?.round !== round)) clear();
+    if (currentResult && (nextPhase === "end" || phaseOf(nextPhase) !== "review" || lastMonth?.round !== round)) clear();
   }
   const visibleRect = el => {
     if (!el || el.hidden || !el.getClientRects().length) return null;
@@ -521,7 +524,8 @@
     listen(document, "click", e => {
       if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
     }, true);
-    listen(document, "keydown", e => { if (e.key === "Escape" && !status.deferred) closeCards(true); }, true);
+    // 예보는 보류 중에도 Esc로 닫는다. 보이기 전에 닫은 예보는 기록하지 않아 새로고침 뒤 다시 뜬다.
+    listen(document, "keydown", e => { if (e.key === "Escape") closeCards(true); }, true);
     return true;
   }
   function showSummary(opts, root) {
