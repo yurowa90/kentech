@@ -14,8 +14,10 @@
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const num = (x, lo, hi, d) => clamp(fin(x, d), lo, hi);
   const c100 = x => clamp(fin(x, 0), 0, 100);
-  const r1 = x => Math.round(x * 10) / 10;
-  const r3 = x => Math.round(x * 1000) / 1000;
+  // 판정·회계와 표시 경로가 같은 G 장부 눈금을 공유한다(QUALITY-model §8.3).
+  // 보고 사본도 장부와 같은 정밀도로 읽게 하며, 배수의 곱셈→나눗셈 순서를 보존한다.
+  const r1 = (x, data) => { const mul = pv(data, "ledgerRound1"); return Math.round(x * mul) / mul; };
+  const r3 = (x, data) => { const mul = pv(data, "ledgerRound3"); return Math.round(x * mul) / mul; };
   const sum = a => a.reduce((s, x) => s + x, 0);
   const clone = x => JSON.parse(JSON.stringify(x));
   const fmt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -232,12 +234,12 @@
     const ev = I.active.map(a => (data.intl.events.find(x => x.id === a.id) || {}).fx || {});
     const add = k => sum(ev.map(f => fin(f[k], 0)));
     const exp = {};
-    Object.keys(I.walk.export).forEach(s => { exp[s] = r3(clamp(I.walk.export[s] + sum(ev.map(f => fin((f.export || {})[s], 0))), bounds.export[0], bounds.export[1])); });
-    const lng = r3(clamp(I.walk.lng + add("lng") + fin(I.marketLng, 0), bounds.lng[0], bounds.lng[1])), fx = r3(clamp(I.walk.fx + add("fx"), bounds.fx[0], bounds.fx[1]));
+    Object.keys(I.walk.export).forEach(s => { exp[s] = r3(clamp(I.walk.export[s] + sum(ev.map(f => fin((f.export || {})[s], 0))), bounds.export[0], bounds.export[1]), data); });
+    const lng = r3(clamp(I.walk.lng + add("lng") + fin(I.marketLng, 0), bounds.lng[0], bounds.lng[1]), data), fx = r3(clamp(I.walk.fx + add("fx"), bounds.fx[0], bounds.fx[1]), data);
     return {
-      marketLng: fin(I.marketLng, 0), lng, fx, ship: r3(clamp(I.walk.ship + add("ship"), bounds.ship[0], bounds.ship[1])), export: exp,
+      marketLng: fin(I.marketLng, 0), lng, fx, ship: r3(clamp(I.walk.ship + add("ship"), bounds.ship[0], bounds.ship[1]), data), export: exp,
       cbam: add("cbam") > 0 ? 1 : 0, eu_indirect: add("eu_indirect") > 0 ? 1 : 0,
-      fuelMul: r3(lng * fx), active: I.active.map(a => ({ id: a.id, name: a.name, until: a.until }))
+      fuelMul: r3(lng * fx, data), active: I.active.map(a => ({ id: a.id, name: a.name, until: a.until }))
     };
   }
   function intlStep(E, data) {
@@ -318,11 +320,11 @@
       const operating = own.resTax + own.indTax + own.tariff - netOpex(e0) - serviceBase(C, data);
       const baseSub = subsidyBase(C, data), startTax = 12 * (C.pop0 * P("resTax") + C.ind0 * P("indTax"));
       // 지원금 보정도 시작 연 세입에 포함되므로 목표식을 보정액에 대해 푼다.
-      C.equalize = r3(clamp((P("fiscalTargetRev") * (startTax + baseSub) - 12 * operating - baseSub) / (1 - P("fiscalTargetRev")), 0, baseSub * P("equalizeMaxShare") / (1 - P("equalizeMaxShare"))));
+      C.equalize = r3(clamp((P("fiscalTargetRev") * (startTax + baseSub) - 12 * operating - baseSub) / (1 - P("fiscalTargetRev")), 0, baseSub * P("equalizeMaxShare") / (1 - P("equalizeMaxShare"))), data);
       C.revenueHistory = []; C.standardRevenueHistory = []; C.outHistory = [];
       C.revYear = Math.max(0, 12 * (own.resTax + own.indTax + own.facility) + subsidyOf(C, data));
       C.Leff = 0; C.Aeff = 0;
-      C.debtCap = r1(P("debtCapRatio") * C.revYear);
+      C.debtCap = r1(P("debtCapRatio") * C.revYear, data);
       // 지연 추적·집단 만족도 시작 상태의 균형값에서 출발(아무것도 안 하면 지지율이 저절로 오르내리지 않게)
       const e = ins[id].energy, co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       C.co2Intensity0 = co2IntOf(e, data);
@@ -362,10 +364,11 @@
   }
   function equalizeOf(C, data) {
     const base = Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)), cap = pv(data, "equalizeMaxShare");
-    // 억 단위 소수 셋째 자리에서 내림: 표시 반올림으로 50% 상한을 넘지 않는다.
-    return Math.floor(Math.min(Math.max(0, fin(C.equalize, 0)), base * cap / (1 - cap)) * 1000) / 1000;
+    const mul = pv(data, "equalizeFloorUnit");
+    // G 장부 단위(기본 0.001억) 내림: 보정 지원금의 실제 지급액·상한에 닿는다.
+    return Math.floor(Math.min(Math.max(0, fin(C.equalize, 0)), base * cap / (1 - cap)) * mul) / mul;
   }
-  const subsidyOf = (C, data) => r3(Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)) + equalizeOf(C, data));
+  const subsidyOf = (C, data) => r3(Math.max(0, subsidyBase(C, data) - subsidyOffset(C, data)) + equalizeOf(C, data), data);
   // 예전 저장의 차익 포함 세입 이력은 v1.2 세금·지원금 이력으로 넘기지 않는다.
   function restoreDefaults(E, data) {
     E.order.forEach(id => {
@@ -389,11 +392,11 @@
     // genMWh.smr: 호스트 내부 입력(공개 상태 아님). PM 가중(pmFuelW)에는 smr이 없어 대기 계산에는 들어가지 않는다.
     const mwScale = Object.values(KCP.LEAGUE_REGIONS || {}).find(r => r.teams.some(t => t.id === C.id))?.mwScale || 0;
     const o = {
-      resTax: r3(C.pop * P("resTax") * (1 + P("taxStep") * pol.taxRes)),
-      indTax: r3(C.ind * P("indTax") * Math.pow(C.outHistory?.length ? sum(C.outHistory) / C.outHistory.length : 1, P("indTaxK")) * (1 + P("taxStep") * pol.taxInd)),
+      resTax: r3(C.pop * P("resTax") * (1 + P("taxStep") * pol.taxRes), data),
+      indTax: r3(C.ind * P("indTax") * Math.pow(C.outHistory?.length ? sum(C.outHistory) / C.outHistory.length : 1, P("indTaxK")) * (1 + P("taxStep") * pol.taxInd), data),
       facility: P("facilityShare") * sum(Object.entries(P("facilityRate")).map(([fuel, rate]) => rate * (e.genMWh?.[fuel] || 0))) * mwScale * P("mwhToKwh") / P("wonPerEok") / P("moneyScale"),
-      tariff: e.demMWh != null ? r3(servedOf(e) * ((reg.otherCost[C.id]) * (1 + P("tariffMarkup")) - fin(e.costPerMWh, reg.otherCost[C.id]))) : 0,
-      trade: r3(Math.max(0, e.tradeNet + e.buyCost))
+      tariff: e.demMWh != null ? r3(servedOf(e) * ((reg.otherCost[C.id]) * (1 + P("tariffMarkup")) - fin(e.costPerMWh, reg.otherCost[C.id])), data) : 0,
+      trade: r3(Math.max(0, e.tradeNet + e.buyCost), data)
     };
     return o;
   }
@@ -403,7 +406,7 @@
     E.order.forEach(id => {
       const C = E.cities[id];
       if (C.revenueHistory.length === 12) C.revYear = Math.max(0, sum(C.revenueHistory));
-      C.debtCap = r1(pv(data, "debtCapRatio") * C.revYear);
+      C.debtCap = r1(pv(data, "debtCapRatio") * C.revYear, data);
       C.subsidy = subsidyOf(C, data);
       // B14: 1월에 공지한 연액에서 정액 항목을 분리해 비지급 달에도 같은 기준 사용.
       C.subsidyFixed = pv(data, "subBase") + equalizeOf(C, data);
@@ -421,7 +424,7 @@
     return { E: E2, subsidy };
   }
   // 지금 쓸 수 있는 돈(현금 + 남은 지방채 한도)
-  const spendable = C => r1(C.cash + C.debtCap);
+  const spendable = (C, data = DATA()) => r1(C.cash + C.debtCap, data);
 
   /* ---------- 산업 산출 지수 ---------- */
   function outIdx(C, inp, I, data, year = data.startYear) {
@@ -492,8 +495,8 @@
       const pool = Math.round(C.pop * (C.groups.worker.share + C.groups.youth.share) * pv(data, "seekRate"));
       const checks = {
         mw: { need: offer.mw, have: e.spareMW, ok: e.spareMW != null && e.spareMW >= offer.mw },
-        re: { need: offer.rePct, have: r1(e.renPct), ok: e.renPct >= offer.rePct },
-        rel: { need: offer.unsMax, have: r1(e.unsPct), ok: e.unsPct <= offer.unsMax },
+        re: { need: offer.rePct, have: r1(e.renPct, data), ok: e.renPct >= offer.rePct },
+        rel: { need: offer.unsMax, have: r1(e.unsPct, data), ok: e.unsPct <= offer.unsMax },
         workers: { need: offer.workers, have: pool, ok: pool >= offer.workers }
       };
       const ks = Object.keys(checks), fail = ks.filter(k => checks[k].ok === false);
@@ -525,9 +528,10 @@
 
   /* ---------- 전력 수요 배수 ---------- */
   function demandMul(city, city0, data) {
-    const bounds = pv(data || DATA(), "demandMulBounds");
+    data = data || DATA();
+    const bounds = pv(data, "demandMulBounds");
     const p0 = city0 ? city0.pop : city.pop0, i0 = city0 ? city0.ind : city.ind0;
-    return { res: r3(clamp(city.pop / Math.max(1, p0), bounds[0], bounds[1])), ind: r3(clamp(city.ind / Math.max(1, i0), bounds[0], bounds[1])) };
+    return { res: r3(clamp(city.pop / Math.max(1, p0), bounds[0], bounds[1]), data), ind: r3(clamp(city.ind / Math.max(1, i0), bounds[0], bounds[1]), data) };
   }
 
   /* ---------- 집단 만족 ---------- */
@@ -562,11 +566,11 @@
     return { tg, parts, contrib };
   }
   const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
-  function approvalChangeCause(causes) {
+  function approvalChangeCause(causes, data) {
     const cause = causes[0];
     return { scope: "city-month-change", key: cause ? cause.key : null, part: cause ? cause.key : null,
       delta: cause ? cause.delta : 0,
-      text: cause ? `${cause.label}: 이번 달 도시 전체 지지율 ${cause.delta > 0 ? "+" : ""}${r3(cause.delta)}%p` : "이번 달 지지율 변화 없음" };
+      text: cause ? `${cause.label}: 이번 달 도시 전체 지지율 ${cause.delta > 0 ? "+" : ""}${r3(cause.delta, data)}%p` : "이번 달 지지율 변화 없음" };
   }
   function lowestGroupDissatisfaction(C, data) {
     const group = Object.keys(C.groups).sort((a, b) => C.groups[a].sat - C.groups[b].sat)[0];
@@ -577,7 +581,7 @@
       .filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     const [key, deficit] = deficits[0] || [null, 0];
     return { scope: "lowest-group-level", group, key, deficit, satisfaction: C.groups[group].sat,
-      text: key ? `${GW[key] || key}: 현재 만족도 부족 ${r3(deficit)}점(모형 추정)` : "현재 별도 불만 요인 없음" };
+      text: key ? `${GW[key] || key}: 현재 만족도 부족 ${r3(deficit, data)}점(모형 추정)` : "현재 별도 불만 요인 없음" };
   }
 
   /* ---------- 한 달 ---------- */
@@ -652,12 +656,12 @@
       c.out = o.v;
       c.outHistory = [...(c.outHistory || []), o.v].slice(-P("indTaxLag"));
       const own = ownRev(c, inp, data, o.v, reg);
-      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, facility: own.facility, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty), bonus: r3(e.bonus), salvage: r3(e.salvage) };
+      const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, facility: own.facility, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty, data), bonus: r3(e.bonus, data), salvage: r3(e.salvage, data) };
       const exp = {
-        capex: r3(e.capexNew), opex: r3(netOpex(e)),
-        service: r3(serviceBase(c, data) * (1 + P("svcStep") * c.policy.service)),
-        incentive: r3(c.policy.incentive * (1 - (data.start[id]?.natShare || 0))), interest: r3(Math.max(0, -c.cash) * P("debtRate")),
-        trade: 0, policy: r3(polCost[id])
+        capex: r3(e.capexNew, data), opex: r3(netOpex(e), data),
+        service: r3(serviceBase(c, data) * (1 + P("svcStep") * c.policy.service), data),
+        incentive: r3(c.policy.incentive * (1 - (data.start[id]?.natShare || 0)), data), interest: r3(Math.max(0, -c.cash) * P("debtRate"), data),
+        trade: 0, policy: r3(polCost[id], data)
       };
       const revT = sum(Object.values(rev)), expT = sum(Object.values(exp));
       // 선지급과 같은 덧셈 순서: 지원금을 먼저 더해 부동소수 오차로 두 경로가 갈리지 않는다.
@@ -677,7 +681,7 @@
       const fixedSubsidy = fin(c.subsidyFixed, P("subBase") + equalizeOf(c, data));
       const perResidentNet = (rev.resTax + (c.subsidy - fixedSubsidy) / 12 + rev.tariff * e.residentDemandShare - exp.service) / Math.max(1, c.pop);
       if (over || stage !== "ok") news.push(`${c.name} 재정 ${stage === "crisis" || over ? "위기: 새 건설·유료 대응 제한, 재정 점수 0" : "주의: 채무비율 25% 이상"}${over ? " — 운영 적자로 한도 초과 부채가 계속 쌓이고 있어요" : ""}`);
-      fiscal[id] = { tariffGross: r3(servedOf(e) * reg.otherCost[id] * (1 + P("tariffMarkup"))), eventBonus: r3(e.bonus), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: revT, expTotal: expT, cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, debtRatio: ratio, debtStage: stage, spendable: spendable(c), out: o };
+      fiscal[id] = { tariffGross: r3(servedOf(e) * reg.otherCost[id] * (1 + P("tariffMarkup")), data), eventBonus: r3(e.bonus, data), equalize: fin(equalize[id], 0), subsidyOffset: fin(subOffset[id], 0), rev, exp, revTotal: revT, expTotal: expT, cashBefore: cashBefore[id], cashAfter: c.cash, debtCap: c.debtCap, debtOver: over, debtRatio: ratio, debtStage: stage, spendable: spendable(c, data), out: o };
       fiscal[id].perResidentNet = perResidentNet;
       // 지연 추적(정전·CO₂·재생)
       const co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
@@ -710,9 +714,9 @@
       c.approval = c100(sum(Object.keys(c.groups).map(k => c.groups[k].share * c.groups[k].sat)));
       c.approvalHistory.push(c.approval);
       if (c.approvalHistory.length > P("approvalWindow")) c.approvalHistory.shift();
-      const sats = {}; Object.keys(c.groups).forEach(k => { sats[k] = r1(c.groups[k].sat); });
-      const change = approvalChangeCause(causes[id]);
-      groups[id] = { sat: sats, approval: r1(c.approval), approvalChangeCause: change,
+      const sats = {}; Object.keys(c.groups).forEach(k => { sats[k] = r1(c.groups[k].sat, data); });
+      const change = approvalChangeCause(causes[id], data);
+      groups[id] = { sat: sats, approval: r1(c.approval, data), approvalChangeCause: change,
         lowestGroupDissatisfaction: lowestGroupDissatisfaction(c, data),
         why: change.text, whyGrade: WHY_L_GRADE[change.key] || "G", contrib: clone(c.groupContrib), parts: g.parts }; // 옛 클라이언트 호환: 도시 전체 월 변화만. group 필드는 두지 않는다.
     });
@@ -738,28 +742,28 @@
       ids.forEach(id => {
         const c = C[id], pass = relative[id] >= -P("approvalDrop");
         if (!pass) { c.unrest = P("unrestMonths"); news.push(`평가: ${c.name} 지지율 ${Math.round(c.approval)}% — 시위, 정책 바꾸기 비용↑`); }
-        review[id] = { approval: r1(c.approval), pass };
+        review[id] = { approval: r1(c.approval, data), pass };
       });
     }
     // 10) 보고
     const cities = {};
     ids.forEach(id => {
       const c = C[id];
-      c.hist.push({ t: E.t, pop: c.pop, ind: c.ind, cash: r1(c.cash), appr: r1(c.approval) });
+      c.hist.push({ t: E.t, pop: c.pop, ind: c.ind, cash: r1(c.cash, data), appr: r1(c.approval, data) });
       if (c.hist.length > P("historyMonths")) c.hist.shift();
       cities[id] = {
         pm25: reg.pm25[id], // ㎍/㎥ 증분. complete=false이면 알려진 발전량만의 부분 추정.
-        causes: causes[id], L: r1(c.L), A: r1(c.A), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff), Aeff: r1(Ar[id].eff),
+        causes: causes[id], L: r1(c.L, data), A: r1(c.A, data), Lparts: Lr[id].now.parts, Aparts: Ar[id].now.parts, Leff: r1(Lr[id].eff, data), Aeff: r1(Ar[id].eff, data),
         pop: c.pop, ind: c.ind, dPop: c.pop - before[id].pop, dInd: c.ind - before[id].ind,
-        co2Intensity: c.co2Intensity, bioCo2: ins[id].energy.bioCo2, out: c.out, demandMul: demandMul(c, undefined, data), cash: r1(c.cash)
+        co2Intensity: c.co2Intensity, bioCo2: ins[id].energy.bioCo2, out: c.out, demandMul: demandMul(c, undefined, data), cash: r1(c.cash, data)
       };
     });
     const net = {};
     ids.forEach((id, i) => { net[id] = { pop: mp.mig[i], ind: mi.mig[i], growPop: mp.grow[i], growInd: mi.grow[i] }; });
     const report = {
-      t: E.t, year: E.year, month: E.month, season: seasonOfMonth(E.month), days: daysOf(E.year, E.month), weekMul: r3(weekMul(E.year, E.month)),
+      t: E.t, year: E.year, month: E.month, season: seasonOfMonth(E.month), days: daysOf(E.year, E.month), weekMul: r3(weekMul(E.year, E.month), data),
       flows: { pop: fp, ind: fi }, net, fiscal, groups, cities,
-      intl: Object.assign(clone(I), { started, fossilMWh: r3(fossil), fossilEstimated: ids.some(id => ins[id].energy.fossilMWh == null), fossilBase: r3(fossilBase), nextMarketLng: E.intl.nextMarketLng }), offers, review, news, totals: clone(E.totals)
+      intl: Object.assign(clone(I), { started, fossilMWh: r3(fossil, data), fossilEstimated: ids.some(id => ins[id].energy.fossilMWh == null), fossilBase: r3(fossilBase, data), nextMarketLng: E.intl.nextMarketLng }), offers, review, news, totals: clone(E.totals)
     };
     // 지역 실적은 월 MWh/t, 연계선 분담은 누적 투자 억. 감축은 실제 공급량 × 보통 배출계수 − 소비 배출(수입 포함, 음수 보존).
     const demand = sum(ids.map(id => ins[id].energy.demMWh || 0));
@@ -798,8 +802,8 @@
         co2: carbonScore(c, data),
         appr: c100(c.approvalHistory && c.approvalHistory.length ? sum(c.approvalHistory) / c.approvalHistory.length : c.approval), rel: c100(100 * (1 - fin(c.unsS, 0) / P("scoreUnsZero")))
       };
-      Object.keys(parts).forEach(k => { parts[k] = r1(parts[k]); });
-      return { id, name: c.name, score: r1(c100(Math.exp(sum(Object.keys(w).map(k => w[k] * Math.log(Math.max(floor, parts[k])))) / sum(Object.values(w))) + fin(E.coop, 0))), parts, coop: fin(E.coop, 0) };
+      Object.keys(parts).forEach(k => { parts[k] = r1(parts[k], data); });
+      return { id, name: c.name, score: r1(c100(Math.exp(sum(Object.keys(w).map(k => w[k] * Math.log(Math.max(floor, parts[k])))) / sum(Object.values(w))) + fin(E.coop, 0)), data), parts, coop: fin(E.coop, 0) };
     });
     const rank = list.slice().sort((a, b) => b.score - a.score || E.order.indexOf(a.id) - E.order.indexOf(b.id));
     rank.forEach((x, i) => { x.rank = i + 1; });

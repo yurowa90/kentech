@@ -88,7 +88,7 @@
 
 | 축 | 지금 | 근거 | 8까지 남은 것 |
 |---|---:|---|---|
-| A 근거 추적성 | 7 | `q8-model-audit.js`(10-21 새 정의): params 278개(tech_ 50 포함), 근거 등급 87개 모두 출처가 있다(출처 번호 83, 단위 환산·정의라 대장 절 표기만 4: `outageHoursPerPercent`·`mwhToKwh`·`wonPerEok`·`tech_roundSteps`). 독립 채점이 짚은 params 밖 계수를 값 그대로 옮겼다: 국제 걷기 θ·σ·사건 확률·동시 활성·상하한, 위기 문턱 `debtCrisisRatio`(M, [L07]), 사건 합산 뒤 지수 제한, 재정자립 추정·이동·수요 배수·점수 중립값, 입력 허용 범위·제안 추첨 단위 등 36개(G 31·M 5, params 242 → 278)와 시작 자료 비중의 `grades` 메타, 국제 사건 4개·기업 제안 5개의 G note. 동일성: test-econ 전체 출력 diff 0, 정책0 호스트 하네스 diff 0. `h2Efficiency`·`h2Co2`에 대장 번호([I17][I18]·[S35][L14]), `scoreCo2Worst`는 관계없던 [I07]을 석탄 직접 연소 §9.1의 [L14][I06]으로 바로잡았다. 화면 O*: 종사자 3칸에 원문에 닿지 못한 이유(KOSIS 504·안성 반올림 의심), 사건은 원문을 다시 찾아(10-21) heavy_snow_solar·light_load_curtailment·datacenter_siting을 산업부 원문으로 O로 올리고, 원문에 없던 구체 수치(한전 발표, 93일 중 30일, 165곳·원전 20기, 당진 5·6호기)를 문장에서 뺐다. 남은 O* 사건은 이유를 gradeNote에 적었다. | 8에 남은 것: `ui/league.js`의 약속·S7 판정 상수 가운데 등급 표시가 없는 것(`direction` 반올림, `IQ`, `CONFIDENCE`, `outageCardCandidates` 3장, `outagePartRanking` 동점 자릿수, `gridOnlyServed` 0.01, `OUTAGE_HIGH_PCT`는 '게임 가정' 문구만) — 다른 갈래와 겹치는 파일이라 D-82 병합 뒤 옮긴다. 그리고 econ.js 회계 반올림(r1 0.1억·r3 0.001억·지원금 ×1000 내림)이 현금·한도·수요에 닿는데 등급이 없다(장부 단위를 계수로 볼지 총괄 판단 필요). 목록·파일:줄은 §8.2·§8.3. |
+| A 근거 추적성 | 7 | `q8-model-audit.js`(10-21 새 정의): params 281개(tech_ 50 포함), 근거 등급 87개 모두 출처가 있다(출처 번호 83, 단위 환산·정의라 대장 절 표기만 4: `outageHoursPerPercent`·`mwhToKwh`·`wonPerEok`·`tech_roundSteps`). 독립 채점이 짚은 params 밖 계수를 값 그대로 옮겼다: 국제 걷기 θ·σ·사건 확률·동시 활성·상하한, 위기 문턱 `debtCrisisRatio`(M, [L07]), 사건 합산 뒤 지수 제한, 재정자립 추정·이동·수요 배수·점수 중립값, 입력 허용 범위·제안 추첨 단위 등 36개(G 31·M 5, params 242 → 278)와 시작 자료 비중의 `grades` 메타, 국제 사건 4개·기업 제안 5개의 G note. 동일성: test-econ 전체 출력 diff 0, 정책0 호스트 하네스 diff 0. `h2Efficiency`·`h2Co2`에 대장 번호([I17][I18]·[S35][L14]), `scoreCo2Worst`는 관계없던 [I07]을 석탄 직접 연소 §9.1의 [L14][I06]으로 바로잡았다. 화면 O*: 종사자 3칸에 원문에 닿지 못한 이유(KOSIS 504·안성 반올림 의심), 사건은 원문을 다시 찾아(10-21) heavy_snow_solar·light_load_curtailment·datacenter_siting을 산업부 원문으로 O로 올리고, 원문에 없던 구체 수치(한전 발표, 93일 중 30일, 165곳·원전 20기, 당진 5·6호기)를 문장에서 뺐다. 남은 O* 사건은 이유를 gradeNote에 적었다. | 8에 남은 것: `ui/league.js`의 약속·S7 판정 상수 가운데 등급 표시가 없는 것(`direction` 반올림, `IQ`, `CONFIDENCE`, `outageCardCandidates` 3장, `outagePartRanking` 동점 자릿수, `gridOnlyServed` 0.01, `OUTAGE_HIGH_PCT`는 '게임 가정' 문구만) — 다른 갈래와 겹치는 파일이라 D-82 병합 뒤 옮긴다. econ.js 회계 반올림은 총괄 결정(10-21)에 따라 ledgerRound1=10·ledgerRound3=1000·equalizeFloorUnit=1000(G)으로 옮겼다(값 불변). 목록·파일:줄은 §8.2·§8.3. |
 | B 인과 깊이 | 8 | H01(대기)은 S4·S8로 호스트까지, H03(지역자원시설세)·H04(정전 피해 추정, 현금 미반영)는 W4(8edf7de·d6588a6)로 엔진·호스트·화면까지 연결(`36-h03-h04.js` 506/0). SMR 공사 비대칭은 D-81 '비대칭 유지와 화면 공개'로 결정되어 설비별 현실 공사 기간 표와 규칙 문장이 배속표에 붙었다(249a41b). D-74 계통 수입(C1)과 D-79 HVDC 효과(H2)도 엔진에 들어갔다(`35-d73-d74-d79.js` 4,704/0). | 8 충족. 10에는 공사 기간 균일 적용(D-81에서 채택하지 않음)과 새 정책·설비 하나가 필요하다. 연계선 공사 기간(H08)은 명세에만 있고 구현되지 않았다. |
 | C 판별력 | 8 | D-73 B80 눈금 구현 뒤 재측정(D73-measure, fe4473d): T5 7전략×6도시 탄소 100점 표본 0/42(A0 눈금이면 18/42). 당진형 10% 감축 보상은 `35-d73-d74-d79.js`의 D73-score가 단언한다(4,704/0). 측정 W2W7(9610df4)에서 당진 10% 감축 17.2점·30% 51.5점. 근거 값(0.82·국가 계수 0.4173 O)은 의미를 바꾸지 않았다. | 8 충족. 남은 붙음은 신뢰 부분점수다: 컴퓨터 도시는 AI가 늘 피크 이상으로 지어 신뢰 100에 붙는다(REL 1~3, bdec867·c26d8fb·92b2c69). 총점 1위는 모든 도시에서 단독이라 순위는 갈린다. 사용자 결정(D-80 각주): 상한 50% 유지, 신뢰 감점 없음, 끝 화면에 '계통이 메운 전기' 표시. 10의 조건(모든 부분점수 붙음 회귀 검사)은 아직 없다. |
 | D 강건성 | 6 | 기준표의 '정책0 호스트' 하네스(매달 정책 0·컴퓨터 balanced 계획을 호스트 reduce로 제출, 독립 채점자의 debt.js와 같은 방식)로 alpha~epsilon 36달 화성 지방채 초과는 0/8/11/2/10달이다. 같은 하네스로 aa40ca7(재정자립도 정정 전)·fa472b4(D-73 엔진 직전)·860caef(D-73 엔진)·819c165(지금)를 돌려 네 시점 모두 같았다(10-21 재측정). 다른 다섯 도시는 0. **정정(10-21):** 앞 판의 '0/8/11/3/10달 → 0/0/0/0/4달'은 D73-measure의 bots36 9전략 하네스 base 열(0/0/0/0/4)을 G10의 정책0 호스트 기록(0/8/11/3/10)과 비교한 것으로, D-73의 효과가 아니라 하네스 차이였다. bots36 base 하네스의 D-73 이전 값은 재지 않았다. 일반 5씨앗의 B16·재생 평균 > 디젤 평균·무행동 9/9위는 D73-measure(fe4473d) 기록 그대로다. | 8 기준(5씨앗 모두 0달)에 화성 31달이 남는다. 8로 가려면 G 손잡이로 고치고 정책0 호스트 하네스와 bots36 base 두 곳 모두에서 0달을 단언해야 한다(크기 M~L, 순위 영향 있음). |
@@ -241,13 +241,11 @@ W1~W5를 마치고 W6를 결정까지 하면 예상 점수는 A 8 · B 8 · C 8 
 | 소수 2자리 | outageNumber 표시 헬퍼 | `ui/league.js:907`, `ui/league.js:908` |
 | 소수 1자리 | outageValue의 MWh 표시 헬퍼(동점 판정용 shown과 별개) | `ui/league.js:914`, `ui/league.js:915` |
 
-주의: r1(×10/÷10), r3(×1000/÷1000), equalizeOf의 ×1000 내림은 상태·회계 연산에도 쓰인다. 화면 표시 전용 면제라고 분류하지 않았다. 이번에 지정한 makeOffer 추첨 단위를 제외한 이 기존 정밀도·정수 보존 경로는 변경하지 않았다. S7·약속의 판정용 반올림은 아래 읽기 전용 표에 따로 적었다.
+주의: r1(×10/÷10), r3(×1000/÷1000), equalizeOf의 ×1000 내림은 상태·회계 연산에도 쓰인다. 총괄 결정(10-21)에 따라 G params로 옮겼으며, 배수와 산술 순서는 보존했다(§8.3). S7·약속의 판정용 반올림은 아래 읽기 전용 표에 따로 적었다.
 
 | 이번에 바꾸지 않은 기존 연산 | 파일:줄 |
 |---|---|
-| r1·r3 정의(10·1000) | `ui/econ.js:17`, `ui/econ.js:18` |
-| equalizeOf의 회계 내림(1000) | `ui/econ.js:366` |
-| roundSum 정수 총합 보존 | `ui/econ.js:40`, `ui/econ.js:41` |
+| roundSum 정수 총합 보존 | `ui/econ.js:42`, `ui/econ.js:43` |
 
 ### 8.2 ui/league.js의 약속·S7 판정 상수(아직 params 밖)
 
@@ -281,48 +279,60 @@ W1~W5를 마치고 W6를 결정까지 하면 예상 점수는 A 8 · B 8 · C 8 
 
 ### 8.3 econ.js의 회계·판정 반올림(r1·r3·×1000 내림)
 
-독립 검토(10-21)가 승인 조건 (2)(판정 반올림은 계수)에 비추어 짚은 항목이다. 회계 정밀도(r1 = 0.1억, r3 = 0.001억, 지원금 ×1000 내림)는 현금·한도·수요 배수에 닿으므로 표시 전용 면제가 아니다. 장부 단위를 계수로 볼지는 총괄 판단으로 남기고, 그때까지 축 A 8의 남은 일로 센다. makeOffer의 추첨 단위 뒤에 걸려 있던 r1은 없앴다(지금 값에서 결과 동일). 사용처 표는 A 검토 반영(Sol) 보고에서 옮겼다.
+독립 검토(10-21)가 승인 조건 (2)(판정 반올림은 계수)에 비추어 짚은 항목이다. 회계 정밀도(r1 = 0.1억, r3 = 0.001억, 지원금 ×1000 내림)는 현금·한도·수요 배수에 닿으므로 표시 전용 면제가 아니다. 총괄 결정(10-21)에 따라 아래 세 G params로 올렸다. 단위의 역수인 배수를 저장해 기존의 곱셈→반올림/내림→나눗셈 순서를 보존한다. makeOffer의 추첨 단위 뒤에 걸려 있던 r1은 없앴다(지금 값에서 결과 동일). 사용처 표는 A 검토 반영(Sol) 보고에서 옮겼다.
 
-현재 `r1` 호출 17곳, `r3` 호출 29곳, equalizeOf의 ×1000 내림 1곳을 모두 아래에 포함했다(한 행의 여러 필드는 각각의 호출). `r1` 정의는 17행, `r3` 정의는 18행이다. “정밀도/표시”는 주 계산·판정 입력을 바꾸지 않는 보고용 변환이다. “판정·회계”는 작아도 현금·한도·수요·점수 등에 닿으므로 결과 불변이라고 단정할 수 없다.
+4차(10-21, 총괄 결정 '회계 반올림은 계수'): 배수를 G params `ledgerRound1`(10, 0.1억)·`ledgerRound3`(1000, 0.001억)·`equalizeFloorUnit`(1000)로 옮겼다(값 불변, 7c70df5 대비 퍼징 diff 0). 남은 곳(독립 검토): `ui/league-core.js`의 r2(100)·r3(1000)은 하드코딩이며 팀 장부 `ledger.income·opex`가 쓴다 — `ledgerRound3`를 바꾸면 경제 장부와 팀 장부의 눈금이 갈린다(league-core 엔진 부분은 모형 소유, 다음 단위에서 옮긴다). `spendable(C)`·`demandMul(city)`는 data를 생략하면 전역 자료를 쓰므로 호스트 호출은 사본의 계수를 따르지 않는다(앱은 전역 자료 하나라 지금 영향 없음). `ledgerRound1`은 돈과 함께 점수·지지율 반올림(점수 동점 판정 포함)에도 쓰인다(note에 밝힘). 0이면 NaN이 되며 범위 검사는 없다.
+
+| 키 | 값(배수) | 등급 | note |
+|---|---|---|---|
+| ledgerRound1 | 10 | G | 회계 장부 단위 · 게임 가정(G) · 현금·한도·수요에 닿음 · 0.1억 단위 반올림의 배수(×10/÷10); 점수·보고값도 같은 눈금 공유 |
+| ledgerRound3 | 1000 | G | 회계 장부 단위 · 게임 가정(G) · 현금·한도·수요에 닿음 · 0.001억 단위 반올림의 배수(×1000/÷1000); 수요·국제 지수·보고값도 같은 눈금 공유 |
+| equalizeFloorUnit | 1000 | G | 회계 장부 단위 · 게임 가정(G) · 현금·한도·수요에 닿음 · 보정 지원금 0.001억 단위 내림의 배수(×1000/÷1000) |
+
+표시 경로도 같은 키를 공유한다. 보고값을 장부와 같은 눈금으로 읽게 하려는 선택이며 표시 전용 별도 손잡이는 만들지 않았다. 각 호출은 해당 계산에 전달된 data를 사용하고, 공개 API에서 생략하면 기존처럼 ECON_DATA를 사용한다. 기본값은 그대로여서 표시값도 유지된다. r1·r3가 돈 이외 점수·지수·비율에도 쓰일 때는 같은 십진 정밀도이며 억 단위로 환산한다는 뜻은 아니다.
+
+현재 `r1` 호출 17곳, `r3` 호출 29곳, equalizeOf의 ×1000 내림 1곳을 모두 아래에 포함했다(한 행의 여러 필드는 각각의 호출). `r1` 정의는 19행, `r3` 정의는 20행이다. “정밀도/표시”는 주 계산·판정 입력을 바꾸지 않는 보고용 변환이다. “판정·회계”는 작아도 현금·한도·수요·점수 등에 닿으므로 결과 불변이라고 단정할 수 없다.
 
 | 현재 줄 | 함수·필드 / 반올림 | 분류 | 영향 경로 |
 |---|---|---|---|
-| `ui/econ.js:235` | intlCur export / r3 | 판정·회계 | 수출 산출 → 산업세·유치 매력·이동 |
-| `ui/econ.js:236` | intlCur lng·fx / r3 각 1회 | 판정·회계 | 연료 배수 입력, fx는 수출 산출에도 직접 반영 |
-| `ui/econ.js:238` | intlCur ship / r3 | 판정·회계 | 항만 물류 산출 → 산업·재정 |
-| `ui/econ.js:240` | intlCur fuelMul / r3 | 판정·회계 | 다음 운영의 발전 연료비. 호스트는 |fuelMul−1|>0.001 분기도 사용 |
-| `ui/econ.js:321` | setBase C.equalize / r3 | 판정·회계 | 연간 지원금·연 세입·지방채 한도 시작값 |
-| `ui/econ.js:325` | setBase C.debtCap / r1 | 판정·회계 | 실제 한도 상태. 채무 초과·건설 제한·재정 점수 |
-| `ui/econ.js:366` | equalizeOf / ×1000 내림 | 판정·회계 | 보정 지원금의 실제 지급·고정액·상한. 표시만의 내림이 아님 |
-| `ui/econ.js:368` | subsidyOf / r3 | 판정·회계 | 지원금 연액 → 분기 지급·현금·연 세입 |
-| `ui/econ.js:392` | ownRev resTax / r3 | 판정·회계 | 월 현금·반복 세입·다음 연도 한도 |
-| `ui/econ.js:393` | ownRev indTax / r3 | 판정·회계 | 월 현금·반복 세입·다음 연도 한도 |
-| `ui/econ.js:395` | ownRev tariff / r3 | 판정·회계 | 전기요금 차익을 실제 세입에 반영 |
-| `ui/econ.js:396` | ownRev trade / r3 | 판정·회계 | 거래 세입 → 현금 |
-| `ui/econ.js:406` | prepareYear C.debtCap / r1 | 판정·회계 | 새해 한도 확정 → 채무 초과·건설·점수 |
-| `ui/econ.js:424` | spendable / r1 | 판정·회계(회계 반환값) | 가용액 API·보고값. 현재 호스트 예산 승인 함수는 원 현금·한도로 별도 r2 계산하며 이 함수를 직접 쓰지 않음 |
-| `ui/econ.js:495` | evalOffer checks.re.have / r1 | 정밀도/표시 | 표시값만. ok는 반올림 전 renPct로 비교 |
-| `ui/econ.js:496` | evalOffer checks.rel.have / r1 | 정밀도/표시 | 표시값만. ok는 반올림 전 unsPct로 비교 |
-| `ui/econ.js:530` | demandMul res·ind / r3 각 1회 | 판정·회계 | 호스트의 실제 전력 수요 배수. |dm−1|>0.001 적용 분기에도 닿음 |
-| `ui/econ.js:569` | approvalChangeCause text delta / r3 | 정밀도/표시 | 원인 문장만. delta 상태·원인 정렬은 원값 사용 |
-| `ui/econ.js:580` | lowestGroupDissatisfaction text deficit / r3 | 정밀도/표시 | 불만 설명 문장만. 최저 집단 선택은 원값 사용 |
-| `ui/econ.js:655` | monthStep rev.royalty·bonus·salvage / r3 각 1회 | 판정·회계 | 세입 합계 → 실제 현금 |
-| `ui/econ.js:657` | monthStep exp.capex·opex / r3 각 1회 | 판정·회계 | 지출 합계 → 실제 현금 |
-| `ui/econ.js:658` | monthStep exp.service / r3 | 판정·회계 | 서비스 지출 → 실제 현금·주민당 순기여 |
-| `ui/econ.js:659` | monthStep exp.incentive·interest / r3 각 1회 | 판정·회계 | 보조·이자 지출 → 실제 현금 |
-| `ui/econ.js:660` | monthStep exp.policy / r3 | 판정·회계 | 정책 변경 지출 → 실제 현금 |
-| `ui/econ.js:680` | fiscal.tariffGross / r3 | 판정·회계(총액 장부) | league-core 1401~1403행에서 powerCost를 거쳐 ledger.income·opex에 들어감. 월 현금 계산은 별도 rev.tariff 사용 |
-| `ui/econ.js:680` | fiscal.eventBonus / r3 | 정밀도/표시 | 보고용 중복 필드. 실제 세입은 위 rev.bonus에서 따로 반올림 |
-| `ui/econ.js:713` | report groups.sat / r1 | 정밀도/표시 | 보고 사본. c.groups 원값과 지지율 계산은 유지 |
-| `ui/econ.js:715` | report groups.approval / r1 | 정밀도/표시 | 보고 사본. 원 지지율·평균 이력 유지 |
-| `ui/econ.js:741` | review.approval / r1 | 정밀도/표시 | pass는 원 relative 지지율에서 이미 판정 |
-| `ui/econ.js:748` | c.hist cash / r1 | 정밀도/표시 | 그래프 이력. 실제 현금 c.cash를 덮어쓰지 않음 |
-| `ui/econ.js:748` | c.hist appr / r1 | 판정·회계(옛 저장 복원 시) | 보통은 그래프 이력. approvalHistory 없는 저장은 restoreDefaults가 hist.appr로 복원하므로 평균 지지율 점수에 닿을 수 있음 |
-| `ui/econ.js:752` | report cities.L·A·Leff·Aeff / r1 각 1회 | 정밀도/표시 | 보고 사본. 실제 이동 효용은 원값으로 이미 계산 |
-| `ui/econ.js:754` | report cities.cash / r1 | 정밀도/표시 | 보고 사본. 실제 현금은 유지 |
-| `ui/econ.js:760` | report.weekMul / r3 | 정밀도/표시 | 실제 월 환산은 별도 원값 사용. 이 필드는 연료비 안내 등의 보고용 |
-| `ui/econ.js:762` | report.intl fossilMWh·fossilBase / r3 각 1회 | 정밀도/표시 | 다음 LNG 피드백·E.intl.fossilBase는 반올림 전 원값 사용 |
-| `ui/econ.js:801` | score parts 각 항목 / r1(호출식 1곳) | 판정·회계 | 반올림한 부분 점수를 가중 기하평균에 넣음 |
-| `ui/econ.js:802` | score 최종 점수 / r1 | 판정·회계 | 반올림한 최종 점수로 정렬·동점 판정 |
+| `ui/econ.js:237` | intlCur export / r3 | 판정·회계 | 수출 산출 → 산업세·유치 매력·이동 |
+| `ui/econ.js:238` | intlCur lng·fx / r3 각 1회 | 판정·회계 | 연료 배수 입력, fx는 수출 산출에도 직접 반영 |
+| `ui/econ.js:240` | intlCur ship / r3 | 판정·회계 | 항만 물류 산출 → 산업·재정 |
+| `ui/econ.js:242` | intlCur fuelMul / r3 | 판정·회계 | 다음 운영의 발전 연료비. 호스트는 |fuelMul−1|>0.001 분기도 사용 |
+| `ui/econ.js:323` | setBase C.equalize / r3 | 판정·회계 | 연간 지원금·연 세입·지방채 한도 시작값 |
+| `ui/econ.js:327` | setBase C.debtCap / r1 | 판정·회계 | 실제 한도 상태. 채무 초과·건설 제한·재정 점수 |
+| `ui/econ.js:369` | equalizeOf / ×1000 내림 | 판정·회계 | 보정 지원금의 실제 지급·고정액·상한. 표시만의 내림이 아님 |
+| `ui/econ.js:371` | subsidyOf / r3 | 판정·회계 | 지원금 연액 → 분기 지급·현금·연 세입 |
+| `ui/econ.js:395` | ownRev resTax / r3 | 판정·회계 | 월 현금·반복 세입·다음 연도 한도 |
+| `ui/econ.js:396` | ownRev indTax / r3 | 판정·회계 | 월 현금·반복 세입·다음 연도 한도 |
+| `ui/econ.js:398` | ownRev tariff / r3 | 판정·회계 | 전기요금 차익을 실제 세입에 반영 |
+| `ui/econ.js:399` | ownRev trade / r3 | 판정·회계 | 거래 세입 → 현금 |
+| `ui/econ.js:409` | prepareYear C.debtCap / r1 | 판정·회계 | 새해 한도 확정 → 채무 초과·건설·점수 |
+| `ui/econ.js:427` | spendable / r1 | 판정·회계(회계 반환값) | 가용액 API·보고값. 현재 호스트 예산 승인 함수는 원 현금·한도로 별도 r2 계산하며 이 함수를 직접 쓰지 않음 |
+| `ui/econ.js:498` | evalOffer checks.re.have / r1 | 정밀도/표시 | 표시값만. ok는 반올림 전 renPct로 비교 |
+| `ui/econ.js:499` | evalOffer checks.rel.have / r1 | 정밀도/표시 | 표시값만. ok는 반올림 전 unsPct로 비교 |
+| `ui/econ.js:534` | demandMul res·ind / r3 각 1회 | 판정·회계 | 호스트의 실제 전력 수요 배수. |dm−1|>0.001 적용 분기에도 닿음 |
+| `ui/econ.js:573` | approvalChangeCause text delta / r3 | 정밀도/표시 | 원인 문장만. delta 상태·원인 정렬은 원값 사용 |
+| `ui/econ.js:584` | lowestGroupDissatisfaction text deficit / r3 | 정밀도/표시 | 불만 설명 문장만. 최저 집단 선택은 원값 사용 |
+| `ui/econ.js:659` | monthStep rev.royalty·bonus·salvage / r3 각 1회 | 판정·회계 | 세입 합계 → 실제 현금 |
+| `ui/econ.js:661` | monthStep exp.capex·opex / r3 각 1회 | 판정·회계 | 지출 합계 → 실제 현금 |
+| `ui/econ.js:662` | monthStep exp.service / r3 | 판정·회계 | 서비스 지출 → 실제 현금·주민당 순기여 |
+| `ui/econ.js:663` | monthStep exp.incentive·interest / r3 각 1회 | 판정·회계 | 보조·이자 지출 → 실제 현금 |
+| `ui/econ.js:664` | monthStep exp.policy / r3 | 판정·회계 | 정책 변경 지출 → 실제 현금 |
+| `ui/econ.js:684` | fiscal.tariffGross / r3 | 판정·회계(총액 장부) | league-core 1401~1403행에서 powerCost를 거쳐 ledger.income·opex에 들어감. 월 현금 계산은 별도 rev.tariff 사용 |
+| `ui/econ.js:684` | fiscal.eventBonus / r3 | 정밀도/표시 | 보고용 중복 필드. 실제 세입은 위 rev.bonus에서 따로 반올림 |
+| `ui/econ.js:717` | report groups.sat / r1 | 정밀도/표시 | 보고 사본. c.groups 원값과 지지율 계산은 유지 |
+| `ui/econ.js:719` | report groups.approval / r1 | 정밀도/표시 | 보고 사본. 원 지지율·평균 이력 유지 |
+| `ui/econ.js:745` | review.approval / r1 | 정밀도/표시 | pass는 원 relative 지지율에서 이미 판정 |
+| `ui/econ.js:752` | c.hist cash / r1 | 정밀도/표시 | 그래프 이력. 실제 현금 c.cash를 덮어쓰지 않음 |
+| `ui/econ.js:752` | c.hist appr / r1 | 판정·회계(옛 저장 복원 시) | 보통은 그래프 이력. approvalHistory 없는 저장은 restoreDefaults가 hist.appr로 복원하므로 평균 지지율 점수에 닿을 수 있음 |
+| `ui/econ.js:756` | report cities.L·A·Leff·Aeff / r1 각 1회 | 정밀도/표시 | 보고 사본. 실제 이동 효용은 원값으로 이미 계산 |
+| `ui/econ.js:758` | report cities.cash / r1 | 정밀도/표시 | 보고 사본. 실제 현금은 유지 |
+| `ui/econ.js:764` | report.weekMul / r3 | 정밀도/표시 | 실제 월 환산은 별도 원값 사용. 이 필드는 연료비 안내 등의 보고용 |
+| `ui/econ.js:766` | report.intl fossilMWh·fossilBase / r3 각 1회 | 정밀도/표시 | 다음 LNG 피드백·E.intl.fossilBase는 반올림 전 원값 사용 |
+| `ui/econ.js:805` | score parts 각 항목 / r1(호출식 1곳) | 판정·회계 | 반올림한 부분 점수를 가중 기하평균에 넣음 |
+| `ui/econ.js:806` | score 최종 점수 / r1 | 판정·회계 | 반올림한 최종 점수로 정렬·동점 판정 |
 
-작업 전 makeOffer의 472행 `r1(pick(...offerMwStep))`도 판정에 닿았다. 제안 필요 MW를 0.1MW로 다시 반올림하여 evalOffer의 spareMW 충족 조건과 제안 내용을 바꿀 수 있었다. 현재 475~482행은 MW 눈금 ticks를 역수로 나누며 r1을 쓰지 않는다. 기본 step=0.1에서 독립 퍼징·호스트·전체 경제 출력이 같고 step=0.01에서는 0.37MW가 유지됨을 확인했다. 다른 r1·r3·내림은 변경하지 않았다.
+앞 차수 작업 전 makeOffer의 472행 `r1(pick(...offerMwStep))`도 판정에 닿았다. 제안 필요 MW를 0.1MW로 다시 반올림하여 evalOffer의 spareMW 충족 조건과 제안 내용을 바꿀 수 있었다. 현재 478~485행은 MW 눈금 ticks를 역수로 나누며 r1을 쓰지 않는다. 앞 차수에서 기본 step=0.1의 독립 퍼징·호스트·전체 경제 출력이 같고 step=0.01에서는 0.37MW가 유지됨을 확인했다. 이번 차수에서는 나머지 r1·r3·내림을 위 G params로 연결했다(배수·산술 순서 불변).
+
+4차 검증(10-21): `git archive 7c70df5`와 지정 cmp.js를 비교한 1,869회에서 diffs 0·paramdiff 0. test-econ(1,291,435/0)·balance(826/0)·recal(261/0) 전체 출력과 시각 고정 `q8-host-debt.js alpha,epsilon 36 balanced` 출력이 모두 바이트 단위로 같다. 6ef6eea와 비교한 41·39·33·34·35·36은 각각 787·179·50·174·4,704(83사례)·506 통과, 실패 0으로 동일하다. 별도 로컬 실행으로 세 계수의 사용자 지정 data 반영, 기존 자료 불변, 사건 16개에서 asOf를 제외한 모든 값·opts 불변도 확인했다. 검사 파일·league.js는 수정하지 않았으며 커밋·브라우저·외부 네트워크를 사용하지 않았다.
