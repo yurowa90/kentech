@@ -364,6 +364,7 @@
 .lg-rankrow small { color: var(--ink-2); }
 .lg-scoreparts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 12px; }
 .lg-scoreparts [data-leader="true"] { font-weight: 700; }
+.lg-scoreparts [data-grid-total] { display: block; overflow-wrap: anywhere; }
 .lg-pred,
 .lg-ask,
 .lg-cause { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
