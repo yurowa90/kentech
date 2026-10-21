@@ -2540,6 +2540,23 @@
     if (S.hover != null) showTip(S.hover);
     request();
   }
+  // Esc로 그리던 송전선·고른 도구를 취소한다(D-83 각주). 도구 해제만 하고 리그의 onTool(서랍 닫기)은 부르지 않아
+  // Esc 한 번에 한 층만 닫히게 하고, 잠금 검사도 건너뛴다(이미 고른 도구를 푸는 일이므로). 취소했으면 true.
+  function escCancel() {
+    if (S.lineStart != null || S.pending) { cancelLine(); announce("송전선 취소"); return true; }
+    if (!S.tool) return false;
+    S.tool = null;
+    cancelLine();
+    S.sel = null;
+    closePops();
+    renderTools();
+    S.root.dataset.mode = "";
+    if (S.hover != null) showTip(S.hover);
+    request();
+    if (S.opts.league) S.opts.onToolCancel?.();
+    announce("도구 해제");
+    return true;
+  }
   /* ---------- 도구 막대: 섬은 6개 그대로, 평택은 묶음(재생·화력·저장·송전·철거) ---------- */
   const toolLocked = id => {
     const tech = BLD[id]?.tech;
@@ -2718,10 +2735,7 @@
         if (S.hover != null) act(S.hover);
         return;
       }
-      if (e.key === "Escape") {
-        if (S.lineStart != null || S.pending) { e.preventDefault(); cancelLine(); announce("송전선 취소"); }
-        else if (S.tool) { e.preventDefault(); setTool(S.tool); announce("도구 해제"); }
-      }
+      if (e.key === "Escape" && escCancel()) e.preventDefault();
     });
     on(cv, "focus", () => { if (S.hover == null && cv.matches(":focus-visible")) setHover(TOWNS[0].tile, true); });
     on(cv, "blur", () => { if (S.kbd) { S.kbd = false; hideTip(); request(); } });
@@ -3922,7 +3936,12 @@
       if (e.key !== "Escape" || !S || e.defaultPrevented) return;
       if (document.querySelector("dialog[open]")) return;
       if (S.openGroup || S.seasonOpen) { const back = S.openGroup ? `[data-group="${S.openGroup}"]` : "#bd-season"; closePops(); const b = $(back); if (b) b.focus({ preventScroll: true }); e.preventDefault(); return; }
-      if (S.drawerOpen && isMobile()) { closeDrawer(); e.preventDefault(); }
+      if (S.drawerOpen && isMobile()) { closeDrawer(); e.preventDefault(); return; }
+      // D-83 각주: 포커스가 캔버스 밖이어도 Esc는 그리던 송전선·고른 도구를 취소한다. 캔버스 처리기가 먼저 취소하면
+      // defaultPrevented라 여기 오지 않고, 리그 처리기(document 캡처)가 코치·서랍을 닫은 Esc도 건너뛴다.
+      // 캔버스 처리기처럼 시험 운전 중에는 쉬고, 글자 입력 중의 Esc는 입력칸 몫으로 둔다.
+      if (S.run || e.isComposing || e.target.matches?.("input, textarea, select, [contenteditable]")) return;
+      if (escCancel()) e.preventDefault();
     });
     on(window, "resize", () => { S.dirtyLayout = true; request(); });
     on(document, "visibilitychange", () => request());

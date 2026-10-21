@@ -9,6 +9,7 @@ fixture만 공개 규칙/계획 API로 만들고 U5 이동은 실제 버튼으�
 
 import re
 import sys
+import time
 
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode, start_solo
@@ -387,6 +388,243 @@ def scenario(checks, context, base, label, mode, pages):
                 team.evaluate(WIRE_READ_JS)["plans"] == wire_before)
 
 
+TOOL_MODE_JS = "() => document.querySelector('#bd-root')?.dataset.mode || ''"
+
+
+def esc_coach_drawer(checks, context, base, label, pages, with_tool):
+    """D-83 ② 코치 > ⑤ 서랍, 총괄 10-21. 명세(docs/DECISIONS.md D-83)만 보고 쓴 단언이다.
+
+    Esc 한 번은 위에서부터 한 층만 닫는다. 코치(#lg-coach)와 리그 서랍(#lg-panel)이 함께 열린 판에서
+    with_tool=False: 초점을 코치 안에 두고 Esc → 코치만 닫힘·서랍 유지, Esc 2번 → 서랍도 닫힘.
+    with_tool=True(D-83 각주 10-21): 건설 도구를 고르고 초점이 코치 밖이면 Esc 1번은 도구 선택 취소 몫이라
+    코치·서랍이 그대로이고, Esc 2번에 코치, Esc 3번에 서랍이 닫힌다.
+    코치는 혼자 하기 첫 달에 뜨므로(ux_coach.py) 판마다 새 컨텍스트로 시작한다.
+    """
+    case = "도구 선택·초점 코치 밖" if with_tool else "초점 코치 안"
+    tag = f"{label} D-83 Esc({case})"
+    _, page = setup_solo(context, base, pages)
+    page.wait_for_selector("#lg-coach", timeout=60000)
+    page.wait_for_timeout(1200)  # ux_coach.py와 같은 안정 대기
+    if with_tool:
+        # peek 비교 기준과 같은 화면 조작: 재생 묶음 → 태양광 도구.
+        page.locator('#bd-root [data-group="ren"]:visible').click()
+        page.locator('#bd-root [data-tool="solar"]:visible').click()
+    open_panel(page, "city")
+    ready = shown(page, "#lg-coach") and shown(page, "#lg-panel")
+    if with_tool:
+        ready = ready and page.evaluate(TOOL_MODE_JS) == "solar"
+    if not checks.ok(ready, f"{tag} 장면 준비: 코치·서랍 함께 열림" + (" ·태양광 도구 선택" if with_tool else "")):
+        screenshot(checks, page, f"peek-{label}-d83-{'tool' if with_tool else 'coach'}-setup.png")
+        return
+    if with_tool:
+        page.evaluate("document.activeElement.blur()")
+        checks.ok(page.evaluate("() => !document.querySelector('#lg-coach')?.contains(document.activeElement)"),
+                  f"{tag} 초점이 코치 밖")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        # D-83 각주: 도구 선택 취소(지도 조작 모드 해제)가 코치보다 먼저다.
+        checks.test(f"{tag} Esc1 → 도구 선택 취소", lambda: page.evaluate(TOOL_MODE_JS) != "solar")
+        checks.test(f"{tag} Esc1 → 코치 그대로", lambda: shown(page, "#lg-coach"))
+        checks.test(f"{tag} Esc1 → 서랍 그대로", lambda: shown(page, "#lg-panel"))
+    else:
+        page.locator("#lg-coach-close").focus()
+        checks.ok(page.evaluate("() => !!document.querySelector('#lg-coach')?.contains(document.activeElement)"),
+                  f"{tag} 초점이 코치 안")
+    # D-83 ② 코치 > ⑤ 서랍, 총괄 10-21
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    step = "Esc2" if with_tool else "Esc1"
+    checks.test(f"{tag} {step} → 코치 닫힘", lambda: not shown(page, "#lg-coach"))
+    checks.test(f"{tag} {step} → 서랍 열림 유지", lambda: shown(page, "#lg-panel"))
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    step = "Esc3" if with_tool else "Esc2"
+    checks.test(f"{tag} {step} → 서랍도 닫힘", lambda: not shown(page, "#lg-panel"))
+    capture(checks, page, label, f"d83-{'tool' if with_tool else 'coach'}")
+
+
+FOCUS_CANVAS_JS = """() => {
+  // 지도 캔버스에 초점만 옮긴다. 클릭하면 고른 도구로 설비가 지어지므로 누르지 않는다.
+  const c = [...document.querySelectorAll('#bd-root canvas')].find(n => n.getClientRects().length);
+  if (!c) return 'no-canvas';
+  c.focus();
+  return document.activeElement === c ? 'ok' : 'not-focusable';
+}"""
+
+
+def esc_more(checks, context, base, label, pages, case):
+    """D-83 본문·각주(10-21)와 총괄 확인 '코치가 없을 때 서랍과 도구가 함께 있으면 서랍(⑤)이 도구 취소보다 먼저'.
+
+    (a) 코치·서랍, 도구 없음, 초점 body: Esc1 코치만, Esc2 서랍.
+    (b) 코치 없음, 도구 선택 뒤 서랍, 초점 body: Esc1 서랍만(도구 유지), Esc2 도구 취소.
+    (c) 코치·서랍, 도구 선택, 초점 지도 캔버스(코치 밖): Esc1 도구 취소·코치·서랍 그대로(각주).
+    """
+    tag = f"{label} D-83 Esc({case})"
+    _, page = setup_solo(context, base, pages)
+    page.wait_for_selector("#lg-coach", timeout=60000)
+    page.wait_for_timeout(1200)  # ux_coach.py와 같은 안정 대기
+    if case == "b":
+        page.locator("#lg-coach-close").click()
+        page.wait_for_timeout(300)
+    if case in ("b", "c"):
+        page.locator('#bd-root [data-group="ren"]:visible').click()
+        page.locator('#bd-root [data-tool="solar"]:visible').click()
+    open_panel(page, "city")
+    coach_expected = case != "b"
+    ready = shown(page, "#lg-coach") == coach_expected and shown(page, "#lg-panel")
+    if case in ("b", "c"):
+        ready = ready and page.evaluate(TOOL_MODE_JS) == "solar"
+    focus = "body"
+    if case == "c":
+        focus = page.evaluate(FOCUS_CANVAS_JS)
+        ready = ready and focus == "ok"
+    else:
+        page.evaluate("document.activeElement.blur()")
+        ready = ready and page.evaluate("() => document.activeElement === document.body")
+    if not checks.ok(ready, f"{tag} 장면 준비(코치 {'열림' if coach_expected else '없음'}·서랍 열림"
+                     f"{'·태양광 도구' if case != 'a' else ''}·초점 {focus})"):
+        screenshot(checks, page, f"peek-{label}-d83{case}-setup.png")
+        return
+
+    def esc():
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+
+    if case == "a":
+        # D-83 ② 코치 > ⑤ 서랍(초점 위치와 무관), 총괄 10-21
+        esc()
+        checks.test(f"{tag} Esc1 → 코치 닫힘", lambda: not shown(page, "#lg-coach"))
+        checks.test(f"{tag} Esc1 → 서랍 열림 유지", lambda: shown(page, "#lg-panel"))
+        esc()
+        checks.test(f"{tag} Esc2 → 서랍 닫힘", lambda: not shown(page, "#lg-panel"))
+    elif case == "b":
+        # 총괄 확인(10-21): 코치가 없으면 ⑤ 서랍이 도구 취소보다 먼저
+        esc()
+        checks.test(f"{tag} Esc1 → 서랍 닫힘", lambda: not shown(page, "#lg-panel"))
+        checks.test(f"{tag} Esc1 → 도구 유지(data-mode solar)", lambda: page.evaluate(TOOL_MODE_JS) == "solar")
+        esc()
+        checks.test(f"{tag} Esc2 → 도구 취소(data-mode solar 아님)", lambda: page.evaluate(TOOL_MODE_JS) != "solar")
+    else:
+        # D-83 각주(10-21): 도구를 고르고 초점이 코치 밖이면 도구 취소가 코치보다 먼저
+        esc()
+        checks.test(f"{tag} Esc1 → 도구 취소", lambda: page.evaluate(TOOL_MODE_JS) != "solar")
+        checks.test(f"{tag} Esc1 → 코치 그대로", lambda: shown(page, "#lg-coach"))
+        checks.test(f"{tag} Esc1 → 서랍 그대로", lambda: shown(page, "#lg-panel"))
+    capture(checks, page, label, f"d83{case}")
+
+
+FOCUS_IN_PANEL_JS = """() => {
+  const panel = document.querySelector('#lg-panel');
+  if (!panel) return 'no-panel';
+  const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  const n = [...panel.querySelectorAll(sel)].find(x => x.getClientRects().length && !x.disabled &&
+    getComputedStyle(x).visibility !== 'hidden');
+  if (!n) return 'no-control';
+  n.focus();
+  return panel.contains(document.activeElement) ? 'ok' : 'not-focused';
+}"""
+FOCUS_AFTER_JS = """() => {
+  const a = document.activeElement;
+  return {body: !a || a === document.body || a === document.documentElement,
+    opener: !!a && a.matches('#lg-bar [data-panel="city"]'),
+    inCoach: !!document.querySelector('#lg-coach')?.contains(a),
+    desc: a ? (a.id ? '#' + a.id : a.tagName.toLowerCase()) + (a.dataset?.panel ? `[${a.dataset.panel}]` : '') : null};
+}"""
+
+
+def esc_focus_layer(checks, context, base, label, pages):
+    """(d) D-83 각주2(총괄 10-21): '키보드 초점이 어떤 층(코치, 덱, 리그 서랍) 안에 있으면 그 층이 기본 순서보다
+    먼저 Esc를 받는다. 초점이 body·지도·층 밖이면 기본 순서(①~⑥)를 따른다.'
+    코치가 뜬 첫 달에 도시 서랍을 열고 초점을 서랍 안 조작 요소로 옮긴다(도구는 고르지 않음).
+    기대: Esc1 → 서랍 닫힘·코치 유지·초점이 body가 아닌 화면 요소(서랍을 연 단추가 바람직), Esc2 → 코치 닫힘.
+    """
+    tag = f"{label} D-83 각주2 Esc(초점 서랍 안)"
+    _, page = setup_solo(context, base, pages)
+    page.wait_for_selector("#lg-coach", timeout=60000)
+    page.wait_for_timeout(1200)  # ux_coach.py와 같은 안정 대기
+    open_panel(page, "city")
+    focus = page.evaluate(FOCUS_IN_PANEL_JS)
+    ready = shown(page, "#lg-coach") and shown(page, "#lg-panel") and focus == "ok"
+    if not checks.ok(ready, f"{tag} 장면 준비(코치·서랍 열림·초점 서랍 안: {focus})"):
+        screenshot(checks, page, f"peek-{label}-setup.png")
+        return
+    # D-83 각주2: 초점이 있는 층(⑤ 서랍)이 기본 순서(② 코치)보다 먼저
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    checks.test(f"{tag} Esc1 → 서랍 닫힘", lambda: not shown(page, "#lg-panel"))
+    checks.test(f"{tag} Esc1 → 코치 유지", lambda: shown(page, "#lg-coach"))
+    after = page.evaluate(FOCUS_AFTER_JS)
+    checks.ok(not after["body"], f"{tag} Esc1 → 초점이 body가 아닌 화면 요소로 돌아감: {after['desc']}")
+    # 명세는 '서랍을 연 단추(또는 body가 아닌 화면 요소)'라 단추 복귀는 참고로만 출력한다.
+    print(f"INFO {tag} Esc1 뒤 초점 {after['desc']} (도시 단추 복귀 {after['opener']}, 코치 안 {after['inCoach']})",
+          flush=True)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    checks.test(f"{tag} Esc2 → 코치 닫힘", lambda: not shown(page, "#lg-coach"))
+    capture(checks, page, label, "d83d")
+
+
+FOCUS_IN_DECK_JS = """() => {
+  const deck = [...document.querySelectorAll('.fx-turn-cards')].find(d => d.getClientRects().length);
+  if (!deck) return 'no-deck';
+  const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  const n = [...deck.querySelectorAll(sel)].find(x => x.getClientRects().length && !x.disabled &&
+    getComputedStyle(x).visibility !== 'hidden');
+  if (!n) return 'no-control';
+  n.focus();
+  return deck.contains(document.activeElement) ? 'ok' : 'not-focused';
+}"""
+# 덱 닫힘 또는 펼친 덱 접힘. fx_event.py와 같은 공개 상태 KCP.fxTurn.state()만 읽는다.
+DECK_FOLDED_JS = """() => {
+  const fx = KCP.fxTurn?.state?.() || {};
+  const expanded = [...document.querySelectorAll('.fx-turn-cards .fx-turn-expand')]
+    .some(b => b.getAttribute('aria-expanded') === 'true');
+  return fx.forecastOpen === false || fx.cardsOpen === false || (fx.strip === true && !expanded);
+}"""
+
+
+def esc_deck_focus(checks, context, base, label, pages):
+    """(e) D-83 각주2 덱(총괄 10-21): '키보드 초점이 어떤 층(코치, 덱, 리그 서랍) 안에 있으면 그 층이 기본 순서보다
+    먼저 Esc를 받는다.' 기본 순서로는 ② 코치가 ④·⑥ 덱보다 먼저지만, 초점이 덱 안이면 덱이 먼저다.
+
+    장면은 fx_event.py의 고정 시작본 첫 판(fixtures[0])을 같은 복원 경로로 넣어 만든다. fx_event.py esc_one_layer가
+    이 판의 1월을 '실제 예보 열림 + 첫 달 코치 보임' 판으로 쓴다. 예보 덱은 10초 뒤 자동으로 닫히므로
+    준비 뒤 곧바로 Esc를 누르고, 8초를 넘기면 INFO로 알린다(fx_event.py TimedChecks와 같은 기준).
+    """
+    from fx_event import DOM_JS as FX_DOM_JS, restore_fixture, seeded_fixtures, wait_state  # 지연 import: 실패해도 다른 장면에 영향 없음
+    tag = f"{label} D-83 각주2 덱 Esc(초점 덱 안)"
+    fixture = seeded_fixtures()[0]
+    page, events = monitored_page(context)
+    pages.append((page, events, "solo"))
+    restore_fixture(checks, page, base, tag + " 고정 시작본", fixture)
+    wait_state(page, 1, ["plan"])
+    page.wait_for_function("""() => {
+      const dom=(""" + FX_DOM_JS + """);
+      const fx=KCP.fxTurn?.state?.();
+      return !!fx?.forecastOpen && !fx.playing && dom.cards().some(c=>c.visible);
+    }""", timeout=15000)
+    started = time.monotonic()
+    focus = page.evaluate(FOCUS_IN_DECK_JS)
+    coach_up = shown(page, "#lg-coach")
+    folded = page.evaluate(DECK_FOLDED_JS)  # Esc 전부터 접힌 것으로 읽히면 Esc1 단언이 공짜로 통과한다
+    ready = coach_up and focus == "ok" and not folded
+    if not checks.ok(ready, f"{tag} 장면 준비(덱 열림 판정 {not folded}·코치 {'보임' if coach_up else '없음'}·예보 덱 보임·초점 덱 안: {focus})"):
+        screenshot(checks, page, f"peek-{label}-setup.png")
+        return
+    # D-83 각주2: 초점이 있는 층(덱)이 기본 순서(② 코치)보다 먼저
+    page.keyboard.press("Escape")
+    checks.test(f"{tag} Esc1 → 덱 닫힘(또는 펼친 덱 접힘)", lambda: bool(
+        page.wait_for_function(DECK_FOLDED_JS, timeout=1000)))
+    checks.test(f"{tag} Esc1 → 코치 유지", lambda: shown(page, "#lg-coach"))
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    checks.test(f"{tag} Esc2 → 코치 닫힘", lambda: not shown(page, "#lg-coach"))
+    elapsed = time.monotonic() - started
+    if elapsed > 8:
+        print(f"INFO {tag} 덱 표시 확인 뒤 {elapsed:.2f}초 > 8초: 10초 자동 닫힘과 겹칠 수 있음", flush=True)
+    capture(checks, page, label, "d83e")
+
+
 def main():
     checks = Checks()
     try:
@@ -413,6 +651,76 @@ def main():
                                 diagnostics(checks, events, f"{label} {role}")
                             checks.ok(not external, f"{label} U5 외부 연결 시도 0: {external}")
                             context.close()
+                # D-83 ② 코치 > ⑤ 서랍, 총괄 10-21: 밝음 한 번, 판마다 새 컨텍스트(코치는 첫 달에만 뜸).
+                for with_tool in (False, True):
+                    label = f"d83-{'tool' if with_tool else 'coach'}-{width}x{height}-light"
+                    context, external = context_for(browser, base, width, height, "light")
+                    pages = []
+                    try:
+                        esc_coach_drawer(checks, context, base, label, pages, with_tool)
+                    except Exception as exc:
+                        checks.ok(False, f"{label} D-83 진행 예외 {type(exc).__name__}: "
+                                  f"{str(exc).splitlines()[0][:200]}")
+                        for page, _, role in pages:
+                            screenshot(checks, page, f"peek-{label}-{role}-failure.png")
+                    finally:
+                        for page, events, role in pages:
+                            overflow(checks, page, f"{label} {role} 마지막 화면")
+                            diagnostics(checks, events, f"{label} {role}")
+                        checks.ok(not external, f"{label} D-83 외부 연결 시도 0: {external}")
+                        context.close()
+                # D-83 본문·각주와 총괄 확인(코치 없으면 서랍 > 도구 취소): 장면 a·b·c, 판마다 새 컨텍스트.
+                for case in ("a", "b", "c"):
+                    label = f"d83{case}-{width}x{height}-light"
+                    context, external = context_for(browser, base, width, height, "light")
+                    pages = []
+                    try:
+                        esc_more(checks, context, base, label, pages, case)
+                    except Exception as exc:
+                        checks.ok(False, f"{label} D-83 진행 예외 {type(exc).__name__}: "
+                                  f"{str(exc).splitlines()[0][:200]}")
+                        for page, _, role in pages:
+                            screenshot(checks, page, f"peek-{label}-{role}-failure.png")
+                    finally:
+                        for page, events, role in pages:
+                            overflow(checks, page, f"{label} {role} 마지막 화면")
+                            diagnostics(checks, events, f"{label} {role}")
+                        checks.ok(not external, f"{label} D-83 외부 연결 시도 0: {external}")
+                        context.close()
+                # D-83 각주2(총괄 10-21): 초점이 있는 층이 먼저. 장면 d, 새 컨텍스트.
+                label = f"d83d-{width}x{height}-light"
+                context, external = context_for(browser, base, width, height, "light")
+                pages = []
+                try:
+                    esc_focus_layer(checks, context, base, label, pages)
+                except Exception as exc:
+                    checks.ok(False, f"{label} D-83 각주2 진행 예외 {type(exc).__name__}: "
+                              f"{str(exc).splitlines()[0][:200]}")
+                    for page, _, role in pages:
+                        screenshot(checks, page, f"peek-{label}-{role}-failure.png")
+                finally:
+                    for page, events, role in pages:
+                        overflow(checks, page, f"{label} {role} 마지막 화면")
+                        diagnostics(checks, events, f"{label} {role}")
+                    checks.ok(not external, f"{label} D-83 각주2 외부 연결 시도 0: {external}")
+                    context.close()
+                # D-83 각주2 덱(총괄 10-21): 초점이 덱 안이면 덱이 코치보다 먼저. 장면 e, 새 컨텍스트.
+                label = f"d83e-{width}x{height}-light"
+                context, external = context_for(browser, base, width, height, "light")
+                pages = []
+                try:
+                    esc_deck_focus(checks, context, base, label, pages)
+                except Exception as exc:
+                    checks.ok(False, f"{label} D-83 각주2 덱 진행 예외 {type(exc).__name__}: "
+                              f"{str(exc).splitlines()[0][:200]}")
+                    for page, _, role in pages:
+                        screenshot(checks, page, f"peek-{label}-{role}-failure.png")
+                finally:
+                    for page, events, role in pages:
+                        overflow(checks, page, f"{label} {role} 마지막 화면")
+                        diagnostics(checks, events, f"{label} {role}")
+                    checks.ok(not external, f"{label} D-83 각주2 덱 외부 연결 시도 0: {external}")
+                    context.close()
             browser.close()
     except Exception as exc:
         checks.ok(False, f"검사 실행 예외 {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
