@@ -120,22 +120,34 @@
     target.addEventListener(name, fn, opts);
     off.push(() => target.removeEventListener(name, fn, opts));
   };
-  function closeCards(restoreFocus = false) {
-    const active = document.activeElement;
-    const restore = !!deck && (deck.contains(active) || (restoreFocus && (!active || active === document.body)));
-    // 덱 안 초점은 어떻게 닫히든 복귀시킨다(자동 닫힘·화면 낭독기 훑기 포함). 이미 body로 떨어진 초점은
-    // Esc·닫기처럼 사용자가 직접 닫을 때만 옮긴다. 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로 찾는다.
-    const focus = restore ? [expandFocus, document.querySelector('#lg-bar [data-panel="result"]'),
+  // Esc 한 번에 하나만 닫는다. 다른 처리기가 이미 쓴 Esc(defaultPrevented)와 열린 대화상자에는 양보한다.
+  const escFree = e => e.key === "Escape" && !e.defaultPrevented && !document.querySelector("dialog[open]");
+  // 펼친 카드는 서랍 위를 덮는 맨 위 층이고, 초점이 덱 안이면 학생이 카드를 보고 있다. 이때는 window 캡처
+  // 단계에서 리그 처리기보다 먼저 받아 카드만 닫고 서랍 쪽으로 넘기지 않는다.
+  const topEscape = (e, close) => {
+    if (!escFree(e) || !deck || status.deferred || !(expanded || deck.contains(document.activeElement))) return;
+    e.preventDefault(); e.stopPropagation(); close();
+  };
+  // 덱 안 초점은 어떻게 닫히든 복귀시킨다(자동 닫힘·화면 낭독기 훑기·달 불일치·단계 전환 포함). 이미 body로
+  // 떨어진 초점은 Esc·닫기처럼 사용자가 직접 닫을 때만 옮긴다. 마지막 외부 요소, 결과 탭, 막대의 보이는 단추 순서로
+  // 찾고, 사용자 동작이 아닌 닫힘에서는 입력 칸을 빼서 모바일 가상 키보드가 갑자기 뜨지 않게 한다.
+  function focusBack(userClose) {
+    const box = deck || layer, active = document.activeElement;
+    if (!box || !(box.contains(active) || (userClose && (!active || active === document.body)))) return null;
+    const typing = el => el.isContentEditable || !!el.matches?.("input, textarea, select, [contenteditable]");
+    return [expandFocus, document.querySelector('#lg-bar [data-panel="result"]'),
       ...(document.querySelector("#lg-bar")?.querySelectorAll("button") || [])].find(target =>
-      target?.isConnected && target !== document.body && !deck.contains(target) && visibleRect(target)) : null;
-    if (status.forecastOpen) removeLayer();
-    else {
-      deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
-      stripBar = armCards = null; expanded = status.strip = status.deferred = false;
-      expandFocus = forecastVisible = deferredNotice = null;
-      if (layer) layer.dataset.strip = layer.dataset.chip = layer.dataset.over = "false";
-      syncLayerVisibility();
-    }
+      target?.isConnected && target !== document.body && !box.contains(target) && visibleRect(target) &&
+      (userClose || !typing(target))) || null;
+  }
+  function closeCards(restoreFocus = false) {
+    const focus = focusBack(restoreFocus);
+    if (status.forecastOpen) { removeLayer(focus); return; }
+    deck?.remove(); deck = null; syncCardSounds = null; status.cardsOpen = status.forecastOpen = false;
+    stripBar = armCards = null; expanded = status.strip = status.deferred = false;
+    expandFocus = forecastVisible = deferredNotice = null;
+    if (layer) layer.dataset.strip = layer.dataset.chip = layer.dataset.over = "false";
+    syncLayerVisibility();
     focus?.focus?.({ preventScroll: true });
   }
   function currentMonth(opts) {
@@ -170,7 +182,7 @@
     if (layer && layer.hidden !== hidden) layer.hidden = hidden;
   }
   // 분위기와 재생은 유지하고, 예보를 닫은 뒤 빈 덧층과 관찰·리스너만 해제한다.
-  function removeLayer() {
+  function removeLayer(focus = focusBack(false)) {
     epoch++;
     timers.forEach(clearTimeout); timers = [];
     off.forEach(fn => fn()); off = [];
@@ -183,6 +195,7 @@
     expandFocus = currentResult = currentForecast = forecastVisible = deferredNotice = null;
     advanceSummary = null;
     status.cardsOpen = status.forecastOpen = false;
+    focus?.focus?.({ preventScroll: true });
   }
   function clear() {
     removeLayer();
@@ -524,27 +537,12 @@
     listen(document, "click", e => {
       if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
     }, true);
-    // 예보는 보류 중에도 Esc로 닫는다. 보이기 전에 닫은 예보는 기록하지 않아 새로고침 뒤 다시 뜬다.
-    // 열린 대화상자에는 양보한다. window 단계는 document의 어느 처리기보다 먼저 돌므로, 여기서 누르기 직전의
-    // 열린 서랍 수를 기록한다. 초점이 예보 안(펼친 띠의 닫기 등)이면 예보만 닫고 서랍 쪽으로 넘기지 않는다.
-    let drawersAtEsc = 0;
-    listen(window, "keydown", e => {
-      if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
-      drawersAtEsc = openDrawers(root).length;
-      if (!deck?.contains(document.activeElement)) return;
-      e.preventDefault(); e.stopPropagation(); closeCards(true);
-    }, true);
-    // 같은 Esc가 도시 서랍을 닫았으면 예보는 남긴다(서랍과 예보가 한 번에 사라지지 않게). 코치 닫기처럼
-    // 서랍이 그대로인 Esc는 예보도 닫는다. 처리기 순서와 무관하게 디스패치 뒤 서랍 수로 판정한다.
-    listen(document, "keydown", e => {
-      if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
-      const owner = deck, drawers = drawersAtEsc;
-      if (!drawers) { closeCards(true); return; }
-      setTimeout(() => {
-        if (!deck || deck !== owner || (e.defaultPrevented && openDrawers(root).length < drawers)) return;
-        closeCards(true);
-      }, 0);
-    }, true);
+    // 리그 처리기(캡처 단계)가 서랍·코치·확인 상자를 닫으면 전파가 멈춰 예보까지 오지 않는다. 그래서 서랍에
+    // 가려 보류된 예보는 Esc1에 서랍이 닫힌 뒤 보이고, Esc2에 닫힌다. 예보 처리는 버블 단계에서 하고, 다른
+    // 처리기가 이미 쓴 Esc(지도 선택 팝업, 도구 묶음 등)면 남긴다. 닫을 때는 preventDefault로 뒤 처리기에 알린다.
+    // 서랍 없이 보류된 예보를 보이기 전에 Esc로 닫으면 기록하지 않아 새로고침 뒤 다시 뜬다.
+    listen(window, "keydown", e => topEscape(e, () => closeCards(true)), true);
+    listen(document, "keydown", e => { if (escFree(e)) { e.preventDefault?.(); closeCards(true); } });
     return true;
   }
   function showSummary(opts, root) {
@@ -631,7 +629,13 @@
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
     // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다. 재생 건너뛰기는 그대로 둔다.
-    listen(document, "keydown", e => { if (e.key === "Escape" && !document.querySelector("dialog[open]")) { if (status.playing || pending) skip(); else if (!status.deferred) { closeCards(true); hideSummary(); } } }, true);
+    // 예보와 같은 규칙: 다른 처리기가 쓴 Esc(결과 서랍 닫기 등)로는 재생 건너뛰기·카드 닫기를 함께 하지 않는다.
+    listen(window, "keydown", e => topEscape(e, () => { closeCards(true); hideSummary(); }), true);
+    listen(document, "keydown", e => {
+      if (!escFree(e)) return;
+      if (status.playing || pending) { e.preventDefault?.(); skip(); }
+      else if (!status.deferred && (status.cardsOpen || toast)) { e.preventDefault?.(); closeCards(true); hideSummary(); }
+    });
     let finished = false;
     const done = info => {
       if (token !== epoch || !keepCurrentCards()) return;
