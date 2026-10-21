@@ -42,7 +42,7 @@
     bmsFloor: p(0.05, "G", "BMS 잔량 하한 10%→5%"),
     bmsEfficiency: p(0.933, "G", "BMS 왕복 효율 85→87%의 한 방향 √0.87≈0.933 [I13][I14] · REF 8.6", ["I13", "I14"]),
     drEffect: p(1.5, "G", "VPP 수요반응 감축량 배수; 실측 효과 미확인"),
-    fcstWidth: p(0.7, "P", "사건 예보 폭은 원래 범위의 0.7배; 예측 NRMSE 30.6% 감소 [P101] · REF 12.7", ["P101"]),
+    fcstWidth: p(0.7, "P", "사건 예보 폭은 원래 범위의 최대 0.7배(원래 범위 안으로 자름); 예측 NRMSE 30.6% 감소 [P101] · REF 12.7", ["P101"]),
     drCost: p(0.5, "G", "VPP 수요반응 정책비 배수"),
     vppCurtail: p(0.8, "G", "VPP 출력제어 손실 배수"),
     heatDamage: p(0.7, "G", "VPP 폭염 추가 수요 피해 30% 감소 근사(중복 적용 없음)"),
@@ -72,7 +72,7 @@
     { id: "climate", name: "환경·기후기술" }, { id: "nuclear", name: "원자핵 에너지" }
   ];
   const card = (id, branch, field, name, need, demo, req, eff, grade, why) => ({
-    id, branch, field, name, need, demo, req, eff, grade, why,
+    id, branch, field, name, need, demo, req, get eff() { return typeof eff === "function" ? eff() : eff; }, grade, why,
     // 공식 명칭과 게임 카드의 대응, 실제 근거와 게임 효과 크기를 각각 표시한다.
     fieldCategory: id === "re100" ? "concentration" : "research", fieldGrade: "O", mappingGrade: "G",
     evidenceGrade: grade.split("·").filter(g => g !== "G").join("·") || "G",
@@ -82,20 +82,20 @@
   });
   const cards = [
     card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "선로 상태를 살펴 전기를 보낼 때의 손실을 줄여요."),
-    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], `연계선 용량 ×${params.hvdcCap.v}로 송전 용량을 늘리고 계통 제약을 푼다, 새 선 건설비 ×${params.hvdcCost.v}`, "P·G", "짧은 거리에서는 변환소 손실 때문에 손실 개선을 기대하지 않아요."),
-    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
-    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
-    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "하한 10→5%, 왕복 효율 85→87%", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
-    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], "새 탠덤 태양광 출력·건설비 ×1.15", "P·G", "기존 패널은 바뀌지 않아요."),
-    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], "새 배터리 용량 ×1.25, 화재 면역", "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요해요."),
-    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], "새 태양광·배터리 건설비 ×0.92", "G", "시장 전체의 가격 하락을 한 도시의 연구 성과로 보지는 않아요."),
-    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], "200 MWh 장주기 저장, 왕복 35%", "P·G", "많이 저장하지만 손실이 크고 처음에는 비어 있어요."),
-    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], "LNG CO₂ ×0.88", "M", "부피 비율과 열량 비율은 달라요."),
-    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], "석탄 CO₂ ×0.4, 출력 ×0.85", "P·G", "포집에도 전기가 들어요."),
+    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], () => `연계선 용량 ×${+params.hvdcCap.v.toFixed(2)}로 송전 용량을 늘리고 계통 제약을 푼다, 새 선 건설비 ×${+params.hvdcCost.v.toFixed(2)}`, "P·G", "짧은 거리에서는 변환소 손실 때문에 손실 개선을 기대하지 않아요."),
+    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], () => `연계선 용량 ×${+params.scableCap.v.toFixed(2)}, 손실 ×${+params.scableLoss.v.toFixed(2)}, 냉각 월 ${+params.scableCooling.v.toFixed(2)}억/선`, "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
+    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], () => `재생 출력 ×${+params.sicOutput.v.toFixed(3)}`, "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
+    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
+    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], () => `새 탠덤 태양광 출력 ×${+params.tandemOutput.v.toFixed(2)}, 건설비 ×${+params.tandemCost.v.toFixed(2)}`, "P·G", "기존 패널은 바뀌지 않아요."),
+    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], () => `새 배터리 용량 ×${+params.nbatCapacity.v.toFixed(2)}`, "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요해요."),
+    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], () => `새 태양광·배터리 건설비 ×${+params.massCost.v.toFixed(2)}`, "G", "시장 전체의 가격 하락을 한 도시의 연구 성과로 보지는 않아요."),
+    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], () => `${params.h2MWh.v} MWh 장주기 저장, 왕복 ${+(params.h2Efficiency.v * 100).toFixed(2)}%`, "P·G", "많이 저장하지만 손실이 크고 처음에는 비어 있어요."),
+    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], () => `연결된 수소가 남아 있을 때 LNG CO₂ 최대 ${+((1 - params.h2Co2.v) * 100).toFixed(2)}% 감소`, "M", "부피 비율과 열량 비율은 달라요."),
+    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], () => `석탄 CO₂ ×${+params.ccuCo2.v.toFixed(2)}, 출력 ×${+params.ccuOutput.v.toFixed(2)}`, "P·G", "포집에도 전기가 들어요."),
     card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "", "P·G", "수업 시간에 맞춰 공사 기간을 줄였어요. 실제 인허가 기간과는 달라요."),
-    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], `저녁 피크에 저장을 남기고 사건 예보 범위를 ${params.fcstWidth.v}배로`, "M·G", "예측은 날씨를 바꾸지 않아요."),
-    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "효과 크기는 수업을 위한 가정이에요."),
-    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아져요.")
+    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], () => `저녁 피크에 저장을 남기고 사건 예보 폭 최대 ${+params.fcstWidth.v.toFixed(2)}배(원래 범위 안으로 자름)`, "M·G", "예측은 날씨를 바꾸지 않아요."),
+    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], () => `수요반응 ×${+params.drEffect.v.toFixed(2)}·비용 ×${+params.drCost.v.toFixed(2)}, 출력제어 손실 ×${+params.vppCurtail.v.toFixed(2)}`, "G", "효과 크기는 수업을 위한 가정이에요."),
+    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아져요.")
   ];
   // 효과 계수는 그대로 둔다. scale은 효과 증가/감소 폭을 현실 비교 폭으로 나눈 표시값(G).
   // tandem 기준은 ECON-TECH와 ECON-DATA의 일반 모듈 22% → 상용 탠덤 26.9%다.
@@ -138,6 +138,17 @@
     enumerable: true,
     get: () => KCP.buildGame?.gridEffectText?.() || "현재 지도의 송전 손실을 ⅔로"
   });
+  Object.defineProperty(cards.find(c => c.id === "bms"), "eff", {
+    enumerable: true,
+    get: () => KCP.buildGame?.bmsEffectText?.() || `잔량 하한 ${+(params.bmsFloor.v * 100).toFixed(2)}% · 왕복 효율 약 ${Math.round(params.bmsEfficiency.v ** 2 * 100)}%`
+  });
+  Object.defineProperty(cards.find(c => c.id === "re100"), "eff", {
+    enumerable: true,
+    get: () => {
+      const weight = KCP.ECON_DATA?.params.re100PolicyWeight.v;
+      return `정책 선택 시 산업 매력 재생 항 가중${weight == null ? "을 높여요" : ` ×${weight}`}`;
+    }
+  });
   Object.defineProperty(cards.find(c => c.id === "smr"), "eff", {
     enumerable: true,
     get: () => `${+params.smrMW.v.toFixed(2)} MW, ${+params.smrCost.v.toFixed(2)}억, 건설 ${params.smrTurns.v}턴`
@@ -151,10 +162,10 @@
     typhoon_coast: { cards: ["scable"], text: "초전도 기술이 있으면 연계선 단절을 막아요" }
   };
   const eureka = {
-    grid: "내부 송전선 운영", hvdc: "연계선 2개 연결", scable: "HVDC 연계선 운영", sic: "재생 발전 운영",
-    bms: "배터리 운영", tandem: "태양광 10기 운영", nbat: "BMS 도입 후 배터리 운영", mass: "탠덤 또는 차세대 배터리 운영",
-    h2store: "출력제어 발생", h2mix: "수소 탱크 운영", ccu: "석탄 발전 운영", smr: `지지율이 시작보다 ${params.eurekaApproval.v}%p 넘게 떨어지지 않음 또는 시위 없음`,
-    fcst: "폭염 사건 경험", vpp: "수요반응 정책 3달 운영", re100: "재생 비중 30% 이상 운영"
+    grid: "내부 송전선 설치", get hvdc() { return `연계선 ${params.eurekaTies.v}개 연결`; }, scable: "HVDC 연계선 건설 완료", sic: "재생 발전 운영",
+    bms: "배터리 운영", get tandem() { return `태양광 ${params.eurekaSolar.v}기 운영`; }, nbat: "BMS 도입 후 배터리 운영", mass: "탠덤 또는 차세대 배터리 운영",
+    h2store: "출력제어 발생", h2mix: "수소 탱크 운영", ccu: "석탄 발전 운영", get smr() { return `지지율이 시작보다 ${params.eurekaApproval.v}%p 넘게 떨어지지 않음 또는 시위 없음`; },
+    fcst: "폭염 사건 경험", get vpp() { return `수요반응 정책 ${params.eurekaDr.v}달 운영`; }, get re100() { return `재생 비중 ${params.re100Need.v}% 이상 운영`; }
   };
   const titles = branches.map(b => ({ id: b.id, branch: b.id,
     name: ({ grid: "그리드 개척자", materials: "신소재 개척자", hydrogen: "수소 선도 도시", climate: "탄소 순환 도시", nuclear: "원자핵 개척자", ai: "에너지AI 선도 도시" })[b.id],

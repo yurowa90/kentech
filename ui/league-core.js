@@ -445,25 +445,25 @@
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
     const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
     Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: P.eduAir.v, eduAirSpecified: P.eduAir.v,
-      smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed),
+      smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(P.smrMonthsReal.v / speed),
       lngSpikeFrequency: P.lngSpikeFrequency.v, outageHoursPerPercent: P.outageHoursPerPercent.v, koreaOutageHours2019: P.koreaOutageHours2019.v,
       islandLineLoss: P.islandLineLoss.v, researchYears: P.researchYears.v.slice(), complaintPoliticalEffect: P.complaintPoliticalEffect.v.slice(),
       note: `주민·기업 이동과 SMR 공사 시간 ×${speed}(게임 1달 ≈ 현실 약 ${speed}달)`,
       items: [
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
-        ["eduMemory", `지지율 회복 기억 ×${P.eduMemory.v}: 임기 4년을 게임 12달에 압축`],
-        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년`],
+        ["eduMemory", `지지율 회복 시간 ×${P.eduMemory.v}: 회복 시간을 ${P.eduMemory.v}배 압축`],
+        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년(48달)을 ×4 압축`],
         ["eduAir", `대기 영향 ×${P.eduAir.v}(교육용·집단 만족만, 이주에는 ×1)`],
         ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
         ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
         ["hazardFreq", `기상 사건 빈도 ×${P.hazardFreq.v}: 정책 판단 시간을 확보`],
-        ["lngSpikeFrequency", `LNG 급등은 현실보다 약 ${P.lngSpikeFrequency.v}배 자주: 충격 관찰`],
-        ["outageHoursPerPercent", `정전 1% = 연 ${P.outageHoursPerPercent.v}시간: 한국(최대 상업도시 기준) 연 ${P.koreaOutageHours2019.v}시간(2019)보다 큰 교육용 눈금`],
+        ["lngSpikeFrequency", `LNG 급등이 현실보다 약 ${P.lngSpikeFrequency.v}배 자주 나와요(추정 비교값, 추첨 확률에 곱하지 않음)`],
+        ["outageHoursPerPercent", `정전 1%를 같은 수요의 시간으로 바꾼 값: 연 ${P.outageHoursPerPercent.v}시간(에너지 미공급률의 등가 시간 환산이며, 실제 정전시간과 다름)`],
         ["islandLineLoss", `섬 연습 지도 송전 손실은 리그의 ${P.islandLineLoss.v}배: 짧은 지도에서 손실 관찰`],
-        ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 약 55개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed)}달`],
+        ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 비교 약 ${P.smrMonthsReal.v}개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(P.smrMonthsReal.v / speed)}달`],
         ["researchYears", `연구 기간 수십 배 압축: 현실 ${P.researchYears.v.join("~")}년 → 게임 수 달`],
-        ["complaintPoliticalEffect", `민원 정치 효과 약 ${P.complaintPoliticalEffect.v.join("~")}배 확대: 마을 민원을 도시 전체 만족에 반영`]
+        ["complaintPoliticalEffect", `마을 민원을 도시 전체 만족에 반영: 지지에 미치는 영향이 현실보다 약 ${P.complaintPoliticalEffect.v.join("~")}배 커요(추정 비교값, 계산 배수 아님)`]
       ].map(([key, note]) => ({ key, note })) });
     return { speeds, year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { len: E.len, coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, revYear: c.revYear, co2Intensity0: c.co2Intensity0, co2Intensity: c.co2Intensity, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
   }
