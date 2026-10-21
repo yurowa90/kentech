@@ -971,7 +971,7 @@
     const largestParts = n.outageFrozen?.parts ? tied.map(k => n.outageFrozen.parts.find(p => p.key === k)).filter(p => p && Object.hasOwn(OUT_NAMES, p.key)) :
       Object.hasOwn(OUT_NAMES, n.outageLargest?.key || "") ? [n.outageLargest] : [];
     return [single ? "고르기 생략" : n.missed ? `놓친 것: ${names[n.missed] || MISS_NAMES[n.missed] || n.missed}` : "",
-      frozenPicked && tied.includes(n.missed) ? tied.length > 1 ? "가장 큰 몫과 크기 같음" : "가장 큰 몫과 같음" : "",
+      frozenPicked && tied.includes(n.missed) ? tied.length > 1 ? "크기가 같은 가장 큰 몫 중 하나를 짚음" : "가장 큰 몫을 맞게 짚음" : "",
       frozenPicked && outageNoCause(n) ? recordedOutageNoCauseLabel(n) : "",
       !outageNoCause(n) && (n.outageOpened || n.outageSingleShown) && largestParts.length ? `가장 큰 몫: ${largestParts.map(p => `${names[p.key]} ${outageValue(p.value, outageUnit(a), true)}${outageCost(p.value, a)}`).join(" / ")}` : ""].filter(Boolean).join(" · ");
   }
@@ -988,7 +988,7 @@
       Object.hasOwn(OUT_NAMES, carry.largest?.key || "") ? [carry.largest] : [];
     const largestText = !outageNoCause(note) && (note.outageOpened || note.outageSingleShown) ?
       largestParts.map(p => `${names[p.key]} ${outageValue(p.value, outageUnit(a), true)}${outageCost(p.value, a)}`).join(" / ") : "";
-    return `<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: ${esc(single ? "고르기 생략" : names[frozenPicked ? note.missed : carry.missed] || "고르기 생략")}${frozenPicked && tied.includes(note.missed) ? tied.length > 1 ? " · 가장 큰 몫과 크기 같음" : " · 가장 큰 몫과 같음" : ""}${largestText ? `(가장 큰 몫 ${esc(largestText)})` : frozenPicked && outageNoCause(note) ? ` · ${esc(recordedOutageNoCauseLabel(note))}` : ""}</p>`;
+    return `<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: ${esc(single ? "고르기 생략" : names[frozenPicked ? note.missed : carry.missed] || "고르기 생략")}${frozenPicked && tied.includes(note.missed) ? tied.length > 1 ? " · 크기가 같은 가장 큰 몫 중 하나를 짚음" : " · 가장 큰 몫을 맞게 짚음" : ""}${largestText ? `(가장 큰 몫 ${esc(largestText)})` : frozenPicked && outageNoCause(note) ? ` · ${esc(recordedOutageNoCauseLabel(note))}` : ""}</p>`;
   }
   // 약속 주제는 확정(준비) 때 굳힌다. 그 전에는 시험 운전 결과에 따라 다시 정하고, 주제가 바뀌면 방향을 다시 고른다.
   // 정전이 없는 계획 달은 계통에 기댄 전기로 비교하되, 그 기준값을 구할 수 없으면 정전으로 둔다.
@@ -3085,13 +3085,30 @@
     const summary = rows.map(p => `${p.label} ${rowText(p)}`).join(", ");
     return `<div id="lg-outage-waterfall" class="lg-out-wf" role="img" aria-label="${esc(summary)}">${rows.map(p => `<div class="lg-out-row" data-out-step="${p.key}" data-out-value="${p.value}"><span>${esc(p.label)}</span><span class="lg-out-track"><i class="lg-out-bar" data-negative="${p.value < 0}" style="left:${100 * (Math.min(p.from, p.to) - low) / (high - low)}%;width:${100 * Math.abs(p.to - p.from) / (high - low)}%"></i></span><b>${esc(rowText(p))}</b></div>`).join("")}</div>`;
   }
-  function outageEvidenceText(n, a, largest) {
-    const monthly = a.basis === "monthly", names = outageNames(a);
+  function outageEvidenceLinks(n, a) {
     const links = { ...OUTAGE_EVIDENCE_LINKS[n.evidence?.key] };
     // 예전 저장 결과처럼 접속을 확인할 수 없을 때도 풍속만으로 직접 효과를 인정하지 않는다.
     if (n.evidence?.key === "wind" && !a.hasConnectedWind) {
       links.weather = "indirect"; links.event = "indirect";
     }
+    return links;
+  }
+  function outageEvidenceSummary(n, a) {
+    const links = outageEvidenceLinks(n, a), names = outageNames(a);
+    if (!n.evidence?.text) return "고른 근거 없음";
+    // 거의 0인 몫은 '외 n개'에 세지 않는다. 요약만 읽어도 근거의 효과로 오해하지 않게 '직접 연결 몫'이라고 밝힌다.
+    const direct = a.parts.filter(p => links[p.key] === "direct")
+      .sort((x, y) => Math.abs(y.value) - Math.abs(x.value));
+    const evidence = `고른 근거 ‘${n.evidence.text}’`;
+    if (!direct.length) return `${evidence}만의 효과는 따로 계산하지 않음`;
+    const counted = direct.filter(p => Math.abs(p.value) >= outageMinPart(a));
+    if (!counted.length) return `${evidence} · 직접 연결 몫은 거의 0`;
+    const largest = counted[0];
+    return `${evidence} · 직접 연결 몫 ${names[largest.key]} ${outageValue(largest.value, outageUnit(a), true)}${counted.length > 1 ? ` 외 ${counted.length - 1}개` : ""}`;
+  }
+  function outageEvidenceText(n, a, largest) {
+    const monthly = a.basis === "monthly", names = outageNames(a);
+    const links = outageEvidenceLinks(n, a);
     const linked = a.parts.filter(p => links[p.key]);
     let text;
     if (linked.length) text = `고른 근거 ‘${n.evidence.text}’와 관련된 몫: ${["direct", "stage", "indirect"].map(kind => {
@@ -3172,7 +3189,7 @@
     const moreHTML = more.length ? `<details id="lg-outage-more" class="lg-hint"><summary>단서 더 보기</summary><ul>${more.map(([key, text]) => `<li><b>${esc(names[key])}</b>: ${esc(text)}</li>`).join("")}</ul></details>` : "";
     return `<section id="lg-missed" class="lg-outage" data-ms="${a.ms}" data-simulations="${a.simulations}" data-grid-fills="${a.gridFills ?? 0}" data-opened="${opened}" data-single="${single}"><h4>${subject} 변화의 원인 하나</h4>${a.target === "uns" && n.topic === "grid" ? '<p class="lg-hint">이번 달은 실제 정전이 생겨 원인은 정전으로 나눠요.</p>' : a.target === "grid" && n.topic === "uns" ? '<p class="lg-hint">이번 달은 비교하는 두 결과 모두 정전이 없어 원인은 바깥 계통에 기댄 전기로 나눠요.</p>' : ""}${a.target === "grid" && a.trial == null ? '<p class="lg-hint">시험 기록에 계통 값 없음</p>' : ""}${comparisonNote}${gridBox}
       ${single ? `<p id="lg-outage-single">${singleText}.</p>` : `<p class="lg-hint">${monthly ? "지난달 실제 → 이번 달 실제" : "시험 → 실제"} ${esc(part(a.total))}. 후보 ${cards.length === 1 ? "한" : cards.length === 2 ? "두" : "세"} 개의 단서만 보고 하나를 골라요.</p><div id="lg-outage-cards" class="lg-out-cards" role="group" aria-label="원인 카드">${cards.map(p => `<button type="button" class="lg-out-card" data-missed="${p.key}" aria-pressed="${n.missed === p.key}" ${opened ? "disabled" : ""}${opened ? ` data-out-value="${p.value}"` : ""}><strong>${esc(names[p.key])}</strong><span class="lg-out-clue">${esc(a.clues[p.key])}</span><b class="lg-out-size">${opened ? `${esc(part(p.value))}` : "?"}</b>${opened ? `<span class="lg-out-tags">${n.missed === p.key ? '<span data-out-tag="picked">내가 고름</span>' : ""}${tied.includes(p.key) ? `<span data-out-tag="largest">${tied.length > 1 ? "공동 가장 큼" : "가장 큼"}</span>` : ""}</span>` : ""}</button>`).join("")}</div>`}
-      ${!opened ? `${othersHTML}${moreHTML}<button type="button" class="v2-btn primary" id="lg-outage-open" ${cards.some(p => p.key === n.missed) ? "" : "disabled"}>이 카드로 정하고 열기</button>` : `${outageWaterfallHTML(a)}${single ? othersHTML : `<details id="lg-outage-others-fold" class="lg-out-fold lg-hint"><summary>나머지 원인 ${others.length}개</summary>${othersHTML}</details>`}${moreHTML}${outageReplayShown(a, a.replay) ? monthly ? `<p id="lg-outage-replay" class="lg-hint">재현 차이 ${esc(part(a.replay))}: 지난달 사본의 ${a.target === "grid" ? "계통 보충량" : a.target ? "계통 반영 정전율" : "고립 정전율"}과 같은 조건 재계산의 차이예요. ${a.replayOutsideSum ? '분해 합계 밖 진단이며 원인 후보에는 넣지 않아요.' : '원인 후보에는 넣지 않아요.'}</p>` : `<p id="lg-outage-replay" class="lg-hint">시험 재현 차이 ${esc(part(a.replay))}: 저장된 시험과 재계산의 차이예요. 시험 뒤 뺀 설비의 접속 할당 등 당시 접속·기술 조건을 완전히 되살리지 못해 생길 수 있어요. 원인 후보에는 넣지 않아요.</p>` : ""}<div id="lg-outage-verdict" tabindex="-1" aria-live="polite"><p>내가 고른 것: ${single ? "고르기 생략" : `${esc(names[n.missed] || "미선택")} ${selected ? esc(part(selected.value)) : ""}${selected ? tied.includes(selected.key) ? tied.length > 1 ? " · 크기가 같은 가장 큰 몫 중 하나예요" : " · 가장 큰 몫과 같아요" : Math.abs(selected.value) < min ? " · 이번 차이에 거의 기여하지 않았어요" : " · 몫은 있지만 가장 크지 않았어요" : ""}`}</p><p>${largest ? tied.length > 1 ? `가장 큰 것(크기 같음 ${tied.length}개): ${tied.map(k => `${esc(names[k])} ${esc(part(a.parts.find(p => p.key === k).value) + outageCost(a.parts.find(p => p.key === k).value, a))}`).join(" · ")}` : `가장 큰 것: ${esc(names[largest.key])} ${esc(part(largest.value) + outageCost(largest.value, a))} · ${esc(a.clues[largest.key])}` : esc(outageNoCauseLabel(a))}</p><details id="lg-outage-evidence" class="lg-out-fold lg-hint"><summary>내 예측이 놓친 것</summary><p>내 예측이 놓친 것: ${esc(outageEvidenceText(n, a, largest))}</p></details></div><button type="button" class="v2-btn" id="lg-outage-carry" ${n.missedCarry ? "disabled" : ""}>${n.missedCarry ? "다음 달 약속 카드에 붙였어요" : "다음 달 약속 카드에 붙이기"}</button><small class="lg-hint">기기에만 저장</small>${y2022LinkHTML("lg-y2022-result", V.phase !== "end")}`}
+      ${!opened ? `${othersHTML}${moreHTML}<button type="button" class="v2-btn primary" id="lg-outage-open" ${cards.some(p => p.key === n.missed) ? "" : "disabled"}>이 카드로 정하고 열기</button>` : `${outageWaterfallHTML(a)}${single ? othersHTML : `<details id="lg-outage-others-fold" class="lg-out-fold lg-hint"><summary>나머지 원인 ${others.length}개</summary>${othersHTML}</details>`}${moreHTML}${outageReplayShown(a, a.replay) ? monthly ? `<p id="lg-outage-replay" class="lg-hint">재현 차이 ${esc(part(a.replay))}: 지난달 사본의 ${a.target === "grid" ? "계통 보충량" : a.target ? "계통 반영 정전율" : "고립 정전율"}과 같은 조건 재계산의 차이예요. ${a.replayOutsideSum ? '분해 합계 밖 진단이며 원인 후보에는 넣지 않아요.' : '원인 후보에는 넣지 않아요.'}</p>` : `<p id="lg-outage-replay" class="lg-hint">시험 재현 차이 ${esc(part(a.replay))}: 저장된 시험과 재계산의 차이예요. 시험 뒤 뺀 설비의 접속 할당 등 당시 접속·기술 조건을 완전히 되살리지 못해 생길 수 있어요. 원인 후보에는 넣지 않아요.</p>` : ""}<div id="lg-outage-verdict" tabindex="-1" aria-live="polite"><p>내가 고른 것: ${single ? "고르기 생략" : `${esc(names[n.missed] || "미선택")} ${selected ? esc(part(selected.value)) : ""}${selected ? tied.includes(selected.key) ? tied.length > 1 ? " · 크기가 같은 가장 큰 몫 중 하나예요" : " · 가장 큰 몫과 같아요" : Math.abs(selected.value) < min ? " · 이번 차이에 거의 기여하지 않았어요" : " · 몫은 있지만 가장 크지 않았어요" : ""}`}</p><p>${largest ? tied.length > 1 ? `가장 큰 것(크기 같음 ${tied.length}개): ${tied.map(k => `${esc(names[k])} ${esc(part(a.parts.find(p => p.key === k).value) + outageCost(a.parts.find(p => p.key === k).value, a))}`).join(" · ")}` : `가장 큰 것: ${esc(names[largest.key])} ${esc(part(largest.value) + outageCost(largest.value, a))} · ${esc(a.clues[largest.key])}` : esc(outageNoCauseLabel(a))}</p><details id="lg-outage-evidence" class="lg-out-fold lg-hint"><summary><span>내 예측이 놓친 것 · ${esc(outageEvidenceSummary(n, a))}</span></summary><p>내 예측이 놓친 것: ${esc(outageEvidenceText(n, a, largest))}</p></details></div><button type="button" class="v2-btn" id="lg-outage-carry" ${n.missedCarry ? "disabled" : ""}>${n.missedCarry ? "다음 달 약속 카드에 붙였어요" : "다음 달 약속 카드에 붙이기"}</button><small class="lg-hint">기기에만 저장</small>${y2022LinkHTML("lg-y2022-result", V.phase !== "end")}`}
       <p id="lg-outage-order" class="lg-hint">이번 달 계산 순서: ${esc(a.parts.map(p => names[p.key]).join(" → "))}. 순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.</p></section>`;
   }
   function co2AttributionHTML(V, res, id) {
