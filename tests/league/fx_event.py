@@ -1178,6 +1178,13 @@ def run_case(checks, page, base, label, mobile, reduced, fixture, coverage):
                         }""")
                     except Exception:
                         pass  # 재로딩 중 예외면 문맥이 사라졌다. 원래 예외를 가리지 않는다.
+                    # 보류 단언이 실패해 일찍 돌아오면 320×48 창이 남아 뒤 달이 연쇄로 실패하고
+                    # 원인을 가린다. 성공 경로는 forecast_reload_shows가 이미 되돌렸으므로 다를 때만 바꾼다.
+                    if page.viewport_size != {'width': 390, 'height': 844}:
+                        try:
+                            page.set_viewport_size({'width': 390, 'height': 844})
+                        except Exception:
+                            pass  # 원래 예외를 가리지 않는다.
             else:
                 click_progress(page, observe(page), preserve_drawer=next_with_cards)
                 if next_with_cards:
