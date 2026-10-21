@@ -122,10 +122,12 @@
   };
   // Esc 한 번에 하나만 닫는다. 다른 처리기가 이미 쓴 Esc(defaultPrevented)와 열린 대화상자에는 양보한다.
   const escFree = e => e.key === "Escape" && !e.defaultPrevented && !document.querySelector("dialog[open]");
-  // 펼친 카드는 서랍 위를 덮는 맨 위 층이고, 초점이 덱 안이면 학생이 카드를 보고 있다. 이때는 window 캡처
-  // 단계에서 리그 처리기보다 먼저 받아 카드만 닫고 서랍 쪽으로 넘기지 않는다.
+  // 화면에 펼쳐진 덱(넓은 화면의 카드, 좁은 화면에서 펼친 띠)은 맨 위 층이다. 접힌 띠만 서랍 아래 층이라
+  // 서랍이 먼저 닫힌다(총괄 결정 10-21). 초점이 덱 안이면 접힌 띠라도 학생이 보고 있으므로 맨 위 층으로 본다.
+  // 맨 위 층이면 window 캡처 단계에서 리그 처리기보다 먼저 받아 카드만 닫고 서랍 쪽으로 넘기지 않는다.
   const topEscape = (e, close) => {
-    if (!escFree(e) || !deck || status.deferred || !(expanded || deck.contains(document.activeElement))) return;
+    if (!escFree(e) || !deck || status.deferred) return;
+    if (status.strip && !expanded && !deck.contains(document.activeElement)) return;
     e.preventDefault(); e.stopPropagation(); close();
   };
   // 덱 안 초점은 어떻게 닫히든 복귀시킨다(자동 닫힘·화면 낭독기 훑기·달 불일치·단계 전환 포함). 이미 body로
