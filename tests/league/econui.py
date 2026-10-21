@@ -1084,10 +1084,11 @@ def ui_fixes(checks, context, base, label, pages):
           L.snap.results.at(-1).events.push({id:E.id,round:L.snap.round,x:1});
         }""")
         open_panel(team, 'city'); open_panel(team, 'result')
+    # 총괄 10-21 지시: asOf·published를 분리 표시하므로 기준연월 단언을 자료 시점으로 변경.
     checks.ok(team.locator('[data-event-source]').count() > 0 and
               team.locator('[data-event-source]').evaluate_all("""nodes => nodes.every(n =>
-                n.querySelector('a[href^="http"]') && /기준연월/.test(n.textContent) &&
-                !n.querySelector('a[href^="docs/"]'))"""), f'{label} #12 사건 외부 출처·기준연월')
+                n.querySelector('a[href^="http"]') && /자료 시점/.test(n.textContent) && !/자료 시점 미기재/.test(n.textContent) &&
+                !n.querySelector('a[href^="docs/"]'))"""), f'{label} #12 사건 외부 출처·자료 시점')
     snapshot = team.evaluate('() => KCP.league.state().snap')
     # 옛 공급 0(dem == uns) → 새 계통만 공급, 근거 D-74 각주: 매시간 50% 계통 공급으로 경제 모드의 '공급 없음' 경로는 도달 불가, 단언 제외.
     # 옛 공급량만 비교 → 새 공개 결과로 자체 공급(dem - isolated.uns)·이웃 구매(imp)를 독립 판별, 근거 D-74. 0.01 MWh는 공개값 소수 둘째 자리 반올림 허용차.

@@ -560,7 +560,14 @@ def crosscheck(checks, page, rows, label):
     for key, heading, old_precision in (('uns', '정전(이번 달)', 2), ('co2', 'CO₂(이번 달 운영)', 0)):
         div = page.locator('#lg-result-deltas > div').filter(
             has=page.get_by_text(heading, exact=True))
-        shown_value = number(div.locator('dd').inner_text(), METRICS[key][1])
+        dd_text = div.locator('dd').inner_text()
+        if key == 'co2' and re.search(r't/일\s*$', dd_text):
+            # D-82 결정 1 후속(총괄 10-21): 계통 주제 달은 CO₂ 칸이 t/일 먼저, 월 합계는 보조
+            # '이번 달 합 N t'로 옮겼다. 같은 월 합계 값을 같은 허용폭으로 비교한다.
+            total = re.search(r'이번 달 합\s*([\d,.\-−]+)\s*t', div.locator('small').inner_text())
+            shown_value = number(total.group(0), METRICS[key][1]) if total else None
+        else:
+            shown_value = number(dd_text, METRICS[key][1])
         checks.ok(near(rows[key]['last'], shown_value, METRICS[key][2], old_precision),
                   label + f' {METRICS[key][0]} 마지막 aria = 같은 화면 월 결과값')
     open_panel(page, 'city')

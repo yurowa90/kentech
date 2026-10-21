@@ -23,6 +23,7 @@ from league_flow import pass_issue_check, select_mode, start_solo, wait_unfolded
 from solo import click_next, close_drawer, read
 
 NUMBER = r"[+−-]?\s*\d[\d,]*(?:\.\d+)?"
+PER_DAY = rf"{NUMBER} MWh/일(?: 미만)?"
 TITLE = "CO₂ 시험 운전 · 소비 기준(계통에서 받은 전기 포함)"
 
 
@@ -37,6 +38,12 @@ def value(token):
 
 def near(token, expected, digits):
     return math.isfinite(expected) and abs(value(token) - expected) <= .5 * 10 ** -digits + 1e-7
+
+
+def per_day_near(token, expected):
+    # 10-21 후속: 0 이상 0.05 미만은 숫자 0 대신 상한 문구. 나머지는 기존 1자리 허용폭 그대로.
+    return token == "0.1 MWh/일 미만" if 0 <= expected < .05 else (
+        token.endswith(" MWh/일") and near(token.removesuffix(" MWh/일"), expected, 1))
 
 
 def capture(checks, page, label):
@@ -170,10 +177,10 @@ def trial_report(checks, page, tested, label):
     per_day = tested["gridMWh"] / tested["days"]
     monthly = per_day * days
     line = page.locator("#bd-league-goals p").filter(has_text="바깥 계통이 메워 준 전기").inner_text()
-    match = re.search(rf"전기 시험 {tested['days']}일 ({NUMBER}) MWh → 하루 평균 ({NUMBER}) MWh/일\(이번 달 {days}일이면 약 ({NUMBER}) MWh · 비용 약 ({NUMBER})억", line)
+    match = re.search(rf"전기 시험 {tested['days']}일 ({NUMBER}) MWh → 하루 평균 ({PER_DAY})\(이번 달 {days}일이면 약 ({NUMBER}) MWh · 비용 약 ({NUMBER})억", line)
     require(checks, bool(match), label + " S3 계통 시험·하루 평균·보조 월 합계·비용 형식")
     price = page.evaluate("() => KCP.ECON_DATA.params.normalCost.v*KCP.ECON_DATA.params.gridImportMarkup.v")
-    checks.ok(near(match[1], tested["gridMWh"], 1) and near(match[2], per_day, 1) and
+    checks.ok(near(match[1], tested["gridMWh"], 1) and per_day_near(match[2], per_day) and
               near(match[3], monthly, 1) and near(match[4], monthly * price, 2) and line.count("비용") == 1,
               label + " S3 계통 MWh/일·월 환산 비용 독립 검산(7일 비용 혼용 없음)")
     explanation = page.locator("#bd-league-goals p").filter(has_text="머리 칩").inner_text()
@@ -202,8 +209,8 @@ def promise(checks, page, topic, label, baseline=None):
     if baseline:
         token, per_day = baseline  # D-82 결정 1·화면 지시서: 성적표와 같은 일평균.
         line = page.locator("#lg-promise-baseline").inner_text()
-        match = re.search(rf"시험 1주 대비 · 하루 평균 ({NUMBER}) MWh/일", line)
-        checks.ok(bool(match) and near(match[1], per_day, 1) and value(match[1]) == value(token),
+        match = re.search(rf"시험 1주 대비 · 하루 평균 ({PER_DAY})", line)
+        checks.ok(bool(match) and per_day_near(match[1], per_day) and match[1] == token,
                   label + " S4 비교 기준 MWh/일 = 독립 하루 평균 = S3 표시")
     page.locator('[data-evidence="grid"]').click()
     page.locator(f'[data-pred="{topic}"]').select_option("same")
@@ -219,6 +226,28 @@ def result(checks, page, tested, label, grid=True):
     S, player = state["S"], state["player"]
     current = S["results"][-1]
     open_panel(page, "result")
+    r = current["team"][player]
+    previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
+    # 10-21 후속: 생산 CO₂ 칸도 계통 약속만 t/일. 달력으로 월 합계와 각 달의 하루 평균을 따로 검산한다.
+    prod = page.locator("#lg-result-deltas > div").filter(has_text="CO₂(이번 달 운영)")
+    prod_total = r["co2Prod"] * month_days(current) / current["days"]
+    prod_value, prod_change = prod.locator("dd").inner_text(), prod.locator("small").inner_text()
+    if grid:
+        m = re.fullmatch(rf"({NUMBER}) t/일", prod_value)
+        checks.ok(bool(m) and near(m[1], prod_total / month_days(current), 1), label + " S6 생산 CO₂ 하루 평균 먼저")
+        if previous:
+            old_total = previous["team"][player]["co2Prod"] * month_days(previous) / previous["days"]
+            m = re.fullmatch(rf"지난달 대비 Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
+            checks.ok(bool(m) and near(m[1], prod_total / month_days(current) - old_total / month_days(previous), 1) and
+                      near(m[2], prod_total, 0) and (value(m[1]) == 0 or m[1].lstrip().startswith(("+", "−", "-"))),
+                      label + " S6 생산 CO₂ Δ t/일·월 합계 독립 검산")
+        else:
+            m = re.fullmatch(rf"지난달 대비 Δ 비교 없음\(첫 결과\) · 이번 달 합 ({NUMBER}) t", prod_change)
+            checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 첫 달 생산 CO₂ 월 합계 보조·Δ 비교 없음")
+    else:
+        m = re.fullmatch(rf"({NUMBER})t", prod_value)
+        checks.ok(bool(m) and near(m[1], prod_total, 0) and "t/일" not in prod_change,
+                  label + " 정전 주제 S6 생산 CO₂ 월 합계 유지")
     node = page.locator("#lg-s6-co2cons")
     if not grid:
         checks.ok(node.count() == 0, label + " 정전 주제 S6 소비 CO₂ 줄 없음")
@@ -235,11 +264,9 @@ def result(checks, page, tested, label, grid=True):
       const r=el.getBoundingClientRect(), p=el.closest('.lg-pbody').getBoundingClientRect();
       return r.top>=p.top-.5 && r.bottom<=Math.min(innerHeight,p.bottom)+.5;
     }"""), label + " S6 서랍 첫 화면에서 CO₂ 줄 전체 보임")
-    r = current["team"][player]
     # D-82 결정 1·화면 지시서: 소비 CO₂·계통 칩도 하루 평균 먼저, 월 합계는 보조.
     total = r["co2Cons"] * month_days(current) / current["days"]
     per_day = total / month_days(current)
-    previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
     if previous:
         base = previous["team"][player]["co2Cons"] * month_days(previous) / previous["days"] / month_days(previous)
         baseline_name = "지난달 대비"
@@ -258,8 +285,8 @@ def result(checks, page, tested, label, grid=True):
     grid_per_day = max(0, isolated - r["uns"] - r["imp"] + r["sub"]) / current["days"]
     buttons = page.locator(".lg-reason-starts").first.locator("[data-reason-start]")
     starts = buttons.all_text_contents()
-    m = re.search(rf"이번 달 계통이 메운 전기 하루 평균 ({NUMBER}) MWh/일이라서", starts[0] if starts else "")
-    checks.ok(len(starts) == 3 and bool(m) and near(m[1], grid_per_day, 1) and
+    m = re.search(rf"이번 달 계통이 메운 전기 하루 평균 ({PER_DAY})이라서", starts[0] if starts else "")
+    checks.ok(len(starts) == 3 and bool(m) and per_day_near(m[1], grid_per_day) and
               starts[1] == "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 " and
               starts[2].startswith("남은 돈 ") and not any("정전" in x for x in starts),
               label + " S8 계통 하루 평균 칩·확인 칩·현금 칩(정전 0% 없음)")

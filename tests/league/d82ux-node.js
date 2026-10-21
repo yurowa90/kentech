@@ -27,7 +27,7 @@ const source = fs.readFileSync(path.resolve(__dirname, '../../ui/league.js'), 'u
 assert.equal(source.split('let L = null;').length, 2);
 assert.equal(source.split('KCP.league = {').length, 2);
 vm.runInContext(source.replace('let L = null;', 'let L = globalThis.__session;')
-  .replace('KCP.league = {', 'globalThis.__hooks = { decisionsHTML, promiseResultHTML, reasonStartsHTML, trialGoals, predictionHTML, gridFillHTML }; KCP.league = {'), ctx);
+  .replace('KCP.league = {', 'globalThis.__hooks = { decisionsHTML, promiseResultHTML, promiseComparison, promiseVerdictShort, resultHTML, reasonStartsHTML, trialGoals, predictionHTML, gridFillHTML }; KCP.league = {'), ctx);
 const api = ctx.__hooks, C = ctx.KCP.leagueCore, B = ctx.KCP.buildGame;
 // 도시 식별자는 기존 자료에서 고른다. 사용자 이름·실제 회사 이름이 없는 가상 기록이다.
 const ids = C.regionOf('south').teams.slice(0, 2).map(t => t.id), id = ids[0];
@@ -103,7 +103,7 @@ test('S8 계통 값 누락이면 정전 칩 유지', () => {
 test('S8 계통 0도 유효한 값이므로 계통 칩 유지', () => {
   const r = S.results[1].team[id], old = r.isolated;
   r.isolated = { uns: 0 };
-  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기 하루 평균 0 MWh/일이라서 ')); }
+  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기 하루 평균 0.1 MWh/일 미만이라서 ')); }
   finally { r.isolated = old; }
 });
 test('S8 계통 하루 평균은 소수 한 자리까지 표시', () => {
@@ -223,6 +223,107 @@ S.round = 3; S.results = [result(2, 140, 1053.4 * 7 / 28)];
 test('S4 지난달 기준은 지난달 평균 37.6과 지난달 28일·합계 1,053.4를 표시', () => {
   note();
   assert.match(api.predictionHTML(S), /지난달 대비 · 하루 평균 37\.6 MWh\/일\(지난달 28일 합 1,053\.4 MWh · [\d,.]+억\)/);
+});
+// 10-21 후속: 1자리 Δ로 판정 경계를 가리는 회귀, 작은 양을 0으로 보이는 회귀,
+// CO₂ 월 길이 차이를 하루 평균 변화로 보이는 회귀를 실제 HTML 출력으로 잡는다.
+S.phase = 'review'; S.round = 2; trial = null;
+S.results = [result(1, 140, 37.62 * 7), result(2, 140)];
+test('S6 기준 37.62의 경계: 요약·접힘 제목 −1.9 유지, 상세 −1.89/−1.88·문턱 ±1.88', () => {
+  for (const [delta, detailed, verdict] of [[-1.886, '−1.89', '예상과 다름'], [-1.876, '−1.88', '예상과 같음']]) {
+    S.results[1].team[id].isolated.uns = (37.62 + delta) * 7;
+    const n = note(), before = JSON.stringify([S, n, [...storage]]);
+    const html = api.promiseResultHTML(S, n);
+    const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1];
+    assert.ok(summary.includes('하루 평균 −1.9 MWh/일') && summary.includes(verdict));
+    assert.doesNotMatch(summary, /판정 계산|같음' 범위/);
+    assert.ok(api.promiseVerdictShort(api.promiseComparison(S, n), n).includes('하루 평균 Δ −1.9 MWh/일'));
+    assert.ok(html.includes(`<p data-compare="grid">${summary}</p><p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${detailed} MWh/일, '같음' 범위 ±1.88 MWh/일(기준 하루 평균 37.62의 5%와 0.05 중 큰 값)</p>`));
+    assert.equal(JSON.stringify([S, n, [...storage]]), before);
+  }
+});
+test('S6 2자리로도 같아 보이는 0.005 미만 경계는 정밀도를 늘리지 않고 원값 판정', () => {
+  S.results[1].team[id].isolated.uns = (37.62 - 1.882) * 7; // 문턱 1.881과 차이 0.001.
+  const html = api.promiseResultHTML(S, note());
+  assert.match(html, /하루 평균 Δ −1\.88 MWh\/일, '같음' 범위 ±1\.88 MWh\/일/);
+  assert.match(html, /하루 평균 −1\.9 MWh\/일 · 예상과 다름/);
+});
+test('정전·현금 주제와 계통 비교 기준 없는 달은 상세 계산 줄 없음', () => {
+  for (const topic of ['uns', 'cash']) assert.ok(!api.promiseResultHTML(S, note(topic)).includes('lg-promise-grid-calc'));
+  S.results = [result(2, 140)];
+  assert.ok(!api.promiseResultHTML(S, note()).includes('lg-promise-grid-calc'));
+});
+S.round = 1; S.results = [result(1, 140)];
+trial = { map: C.teamDef(C.regionOf('south'), id).pack, scope: JSON.stringify([S.room, id]),
+  ...S.rounds[0], days: 7, co2: 140, unsPct: 0, seed: 1 };
+for (const [perDay, text] of [[0, '0.1 MWh/일 미만'], [.04, '0.1 MWh/일 미만'], [.05, '0.1 MWh/일'], [.06, '0.1 MWh/일'], [.15, '0.2 MWh/일']]) {
+  test(`하루 평균 ${perDay}: 판정 문장·S4·S8·1월 성적표의 ${text}`, () => {
+    trial.gridMWh = perDay * 7;
+    S.results[0].team[id].isolated.uns = perDay * 7;
+    const n = note(); n.trial = { unsPct: 0, days: 7, gridMWh: perDay * 7 };
+    S.phase = 'review';
+    const verdict = api.promiseResultHTML(S, n);
+    assert.ok(verdict.includes(`이번 달 하루 평균 ${text} · 월 합계`));
+    assert.ok(verdict.includes('시험 1주 대비 하루 평균 0 MWh/일 · 예상과 같음'));
+    assert.ok(api.reasonStartsHTML(S).includes(`이번 달 계통이 메운 전기 하루 평균 ${text}이라서 `));
+    assert.equal(api.gridFillHTML(S, S.results[0], id) === '', perDay < .05);
+    S.phase = 'plan';
+    assert.ok(api.predictionHTML(S).includes(`시험 1주 대비 · 하루 평균 ${text}(이번 달 31일이면 약`));
+    const report = api.trialGoals({ map: trial.map, seed: trial.seed, days: 7, tot: { dem: 1000, by: { import: perDay * 7 }, co2: 100 }, unsTotal: 0 });
+    assert.ok(report.notes.some(line => line.includes(`→ 하루 평균 ${text}(이번 달 31일이면 약`)));
+    S.phase = 'review';
+    delete n.trial;
+    const savedTrial = trial; trial = null;
+    try { assert.ok(api.promiseResultHTML(S, n).includes(`이번 달 하루 평균 ${text}(비교 없음(첫 결과))`)); }
+    finally { trial = savedTrial; }
+  });
+}
+trial = null; S.phase = 'review'; S.round = 2;
+S.results = [result(1, 140), result(2, 140)];
+S.results.forEach(res => { res.team[id].co2Prod = 140; });
+function co2Cell(res = S.results.at(-1)) {
+  return api.resultHTML(S, res).match(/<div><dt>CO₂\(이번 달 운영\)<\/dt>(.*?)<\/div>/s)[1];
+}
+test('S6 계통 주제 CO₂: 31→28일 하루 평균 같으면 Δ 0, 월 합계 620→560은 보조', () => {
+  months[1] = { topic: 'grid', confirmed: true }; note();
+  const before = JSON.stringify([S, [...storage]]);
+  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>지난달 대비 Δ 비교 없음(첫 결과) · 이번 달 합 620 t</small>');
+  assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>');
+  // co2Prod=140/7=20 t/일, 총량은 140×31/7과 140×28/7.
+  assert.equal(JSON.stringify([S, [...storage]]), before);
+});
+test('S6 CO₂ 단위는 현재 달 대신 해당 결과 달의 약속 주제를 따름', () => {
+  note('uns');
+  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>지난달 대비 Δ 비교 없음(첫 결과) · 이번 달 합 620 t</small>');
+  months[1] = { topic: 'uns', confirmed: true }; note();
+  assert.equal(co2Cell(S.results[0]), '<dd>620t</dd><small>지난달 대비 Δ 비교 없음(첫 결과)</small>');
+});
+test('다음 달 계획 단계에서 약속 없는 지난 결과의 CO₂ 칸은 현재 달 주제로 다시 고르지 않음', () => {
+  // 독립 검토 minor 2: plan 단계 promiseTopic은 현재 달 조건으로 다시 계산하므로 지난 결과에는 저장 주제만 쓴다.
+  const old = [S.phase, S.round, months[1], months[2], months[3]];
+  try {
+    S.phase = 'plan'; S.round = 3; months[1] = { topic: 'grid', confirmed: true }; months[2] = {}; months[3] = { topic: 'grid', confirmed: true };
+    assert.equal(co2Cell(), '<dd>560t</dd><small>지난달 대비 Δ −60t</small>');
+    months[2] = { topic: 'grid', confirmed: true };
+    assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>');
+  } finally { [S.phase, S.round, months[1], months[2], months[3]] = old; }
+});
+test('S6 생산 CO₂는 지난달 1일·이번 달 7일 대표기간을 각각 나눠 Δ 0', () => {
+  const previous = S.results[0], oldDays = previous.days, oldCo2 = previous.team[id].co2Prod;
+  previous.days = 1; previous.team[id].co2Prod = 20;
+  try { assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>'); }
+  finally { previous.days = oldDays; previous.team[id].co2Prod = oldCo2; }
+});
+test('S6 계통 주제 CO₂ 감소 Δ −0.1 t/일, 정전 시간 칸 유지', () => {
+  const r = S.results[1].team[id]; r.co2Prod = 139.3; r.outH = 7;
+  note();
+  assert.equal(co2Cell(), '<dd>19.9 t/일</dd><small>지난달 대비 Δ −0.1 t/일(이번 달 합 557 t)</small>');
+  assert.match(api.resultHTML(S, S.results[1]), /<dt>정전 시간\(이번 달\)<\/dt><dd>28시간<\/dd>/);
+});
+test('S6 정전·현금 주제와 약속 없는 달 CO₂는 기존 월 합계 t', () => {
+  for (const topic of ['uns', 'cash', null]) {
+    if (topic) note(topic); else delete months[S.round];
+    assert.equal(co2Cell(), '<dd>557t</dd><small>지난달 대비 Δ −63t</small>');
+  }
 });
 console.log(`checks ${checks} fail ${failures}`);
 process.exitCode = failures ? 1 : 0;

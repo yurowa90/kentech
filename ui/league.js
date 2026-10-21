@@ -94,6 +94,8 @@
   const teamName = id => (C.teamDef(R(), id) || { name: id }).name;
   const teamCol = id => (C.teamDef(R(), id) || { color: "#888" }).color;
   const fmt = (x, d = 0) => (typeof x === "number" && isFinite(x) ? x.toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: 0 }) : "–");
+  // 하루 평균의 작은 양을 0으로 읽지 않게 한다. 부호 있는 Δ와 상세 계산은 각자 정밀도를 유지한다.
+  const perDayText = x => Number.isFinite(x) && x >= 0 && x < GRID_DISPLAY_MIN_PER_DAY ? "0.1 MWh/일 미만" : `${fmt(x, 1)} MWh/일`;
   const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   let codeTime = 0;
   function code(n) {
@@ -1263,7 +1265,7 @@
     const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
     const grid = topic === "grid" ? promiseGridBaseline(V) : null;
-    const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${fmt(grid.perDay, 1)} MWh/일(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
+    const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
     const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"} 방향`;
     return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(x => {
       const label = x.key === "wind" ? x.text.replace(EVIDENCE_NAMES.wind, "풍속") : x.key === "neighbor" ? x.text.slice(x.text.indexOf(EVIDENCE_NAMES.neighbor)) : x.text;
@@ -1288,7 +1290,7 @@
     return { result, r, topic, comparison, grid, delta, actual, hit };
   }
   function promiseVerdictText({ r, topic, comparison, grid, delta, hit }, n) {
-    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${fmt(grid.perDay, 1)} MWh/일(${grid.base.label})` : `${grid.base.label} 하루 평균 ${signed(grid.deltaPerDay, 1)} MWh/일 · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${fmt(grid.perDay, 1)} MWh/일 · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
+    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} 하루 평균 ${signed(grid.deltaPerDay, 1)} MWh/일 · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
       : `${topic === "cash" ? "현금" : "정전"} 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : comparison.label} ${signed(delta, 2)}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
   }
   // '이번 달 자세히' 접힘 제목용 짧은 판정. 숫자와 월 합계는 판정 줄·상세에 이미 있다(390 첫 화면 줄 수를 줄인다).
@@ -1336,6 +1338,9 @@
     const change = n.evidence.value - previousValue, threshold = Math.max(Math.abs(previousValue) * EVIDENCE_STEP[n.evidence.key], n.evidence.key === "neighbor" ? EVIDENCE_STEP.neighborFloor : EVIDENCE_STEP.floor);
     const evidenceDir = Number.isFinite(previousValue) && Number.isFinite(n.evidence.value) && sign[n.evidence.key] && Math.abs(change) >= threshold ? (change * sign[n.evidence.key] > 0 ? "up" : "down") : null;
     const verdict = esc(promiseVerdictText(compared, n));
+    // 표시 1자리가 같아도 판정이 갈리는 경계에서 학생이 판정을 의심하지 않게 상세에 계산값을 보인다.
+    const gridCalc = topic === "grid" && compared.grid.deltaPerDay != null
+      ? `<p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${esc(signed(compared.grid.deltaPerDay, 2))} MWh/일, '같음' 범위 ±${esc(fmt(compared.grid.tolPerDay, 2))} MWh/일(기준 하루 평균 ${esc(fmt(compared.grid.base.perDay, 2))}의 ${esc(fmt(GRID_SAME_SHARE_PER_DAY * 100))}%와 ${esc(fmt(GRID_SAME_MWH_PER_DAY, 2))} 중 큰 값)</p>` : "";
     // D-82 결정 2: 공개 소비 배출과 기존 시험 기록만 읽는다. trial.co2는 gridFill 뒤의 소비 기준이다.
     // D-82 결정 1: 비교는 각 기간의 하루 평균(t/일), 월 합계는 보조로 표시한다.
     let co2cons = "";
@@ -1355,7 +1360,7 @@
     }
     const alsoOutage = topic === "grid" && r?.unsPct >= ZERO_OUTAGE_PCT ? `<p class="lg-hint" id="lg-promise-also-outage">이번 달은 정전도 생겼어요(${esc(fmt(r.unsPct, 2))}%)</p>` : "";
     const outage = (topic === "uns" || topic === "grid") && (hit === false || n.outageOpened || n.outageSingleShown) ? outageCardsHTML(V, result, L.team, n) : "";
-    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${co2cons}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec" tabindex="-1"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${verdict}</p><p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${reviewOrder ? "" : outage}<p class="lg-hint">${predictionRule(topic)}</p>${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
+    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${co2cons}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec" tabindex="-1"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p><p data-compare="${topic}">${verdict}</p>${gridCalc}<p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${evidenceDir && actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "변화가 작거나 비교 기준이 없어서 비교하지 않아요"}</p><p class="lg-hint">${EVIDENCE_RULE}</p>${reviewOrder ? "" : outage}<p class="lg-hint">${predictionRule(topic)}</p>${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
   }
   function newBuildCost(V, st = BG.current()) {
     const base = new Set((V.teams[L.team].base || []).map(b => b.k));
@@ -1423,7 +1428,7 @@
     const result = V.results.at(-1), r = result?.team[L.team], left = V.teams[L.team]?.left;
     if (!r) return "";
     const n = tdata().interview?.months?.[V.round] || {}, grid = promiseTopic(V, n) === "grid" ? gridReliance(V, result, L.team) : null;
-    const starts = [...(Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기 하루 평균 ${fmt(grid.perDay, 1)} MWh/일이라서 `, "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
+    const starts = [...(Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기 하루 평균 ${perDayText(grid.perDay)}이라서 `, "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
       : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), `남은 돈 ${fmt(left, 1)}억이라 `];
     return `<div class="lg-acts lg-reason-starts" aria-label="이유 문장 시작">${starts.map(text => `<button class="v2-btn" type="button" data-reason-start="${esc(text)}">${esc(text)}</button>`).join("")}</div>`;
   }
@@ -2709,6 +2714,10 @@
   const GRID_SAME_MWH_PER_DAY = 0.05, GRID_SAME_SHARE_PER_DAY = 0.05;
   // 진행자 장부 ● 문턱(G, 총괄 결정): 하루 평균 계통이 이 값을 넘고 정전이 ZERO_OUTAGE_PCT 미만인 달.
   const GRID_LEAN_PER_DAY = 0.05;
+  // 계통 하루 평균의 표시 경계: 소수 한 자리로 반올림하면 0이 되는 값(판정 문턱·진행자 ● 문턱과 뜻이 다르다).
+  // '0.1 MWh/일 미만' 표기와 결과 서랍 [data-grid-fill] 숨김이 읽는다. S7의 OUTAGE_MIN_GRID_PART_PER_DAY와
+  // outageReplayShown의 계통 .05도 같은 표시 경계다(리그 기준 2 갈래 몫이라 여기서 묶지 않음).
+  const GRID_DISPLAY_MIN_PER_DAY = 0.05;
   const gridSameTolPerDay = basePerDay => Math.max(GRID_SAME_MWH_PER_DAY,
     Number.isFinite(basePerDay) ? GRID_SAME_SHARE_PER_DAY * Math.abs(basePerDay) : 0);
   // 계통이 메운 전기의 월 환산과 비교 기준. 공개 결과 필드와 기기 안 시험 기록만 읽는 순수 함수다.
@@ -3375,7 +3384,7 @@
   // D-82 결정 1: 하루 평균과 그 변화를 먼저 표시. 반올림해 0인 0.05 MWh/일 미만은 숨긴다.
   function gridFillHTML(V, res, id) {
     const grid = promiseGridReliance(V, res, id, id === L.team ? tdata().interview?.months?.[res.round] : null), perDay = grid.perDay;
-    if (!(perDay >= .05)) return "";
+    if (!(perDay >= GRID_DISPLAY_MIN_PER_DAY)) return "";
     return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(perDay, 1))} MWh/일</dd><small>${esc(grid.base.label)}${grid.deltaPerDay == null ? "" : ` 하루 평균 Δ ${esc(signed(grid.deltaPerDay, 1))} MWh/일`} · 이번 달 합 ${esc(fmt(grid.mwh, 1))} MWh · 비용 약 ${esc(fmt(grid.cost, 2))}억 · 상한·할증은 ${esc(gradeWords("G"))}</small></div>`;
   }
   // 결과 서랍의 월 환산 지표와 계통 기준 대비 변화를 함께 표시한다.
@@ -3383,14 +3392,19 @@
     const id = L.team, r = res.team[id], rep = resultReport(V, res), { days, mul } = resultPeriod(V, res);
     const previous = V.results.find(x => x.round === res.round - 1), p = previous?.team[id];
     const pm = previous ? resultPeriod(V, previous).mul : 1;
-    const comparison = outageBaseline(V, res, tdata().interview?.months?.[res.round]);
+    const n = tdata().interview?.months?.[res.round] || {};
+    // 지난 결과는 그 달에 저장한 약속 주제를 따른다(plan 단계의 promiseTopic은 현재 달 조건으로 다시 계산하므로).
+    const gridTopic = (res.round === V.round ? promiseTopic(V, n) : n.topic) === "grid";
+    const comparison = outageBaseline(V, res, n);
+    // 계통 주제는 소비 CO₂ 줄과 같은 하루 평균 정밀도로 읽고, 월 길이에 따른 합계는 보조로 둔다.
     const deltas = [["정전(이번 달)", r.unsPct, comparison.value, "%", "%p", comparison.label, 2],
       ["정전 시간(이번 달)", r.outH * mul, p ? p.outH * pm : undefined, "시간", "시간", "지난달 대비", 1],
-      ["CO₂(이번 달 운영)", r.co2Prod * mul, p ? p.co2Prod * pm : undefined, "t", "t", "지난달 대비", 0]];
+      gridTopic ? ["CO₂(이번 달 운영)", r.co2Prod * mul / days, p ? p.co2Prod * pm / resultPeriod(V, previous).days : undefined, " t/일", " t/일", "지난달 대비", 1, `이번 달 합 ${fmt(r.co2Prod * mul)} t`]
+        : ["CO₂(이번 달 운영)", r.co2Prod * mul, p ? p.co2Prod * pm : undefined, "t", "t", "지난달 대비", 0]];
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
-      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}</small></div>`).join("")}${gridFillHTML(V, res, id)}</dl>
+      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision, total = ""]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis === "시험 1주 대비" ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}${total ? Number.isFinite(prev) ? `(${esc(total)})` : ` · ${esc(total)}` : ""}</small></div>`).join("")}${gridFillHTML(V, res, id)}</dl>
       ${outageDamageHTML(V, res, id)}
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
@@ -3463,9 +3477,17 @@
         <small>${esc(who)}${mine === true ? idle ? ` · 우리 도시 해당 · 우리 지도에 ${esc(idle)} 설비가 없어 우리 발전엔 영향 없음(이웃 거래로는 닿을 수 있음)` : " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${gradeClass(E.grade)}" title="사건의 근거: ${esc(gradeWords(E.grade))}. 크기와 대응 효과: ${esc(gradeWords("G"))}">근거 ${esc(gradeWords(E.grade))} · 크기 ${esc(gradeWords("G"))}</abbr></small>${eventSourceHTML(E)}</li>`;
     }).join("")}</ul>`;
   }
+  // 자료의 ISO 구간 "시작/끝"은 학생이 읽는 '시작~끝'으로 보인다(league-data.js 사건 asOf 계약).
+  function eventSourceTimeText(E) {
+    // 목록 안은 ', '로 이어 출처 줄의 ' · ' 필드 구분과 섞이지 않게 한다. null은 '시점을 확정할 수 없음'이라는
+    // 계약 뜻만 보인다(정책 발표가 아닌 null 사건도 있다).
+    const dates = list => list.map(x => String(x).replace("/", "~")).join(", ");
+    const observed = E.asOf === null ? "자료 시점 없음"
+      : E.asOf === undefined ? "자료 시점 미기재" : `자료 시점 ${dates(E.asOf)}`;
+    return observed + (E.published === undefined ? "" : ` · 발표 ${dates(E.published)}`);
+  }
   function eventSourceHTML(E) {
-    const dates = [...new Set((E.why || "").match(/(?:19|20)\d{2}(?:[.\/-]\d{1,2}(?:[.\/-]\d{1,2})?)?/g) || [])];
-    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · 기준연월 ${esc(dates.join(" · ") || "자료 없음")} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
+    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
   }
 
   /* ---------- 팀 카드: 건설 속도(투자 누적)와 축소 지도 ---------- */
@@ -4348,7 +4370,7 @@
     const gridMWh = trial?.map === res.map && trial?.seed === res.seed && trial?.days === res.days ? trial?.gridMWh : null;
     if (V.econ && Number.isFinite(gridMWh) && res.days > 0 && days > 0) {
       const perDayGrid = gridMWh / res.days, monthlyGrid = perDayGrid * days;
-      notes.push(`바깥 계통이 메워 준 전기 시험 ${res.days}일 ${fmt(gridMWh, 1)} MWh → 하루 평균 ${fmt(perDayGrid, 1)} MWh/일(이번 달 ${days}일이면 약 ${fmt(monthlyGrid, 1)} MWh · 비용 약 ${fmt(monthlyGrid * params("normalCost") * params("gridImportMarkup"), 2)}억 · 상한·할증은 ${gradeWords("G")})`);
+      notes.push(`바깥 계통이 메워 준 전기 시험 ${res.days}일 ${fmt(gridMWh, 1)} MWh → 하루 평균 ${perDayText(perDayGrid)}(이번 달 ${days}일이면 약 ${fmt(monthlyGrid, 1)} MWh · 비용 약 ${fmt(monthlyGrid * params("normalCost") * params("gridImportMarkup"), 2)}억 · 상한·할증은 ${gradeWords("G")})`);
     }
     if (V.econ && Number.isFinite(g?.co2Plan) && res.days > 0 && days > 0)
       notes.push(`CO₂ 생산: 우리 도시 시험 ${fmt(res.tot.co2)} t(${res.days}일) → ${days}일 환산 약 ${fmt(res.tot.co2 * days / res.days)} t. 지역 공동목표 ≤ ${fmt(g.co2Plan)} t는 ${actT(V).length}개 도시의 이번 달 생산 배출 합이에요(계획 시작 때 확정).`);
