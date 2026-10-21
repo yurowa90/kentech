@@ -601,6 +601,7 @@ section#lg-missed.lg-outage { display: block; }
   .lg-ledger-value { white-space: nowrap; }
   .lg-ledger-value small { font: 500 11px var(--body); color: var(--ui-muted); margin-left: 2px; }
   .lg-warning-symbol { font: 700 11px var(--body); color: var(--ui-danger); }
+  .lg-grid-symbol { font: 700 11px var(--body); color: var(--ui-gold); }
   .lg-ledger-note { border-top: 1px solid var(--ui-border); padding-top: 10px; margin: 10px 0 0; font: 400 12px/1.6 var(--body); color: var(--ui-muted); }
   html.v2-league-host .lg-host-details { border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host .lg-tcard { border-left: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
