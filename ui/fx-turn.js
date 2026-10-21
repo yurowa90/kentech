@@ -628,9 +628,14 @@
       if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
-    // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다. 재생 건너뛰기는 그대로 둔다.
-    // 예보와 같은 규칙: 다른 처리기가 쓴 Esc(결과 서랍 닫기 등)로는 재생 건너뛰기·카드 닫기를 함께 하지 않는다.
-    listen(window, "keydown", e => topEscape(e, () => { closeCards(true); hideSummary(); }), true);
+    // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다.
+    // 예보와 같은 규칙: 다른 처리기가 쓴 Esc(결과 서랍 닫기 등)로는 카드 닫기를 함께 하지 않는다.
+    // 재생이 도는 동안(대기 포함)은 지금 화면을 움직이는 재생 덧층이 맨 위 층이다(총괄 결정 10-21).
+    // Esc1은 리그 처리기보다 먼저 받아 재생만 건너뛰고 서랍은 남긴다. Esc2부터는 아래 규칙대로.
+    listen(window, "keydown", e => {
+      if (escFree(e) && (status.playing || pending)) { e.preventDefault(); e.stopPropagation(); skip(); return; }
+      topEscape(e, () => { closeCards(true); hideSummary(); });
+    }, true);
     listen(document, "keydown", e => {
       if (!escFree(e)) return;
       if (status.playing || pending) { e.preventDefault?.(); skip(); }
