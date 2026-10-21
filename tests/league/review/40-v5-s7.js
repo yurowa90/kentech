@@ -80,7 +80,7 @@ function valueText(value, target) {
   const digits = target === 'grid' ? 1 : 2, rounded = Number(value.toFixed(digits)) + 0;
   const body = target === 'grid' ? Math.abs(rounded).toLocaleString('ko-KR',
     { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : Math.abs(rounded).toFixed(2);
-  return `${rounded < 0 ? '−' : rounded > 0 ? '+' : ''}${body}${target === 'grid' ? ' MWh' : '%p'}`;
+  return `${rounded < 0 ? '−' : rounded > 0 ? '+' : ''}${body}${target === 'grid' ? ' MWh/일' : '%p'}`; // D-82: 합성 기록도 계약의 하루 평균 단위로 표시를 독립 계산.
 }
 function reset() { session.outCache = {}; session.outFailures = {}; session.outShownPending = null; }
 function select() { B.selectPack(C.teamDef(R, id).pack, 'league'); }
@@ -131,6 +131,7 @@ function frozen(f, basis, target, overrides = {}, wind) {
   const parts = keys.map(key => ({ key, value: values[key] * scale }));
   const total = parts.reduce((n, p) => n + p.value, 0), base = target === 'grid' ? 1000 : 10;
   return { id, round: f.res.round, basis, target, trial: base, actual: base + total, total, replay: 0,
+    ...(target === 'grid' ? { unit: 'MWh/일' } : {}), // D-82: 새 하루 평균 고정본을 단위 없는 옛 월 합계와 구별.
     replayOutsideSum: basis === 'monthly', parts, grid: { value: 0, waitingMW: 0 },
     clues: Object.fromEntries(keys.map(k => [k, '가상 단서'])),
     clueMore: Object.fromEntries(keys.map(k => [k, '가상 상세 단서'])),
@@ -227,7 +228,7 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
   // 계통은 하한·양수·음수 기준을 모두 쓰고 actual/total은 기준과 다르게 둔다.
   const bases = target === 'grid' ? [0, 10, 1000, -1000] : [10];
   for (const base of bases) {
-    const minPart = target === 'grid' ? Math.max(1, .05 * Math.abs(base)) / 10 : .05;
+    const minPart = target === 'grid' ? Math.max(.05, .05 * Math.abs(base)) / 10 : .05; // D-82: gridSameTolPerDay/10의 명시식으로 독립 계산, 양·음·하한 사례 유지.
     const evidence = { key: 'evening', text: '저녁 수요: 12.34 MW' }, ns = names(basis);
     for (const mode of ['zero', 'below']) check(`12 §2-1 ${scope}/${base}/${mode} 직접 연결 모두 작은 몫`, () => {
       const tiny = mode === 'zero' ? 0 : minPart * .999;
@@ -330,5 +331,90 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
     });
   }
 }
+// D-82: 표시 변경 (a)(b), 반올림 동점, 옛 계통 고정본 교체를 저장·렌더링 경계에서 추가 검증한다.
+for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달 기준을 모두 실행.
+  const f = fixture(basis, 'grid'); // D-82: 실제 운영 자료와 사본은 유지하고 표시 입력만 합성.
+  const allZero = Object.fromEntries((basis === 'monthly' ? monthlyKeys : trialKeys).map(k => [k, 0])); // D-82: 반환 몫을 기대값으로 쓰지 않음.
+  const costText = (value, daily) => { // D-82: 공개 가격 입력과 명세의 소수 둘째 자리·부호로 비용을 독립 계산.
+    const rounded = Number((value * D.params.normalCost.v * D.params.gridImportMarkup.v).toFixed(2)) + 0; // D-82: 억/MWh × MWh/일 또는 옛 MWh.
+    return `(비용 ${rounded < 0 ? '−' : rounded > 0 ? '+' : ''}${Math.abs(rounded).toFixed(2)}억${daily ? '/일' : ''})`; // D-82: 새 기록 억/일, 옛 기록 억.
+  }; // D-82: 비용 기대값 도우미 끝.
+  for (const target of ['grid', 'uns']) for (const sign of [-1, 1]) for (const single of [false, true]) { // D-82: 양·음 비용과 단일·여러 원인 표시를 모두 검사.
+    check(`17 D-82 ${basis}/${target}/${sign}/${single} 비용·사건 문구`, () => { // D-82: 새 계통·정전 기록의 표시 계약.
+      const a = partRecord(f, basis, target, 30, { ...allZero, event: sign * 12.34, weather: single ? 0 : 1.23 }); // D-82: 최대 사건 몫과 비용은 합성 입력에서 결정.
+      a.clues.event = '우리 도시 정전에 닿는 사건 없음(해당 2건)'; // D-82: 명세 (b)의 짧은 단서 치환 입력.
+      a.clueMore.event = '우리 도시 정전에 닿는 효과 없음 / 우리 도시 정전에 닿는 사건 없음'; // D-82: 상세 단서의 모든 출현을 검사.
+      const before = clone(a), text = textOf(opened(f, a, evidenceCases[0], 'event')); // D-82: 실제 렌더러 경계 호출.
+      const phrase = target === 'grid' ? '우리 도시가 바깥 계통에 기댄 전기에 닿는' : '우리 도시 정전에 닿는'; // D-82: 대상별 명세 문자열.
+      assert.ok(text.includes(`${phrase} 사건 없음(해당 2건)`), '짧은 사건 단서의 대상 문구'); // D-82: 카드·요약 어디서든 원문 전체 대조.
+      assert.ok(text.includes(`${phrase} 효과 없음 / ${phrase} 사건 없음`), '상세 사건 단서의 모든 출현'); // D-82: 상세 치환 누락 방지.
+      assert.ok(!text.includes(target === 'grid' ? '우리 도시 정전에 닿는' : '우리 도시가 바깥 계통에 기댄 전기에 닿는'), '다른 대상 문구 없음'); // D-82: 혼용 금지.
+      const surfaces = { result: text, ...Object.fromEntries(Object.entries(records(f, a, 'event')).map(([k, v]) => [k, textOf(v)])) }; // D-82: 결과·일지·타임라인·다음 달 비용 경로.
+      for (const [route, surface] of Object.entries(surfaces)) { // D-82: 같은 저장 입력의 소비자를 모두 검사.
+        const costs = surface.match(/\(비용 [^)]*\)/g) || []; // D-82: 기존 다른 비용 문구와 S7 비용을 구별.
+        if (target === 'grid') { // D-82: 계통에는 계산한 비용이 반드시 존재.
+          assert.ok(costs.length > 0, `${route} 비용 표시 존재`); // D-82: 빈 출력으로 통과하지 않음.
+          assert.ok(costs.every(v => v === costText(sign * 12.34, true)), `${route} 독립 비용·부호·억/일`); // D-82: 허용 오차 없이 문자열 전체 비교.
+        } else assert.deepEqual(costs, [], `${route} 정전에는 계통 비용 표기 없음`); // D-82: 정전 표시 계약 보존.
+      } // D-82: 비용 경로 검사 끝.
+      assert.deepEqual(a, before, '표시가 입력 고정본의 수치·원문을 변경하지 않음'); // D-82: 표시 문구 전환은 저장 입력의 변형이 아님.
+    }); // D-82: 새 표시 계약 검사 끝.
+  } // D-82: 대상·부호·단일/여러 원인 순회 끝.
+  for (const sign of [-1, 1]) check(`18 D-82 ${basis}/${sign} 단위 없는 옛 계통 기록`, () => { // D-82: 과거 기록은 월 합계 단위로 읽고 현재 결과에서는 교체.
+    const old = partRecord(f, basis, 'grid', 1000, { ...allZero, trade: sign * 123.45 }); // D-82: 새 값과 혼동할 수 없는 옛 월 합계 입력.
+    delete old.unit; // D-82: 실제 단위 없는 옛 계통 고정본.
+    const before = clone(old), saved = records(f, old, 'trade'); // D-82: 닫힌 과거 기록의 소비 경로.
+    for (const [route, raw] of Object.entries(saved)) { // D-82: 과거 일지·타임라인·다음 달 표시는 기존 단위 유지.
+      const text = textOf(raw); // D-82: 실제 보이는 문자열을 검사.
+      assert.ok(text.includes(costText(sign * 123.45, false)), `${route} 옛 비용은 억`); // D-82: 비용 값과 부호도 독립 계산.
+      assert.ok(text.includes(`${sign < 0 ? '−' : '+'}123.5 MWh`), `${route} 옛 몫은 월 합계 MWh`); // D-82: 표시 반올림의 리터럴 기대값.
+      assert.ok(!text.includes('억/일') && !text.includes('MWh/일'), `${route} 옛 월 합계에 하루 평균 꼬리말 없음`); // D-82: 과거 기록을 단위만 바꾸지 않음.
+    } // D-82: 옛 표시 경로 검사 끝.
+    storage.delete(teamKey); reset(); // D-82: 앞 합성 기록을 지우고 실제 사본·시험으로 현재 분해를 재계산.
+    const previous = f.V.results.find(r => r.round === f.res.round - 1); // D-82: 지난달 공개 결과만 기대값 입력으로 사용.
+    const trial = Object.values(JSON.parse(storage.get('kcp-build-trial-v1') || '{}'))[0]; // D-82: 저장 시험의 원래 형식과 일수를 읽음.
+    const perDay = result => Math.max(0, result.team[id].isolated.uns - result.team[id].uns - result.team[id].imp + result.team[id].sub) / result.days; // D-82: 공개 보충량/대표 일수의 독립 산식.
+    const base = basis === 'monthly' ? perDay(previous) : trial.gridMWh / trial.days; // D-82: 월 합계가 아닌 명세의 기준 하루 평균.
+    const html = opened(f, old, evidenceCases[0]), replacement = session.outShownPending?.frozen; // D-82: 교체될 실제 표시 고정본 확인.
+    assert.equal(replacement?.unit, 'MWh/일', '현재 결과는 새 하루 평균 고정본으로 교체'); // D-82: 옛 기록 재사용 금지.
+    assert.ok(Math.abs(replacement.trial - base) <= 1e-9, '교체 분해의 독립 출발값'); // D-82: 기존 정밀도 유지.
+    assert.ok(Math.abs(replacement.actual - perDay(f.res)) <= 1e-9, '교체 분해의 독립 도착값'); // D-82: 반환값을 기대값으로 복사하지 않음.
+    assert.ok(textOf(html).includes('우리 도시가 바깥 계통에 기댄 전기에 닿는'), '옛 계통 고정본 교체 뒤 사건 문구도 계통 대상'); // D-82: (b)의 옛 기록 재표시 경로.
+    assert.ok(!textOf(html).includes('우리 도시 정전에 닿는'), '교체 뒤 정전 문구 잔류 없음'); // D-82: (b) 혼용 금지.
+    assert.deepEqual(old, before, '과거 월 합계 입력을 직접 변경하지 않음'); // D-82: 교체와 원본 변형을 구별.
+  }); // D-82: 옛 계통 기록 검사 끝.
+  check(`19 D-82 ${basis} target·unit 없는 옛 정전 기록`, () => { // D-82: 대상도 없던 옛 기록은 정전 표시를 유지.
+    const old = partRecord(f, basis, 'uns', 30, { ...allZero, event: -12.34, weather: 1.23 }); // D-82: 옛 정전 입력.
+    delete old.target; delete old.unit; // D-82: 원래 저장 형식의 누락 필드.
+    old.clues.event = '우리 도시 정전에 닿는 사건 없음(해당 2건)'; // D-82: 짧은 사건 문구.
+    old.clueMore.event = '우리 도시 정전에 닿는 효과 없음'; // D-82: 상세 사건 문구.
+    const text = textOf(opened(f, old, evidenceCases[0], 'event')); // D-82: 실제 현재 대상이 계통이어도 고정본의 옛 대상 우선.
+    assert.ok(text.includes('우리 도시 정전에 닿는 사건 없음(해당 2건)') && text.includes('우리 도시 정전에 닿는 효과 없음'), '옛 정전 단서 그대로'); // D-82: (b)의 정전 호환.
+    assert.ok(!text.includes('우리 도시가 바깥 계통에 기댄 전기에 닿는') && !text.includes('(비용 '), '옛 정전에 계통 문구·비용 없음'); // D-82: (a)(b)의 옛 정전 호환.
+  }); // D-82: 옛 정전 기록 검사 끝.
+  for (const sign of [-1, 1]) for (const row of [{ choice: 9.44, event: 9.43, tied: true }, { choice: 9.46, event: 9.44, tied: false }]) { // D-82: 원시값은 다르되 표시가 같거나 달라지는 양·음 경계.
+    check(`20 D-82 ${basis}/${sign}/${row.choice} 표시 반올림 동점`, () => { // D-82: 화면과 저장 판정의 일치.
+      const a = partRecord(f, basis, 'grid', 0, { ...allZero, choice: sign * row.choice, event: -sign * row.event }); // D-82: 두 몫만 있는 독립 입력.
+      const html = opened(f, a, evidenceCases[0], 'event'), first = firstVerdict(html); // D-82: 원시값이 작은 event를 선택.
+      assert.ok(first.includes(valueText(-sign * row.event, 'grid')), '선택값의 표시 반올림'); // D-82: 소수 첫째 자리·부호·하루 단위.
+      assert.ok(first.endsWith(row.tied ? ' · 크기가 같은 가장 큰 몫 중 하나예요' : ' · 몫은 있지만 가장 크지 않았어요'), '표시 눈금에서만 동점 판정'); // D-82: 원시값 비교 회귀 방지.
+      const tagged = [...html.matchAll(/<button\b[^>]*data-missed="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)].filter(m => m[2].includes('data-out-tag="largest"')).map(m => m[1]); // D-82: 카드의 공동 최대 표식도 같은 기준.
+      assert.deepEqual(tagged, row.tied ? ['choice', 'event'] : ['choice'], '반올림 동점 카드 표식'); // D-82: 첫 카드만 최대가 되는 회귀 방지.
+      for (const [route, raw] of Object.entries(records(f, a, 'event'))) { // D-82: 기록의 판정도 같은 표시 눈금.
+        const text = textOf(raw); // D-82: 보이는 기록 문자열.
+        assert.equal(text.includes(tiedLabel), row.tied, `${route} 반올림 동점 기록 라벨`); // D-82: 원시 차이가 남아도 표시 같으면 동점.
+        assert.ok(!text.includes(uniqueLabel), `${route} 작은 원시 몫을 단독 최대로 쓰지 않음`); // D-82: 반올림 동점과 단독 최대 구분.
+      } // D-82: 기록 동점 검사 끝.
+    }); // D-82: 반올림 동점 검사 끝.
+  } // D-82: 부호·눈금 순회 끝.
+  for (const replay of [.049999, .05, .050001, -.049999, -.05, -.050001]) check(`21 D-82 ${basis}/${replay} 계통 재현 반 눈금`, () => { // D-82: 정전 경계 검사는 기존 그대로 두고 하루 평균 경계를 추가.
+    const a = partRecord(f, basis, 'grid', 10, { ...allZero, choice: 2, event: -1 }); // D-82: 공개 가능한 여러 원인 합성 입력.
+    a.replay = replay; // D-82: 정확한 경계값 직접 주입.
+    if (basis === 'trial') { a.actual += replay; a.total += replay; } // D-82: 시험은 재현 포함 합계, 월간은 합계 밖 진단 유지.
+    const html = opened(f, a, evidenceCases[0]), shown = Math.abs(replay) >= .05; // D-82: 0.1 MWh/일 표시 반 눈금의 독립 기대값.
+    assert.equal(html.includes('id="lg-outage-replay"'), shown, '계통 재현 설명 경계'); // D-82: 양·음 경계 모두 정확 대조.
+    assert.equal(html.includes('data-out-step="replay"'), basis === 'trial' && shown, '시험만 재현 폭포 줄, 월간은 합계 밖'); // D-82: 재현의 합계 위치 보존.
+  }); // D-82: 계통 재현 경계 검사 끝.
+} // D-82: 추가 계약 순회 끝.
 console.log(`V5 S7: ${checks} checks, ${failures.length} failures`);
 process.exitCode = failures.length ? 1 : 0;

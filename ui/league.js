@@ -916,7 +916,8 @@
     const rounded = outageGridRounded(x);
     return `${rounded < 0 ? "−" : sign && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
   };
-  const outageCost = (x, a) => a?.target === "grid" ? ` (비용 ${outageNumber(x * params("normalCost") * params("gridImportMarkup"), true)}억)` : "";
+  // D-82: 하루 평균(MWh/일) 기록의 비용은 하루치이므로 '억/일'로 적는다. 옛 월 합계 기록은 '억'.
+  const outageCost = (x, a) => a?.target === "grid" ? ` (비용 ${outageNumber(x * params("normalCost") * params("gridImportMarkup"), true)}억${a.unit === "MWh/일" ? "/일" : ""})` : "";
   // D-80 C-5 임시(G): 계통 '같음' 문턱의 1/10. 옛 기록은 정전 문턱 그대로 읽는다.
   // 재현 차이를 보일 최소 크기: 표시 자릿수의 절반(정전 0.005%p, 계통 0.05 MWh/일).
   const outageReplayShown = (a, x) => Number.isFinite(x) && Math.abs(x) >= (a?.target === "grid" ? .05 : .005);
@@ -3073,7 +3074,7 @@
       L.outFailures[key] = { attempts: (failed?.attempts || 0) + 1, render }; return null;
     }
   }
-  // 사건 단서: 카드에는 우리 도시 정전에 닿는 사건 하나를 두 줄 안으로, 나머지는 '단서 더 보기'에 둔다.
+  // 사건 단서: 카드에는 우리 도시 정전(계통 대상이면 계통에 기댄 전기)에 닿는 사건 하나를 두 줄 안으로, 나머지는 '단서 더 보기'에 둔다.
   // 고립 운전의 사건 몫과 같은 modsFor 기준으로 대응 뒤 배수를 읽는다. 연계선 끊김은 거래 몫으로 안내한다.
   const EVENT_KINDS = { solarMul: ["solar", "roof", "tandem", "tandem_roof"], windMul: ["wind"], offshoreMul: ["offshore"], tidalMul: ["tidal"], coalCapMul: ["coal"], lngCapMul: ["lng"] };
   function outageEventClue(events, input, res, id, plan) {
@@ -3164,8 +3165,15 @@
     if (monthly) { next.choice = "지난달과 이번 달의 설비·전선·정책 변경"; next.weather = "지난달과 이번 달의 날씨·계절·운전 기간"; }
     return largest ? links[largest.key] === "direct" && sameDirection ? `${text} 고른 근거는 이번 차이의 가장 큰 몫과도 이어져요.` : `${text} 다음에는 ${next[largest.key]}도 근거로 살펴봐요.` : `${text} 이번 달은 ${outageNoCauseLabel(a)}으로 기록해요.`;
   }
+  // 사건 단서는 사본(지난달·이번 달 공용)에 대상과 무관하게 저장된다. 계통 대상이면 그릴 때 대상 이름으로 바꾼다.
+  const OUTAGE_CLUE_UNS = "우리 도시 정전에 닿는", OUTAGE_CLUE_GRID = "우리 도시가 바깥 계통에 기댄 전기에 닿는";
+  function outageTargetClues(a) {
+    if (a?.target !== "grid") return a;
+    const swap = o => o && Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "string" ? v.replaceAll(OUTAGE_CLUE_UNS, OUTAGE_CLUE_GRID) : v]));
+    return { ...a, clues: swap(a.clues), clueMore: swap(a.clueMore) };
+  }
   function outageCardsHTML(V, res, id, n) {
-    const a = outageAttribution(V, res, id, n);
+    const a = outageTargetClues(outageAttribution(V, res, id, n));
     const monthly = a ? a.basis === "monthly" : !!V.econ && res.round > 1, names = outageNames(a || { basis: monthly ? "monthly" : "trial" });
     const comparisonNote = monthly ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.</p>' :
       V.econ && res.round > 1 ? '<p id="lg-outage-baseline" class="lg-hint">약속 판정은 지난달 대비, 아래 나누기는 시험 대비예요.</p>' : "";

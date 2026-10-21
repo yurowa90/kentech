@@ -135,7 +135,7 @@ function fixture({ changed = false, replayOffset = 0, sameWeather = false, noEve
     sim(operating.teams[id].plan, res.seed, res.days, eventMods)];
   const pct = s => s.tot.dem > 0 ? 100 * s.unsTotal / s.tot.dem : 0;
   const target = trial.unsPct < .005 && res.team[id].unsPct < .005 ? 'grid' : 'uns'; // D-80: C-3.
-  const days = rd.mdays || res.days, stageValue = raw => filledValue(raw, target, days / raw.days); // D-80: C-1·계약 A 월 환산.
+  const stageValue = raw => filledValue(raw, target, 1 / raw.days); // D-82: 계통의 각 단계는 대표 운전량/그 단계 일수, 정전율은 그대로.
   const values = stages.map(stageValue), grid = operating.grid[id]; // D-80: 모든 단계에 계통 보충.
   const full = Object.fromEntries(grid.entries.map(b => [b.key, b.mw]));
   // 독립 시간별 C1: min(부족, 수요×상한). gridFill 반환값을 기대값으로 쓰지 않는다.
@@ -150,8 +150,8 @@ function fixture({ changed = false, replayOffset = 0, sameWeather = false, noEve
     return 100 * Math.max(0, raw.unsTotal - imports) / raw.tot.dem;
   };
   const filledBase = gridRate(stages[0]);
-  const base = target === 'grid' ? trial.gridMWh * days / trial.days : trial.unsPct; // D-80: 계약 A.
-  const actual = target === 'grid' ? publicMWh(res.team[id]) * days / res.days : res.team[id].unsPct; // D-80: 공개 필드만 역산.
+  const base = target === 'grid' ? trial.gridMWh / trial.days : trial.unsPct; // D-82: 저장 시험량/시험 일수로 독립 출발값.
+  const actual = target === 'grid' ? publicMWh(res.team[id]) / res.days : res.team[id].unsPct; // D-82: 공개 보충량/실제 대표 일수로 도착값.
   const expected = { target, base, actual, replay: values[0] - base, rates: [filledBase, gridRate(stages[3])], // D-80: C-2 항등식.
     parts: ['choice', 'weather', 'event'].map((key, i) => ({ key, value: values[i + 1] - values[i] })),
     weather: stages.slice(1, 3).map(s => weatherMetrics(s, operating.teams[id].plan, normalMods)),
@@ -182,8 +182,8 @@ function filledValue(raw, target, mul) { // D-80: S7을 사용하지 않는 core
   const filled = C.gridFill(raw); // D-80: C-1, 원래 수입 설비 출력 제외.
   return target === 'grid' ? (filled.tot.by.import - raw.tot.by.import) * mul : 100 * filled.unsTotal / filled.tot.dem; // D-80: C-1.
 } // D-80: 독립 모델 끝.
-const minPart = a => a.target === 'grid' ? Math.max(1, .05 * Math.abs(a.trial)) / 10 : .05; // D-80: C-5.
-const unitNumber = (a, v, sign = false) => a.target === 'grid' ? number(v, sign, 1) + ' MWh' : number(v, sign) + '%p'; // D-80: C-4.
+const minPart = a => a.target === 'grid' ? Math.max(.05, .05 * Math.abs(a.trial)) / 10 : .05; // D-82: 하루 평균 같음 문턱(G)의 1/10, 정전 문턱 유지.
+const unitNumber = (a, v, sign = false) => a.target === 'grid' ? number(v, sign, 1) + ' MWh/일' : number(v, sign) + '%p'; // D-82: 계통 표시도 하루 평균.
 const number = (v, sign = false, digits = 2) => { // D-80: MWh 소수 첫째 자리.
   if (!Number.isFinite(v)) return '–';
   const rounded = Number(v.toFixed(digits)) + 0; // D-80: C-4.
@@ -265,7 +265,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   const showSmall = grid.waitingMW > 0 && Number.isFinite(grid.value) && Math.abs(grid.value) < threshold; // D-80: C-1·2·4·5 대상별 검사.
   equal(!!small, showSmall, `${label}: 작은 대기 줄은 양의 대기·유한 효과·0.05%p 미만`);
   if (small) { // D-80: 계통 단위도 작은 효과 문구에서 검사.
-    if (isGrid) ok(small[1].includes('MWh') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-80: C-4.
+    if (isGrid) ok(small[1].includes('MWh/일') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-82: 작은 반사실도 하루 평균 단위.
     else equal(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 미만)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
   } // D-80: 작은 효과.
 
@@ -278,7 +278,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   ok(box[1].includes(`접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW`) &&
     box[1].includes('대기가 없었다면') && box[1].includes(isGrid ? '계통' : '정전') && box[1].includes('분해 합계 밖'), `${label}: 병목량·반사실·합계 밖 설명`); // D-80: C-1·2·4·5 대상별 검사.
   ok(!/data-out-value=|data-missed=|data-out-tag=|가장 큰/.test(box[0]) &&
-    (box[1].match(/[+−-]?\d[\d,]*\.\d+(?: MWh|%p)/g) || []).join('') === unitNumber(a, grid.value, true), // D-80: C-4, 계통/정전 모두 단위 수치 하나만 허용.
+    (box[1].match(/[+−-]?\d[\d,]*\.\d+(?: MWh\/일|%p)/g) || []).join('') === unitNumber(a, grid.value, true), // D-82: 하루 평균 반사실 수치 하나만 허용.
     `${label}: 병목 상자는 반사실 수치만 공개, 카드 몫/정답 없음`);
   ok(html.indexOf(box[0]) < html.indexOf(html.includes('id="lg-outage-cards"') ? 'id="lg-outage-cards"' : 'id="lg-outage-single"'),
     `${label}: 카드/요약 위 별도 상자`);
@@ -313,7 +313,7 @@ function cardOrder(html, ranked, label, a) { // D-80: 대상별 카드 문턱.
 }
 function rendered(a, html, label) {
   const rows = [...html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"/g)];
-  const hasReplay = Math.abs(a.replay) >= .005; // D-80: 재현 줄 문턱은 기존 계약 유지(계통 문턱 별도 지정 없음).
+  const hasReplay = Math.abs(a.replay) >= (a.target === 'grid' ? .05 : .005); // D-82: 표시 반 눈금(계통 0.1, 정전 0.01)의 재현 문턱.
   equal(rows.map(m => m[1]), ['trial', ...(hasReplay ? ['replay'] : []), ...causes, 'actual'],
     `${label}: 겹침 없이 시험 + 별도 재현 차이 + 네 원인 + 실제`); // D-80: C-1·2·4·5 대상별 검사.
   equal(html.includes('id="lg-outage-replay"'), hasReplay, `${label}: 0.005%p 미만 재현 설명 생략`);
@@ -327,7 +327,7 @@ function rendered(a, html, label) {
     equal(m[3], a.target === 'grid' ? unitNumber(a, +m[2], !rate) : number(+m[2], !rate) + (rate ? '%' : '%p'), // D-80: C-4.
       `${label}: ${m[1]} 소수 둘째 자리·마이너스·단위 붙임`); // D-80: C-1·2·4·5 대상별 검사.
   }
-  ok(new RegExp('id="lg-outage-waterfall"[^>]*role="img"[^>]*aria-label="[^"]*시험 [\\d.,]+' + (a.target === 'grid' ? ' MWh' : '%')).test(html), // D-80: C-4.
+  ok(new RegExp('id="lg-outage-waterfall"[^>]*role="img"[^>]*aria-label="[^"]*시험 [\\d.,]+' + (a.target === 'grid' ? ' MWh/일' : '%')).test(html), // D-82: 접근성 요약도 하루 평균 단위.
     `${label}: 폭포 이미지 역할과 수치 요약`);
   const aria = html.match(/id="lg-outage-waterfall"[^>]*aria-label="([^"]+)"/)[1];
   for (const name of ['내 선택', '날씨·운전 기간', '사건·대응', '이웃 거래', '실제']) { // D-80: C-2, 새 폭포에 계통 수입 몫 없음.
@@ -346,6 +346,7 @@ for (const options of [{ sameWeather: true }, { sameWeather: true, replayOffset:
   const a = attribution(V, res, id);
   ok(a, '당시 시험·공개 상태로 분해 가능');
   equal(a.target, expected.target, 'D-80 대상은 시험·실제 정전으로 결정'); // D-80: C-3.
+  if (expected.target === 'grid') equal(a.unit, 'MWh/일', '계통 S7 객체 단위'); // D-82: 구현의 단위를 기대값 근거로 삼지 않고 계약과 대조.
   equal(a.parts.map(p => p.key), causes, '네 몫만, 재현 차이·계통 잔차는 후보 아님'); // D-80: C-2.
   expected.parts.forEach(p => near(a.parts.find(x => x.key === p.key).value, p.value, `${p.key} 독립 모델 몫`));
   ok(Number.isFinite(a.replay), '재현 차이는 별도 숫자');
@@ -530,7 +531,7 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
   for (const legacy of [false, true]) for (const key of ['wind', 'grid', 'evening'])
     for (const cause of causes) for (const sign of [-1, 1]) for (const change of [-3, 3]) {
       const parts = causes.map(k => ({ key: k, value: k === cause ? sign * 9.43 : .1 }));
-      const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+      const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       parts }; // D-80: C-1·2·4·5 대상별 검사.
       if (legacy) delete frozen.hasConnectedWind;
       const previous = { interview: { months: { [res.round - 1]: { evidenceValues: { [key]: 100 } } } } };
@@ -562,7 +563,7 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
   const previous = { interview: { months: { [res.round - 1]: { evidenceValues: { evening: 100 } } } } };
   storage.set(`kcp-league-data-v1:${session.room}:${id}`, JSON.stringify(previous));
   for (const sign of [-1, 1]) for (const basis of ['trial', 'monthly', undefined]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       basis, // D-80: C-1·2·4·5 대상별 검사.
       parts: causes.map(key => ({ key, value: key === 'weather' ? sign * 9.43 : .1 })) };
     if (basis === undefined) delete frozen.basis;
@@ -629,7 +630,7 @@ ok(/const sign = topic === "uns" \|\| topic === "grid" \? \{ evening: 1, grid: -
 {
   const { V, res } = fixture({ changed: true }), base = attribution(V, res, id);
   for (const waitingMW of [0, 2]) for (const value of [0, .049999, .05, .050001, -.049999, -.05, -.050001, NaN, Infinity, -Infinity]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       grid: { waitingMW, value } }; // D-80: C-1·2·4·5 대상별 검사.
     session.outCache[base.trialIdentity] = frozen;
     const closed = league.uiMath.outageCardsHTML(V, res, id, {});
@@ -664,7 +665,7 @@ ok(/const sign = topic === "uns" \|\| topic === "grid" \? \{ evening: 1, grid: -
   const { V, res } = fixture({ changed: true });
   const base = attribution(V, res, id);
   for (const replay of [.004999, .005, .005001, -.004999, -.005, -.005001]) {
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       replay }; // D-80: C-1·2·4·5 대상별 검사.
     const html = league.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
     equal(html.includes('data-out-step="replay"'), Math.abs(replay) >= .005, `${replay} 시험 재현 줄 경계`);
@@ -781,7 +782,7 @@ for (const field of ['seed', 'days', 'plan']) {
   for (const [before, after, smallDifference] of [[6, 30, false], [1, 30, false],
     [8, 8.049999, true], [8, 8.05, false], [8, 8.050001, false]]) {
     const difference = after - before, label = `A 시험 ${before}% → 실제 ${after}%`;
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: before, actual: after, total: difference, replay: difference, // D-80: C-1·2·4·5 대상별 검사.
       parts: base.parts.map(p => ({ ...p, value: 0 })), grid: { waitingMW: 0, value: 0 } };
     near(frozen.replay + frozen.parts.reduce((sum, p) => sum + p.value, 0), difference,
@@ -822,7 +823,7 @@ for (const field of ['seed', 'days', 'plan']) {
     [4.994, 4.994], [4.995, 4.995], [4.994, 5], [5, 4.994], [4.995, 5], [5, 4.995],
     [4.999, 5], [5, 4.999]]) {
     const high = shownHigh(before) && shownHigh(after), actualHigh = shownHigh(after), label = `시험 ${before}% → 실제 ${after}%`;
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: before, actual: after, total: after - before, replay: 0, // D-80: C-1·2·4·5 대상별 검사.
       parts: base.parts.map(p => ({ ...p, value: (after - before) / 4 })) };
     for (const opened of [false, true]) {
@@ -848,7 +849,7 @@ for (const field of ['seed', 'days', 'plan']) {
   session.role = 'fixture'; session.snap = V;
   for (const tiny of [0, .049999, -.049999]) for (const large of [0, 1]) {
     const label = `B 시험 고정본 선택 ${tiny}, 최대 ${large}`;
-    const frozen = { ...clone(base), target: 'uns', // D-80: 기존 %p 표시 계약은 정전 합성 기록으로 검증.
+    const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       trial: 6, actual: 6 + large + tiny, total: large + tiny, replay: 0, // D-80: C-1·2·4·5 대상별 검사.
       parts: causes.map(key => ({ key, value: key === 'choice' ? large : key === 'trade' ? tiny : 0 })) };
     const note = { outageSingleShown: true, missed: 'trade', missedBasis: 'trial', outageFrozen: frozen };
@@ -909,7 +910,9 @@ for (const single of [false, true]) {
   session.outCache = {};
   calls = [];
   const after = attribution(V, res, id);
-  equal(after, a, '공개 뒤 저장 시험·캐시가 바뀌어도 연 시점 분해 유지');
+  const expectedFrozen = clone(a); // D-82: 표시 변경 (b)로 고정되는 사건 문구만 계약에 따라 변환, 숫자는 기존 독립 검산 유지.
+  if (a.target === 'grid') for (const field of ['clues', 'clueMore']) expectedFrozen[field].event = a[field].event.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는'); // D-82: 계통 사건 단서의 새 표시 문구, 정전 고정본은 그대로.
+  equal(after, expectedFrozen, '공개 뒤 저장 시험·캐시가 바뀌어도 연 시점 분해 유지'); // D-82: 표시 시 고정한 문구를 포함해 모든 필드 엄격 비교.
   const afterHTML = league.uiMath.outageCardsHTML(V, res, id, note);
   // 붙이기 버튼의 저장 여부만 달라지고, 카드 꼬리표·폭포·판정은 같아야 한다.
   const display = html => html.split('<button type="button" class="v2-btn" id="lg-outage-carry"')[0];
