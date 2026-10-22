@@ -120,10 +120,15 @@ function filledValue(raw, target, mul) { // D-80: S7 대신 core 공개 모델�
   const filled = C.gridFill(raw); // D-80: 모든 단계 동일 계통 상한.
   return target === 'grid' ? (filled.tot.by.import - raw.tot.by.import) * mul : uns(filled); // D-80: C §2, 기존 수입 설비 제외.
 } // D-80: 독립 단계 값.
-const minPart = a => a?.target === 'grid' ? Math.max(.05, .05 * Math.abs(a.trial)) / 10 : .05; // D-82: 기준 하루 평균의 같음 문턱/10, 정전은 유지.
+const minPart = a => a?.target === 'grid' ? Math.max(Math.max(.05, .05 * Math.abs(a.trial ?? a.base)) / 10, .05) : .05; // D-82: 기준 하루 평균의 같음 문턱/10, 정전은 유지.
 const unitNumber = (a, value, sign = false, rate = false) => a.target === 'grid' ? number(value, sign, 1) + ' MWh/일' : number(value, sign) + (rate ? '%' : '%p'); // D-82: 계통 하루 평균 표시.
 const eventText = (text, target) => target === 'grid' ? text.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는') : text; // D-82: 명세 (b)의 표시 기대 문구, 사본 원문은 유지.
-const topCards = (parts, a) => [...parts].filter(p => Math.abs(p.value) >= minPart(a)) // D-80: 대상별 문턱.
+// V7 A: 카드에만 Δ의 5%를 더한다. 병목·재현·분해의 기존 눈금은 유지한다.
+const cardMin = a => {
+  const total = a.total ?? (a.actual - (a.trial ?? a.base));
+  return Number.isFinite(total) ? Math.max(minPart(a), .05 * Math.abs(total)) : minPart(a);
+};
+const topCards = (parts, a) => [...parts].filter(p => Math.abs(p.value) >= cardMin(a)) // D-80: 대상별 문턱.
   .sort((x, y) => Math.abs(y.value) - Math.abs(x.value)).slice(0, 3);
 function weatherMetrics(s, plan, mods) {
   const climate = B.PACKS[s.map].climate, network = B.network(B.sanitize(clone(plan), 1e9));
@@ -388,7 +393,7 @@ function rows(html) {
 function cards(html, expectedParts, a) { // D-80: C-5.
   const keys = [...html.matchAll(/data-missed="([^"]+)"/g)].map(m => m[1]);
   const top = topCards(expectedParts, a).map(p => p.key); // D-80: C-5.
-  eq(keys, top.length >= 2 ? causes.filter(k => top.includes(k)) : [], '카드 = 독립 |몫|≥0.05%p 상위 최대3 집합·분해순');
+  eq(keys, top.length >= 2 ? causes.filter(k => top.includes(k)) : [], '카드 = 독립 |몫|≥max(minPart, |Δ|×5%) 상위 최대3 집합·분해순');
   eq(html.includes('data-single="true"'), top.length < 2, '유의미한 원인 2장 미만이면 한 줄 요약');
   if (top.length >= 2 && JSON.stringify(keys) !== JSON.stringify(top)) orderDiffers++;
 }
@@ -396,6 +401,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   const { V, res, model } = current, expected = oracle(old.model, model, oracleOptions);
   const d = data(), savedOld = d.outageSnapshots[res.round - 1];
   // 운영 입력·지난달 실제·이번 달 사본은 그대로 두고 지난달 저장 고립값만 바꾼다.
+  const selectionBasis = { target: expected.target, trial: expected.base, actual: expected.actual, total: expected.actual - expected.base }; // V7: 카드 문턱도 모델의 독립 값으로 계산.
   const target = expected.target; // D-80: 시험값 대신 두 달 실제로 결정.
   const replayField = target === 'grid' ? 'gridMWh' : 'filledUnsPct'; // D-80: 새 사본의 계통 포함 진단값.
   savedOld[replayField] += replayOffset * (target === 'grid' ? old.res.days : 1); // D-82: 하루 평균 오프셋을 원래 대표기간 합계로 환산하여 사본 진단값만 변형.
@@ -442,7 +448,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   const ranked = [...expected.parts].sort((x, y) => Math.abs(y.value) - Math.abs(x.value));
   if (Math.abs(replayOffset) >= 1) ok(Math.abs(a.replay) >= 1, '큰 재현 차이 회귀 사례 실제 실행');
   weatherClue(a, ...expected.weather, old.res, res);
-  const multi = topCards(expected.parts, a).length >= 2; // D-80: C-5.
+  const multi = topCards(expected.parts, selectionBasis).length >= 2; // D-80: C-5.
   const closed = U.uiMath.outageCardsHTML(V, res, id, {});
   studentWords(closed, `월간 열기 전/${multi ? '카드' : '한 줄 요약'}`);
   const closedBox = bottleneck(closed, expectedGrid, '열기 전', a); // D-80: C-1·2·4·5 대상별 검사.
@@ -463,7 +469,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   const html = U.uiMath.outageCardsHTML(V, res, id, note), rendered = rows(html);
   studentWords(html, `월간 열기 후/${multi ? '카드' : '한 줄 요약'}`);
   eq(bottleneck(html, expectedGrid, '열기 뒤', a), closedBox, '병목은 열기 전후 동일, 카드 정답과 무관'); // D-80: C-1·2·4·5 대상별 검사.
-  cards(html, expected.parts, a); // D-80: C-5.
+  cards(html, expected.parts, selectionBasis); // D-80: C-5.
   if (multi) for (const [label, text] of [['닫힘', closed], ['열림', html]])
     ok(text.includes(a.clues.weather) && text.includes(a.clueMore.weather),
       `${label}: 독립 tot.ren·절댓값 검산 단서 그대로 표시`);
@@ -497,7 +503,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   ok(candidates.every(k => causes.includes(k)), '되돌림·재현은 카드/나머지 후보 밖');
   if (!model.grid.waitingMW) ok(!html.includes('접속 대기'), '0 MW 달 접속 대기 문장 없음');
   note.outageFrozen = clone(session.outShownPending.frozen);
-  eq(session.outShownPending.largest?.key || null, Math.abs(ranked[0].value) < minPart(a) ? null : ranked[0].key, // D-80: C-5.
+  eq(session.outShownPending.largest?.key || null, Math.abs(ranked[0].value) < cardMin(selectionBasis) ? null : ranked[0].key, // D-80: C-5.
     '기기 저장 최대도 여섯 후보만(재현 제외)'); // D-80: C-1·2·4·5 대상별 검사.
   if (session.outShownPending.largest) note.outageLargest = clone(session.outShownPending.largest);
   const frozenData = teamData(); frozenData.interview ||= {}; frozenData.interview.months ||= {};
@@ -565,7 +571,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
     const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
       parts: causes.map((key, i) => ({ key, value: values[i] ?? 0 })) }; // D-80: C-1·2·4·5 대상별 검사.
     const html = U.uiMath.outageCardsHTML(V, res, id, { outageOpened: true, outageFrozen: frozen });
-    cards(html, frozen.parts);
+    cards(html, frozen.parts, frozen);
     for (const m of html.matchAll(/data-missed="([^"]+)"[^>]*>[\s\S]*?<b class="lg-out-size">([^<]+)<\/b>/g)) {
       const p = frozen.parts.find(p => p.key === m[1]);
       eq(m[2], `${number(p.value, true)}%p`, `${p.key}: 카드 숫자 형식`);
@@ -579,7 +585,7 @@ test('영상 3차: 0.05%p 카드/병목 경계·숫자 형식·합계 밖', () =
     const html = U.uiMath.outageCardsHTML(V, res, id,
       { outageOpened: true, outageFrozen: frozen, missed: 'weather' });
     bottleneck(html, frozen.grid, `대기 ${waitingMW}, 반사실 ${value}`);
-    cards(html, parts);
+    cards(html, parts, frozen);
     const rendered = rows(html);
     eq(rendered.map(p => p.key), ['previous', ...causes, 'actual'], '병목 크기와 무관하게 분해 후보/합계 줄 동일');
     near(rendered.filter(p => p.key !== 'actual').reduce((sum, p) => sum + p.raw, 0), 4.4, '병목을 더하지 않은 폭포 합계');

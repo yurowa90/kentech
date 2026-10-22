@@ -144,6 +144,7 @@
       outageReplayUnsMin: p(.005, G, "약속·S7 판정 눈금 · 게임 가정(G) · 정전 재현 차이 표시 최소 크기(%p)"),
       outageMinUnsPart: p(.05, G, "약속·S7 판정 눈금 · 게임 가정(G) · 정전 원인 최소 몫(%p)"),
       outageMinPartDivisor: p(10, G, "약속·S7 판정 눈금 · 게임 가정(G) · 계통 같음 문턱에서 최소 원인 몫을 구하는 나눗수"),
+      outageCardShareMin: p(.05, G, "약속·S7 판정 눈금 · 게임 가정(G) · 원인 카드·가장 큰 몫으로 세는 최소 비율(합계 |Δ| 대비, D-82 각주)"),
       outageCardCount: p(3, G, "약속·S7 판정 눈금 · 게임 가정(G) · 크기순 원인 후보 최대 카드 수"),
       outageRankingDigits: p({ grid: 1, uns: 2 }, G, "약속·S7 판정 눈금 · 게임 가정(G) · 원인 몫 동점 판정의 반올림 소수 자릿수"),
       outageHighPct: p(5, G, "약속·S7 판정 눈금 · 게임 가정(G) · 정전 자체가 큼 안내의 정전율(%) 기준"),

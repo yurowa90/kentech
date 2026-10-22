@@ -21,8 +21,9 @@ const ctx = vm.createContext({ console, performance, structuredClone, __session:
 ctx.window = ctx;
 vm.runInContext('Math.random = () => { throw Error("unseeded random"); };', ctx);
 for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core'])
-  vm.runInContext(fs.readFileSync(path.join(ROOT, `ui/${name}.js`), 'utf8'), ctx, { filename: name });
-const source = fs.readFileSync(path.join(ROOT, 'ui/league.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(name === 'econ-data' && process.argv[3] || path.join(ROOT, `ui/${name}.js`), 'utf8'), ctx, { filename: name });
+// 선택 인자는 변이 검사 임시 사본. 기본 실행에서는 작업 중 구현을 읽는다.
+const source = fs.readFileSync(process.argv[2] || path.join(ROOT, 'ui/league.js'), 'utf8');
 assert.equal(source.split('let L = null;').length, 2, '30·32번의 VM 세션 연결점');
 assert.equal(source.split('state: () =>').length, 2, '30·32번의 기록 경로 연결점');
 // 세션·수신·기록 진입점만 메모리에서 연결한다. missedText가 비공개이므로
@@ -36,6 +37,12 @@ const trialKeys = ['choice', 'weather', 'event', 'trade'];
 const monthlyKeys = ['choice', 'weather', 'event', 'progress', 'growth', 'trade'];
 const names = basis => ({ choice: '내 선택', weather: basis === 'monthly' ? '날씨·계절·운전 기간' : '날씨·운전 기간',
   event: '사건·대응', progress: '접속·공사·기술 진행', growth: '도시 성장·연료 값', trade: '이웃 거래' });
+// V7 A: 계약의 고정값으로 독립 계산한다(제품 상수·함수는 읽지 않는다).
+const minPart = a => a.target === 'grid' ? Math.max(Math.max(.05, .05 * Math.abs(a.trial ?? a.base)) / 10, .05) : .05;
+const cardMin = a => {
+  const total = a.total ?? (a.actual - (a.trial ?? a.base));
+  return Number.isFinite(total) ? Math.max(minPart(a), .05 * Math.abs(total)) : minPart(a);
+};
 // V5 §2의 기존 연결 규칙을 검사 쪽에 명시한다. UI 소스의 연결표는 읽지 않는다.
 // 같은 단계/간접 연결은 직접 연결에 넣지 않는다. 시험 기준에는 진행·성장 몫이 없다.
 const evidenceCases = [
@@ -255,14 +262,18 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
         { weather: row.weather, event: row.event, growth: row.growth, choice: 99, trade: -88 });
       check(`13 §2-1 ${scope}/${base}/${row.label} 대표·외 개수`, () => {
         const summary = summaryBody(opened(f, a, evidence));
-        assert.ok(summary.includes(`${ns[row.lead]} ${valueText(row[row.lead], target)}`),
-          '문턱 이상 중 절댓값 최대를 대상 단위로 표시');
+        const counted = a.parts.filter(p => ['weather', 'event', 'growth'].includes(p.key) && Math.abs(p.value) >= cardMin(a))
+          .sort((x, y) => Math.abs(y.value) - Math.abs(x.value));
+        const lead = counted[0];
+        assert.ok(lead ? summary.includes(`${ns[lead.key]} ${valueText(lead.value, target)}`) :
+          summary === `고른 근거 ‘${evidence.text}’ · 직접 연결 몫은 거의 0`,
+          '5% 카드 문턱 이상 대표·없으면 정확한 거의 0 문장');
         assert.deepEqual(Object.entries(ns).filter(([, name]) => summary.includes(name)).map(([key]) => key),
-          [row.lead], '대표 이름 하나만 표시');
-        const count = summary.match(/외\s*(\d+)개/);
-        assert.equal(count ? Number(count[1]) : 0, row.extra, '외 n개에는 문턱 이상인 나머지만 셈');
-        if (!row.extra) assert.equal(count, null, '대표만 남으면 외 0개도 쓰지 않음');
-        assert.ok(!summary.includes('거의 0'), '문턱 이상이면 거의 0이 아님');
+          lead ? [lead.key] : [], '문턱 이상 대표 이름만 표시');
+        const count = summary.match(/외\s*(\d+)개/), extra = Math.max(0, counted.length - 1);
+        assert.equal(count ? Number(count[1]) : 0, extra, '외 n개에는 카드 문턱 이상인 나머지만 셈');
+        if (!extra) assert.equal(count, null, '대표만 남거나 없으면 외 0개도 쓰지 않음');
+        assert.equal(summary.includes('거의 0'), !lead, '카드 문턱 이상 유무와 거의 0 일치');
       });
     }
   }
@@ -418,5 +429,222 @@ for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달
     assert.equal(html.includes('data-out-step="replay"'), basis === 'trial' && shown, '시험만 재현 폭포 줄, 월간은 합계 밖'); // D-82: 재현의 합계 위치 보존.
   }); // D-82: 계통 재현 경계 검사 끝.
 } // D-82: 추가 계약 순회 끝.
+// V7 A: 분해 입력은 저장 경계에서 합성하고, 기대 후보·문장은 계약에서 직접 정한다.
+const cardKeys = html => [...html.matchAll(/data-missed="([^"]+)"/g)].map(m => m[1]);
+const tags = html => [...html.matchAll(/<button\b[^>]*data-missed="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)]
+  .filter(m => m[2].includes('data-out-tag="largest"')).map(m => m[1]);
+check('V7 A 비율 파라미터 값·등급', () => {
+  assert.ok(Object.hasOwn(D.params, 'outageCardShareMin'), '공개 params에 존재');
+  assert.equal(D.params.outageCardShareMin.v, .05, '저장소 파라미터 value(v) = 5%');
+  assert.equal(D.params.outageCardShareMin.grade, 'G', '게임 가정 등급');
+});
+for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) {
+  const f = fixture(basis, target), zero = Object.fromEntries((basis === 'monthly' ? monthlyKeys : trialKeys).map(k => [k, 0]));
+  const record = values => partRecord(f, basis, target, 0, { ...zero, ...values });
+  const render = (a, n = {}) => M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a, ...n });
+  for (const sign of [-1, 1]) for (const fallback of [false, true])
+    check(`V7 A 4% 제외·6% 포함 ${basis}/${target}/${sign}/fallback=${fallback}`, () => {
+      const a = record({ choice: sign * 90, weather: sign * 4, event: sign * 6 });
+      if (fallback) delete a.total; // actual−trial을 쓰는 옛 고정본.
+      const before = clone(a), html = render(a, { evidence: { key: 'wind', text: '풍속', value: 5 } });
+      assert.deepEqual(cardKeys(html), ['choice', 'event'], '5%를 넘는 둘만 분해 순서로 표시');
+      assert.ok(html.includes('data-single="false"'), '6% 몫이 있으므로 고르기 유지');
+      assert.deepEqual(tags(html), ['choice'], '최대는 90% 몫 하나');
+      assert.deepEqual(a, before, '분해 입력 불변');
+      assert.ok(html.includes('data-out-step="weather" data-out-value="' + sign * 4 + '"'), '4%도 폭포 값 유지');
+    });
+  check(`V7 A total 우선·base 대체 ${basis}/${target}`, () => {
+    const a = record({ choice: 90, weather: 4, event: 6 });
+    a.actual = 900; // 저장된 total=100이 actual−trial보다 우선한다.
+    assert.deepEqual(cardKeys(render(a)), ['choice', 'event']);
+    delete a.total; a.base = a.trial; delete a.trial; a.actual = 100;
+    assert.deepEqual(cardKeys(render(a)), ['choice', 'event'], 'total·trial 없으면 actual−base');
+  });
+  check(`V7 A 5% 경계 ${basis}/${target}`, () => {
+    const html = render(record({ choice: 91, weather: 4, event: 5 }));
+    assert.deepEqual(cardKeys(html), ['choice', 'event'], '정확히 5%는 포함');
+  });
+  check(`V7 A 고르기 생략 ${basis}/${target}`, () => {
+    const a = record({ choice: 96, weather: 4 }), html = render(a);
+    assert.deepEqual(cardKeys(html), [], '4%는 선택 후보가 아님');
+    assert.ok(html.includes('data-single="true"') && firstVerdict(html) === '내가 고른 것: 고르기 생략');
+    assert.ok(textOf(html).includes('다른 몫은 모두 ' + (target === 'grid' ? '5.0 MWh/일' : '5.00%p') + ' 미만이라 고르기를 생략해요'));
+    assert.equal(session.outShownPending.largest.key, 'choice');
+    for (const [route, raw] of Object.entries(records(f, a))) {
+      const text = textOf(raw);
+      assert.ok(text.includes('고르기 생략'), `${route} 생략 기록`);
+      assert.ok(!text.includes(names(basis).weather + ' ' + valueText(4, target)), `${route} 4%를 최대처럼 기록하지 않음`);
+    }
+  });
+  for (const edge of [.049, .05, .052]) check(`V7 A 작은 Δ 하한 ${basis}/${target}/${edge}`, () => {
+    const a = record({ choice: edge, weather: .001 - edge }), html = render(a);
+    assert.ok(Math.abs(a.total - .001) < 1e-12 && cardMin(a) === .05, '5%가 아주 작아도 minPart 유지');
+    assert.equal(session.outShownPending.largest?.key || null, edge < .05 ? null : 'choice');
+    assert.equal(textOf(html).includes('뚜렷한 원인 없음'), edge < .05, '하한 미만만 원인 없음');
+    assert.equal(html.includes('data-single="true"'), edge <= .05, '두 번째 몫도 하한 이상일 때만 고르기');
+    assert.deepEqual(cardKeys(html), edge > .05 ? ['choice', 'weather'] : []);
+  });
+  check(`V7 A 직접 연결·외 개수·기여 문장 ${basis}/${target}`, () => {
+    const a = record({ choice: 90, weather: 4, event: 6 }); a.hasConnectedWind = true;
+    const evidence = { key: 'wind', text: '풍속', value: 5 };
+    const html = render(a, { evidence });
+    assert.equal(summaryBody(html), `고른 근거 ‘풍속’ · 직접 연결 몫 사건·대응 ${valueText(6, target)}`, '4%는 외 n개에서도 제외');
+    const b = record({ choice: 96, weather: 4 }); b.hasConnectedWind = true;
+    const tiny = render(b, { evidence });
+    assert.equal(summaryBody(tiny), '고른 근거 ‘풍속’ · 직접 연결 몫은 거의 0');
+    assert.ok(textOf(tiny).includes('이 몫들은 이번 차이에 거의 기여하지 않았어요.'), 'minPart 이상인 4%도 기여 문장은 cardMin 판정');
+    const c = record({ choice: 88, weather: 6, event: 6 }); c.hasConnectedWind = true;
+    assert.equal(summaryBody(render(c, { evidence })), `고른 근거 ‘풍속’ · 직접 연결 몫 날씨·${basis === 'monthly' ? '계절·' : ''}운전 기간 ${valueText(6, target)} 외 1개`, '6% 둘은 외 1개로 집계');
+  });
+  check(`V7 A 고정본 4% 선택 보존 ${basis}/${target}`, () => {
+    const a = record({ choice: 90, weather: 4, event: 6 }), before = clone(a);
+    const html = render(a, { missed: 'weather' });
+    assert.deepEqual(cardKeys(html), ['choice', 'weather', 'event']);
+    assert.match(html, /data-missed="weather" aria-pressed="true"/);
+    assert.ok(firstVerdict(html).endsWith(' · 이번 차이에 거의 기여하지 않았어요'));
+    assert.deepEqual(tags(html), ['choice'], '고른 4%를 최대로 인정하지 않음');
+    for (const [route, raw] of Object.entries(records(f, a, 'weather'))) {
+      const text = textOf(raw);
+      assert.ok(text.includes(`${route === 'carry' ? '지난달 놓친 것' : '놓친 것'}: ${names(basis).weather}`), `${route} 작은 선택 이름 유지`);
+      assert.ok(!text.includes(uniqueLabel) && !text.includes(tiedLabel), `${route} 작은 선택 최대 판정 없음`);
+    }
+    assert.deepEqual(a, before, '선택을 유지해도 분해 값 불변');
+  });
+  for (const effect of [.049, .05, 4]) check(`V7 A 접속 상자는 minPart ${basis}/${target}/${effect}`, () => {
+    const a = record({ choice: 94, event: 6 }); a.grid = { waitingMW: 12, value: effect };
+    const html = render(a);
+    assert.equal(html.includes('id="lg-outage-grid-bottleneck"'), effect >= .05, '5%보다 작은 반사실도 minPart 이상이면 표시');
+    assert.equal(html.includes('id="lg-outage-grid-small"'), effect < .05);
+    if (effect < .05) assert.ok(textOf(html).includes(`효과 ${target === 'grid' ? '0.1 MWh/일' : '0.05%p'} 미만`), '효과 미만 문구도 minPart');
+    if (effect >= .05) assert.ok(html.includes(`data-out-grid="${effect}"`), '반사실 원시값 유지');
+  });
+  for (const replay of [target === 'grid' ? .049 : .0049, target === 'grid' ? .05 : .005])
+    check(`V7 A 재현 기존 눈금 ${basis}/${target}/${replay}`, () => {
+      const a = record({ choice: 94, event: 6 }); a.replay = replay;
+      if (basis === 'trial') { a.total += replay; a.actual += replay; }
+      const html = render(a), shown = replay >= (target === 'grid' ? .05 : .005);
+      assert.equal(html.includes('id="lg-outage-replay"'), shown, '재현 표시 눈금에 5%를 적용하지 않음');
+      assert.equal(html.includes('data-out-step="replay"'), shown && basis === 'trial', '폭포 재현 위치 유지');
+    });
+  if (basis === 'trial') check(`V7 A 최대·공동 최대에도 5% ${target}`, () => {
+    const a = record({ choice: 1.004, event: .999 });
+    a.total = 20; a.actual = 20; a.replay = 20 - 1.004 - .999;
+    // 둘은 같은 표시 크기지만 event는 cardMin=1보다 작다.
+    const html = render(a);
+    assert.deepEqual(clone(session.outShownPending.largest), { key: 'choice', value: 1.004 });
+    assert.ok(!textOf(html).includes('크기 같음') && !textOf(html).includes('크기가 같은 가장 큰 몫'));
+    for (const [route, raw] of Object.entries(records(f, a))) {
+      const text = textOf(raw);
+      assert.ok(text.includes('고르기 생략') && text.includes(names(basis).choice), `${route} 문턱 이상 최대만 기록`);
+      assert.ok(!text.includes(tiedLabel), `${route} 문턱 미만 반올림 동률은 공동 최대 아님`);
+    }
+  });
+  // 재현이 합계 대부분인 시험 기록: 원인 모두 minPart 이상이어도 Δ의 5% 미만이다.
+  if (basis === 'trial') check(`V7 A 원인 없음 5% ${target}`, () => {
+    const a = record({ choice: 4, weather: 4, event: 4, trade: 4 });
+    a.total = 100; a.actual = 100; a.replay = 84;
+    const html = render(a);
+    assert.ok(html.includes('data-single="true"') && textOf(html).includes('뚜렷한 원인 없음'));
+    assert.equal(session.outShownPending.largest, null); assert.deepEqual(tags(html), []);
+    for (const [route, raw] of Object.entries(records(f, a))) {
+      const text = textOf(raw);
+      assert.ok(text.includes('뚜렷한 원인 없음'), `${route} 원인 없음 기록`);
+      assert.ok(!text.includes('가장 큰 몫'), `${route} 최대 기록 없음`);
+    }
+  });
+}
+// S7 '같음' 첫 줄 계약. 실제 공개 결과를 합성하며 판정 함수를 기대값으로 쓰지 않는다.
+// 정전 ±.5 미만, 계통 max(.05 MWh/일, 기준의 5%) 이하를 직접 지정한다.
+function sameParagraph(topic, basis, days) {
+  // 기준 이름은 하네스 입력과 계약만으로 계산한다. 제품의 이름·조사 함수는 호출하지 않는다.
+  const baselineLabel = basis === 'monthly' ? '지난달 대비' :
+    days > 0 && days !== 7 ? `시험 ${days}일 대비` : '시험 1주 대비';
+  const baseline = baselineLabel.replace(/ 대비$/, '');
+  const particle = (baseline.charCodeAt(baseline.length - 1) - 0xac00) % 28 ? '과' : '와';
+  return `<p id="lg-outage-same">실제로는 ${topic === 'grid' ? '바깥 계통에 기댄 전기가' : '정전이'} ${baseline}${particle} 거의 같았어요(같음).</p>`;
+}
+for (const topic of ['uns', 'grid']) {
+  const original = fixture('monthly', topic);
+  const rows = [
+    { label: '같음·예측은 늘 것', delta: 0, show: true },
+    { label: '늘 달·예측은 같을 것', delta: topic === 'grid' ? 5.001 : .5, show: false },
+    { label: '줄 달·예측은 같을 것', delta: topic === 'grid' ? -5.001 : -.5, show: false },
+    { label: '양의 같음 경계', delta: topic === 'grid' ? 5 : .499, show: true },
+    { label: '음의 같음 경계', delta: topic === 'grid' ? -5 : -.499, show: true },
+    { label: '약속 없는 달·근거 없음', delta: 0, omit: 'evidence', show: false },
+    { label: '약속 없는 달·방향 없음', delta: 0, omit: 'pred', show: false },
+    { label: '건너뛴 달', delta: 0, skipped: true, show: false },
+    { label: '주제 전환 안내보다 앞', delta: 0, target: topic === 'grid' ? 'uns' : 'grid', show: true },
+    { label: '분해 없는 대체 화면', delta: 0, fallback: true, show: true },
+    ...(topic === 'grid' ? [
+      { label: '0 기준 하한과 같음', base: 0, delta: .05, show: true },
+      { label: '0 기준 하한 초과', base: 0, delta: .050001, show: false }
+    ] : [])
+  ];
+  for (const row of rows) check(`22 S7 첫 줄 ${topic}/${row.label}`, () => {
+    reset();
+    const V = clone(original.V), res = V.results.at(-1), previous = V.results.find(r => r.round === res.round - 1);
+    session.snap = V;
+    const base = row.base ?? (topic === 'grid' ? 100 : 10);
+    previous.team[id].unsPct = topic === 'uns' ? base : 0;
+    res.team[id].unsPct = topic === 'uns' ? base + row.delta : 0;
+    // 대표 기간을 달리 해도 하루 평균으로 비교한다. 월 합계 비교 회귀도 검출한다.
+    previous.days = 31; res.days = 28;
+    for (const [r, daily] of [[previous, base], [res, base + row.delta]]) {
+      r.team[id].uns = 0; r.team[id].imp = 0; r.team[id].sub = 0;
+      r.team[id].isolated.uns = daily * r.days;
+    }
+    const f = { V, res }, target = row.target || topic;
+    const a = frozen(f, 'monthly', target);
+    a.grid = { waitingMW: 12, value: 20 }; // 접속 대기 상자를 반드시 렌더할 크기.
+    const n = { topic, evidence: { key: 'grid', text: '접속 여유', value: 100 },
+      pred: { [topic]: row.show ? 'up' : 'same' }, skipped: !!row.skipped,
+      outageOpened: true, outageFrozen: a, missed: 'trade' };
+    if (row.omit) delete n[row.omit];
+    if (row.fallback) {
+      storage.clear(); delete n.outageFrozen;
+      assert.equal(M.outageAttribution(V, res, id, n), null, '실제로 분해 없음');
+    }
+    const before = clone(n), html = M.outageCardsHTML(V, res, id, n);
+    assert.equal((html.match(/\bid="lg-outage-same"/g) || []).length, row.show ? 1 : 0, '실제 방향·약속·건너뜀에 따른 유무');
+    assert.deepEqual(n, before, '분해 수치·입력 기록 불변');
+    if (row.fallback) assert.match(html, /<h4>무엇을 놓쳤나<\/h4>/, '대체 화면 경로');
+    else {
+      assert.match(html, /id="lg-outage-grid-bottleneck"/, '접속 대기 상자가 있는 위치 검사');
+      assert.match(html, /id="lg-outage-baseline"/, '비교 기준 문장 존재');
+      assert.match(html, /id="lg-outage-cards"/, '원인 카드 보존');
+      assert.match(html, /data-out-step=/, '공개 폭포 보존');
+    }
+    if (row.show) {
+      assert.equal(html.match(/<h4>[^<]*<\/h4>\s*(<p id="lg-outage-same">[^<]*<\/p>)/)?.[1], sameParagraph(topic, 'monthly'),
+        'h4 바로 다음 요소가 정확한 같음 문장');
+      assert.ok(html.includes(' 지난달과 거의 같았어요(같음).'), '지난달은 받침이 있어 과');
+      for (const marker of ['id="lg-outage-grid-bottleneck"', 'id="lg-outage-baseline"', '이번 달은 실제 정전이 생겨', '이번 달은 비교하는 두 결과 모두'])
+        if (html.includes(marker)) assert.ok(html.indexOf('id="lg-outage-same"') < html.indexOf(marker), `${marker}보다 앞`);
+      if (row.target) assert.ok(html.includes(topic === 'grid' ? '이번 달은 실제 정전이 생겨' : '이번 달은 비교하는 두 결과 모두'), '실제 주제 전환 안내 경로');
+      const skippedHTML = M.outageCardsHTML(V, res, id, { ...n, skipped: true });
+      assert.equal(html.replace(sameParagraph(topic, 'monthly'), ''), skippedHTML, '첫 줄 추가 외 분해 값·카드·폭포 HTML 동일');
+    }
+  });
+}
+for (const topic of ['uns', 'grid']) for (const row of [
+  { days: 7, name: '시험 1주', ending: '시험 1주와' },
+  { days: 30, name: '시험 30일', ending: '시험 30일과' }
+]) check(`V7 D 첫 달 ${row.name}/${topic}`, () => {
+  const f = fixture('trial', topic), V = clone(f.V), res = V.results.at(-1), r = res.team[id];
+  assert.equal(V.round, 1); assert.equal(V.results.length, 1);
+  r.unsPct = topic === 'uns' ? 10 : 0;
+  r.uns = 0; r.imp = 0; r.sub = 0; r.isolated.uns = 100 * res.days;
+  session.snap = V;
+  const n = { topic, confirmed: true, evidence: { key: 'grid', text: '접속 여유', value: 100 },
+    pred: { [topic]: 'up' }, trial: { days: row.days, unsPct: 10, gridMWh: 100 * row.days },
+    outageOpened: true, outageFrozen: frozen({ V, res }, 'trial', topic), missed: 'trade' };
+  const html = M.outageCardsHTML(V, res, id, n);
+  const paragraph = html.match(/<h4>[^<]*<\/h4>\s*(<p id="lg-outage-same">[^<]*<\/p>)/)?.[1];
+  assert.equal(paragraph, sameParagraph(topic, 'trial', n.trial.days), '시험 기간으로 계산한 기준 이름·조사·주어');
+  assert.ok(paragraph.includes(` ${row.ending} 거의 같았어요(같음).`), '7일·30일의 정확한 이름과 와·과');
+  assert.equal((html.match(/id="lg-outage-same"/g) || []).length, 1);
+  assert.equal(html.replace(sameParagraph(topic, 'trial', n.trial.days), ''), M.outageCardsHTML(V, res, id, { ...n, skipped: true }));
+});
 console.log(`V5 S7: ${checks} checks, ${failures.length} failures`);
 process.exitCode = failures.length ? 1 : 0;
