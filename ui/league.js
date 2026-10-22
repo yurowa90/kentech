@@ -930,9 +930,17 @@
     if (includeFuel) add(options.find(x => x.key === "fuel"), "국제 지수");
     // 5. 변화율 순서, 비교할 지난달 값이 없으면 고정 목록 순서로 뒤에 채운다.
     const remaining = [...changed, ...options.filter(x => !Number.isFinite(x.before))];
+    const skipped = [];
     for (const item of remaining) {
       if (picked.size >= 3) break;
-      if (item.key !== "fuel" || includeFuel) add(item, changeTag(item));
+      if (picked.has(item.key) || item.key === "fuel" && !includeFuel) continue;
+      // 변화도 지난달 연결도 없는 근거는 미루고, 최소 두 후보가 필요할 때만 보충한다.
+      if (Number.isFinite(item.before) && item.delta === 0 && item.key !== linked) { skipped.push(item); continue; }
+      add(item, changeTag(item));
+    }
+    for (const item of skipped) {
+      if (picked.size >= 2) break;
+      add(item, changeTag(item));
     }
     // 6. 옛 기록도 이미 고른 근거는 유지한다. 규칙상 마지막 우선순위 후보를 빼고 최대 세 개로 둔다.
     const selected = allOptions.find(x => x.key === n?.s1Pick);
