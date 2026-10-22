@@ -242,6 +242,11 @@ function note(h) {
   return data.interview?.months?.[h.L.snap.round];
 }
 // 독립 오라클: UI 함수/상수/반환값을 읽지 않는다. 동률은 명세 §2가 참조한 기존 목록 순서.
+function displayedChange(key, value, before) {
+  const delta = value - before;
+  const amount = key === 'neighbor' ? delta : before === 0 ? value : delta / Math.abs(before) * 100;
+  return Number(amount.toFixed(2)) + 0; // JS 두 자리 반올림, -0도 0으로 정규화.
+}
 function expected(f) {
   const hasWind = typeof f.current.s1HasWind === 'boolean' ? f.current.s1HasWind : !!f.opt.wind;
   const found = new Map(), valid = k => Number.isFinite(f.values[k]) && (k !== 'wind' || hasWind);
@@ -260,16 +265,24 @@ function expected(f) {
   const candidates = [...(frozen?.parts || [])].filter(p => Math.abs(p.value) >= cardMin)
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 3);
   const largest = f.previous.outageLargest?.key || carry?.largest?.key;
-  if ((!frozen?.parts || candidates.length > 0) && linked[largest]) add(linked[largest], 2, largest);
+  const connection = (!frozen?.parts || candidates.length > 0) ? linked[largest] : undefined;
+  if (connection) add(connection, 2, largest);
   add('wind', 3);
   // 고정본에 parts가 없으면 growth는 거짓이며, 축약 기록으로 대체하지 않는다.
   const fuel = (frozen ? candidates.some(p => p.key === 'growth') :
     carry?.largest?.key === 'growth' && Math.abs(carry.largest.value) >= minPart(carry)) || (f.opt.cash ?? 100) < 0;
   if (fuel) add('fuel', 4);
   // 계약 5: 비교 가능한 변화율부터, 지난달 값이 없으면 고정 순서로 뒤에.
+  // 표시할 변화가 두 자리 반올림 뒤 0이면 두 후보를 확보할 때만 쓴다. 1~4단계 선발은 보존한다.
   const comparable = ranked.map(x => x.key);
-  for (const key of [...comparable, ...order.filter(k => !comparable.includes(k))])
-    if (key !== 'fuel' || fuel) add(key, 5);
+  const remaining = [...comparable, ...order.filter(k => !comparable.includes(k))]
+    .filter(k => valid(k) && (k !== 'fuel' || fuel) && !found.has(k));
+  const deferred = remaining.filter(k => comparable.includes(k) && displayedChange(k, f.values[k], prev[k]) === 0);
+  for (const key of remaining.filter(k => !deferred.includes(k))) add(key, 5);
+  for (const key of deferred) {
+    if (found.size >= 2) break;
+    add(key, 5);
+  }
   const pick = f.current.s1Pick;
   if (order.includes(pick) && Number.isFinite(f.values[pick]) && !found.has(pick)) {
     if (found.size === 3) found.delete([...found.keys()].at(-1));
@@ -299,6 +312,14 @@ function assertCandidates(h, f) {
   assert.deepEqual(v.keys, wanted, '선발 순위와 무관한 고정 순서');
   const returned = copy(h.U.__evidenceCandidates(h.L.snap));
   assert.deepEqual(returned.map(x => x.key), wanted, '반환 순서도 고정·중복 없음·최대 세 개');
+  // 꼬리표의 숫자 0만 금지한다. +100% 같은 정상 변화나 카드 본문의 현재 값과 구별한다.
+  const zeroTag = /(?:^|[^\d.])[+−-]?0(?:\.0+)?%p?|(?:^|[^\d.])\+0\.00(?!\d)/;
+  for (const item of returned) {
+    const card = v.cards.find(c => cardKey(c) === item.key);
+    assert.doesNotMatch(item.tag || '', zeroTag, `${item.key} 반환 꼬리표에 0%·0%p·+0.00 없음`);
+    assert.doesNotMatch(card.querySelector('.lg-s1-tag')?.textContent || '', zeroTag,
+      `${item.key} 화면 꼬리표에 0%·0%p·+0.00 없음`);
+  }
   assert.ok(v.focus.textContent.includes(`이번 달 볼 것 · 근거 후보 ${wanted.length}개`));
   return v;
 }
@@ -318,7 +339,7 @@ function s4GridBasis(h) {
   return { element, raw };
 }
 const gridCases = [
-  ['세 후보 중간', { previous: standard, values: { grid: 3.65 } }],
+  ['세 후보 중간', { previous: standard, values: { evening: 110, grid: 3.65, neighbor: 11 } }],
   ['세 후보 마지막(390에서는 접힘)', { wind: 'wind', values: { fuel: null } }],
   ['두 후보', { values: { wind: null, fuel: null, neighbor: null } }],
   ['grid만 숫자', { values: { evening: null, wind: null, fuel: null, neighbor: null } }],
@@ -514,7 +535,7 @@ const cases = [
   ['다른 이웃끼리 비교 제외', { previous: standard, values: { neighbor: 99 }, oldNeighbor: 'asan' }],
   ['다른 이웃 비교 문구/규칙2로 이웃 카드 포함', { previous: standard, oldNeighbor: 'asan', oldNote: { outageLargest: { key: 'trade' } } }],
   ['규칙4 예보 둘 다 없음', { values: { wind: null, fuel: null } }],
-  ['규칙4 규칙1 뒤 두 개 채움', { previous: standard, values: { wind: null, fuel: null, grid: 100 } }],
+  ['규칙5 규칙1 뒤 변화 0 하나만 보충', { previous: standard, values: { wind: null, fuel: null, grid: 100 } }],
   ['규칙4 숫자 정확히 둘', { values: { wind: null, fuel: null, neighbor: null } }],
   ['규칙4 숫자 넷에서 셋까지 채움', { values: { fuel: null } }],
   ['숫자 하나만', { values: { evening: null, wind: null, fuel: null, neighbor: null } }],
@@ -541,7 +562,7 @@ function contractCase(label, opt, keys, tags = {}) {
 }
 for (const previous of [undefined, { ...standard, wind: 0 }, standard])
   contractCase('계약 1·3·5 풍력 없으면 0 출발·거대 변화도 풍속 제외',
-    { previous, values: { wind: 1e9 } }, ['evening', 'grid', 'neighbor']);
+    { previous, values: { evening: 110, wind: 1e9, grid: 22, neighbor: 11 } }, ['evening', 'grid', 'neighbor']);
 for (const wind of ['wind', 'offshore'])
   contractCase(`계약 3 ${wind} 하나면 계절 대표값`, { wind, previous: standard,
     values: { evening: 300 }, oldNote: { outageLargest: { key: 'choice' } } },
@@ -552,7 +573,7 @@ for (const target of ['uns', 'grid']) for (const field of ['outageFrozen', 'miss
     const record = { target, trial: 1000, parts: [{ key: 'growth', value: -(above ? threshold : threshold * .999) }] };
     const include = (field === 'outageFrozen' && above) || cash < 0;
     contractCase(`계약 4 ${target}/${field}/growth ${above ? '경계 이상' : '미만'}/현금 ${cash}`,
-      { previous: standard, values: { evening: 300 }, cash, oldNote: { [field]: record } },
+      { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, cash, oldNote: { [field]: record } },
       include ? ['evening', 'grid', 'fuel'] : ['evening', 'grid', 'neighbor'],
       include ? { fuel: '국제 지수' } : {});
   }
@@ -562,9 +583,9 @@ for (const [label, oldNote, keys] of [
   ['고정본 이상·붙인 기록 미만', { outageFrozen: { parts: [{ key: 'growth', value: .05 }] },
     missedCarry: { parts: [{ key: 'growth', value: .049 }] } }, ['evening', 'grid', 'fuel']],
   ['붙인 기록 largest growth만 있음', { missedCarry: { largest: { key: 'growth', value: -.05 } } }, ['evening', 'grid', 'fuel']],
-]) contractCase(`계약 4 ${label}`, { previous: standard, values: { evening: 300 }, oldNote }, keys);
+]) contractCase(`계약 4 ${label}`, { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote }, keys);
 contractCase('계약 1 LNG 조건 미충족이어도 최대 변화면 포함',
-  { previous: standard, values: { fuel: 400 } }, ['evening', 'grid', 'fuel'], { fuel: '지난달보다 +300%' });
+  { previous: standard, values: { evening: 110, grid: 22, fuel: 400 } }, ['evening', 'grid', 'fuel'], { fuel: '지난달보다 +300%' });
 contractCase('계약 2 LNG 조건 미충족이어도 S7 growth 연결이면 포함',
   { oldNote: { outageLargest: { key: 'growth', value: .001 } } }, ['evening', 'grid', 'fuel'],
   { fuel: '지난달 가장 큰 몫(도시 성장·연료 값)과 이어짐' });
@@ -580,6 +601,101 @@ contractCase('계약 5 지난달 값 없는 근거는 고정 순서로 뒤에·�
 contractCase('계약 6 풍속·LNG 값이 있어도 제외 뒤 두 후보 유지',
   { previous: standard, values: { neighbor: null } }, ['evening', 'grid'],
   { evening: '지난달과 같음', grid: '지난달과 같음' });
+// V7 5차: 기대 키와 꼬리표를 오라클과 별도로 고정한다. 5단계에만 새 규칙을 적용한다.
+contractCase('V7 G a 변화 0·연결 없음인 세 번째 후보 제외',
+  { previous: standard, values: { evening: 200, grid: 30 } }, ['evening', 'grid'],
+  { evening: '지난달보다 +100%', grid: '지난달보다 +50%' });
+contractCase('V7 G a 3단계 풍속을 남기고 변화 0 후보 제외',
+  { wind: 'wind', previous: standard, values: { evening: 300 } }, ['evening', 'wind'],
+  { evening: '지난달보다 +200%', wind: '계절 대표값' });
+contractCase('V7 G b 하나만 남으면 건너뛴 순서로 한 장 보충',
+  { previous: standard, values: { neighbor: 30 } }, ['evening', 'neighbor'],
+  { evening: '지난달과 같음', neighbor: '지난달보다 +20%p' });
+contractCase('V7 G c 변화 0이어도 2단계 연결 근거 보존',
+  { previous: standard, values: { evening: 300 }, oldNote: { outageLargest: { key: 'choice' } } },
+  ['evening', 'grid'], { grid: '지난달 가장 큰 몫(내 선택)과 이어짐' });
+contractCase('V7 G d 모든 변화율 0인 1단계 선발 보존',
+  { wind: 'wind', cash: -1, previous: standard }, ['evening', 'wind', 'fuel'],
+  { evening: '지난달과 같음', wind: '계절 대표값', fuel: '국제 지수' });
+const zeros = Object.fromEntries(order.map(k => [k, 0]));
+contractCase('V7 G d 지난달·이번 달 모두 0인 1단계 선발 보존',
+  { wind: 'wind', cash: -1, previous: zeros, values: zeros }, ['evening', 'wind', 'fuel'],
+  { evening: '지난달과 같음', wind: '계절 대표값', fuel: '국제 지수' });
+contractCase('V7 G e 지난달 값 없는 근거는 변화율 뒤에 유지',
+  { previous: { evening: 100, neighbor: 10 }, values: { neighbor: 30 } }, ['grid', 'neighbor'],
+  { grid: '', neighbor: '지난달보다 +20%p' });
+contractCase('V7 G 반올림하면 0인 변화도 제외',
+  { previous: standard, values: { evening: 200, grid: 30, neighbor: 10.000001 } },
+  ['evening', 'grid'], { evening: '지난달보다 +100%', grid: '지난달보다 +50%' });
+// V7 6차: 기대 키·표시값·꼬리표를 명시한다. 0.5 / 10000 * 100은 JS의 0.005이며,
+// (0.005).toFixed(2)는 "0.01"이다. 100.005 - 100처럼 뺄셈 오차로 경계 아래가 되는 입력을 피한다.
+const visibleBoundaries = [
+  ['변화율 +0.004%', 'grid', 10000, 10000.4, 0, '지난달과 같음'],
+  ['변화율 −0.004%', 'grid', 10000, 9999.6, 0, '지난달과 같음'],
+  ['변화율 +0.005%', 'grid', 10000, 10000.5, .01, '지난달보다 +0.01%'],
+  ['변화율 +0.01%', 'grid', 10000, 10001, .01, '지난달보다 +0.01%'],
+  ['변화율 +0.1%', 'grid', 10000, 10010, .1, '지난달보다 +0.1%'],
+  ['이웃 Δ +0.004%p', 'neighbor', 10, 10.004, 0, '지난달과 같음'],
+  ['이웃 Δ +0.01%p', 'neighbor', 10, 10.01, .01, '지난달보다 +0.01%p'],
+  ['지난달 0 → 이번 0.004', 'grid', 0, .004, 0, '지난달과 같음'],
+  ['지난달 0 → 이번 0.01', 'grid', 0, .01, .01, '지난달 0에서 바뀜'],
+];
+for (const [label, key, before, value, shown, tag] of visibleBoundaries) {
+  // 0 출발은 변화율 크기가 Infinity로 동률이다. evening을 앞세워 경계 후보를 5단계에서 검사한다.
+  const previous = { ...standard, ...(before === 0 ? { evening: 0 } : {}), [key]: before };
+  const values = { evening: 300, grid: 60, neighbor: 30, [key]: value };
+  for (const role of ['team', 'solo']) {
+    test(`S1 V7 보이는 변화 경계 ${label}/남은 자리/${role}`, () => {
+      assert.equal(displayedChange(key, value, before), shown, '입력의 JS toFixed(2) 표시값');
+      const f = fixture(h, { role, previous, values }), v = assertCandidates(h, f);
+      const keys = ['evening', 'grid', 'neighbor'].filter(k => shown !== 0 || k !== key);
+      assert.deepEqual(v.keys, keys, '표시 0은 제외, 표시가 남으면 세 번째 후보 유지');
+      const item = copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key);
+      if (shown === 0) {
+        assert.equal(item, undefined, '반환 후보에서도 표시 0 제외');
+        assert.equal(v.cards.find(c => cardKey(c) === key), undefined, '화면 카드에서도 표시 0 제외');
+      } else {
+        assert.equal(item?.tag, tag, '표시가 남은 반환 꼬리표');
+        assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+          tag, '표시가 남은 화면 꼬리표');
+      }
+    });
+    if (shown !== 0) continue;
+    test(`S1 V7 보이는 변화 경계 ${label}/기존 선택의 같음 꼬리표/${role}`, () => {
+      const f = fixture(h, { role, previous, values, note: { s1Pick: key } }), v = assertCandidates(h, f);
+      assert.deepEqual(v.keys, ['evening', 'grid', 'neighbor'], '표시 0이어도 기존 선택 보존');
+      assert.deepEqual(selected(v), [key]);
+      assert.equal(note(h).s1Pick, key);
+      assert.equal(copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key)?.tag, tag,
+        '반환 꼬리표는 지난달과 같음');
+      assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+        tag, '화면 꼬리표도 지난달과 같음');
+    });
+    test(`S1 V7 보이는 변화 경계 ${label}/최소 두 장 보충/${role}`, () => {
+      const other = key === 'grid' ? 'neighbor' : 'grid';
+      const f = fixture(h, { role, previous, values: { ...values, [other]: null } }), v = assertCandidates(h, f);
+      assert.deepEqual(v.keys, ['evening', key], '표시 0을 건너뛴 뒤 한 장이면 두 장까지 보충');
+      assert.equal(copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key)?.tag, tag,
+        '보충된 반환 꼬리표는 지난달과 같음');
+      assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+        tag, '보충된 화면 꼬리표도 지난달과 같음');
+    });
+  }
+}
+contractCase('V7 G 보충할 후보도 없으면 한 장 유지',
+  { previous: standard, values: { evening: 200, grid: null, neighbor: null } }, ['evening'],
+  { evening: '지난달보다 +100%' });
+for (const role of ['team', 'solo']) for (const pick of ['grid', 'neighbor', 'fuel'])
+  test(`S1 V7 G 변화 0·연결 없음이어도 기존 s1Pick 보존/${role}/${pick}`, () => {
+    const f = fixture(h, { role, wind: 'wind', previous: standard, values: { evening: 300 }, note: { s1Pick: pick } });
+    const v = assertCandidates(h, f);
+    assert.deepEqual(v.keys, order.filter(k => ['evening', 'wind', pick].includes(k)), '기존 선택을 포함한 세 후보');
+    assert.deepEqual(selected(v), [pick]);
+    assert.equal(note(h).s1Pick, pick);
+    assert.equal(copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === pick)?.tag, '지난달과 같음');
+    assert.equal(v.promise.textContent.trim(), expectedPromise(promiseNames[pick]));
+    assert.ok(!v.promise.hasAttribute('disabled'));
+  });
 // V7 B: LNG 4·5단계는 growth의 카드 선발 여부로 판단한다. 1·2단계 예외는 위에서 보존한다.
 for (const [label, record, included] of [
   ['6% 후보', { total: 100, parts: [{ key: 'choice', value: 94 }, { key: 'growth', value: 6 }] }, true],
@@ -588,14 +704,14 @@ for (const [label, record, included] of [
   ['5% 이상이나 네 번째', { total: 100, parts: [{ key: 'choice', value: 40 }, { key: 'weather', value: 30 }, { key: 'event', value: 24 }, { key: 'growth', value: 6 }] }, false],
   ['total 없이 실제−기준 4%', { actual: 110, trial: 10, parts: [{ key: 'choice', value: 96 }, { key: 'growth', value: 4 }] }, false],
 ]) for (const target of ['uns', 'grid']) contractCase(`V7 B ${target}/${label}`,
-  { previous: standard, values: { evening: 300 }, oldNote: { outageFrozen: { target, trial: 10, ...record } } },
+  { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote: { outageFrozen: { target, trial: 10, ...record } } },
   included ? ['evening', 'grid', 'fuel'] : ['evening', 'grid', 'neighbor']);
 for (const [label, carry, included] of [
   ['largest growth 최소 몫 이상', { largest: { key: 'growth', value: -.05 } }, true],
   ['largest growth 최소 몫 미만', { largest: { key: 'growth', value: .049 } }, false],
   ['largest는 다른 몫', { largest: { key: 'event', value: 10 }, parts: [{ key: 'growth', value: 6 }] }, false],
   ['parts만 있는 축약 기록', { parts: [{ key: 'growth', value: 6 }] }, false],
-]) contractCase(`V7 B 축약/${label}`, { previous: standard, values: { evening: 300 }, oldNote: { outageLargest: { key: 'event', value: 10 }, missedCarry: carry } },
+]) contractCase(`V7 B 축약/${label}`, { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote: { outageLargest: { key: 'event', value: 10 }, missedCarry: carry } },
   included ? ['evening', 'grid', 'fuel'] : ['evening', 'grid', 'neighbor']);
 
 // V7 4차 minor 2: 첫 달 시험 기록의 재현 차이는 원인 카드가 아니다.
@@ -620,7 +736,7 @@ for (const target of ['uns', 'grid']) for (const sign of [1, -1])
             previous: standard, values: { evening: 300 } });
           const v = assertCandidates(h, f), returned = copy(h.U.__evidenceCandidates(h.L.snap));
           assert.deepEqual(v.keys, wind ? connects ? ['evening', 'wind', 'grid'] : ['evening', 'wind', 'fuel'] :
-            ['evening', 'grid', 'neighbor'], '계약에서 직접 정한 2단계 포함·제외 후보');
+            ['evening', 'grid'], '계약에서 직접 정한 2단계 포함·제외 후보(연결 없으면 grid만 보충)');
           assert.equal(v.focus.textContent.includes('지난달 가장 큰 몫('), connects, '화면의 연결 꼬리표 포함·제외');
           assert.equal(returned.some(x => x.tag.includes('지난달 가장 큰 몫(')), connects, '반환 꼬리표도 같은 판정');
           if (connects || !wind) {
@@ -639,7 +755,7 @@ for (const target of ['uns', 'grid']) for (const role of ['team', 'solo'])
       const frozen = { basis: 'trial', target, trial: 0, actual: 100, total: 100,
         ...(target === 'grid' ? { unit: 'MWh/일' } : {}) };
       assert.ok(!Object.hasOwn(frozen, 'parts'), 'parts 자체가 없는 옛 기록');
-      const f = fixture(h, { role, cash, previous: standard, values: { evening: 300 }, oldNote: {
+      const f = fixture(h, { role, cash, previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote: {
         outageFrozen: frozen, outageLargest: { key: 'event', value: 100 },
         ...(carryGrowth ? { missedCarry: { largest: { key: 'growth', value: 100 } } } : {}) } });
       const watch = new Element('span', { id: 'lg-watch' }); h.nodes.set('lg-watch', watch);
@@ -704,10 +820,10 @@ test('S1 계약 1~6 독립 기대값 검산·고정 순서', () => {
     [{ first: true }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
     [{ wind: 'wind', previous: standard, values: { neighbor: 30 }, oldNote: { missedBasis: 'monthly', outageLargest: { key: 'choice' } } }, [['wind', 3], ['grid', 2], ['neighbor', 1]]],
     [{ values: { wind: null, fuel: null } }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
-    [{ previous: standard, values: { wind: null, fuel: null, grid: 100 } }, [['evening', 5], ['grid', 1], ['neighbor', 5]]],
+    [{ previous: standard, values: { wind: null, fuel: null, grid: 100 } }, [['evening', 5], ['grid', 1]]],
     [{ values: { wind: null, fuel: null, neighbor: null } }, [['evening', 5], ['grid', 5]]],
     [{ wind: 'wind', values: { fuel: null } }, [['evening', 5], ['wind', 3], ['grid', 5]]],
-    [{ previous: standard }, [['evening', 1], ['grid', 5], ['neighbor', 5]]],
+    [{ previous: standard }, [['evening', 1], ['grid', 5]]],
     [{ oldNote: { outageLargest: { key: 'event' } } }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
     [{ wind: 'offshore', cash: -1, previous: standard, values: { grid: 60 }, oldNote: { missedCarry: { largest: { key: 'event' } } } }, [['wind', 3], ['grid', 1], ['fuel', 4]]],
   ];
@@ -739,8 +855,9 @@ for (const [label, opt] of cases) {
       if (candidate.rule === 1 || candidate.rule === 5 && Number.isFinite(before) &&
           (candidate.key !== 'neighbor' || f.previous.s1EvidenceNeighborId === 'dangjin')) {
         const delta = f.values[candidate.key] - before;
-        if (delta === 0) {
-          assert.ok(text.includes('지난달과 같음'), '규칙1 변화 0 꼬리표');
+        if (displayedChange(candidate.key, f.values[candidate.key], before) === 0) {
+          assert.equal(tag, '지난달과 같음', '규칙1 표시 변화 0 꼬리표');
+          assert.equal(card.querySelector('.lg-s1-tag')?.textContent, tag, '화면에도 같은 꼬리표');
           assert.doesNotMatch(tag, /0%|지난달보다/, '변화 0 꼬리표는 퍼센트 대신 같음(현재 값의 10% 등과 구별)');
         } else if (candidate.key === 'neighbor' || before !== 0) {
           const amount = candidate.key === 'neighbor' ? delta : delta / Math.abs(before) * 100;
@@ -768,7 +885,7 @@ for (const [label, opt] of cases) {
 }
 test('4 확정: 모든 근거가 지난달과 같으면 같음 꼬리표·0% 문자열 없음', () => {
   const f = fixture(h, { previous: standard }), v = assertCandidates(h, f);
-  assert.deepEqual(v.keys, ['evening', 'grid', 'neighbor'], '풍력·LNG 조건 없고 변화 0 동률은 고정 순서');
+  assert.deepEqual(v.keys, ['evening', 'grid'], '변화 0 동률의 1단계 evening 보존·5단계 grid만 보충');
   assert.ok(v.cards.find(c => cardKey(c) === 'evening').textContent.includes('지난달과 같음'));
   for (const card of v.cards) assert.equal(card.querySelector('.lg-s1-tag')?.textContent,
     '지난달과 같음', '모든 후보의 변화 꼬리표가 같음(현재 정전율과 구별)');

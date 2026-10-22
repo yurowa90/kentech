@@ -914,7 +914,9 @@
     const options = allOptions.filter(x => x.key !== "wind" || hasWind);
     const picked = new Map();
     const add = (item, tag) => { if (item && picked.size < 3 && !picked.has(item.key)) picked.set(item.key, { ...item, tag }); };
-    const changeTag = x => !Number.isFinite(x.before) ? "" : x.delta === 0 ? "지난달과 같음" : x.key === "neighbor" ? `지난달보다 ${signed(x.delta, 2)}%p` : x.ratio === null ? "지난달 0에서 바뀜" : `지난달보다 ${signed(x.ratio * 100, 2)}%`;
+    // signed와 같은 두 자리 반올림으로 판정하며, -0도 0으로 본다.
+    const noVisibleChange = x => x.delta === 0 || Number((x.key === "neighbor" ? x.delta : x.ratio === null ? x.value : x.ratio * 100).toFixed(2)) === 0;
+    const changeTag = x => !Number.isFinite(x.before) ? "" : noVisibleChange(x) ? "지난달과 같음" : x.key === "neighbor" ? `지난달보다 ${signed(x.delta, 2)}%p` : x.ratio === null ? "지난달 0에서 바뀜" : `지난달보다 ${signed(x.ratio * 100, 2)}%`;
     // 1. 변화율 절댓값: 0에서 새 변화 우선, 동률은 기존 근거 목록 순서. 이웃은 같은 도시만 비교.
     const changed = options.filter(x => Number.isFinite(x.before)).sort((a, b) => b.size - a.size);
     if (changed.length) add(changed[0], changeTag(changed[0]));
@@ -930,9 +932,17 @@
     if (includeFuel) add(options.find(x => x.key === "fuel"), "국제 지수");
     // 5. 변화율 순서, 비교할 지난달 값이 없으면 고정 목록 순서로 뒤에 채운다.
     const remaining = [...changed, ...options.filter(x => !Number.isFinite(x.before))];
+    const skipped = [];
     for (const item of remaining) {
       if (picked.size >= 3) break;
-      if (item.key !== "fuel" || includeFuel) add(item, changeTag(item));
+      if (picked.has(item.key) || item.key === "fuel" && !includeFuel) continue;
+      // 지난달 연결 근거는 2단계에서 이미 골랐다. 보이는 변화가 없으면 최소 두 후보가 필요할 때만 보충한다.
+      if (Number.isFinite(item.before) && noVisibleChange(item)) { skipped.push(item); continue; }
+      add(item, changeTag(item));
+    }
+    for (const item of skipped) {
+      if (picked.size >= 2) break;
+      add(item, changeTag(item));
     }
     // 6. 옛 기록도 이미 고른 근거는 유지한다. 규칙상 마지막 우선순위 후보를 빼고 최대 세 개로 둔다.
     const selected = allOptions.find(x => x.key === n?.s1Pick);

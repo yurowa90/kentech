@@ -2,10 +2,11 @@
 
 총괄의 샌드박스 밖 로컬 실행:
   tests/.venv/bin/python tests/league/s1cards.py http://127.0.0.1:9430/index.html
-서버는 기존 tests/srv.py 사용. 새 방/저장값/결과를 주입하지 않고 UI로 진행한다.
+서버는 기존 tests/srv.py 사용. UI로 진행하되 390 접힘 검사만 지난달 기기 근거 메모를 조정한다.
 """
 
 import sys
+from urllib.parse import urljoin
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -121,6 +122,24 @@ def scenario(checks, page, base, width, label):
     state = observation['S']
     required(checks, not [e for e in state['events'] if e['round'] == state['round']],
              label + ' 4월 사건 0개(상수 전제 재확인)')
+    if width <= 760:
+        # 변화 0·연결 없음인 세 번째 후보를 빼는 새 규칙에서도 접힘을 검사한다.
+        # 세 근거 모두 지난달과 다르게 하되 공개 상태·이번 달 관측값은 유지한다.
+        # 앱을 먼저 떠나 pagehide 저장을 끝내야 수정한 기기 메모가 덮어써지지 않는다.
+        page.goto(urljoin(base, 'README.md'))
+        page.evaluate("""() => {
+          const key='kcp-league-solo-v1', save=JSON.parse(localStorage.getItem(key));
+          const months=save.interview.interview.months, round=save.state.round;
+          const current=months[round], previous=months[round-1];
+          for (const key of ['evening', 'grid', 'neighbor'])
+            previous.s1EvidenceValues[key]=current.s1EvidenceValues[key]+1;
+          previous.s1EvidenceNeighborId=current.s1EvidenceNeighborId;
+          localStorage.setItem(key, JSON.stringify(save));
+        }""")
+        page.goto(base + '#league/solo')
+        expect(page.locator('#lg-bar')).to_be_visible()
+        if shown(page, '#lg-guide-close'):
+            page.locator('#lg-guide-close').click()
     open_panel(page, 'deal')
     focus = page.locator('#lg-evidence-focus')
     expect(focus).to_be_visible()
@@ -130,6 +149,9 @@ def scenario(checks, page, base, width, label):
     count = cards.count()
     required(checks, count in (2, 3), label + ' 후보 2~3개')
     names = [card_key(cards.nth(i)) for i in range(count)]
+    if width == 1280:
+        required(checks, count == 2 and '이웃 정전' not in names,
+                 label + ' 변화 0·연결 없음인 이웃 정전 제외 뒤 후보 2개')
     required(checks, not any(b['t'] in ('wind', 'offshore')
                              for b in page.evaluate('() => KCP.buildGame.current().builds')),
              label + ' 기본 혼자 계획에 육상·해상 풍력 없음')
