@@ -261,6 +261,13 @@ details.reveal[open] summary { margin-bottom: 8px; }
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: var(--radius); font-size: 13.5px; z-index: 50;
 }
+/* 저장 실패 경고: 짧은 알림 위에 머물고 390px에서도 화면 안에 들어오게. 계속 떠 있으므로 아래 조작을 막지 않는다 */
+.kcp-save-warn {
+  position: fixed; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: var(--radius); font-size: 13.5px; z-index: 50;
+  width: max-content; max-width: calc(100vw - 32px); text-align: center; pointer-events: none;
+}
+html.v2-scene .kcp-save-warn { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
 .copybox { width: 100%; min-height: 160px; font-family: var(--mono); font-size: 12px; }
 
 /* Charts */
