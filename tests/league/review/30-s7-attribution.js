@@ -35,6 +35,13 @@ let checks = 0;
 function ok(value, label) { assert.ok(value, label); checks++; }
 function near(a, b, label) { ok(Number.isFinite(a) && Math.abs(a - b) <= 1e-9, `${label}: ${a} / ${b}`); }
 function equal(a, b, label) { assert.deepEqual(clone(a), clone(b), label); checks++; }
+function sameParagraph(topic, days) {
+  // 계약에서만 기대값을 계산한다. 이름·조사를 정하는 구현 함수는 읽거나 호출하지 않는다.
+  const baselineLabel = days > 0 && days !== 7 ? `시험 ${days}일 대비` : '시험 1주 대비';
+  const baseline = baselineLabel.replace(/ 대비$/, '');
+  const particle = (baseline.charCodeAt(baseline.length - 1) - 0xac00) % 28 ? '과' : '와';
+  return `<p id="lg-outage-same">실제로는 ${topic === 'grid' ? '바깥 계통에 기댄 전기가' : '정전이'} ${baseline}${particle} 거의 같았어요(같음).</p>`;
+}
 // V3B-fix5: 독립 반올림 산식(백분율의 1/100 단위). UI 함수·상수는 읽지 않는다.
 const shownHigh = value => Number.isFinite(value) && Math.round(value * 100) >= 500;
 const noCauseLabel = (before, after, target = 'uns') => target !== 'grid' && shownHigh(before) && shownHigh(after) ? // D-80: MWh를 높은 정전으로 해석하지 않음.
@@ -918,6 +925,8 @@ for (const single of [false, true]) {
   const note = { evidence: { text: '가상 근거' }, pred: { uns: 'down' } };
   if (!single) Object.assign(note, { outageOpened: true, missed: ranked[1].key });
   const beforeHTML = league.uiMath.outageCardsHTML(V, res, id, note);
+  const beforeSame = beforeHTML.match(/<p id="lg-outage-same">[^<]*<\/p>/)?.[0];
+  equal(beforeSame, sameParagraph(note.topic, trial.days), '재시험 전 7일 기준은 시험 1주와');
   const pending = session.outShownPending;
   ok(pending?.frozen, `${single ? '요약' : '열기'}: 표시 시점 분해 저장 대기 자료 존재`);
   note.outageFrozen = clone(pending.frozen);
@@ -928,7 +937,8 @@ for (const single of [false, true]) {
   session.interview = { interview: { months: { [res.round]: note } } };
   const saved = clone(note);
   const bucket = JSON.parse(storage.get('kcp-build-trial-v1'));
-  bucket[Object.keys(bucket)[0]] = { ...trial, days: 30, seed: trial.seed + 1 };
+  const retrial = { ...trial, days: 30, seed: trial.seed + 1 };
+  bucket[Object.keys(bucket)[0]] = retrial;
   storage.set('kcp-build-trial-v1', JSON.stringify(bucket));
   session.outCache = {};
   calls = [];
@@ -937,9 +947,12 @@ for (const single of [false, true]) {
   if (a.target === 'grid') for (const field of ['clues', 'clueMore']) expectedFrozen[field].event = a[field].event.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는'); // D-82: 계통 사건 단서의 새 표시 문구, 정전 고정본은 그대로.
   equal(after, expectedFrozen, '공개 뒤 저장 시험·캐시가 바뀌어도 연 시점 분해 유지'); // D-82: 표시 시 고정한 문구를 포함해 모든 필드 엄격 비교.
   const afterHTML = league.uiMath.outageCardsHTML(V, res, id, note);
-  // 붙이기 버튼의 저장 여부만 달라지고, 카드 꼬리표·폭포·판정은 같아야 한다.
+  const afterSame = afterHTML.match(/<p id="lg-outage-same">[^<]*<\/p>/)?.[0];
+  equal(afterSame, sameParagraph(note.topic, retrial.days), '재시험 뒤 30일 기준은 시험 30일과');
+  // 같음 기준 이름은 현재 저장 시험을 따르고, 카드 꼬리표·폭포·판정은 같아야 한다.
   const display = html => html.split('<button type="button" class="v2-btn" id="lg-outage-carry"')[0];
-  equal(display(afterHTML), display(beforeHTML), '재시험 뒤 꼬리표·막대·판정 표시 불변');
+  equal(display(afterHTML), display(beforeHTML).replace(beforeSame, sameParagraph(note.topic, retrial.days)),
+    '재시험 뒤 기준 이름·조사 변경 외 꼬리표·막대·판정 표시 불변');
   equal(note, saved, '재시험 뒤 기기 메모의 최대 몫·다음 달 기록 불변');
   equal(calls.length, 0, '이미 공개한 달의 재시험 뒤 분해 재시뮬레이션 0');
   if (single) {

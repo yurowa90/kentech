@@ -130,6 +130,11 @@ def scenario(checks, page, base, width, label):
     count = cards.count()
     required(checks, count in (2, 3), label + ' 후보 2~3개')
     names = [card_key(cards.nth(i)) for i in range(count)]
+    required(checks, not any(b['t'] in ('wind', 'offshore')
+                             for b in page.evaluate('() => KCP.buildGame.current().builds')),
+             label + ' 기본 혼자 계획에 육상·해상 풍력 없음')
+    expect(group.locator('#lg-s1-wind')).to_have_count(0)
+    required(checks, '풍속' not in names, label + ' 풍력 없는 계획에는 풍속 후보 없음')
     required(checks, names == sorted(set(names), key=ORDER.index), label + ' 후보 중복 없이 고정 순서')
     expect(group.locator('#lg-s1-grid')).to_have_count(1)
     basis = focus.locator('p#lg-s1-grid-basis')
