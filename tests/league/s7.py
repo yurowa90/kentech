@@ -558,6 +558,19 @@ def link(checks, page, selector, new_tab, label):
               any(word in text for word in ("설명", "말", "대응")), f"{label} 연습할 사고 습관 한 줄 [I39]")
 
 
+def track_drawn(checks, page, key, label):
+    """폭포 막대 칸이 보이는 폭으로 그려졌는지 페이지 안에서 조건 대기로 확인한다.
+
+    Playwright bounding_box는 CPU 감속·부하 중 요소가 연결되어 있고 폭이 152px인데도
+    None을 돌려준 적이 있다(2026-10-22, 8배 감속 측정). 그래서 막대 칸을 페이지 안에서 직접 재고,
+    학생에게 의미 있는 공백 기준인 1초 안에 보이는 폭이 되지 않으면 실패로 둔다.
+    """
+    checks.test(label, lambda: page.wait_for_function("""key => {
+      const t = document.querySelector(`#lg-outage-waterfall [data-out-step="${key}"] .lg-out-track`);
+      return !!t && t.checkVisibility() && t.getBoundingClientRect().width > 0;
+    }""", arg=key, timeout=1000))
+
+
 def scene(checks, page, requests, label, width, trial, actual):
     open_panel(page, "result")
     page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
@@ -647,8 +660,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         number_format(checks, row, key, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track is not None and track["width"] > 0, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
+        track_drawn(checks, page, key, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
     # D-80: C-2, 시험 폭포는 네 원인+출발/도착(+재현)의 6/7행.
     required(checks, set(values) - {"replay"} == {"trial", "actual", *NAMES} and
              rows.count() == len(NAMES) + 2 + int("replay" in values),
@@ -942,8 +954,7 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - rounded_share(raw[k], a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} {k} API/DOM 원시값·반올림")
         number_format(checks, row, k, label, page)  # D-80: C-1·2·4·5 대상별 검사.
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track and track['width'] > 0, f"{label} {width}px {k} 실제 막대 칸")
+        track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
     checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - sum(rounded_share(v, a) for k,v in expected_values.items() if k != 'actual')) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
