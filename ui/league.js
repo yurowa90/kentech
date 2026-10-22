@@ -2538,7 +2538,7 @@
   }
   function hostSummaryHTML(V, res) {
     const mul = res ? resultPeriod(V, res).mul : 1, rep = res && resultReport(V, res);
-    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}"${value === "" ? ' data-empty="true" aria-label="첫 운영 뒤 표시"' : ""}>${bad ? '<span class="lg-warning-symbol" aria-label="주의">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" || value === "" ? "" : `<small>${unit}</small>`}</span></td>`;
+    const cell = (label, value, unit = "", bad = false) => `<td data-label="${label}" data-bad="${!!bad}"${value === "" ? ' data-empty="true" aria-label="첫 운영 뒤 표시"' : ""}>${bad ? '<span class="lg-warning-symbol" aria-label="위험">▲ </span>' : ""}<span class="lg-ledger-value">${esc(value)}${value === "–" || value === "" ? "" : `<small>${unit}</small>`}</span></td>`;
     // 계통 칸: D-82 하루 평균. 칸 안 단위는 머리글(MWh/일)에 맡긴다. ◆는 정전 0인데 계통에 기댄 도시.
     const gridCell = id => {
       const r = res?.team[id], perDay = res ? gridReliance(V, res, id).perDay : null;
@@ -2549,7 +2549,7 @@
     return `<h2>${actT(V).length === 6 ? "여섯" : actT(V).length} 도시 장부</h2><p class="lg-hint">${res ? `${esc(resultHeading(V, res))} · 정전·CO₂·주민 Δ = 지난달 운영` : "정전·CO₂·주민 Δ는 첫 운영 뒤 표시"} · 돈·지지율 = 지금</p><div class="lg-tablewrap"><table id="lg-host-summary-table" class="lg-table"><thead><tr><th scope="col">도시</th><th scope="col">정전</th><th scope="col">계통(MWh/일)</th><th scope="col">CO₂(t)</th><th scope="col">남은 돈(억)</th><th scope="col">현금(억)</th><th scope="col">지방채 한도(억)</th><th scope="col">지지율</th><th scope="col">주민 Δ</th><th scope="col">준비</th></tr></thead><tbody>${actT(V).map(t => {
       const city = V.econ.cities[t.id], r = res?.team[t.id], ready = V.teams[t.id].ready;
       return `<tr><th scope="row"><button type="button" data-host-city="${esc(t.id)}" aria-controls="lg-host-card-${esc(t.id)}">${esc(t.name)}</button></th>${cell("정전", res ? fmt(r?.unsPct, 2) : "", "%", r && r.unsPct > V.goals.unsPct)}${gridCell(t.id)}${cell("CO₂", res ? fmt(r ? r.co2Prod * mul : undefined) : "", "t")}${cell("남은 돈", fmt(V.teams[t.id].left, 1), "억", V.teams[t.id].left < 0)}${cell("현금", fmt(city.cash, 1), "억")}${cell("지방채 한도", fmt(city.debtCap, 1), "억")}${cell("지지율", fmt(city.approval, 1), "%", approvalBelowLine(V, res, t.id))}${cell("주민 Δ", res ? rep?.cities?.[t.id] ? signed(rep.cities[t.id].dPop) : "–" : "", "명")}<td data-label="준비" data-ready="${ready && ["lobby", "plan"].includes(V.phase)}">${["lobby", "plan"].includes(V.phase) ? ready ? "준비 ✓" : "미준비" : "—"}</td></tr>`;
-    }).join("")}</tbody></table></div><p class="lg-ledger-note">▲ = 목표·평가선 주의 · <span class="lg-grid-symbol" aria-hidden="true">◆</span> = 정전 0이지만 바깥 계통에 기댄 달 · 계통 = 계통이 메운 전기, 하루 평균 · 도시 이름을 누르면 상세가 열려요. 남은 돈은 지방채 한도를 포함하며 건설·연구·대응 예약과 정산 뒤 쓸 수 있는 돈이에요.</p>`;
+    }).join("")}</tbody></table></div><p class="lg-ledger-note">▲ = 목표·평가선 넘음(위험) · <span class="lg-grid-symbol" aria-hidden="true">◆</span> = 정전 0이지만 바깥 계통에 기댄 달 · 계통 = 계통이 메운 전기, 하루 평균 · 도시 이름을 누르면 상세가 열려요. 남은 돈은 지방채 한도를 포함하며 건설·연구·대응 예약과 정산 뒤 쓸 수 있는 돈이에요.</p>`;
   }
   function teamCard(t, v, r, S) {
     const plan = v.plan || { builds: [], lines: [] };
