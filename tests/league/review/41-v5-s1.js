@@ -242,6 +242,11 @@ function note(h) {
   return data.interview?.months?.[h.L.snap.round];
 }
 // 독립 오라클: UI 함수/상수/반환값을 읽지 않는다. 동률은 명세 §2가 참조한 기존 목록 순서.
+function displayedChange(key, value, before) {
+  const delta = value - before;
+  const amount = key === 'neighbor' ? delta : before === 0 ? value : delta / Math.abs(before) * 100;
+  return Number(amount.toFixed(2)) + 0; // JS 두 자리 반올림, -0도 0으로 정규화.
+}
 function expected(f) {
   const hasWind = typeof f.current.s1HasWind === 'boolean' ? f.current.s1HasWind : !!f.opt.wind;
   const found = new Map(), valid = k => Number.isFinite(f.values[k]) && (k !== 'wind' || hasWind);
@@ -268,11 +273,11 @@ function expected(f) {
     carry?.largest?.key === 'growth' && Math.abs(carry.largest.value) >= minPart(carry)) || (f.opt.cash ?? 100) < 0;
   if (fuel) add('fuel', 4);
   // 계약 5: 비교 가능한 변화율부터, 지난달 값이 없으면 고정 순서로 뒤에.
-  // 변화 0·연결 없음은 나중에 두 후보를 확보할 때만 쓴다. 1~4단계 선발은 보존한다.
+  // 표시할 변화가 두 자리 반올림 뒤 0이면 두 후보를 확보할 때만 쓴다. 1~4단계 선발은 보존한다.
   const comparable = ranked.map(x => x.key);
   const remaining = [...comparable, ...order.filter(k => !comparable.includes(k))]
     .filter(k => valid(k) && (k !== 'fuel' || fuel) && !found.has(k));
-  const deferred = remaining.filter(k => comparable.includes(k) && f.values[k] === prev[k] && k !== connection);
+  const deferred = remaining.filter(k => comparable.includes(k) && displayedChange(k, f.values[k], prev[k]) === 0);
   for (const key of remaining.filter(k => !deferred.includes(k))) add(key, 5);
   for (const key of deferred) {
     if (found.size >= 2) break;
@@ -307,6 +312,14 @@ function assertCandidates(h, f) {
   assert.deepEqual(v.keys, wanted, '선발 순위와 무관한 고정 순서');
   const returned = copy(h.U.__evidenceCandidates(h.L.snap));
   assert.deepEqual(returned.map(x => x.key), wanted, '반환 순서도 고정·중복 없음·최대 세 개');
+  // 꼬리표의 숫자 0만 금지한다. +100% 같은 정상 변화나 카드 본문의 현재 값과 구별한다.
+  const zeroTag = /(?:^|[^\d.])[+−-]?0(?:\.0+)?%p?|(?:^|[^\d.])\+0\.00(?!\d)/;
+  for (const item of returned) {
+    const card = v.cards.find(c => cardKey(c) === item.key);
+    assert.doesNotMatch(item.tag || '', zeroTag, `${item.key} 반환 꼬리표에 0%·0%p·+0.00 없음`);
+    assert.doesNotMatch(card.querySelector('.lg-s1-tag')?.textContent || '', zeroTag,
+      `${item.key} 화면 꼬리표에 0%·0%p·+0.00 없음`);
+  }
   assert.ok(v.focus.textContent.includes(`이번 달 볼 것 · 근거 후보 ${wanted.length}개`));
   return v;
 }
@@ -611,9 +624,64 @@ contractCase('V7 G d 지난달·이번 달 모두 0인 1단계 선발 보존',
 contractCase('V7 G e 지난달 값 없는 근거는 변화율 뒤에 유지',
   { previous: { evening: 100, neighbor: 10 }, values: { neighbor: 30 } }, ['grid', 'neighbor'],
   { grid: '', neighbor: '지난달보다 +20%p' });
-contractCase('V7 G 정확히 0만 제외·반올림하면 0인 변화 유지',
+contractCase('V7 G 반올림하면 0인 변화도 제외',
   { previous: standard, values: { evening: 200, grid: 30, neighbor: 10.000001 } },
-  ['evening', 'grid', 'neighbor'], { neighbor: '지난달보다 0%p' });
+  ['evening', 'grid'], { evening: '지난달보다 +100%', grid: '지난달보다 +50%' });
+// V7 6차: 기대 키·표시값·꼬리표를 명시한다. 0.5 / 10000 * 100은 JS의 0.005이며,
+// (0.005).toFixed(2)는 "0.01"이다. 100.005 - 100처럼 뺄셈 오차로 경계 아래가 되는 입력을 피한다.
+const visibleBoundaries = [
+  ['변화율 +0.004%', 'grid', 10000, 10000.4, 0, '지난달과 같음'],
+  ['변화율 −0.004%', 'grid', 10000, 9999.6, 0, '지난달과 같음'],
+  ['변화율 +0.005%', 'grid', 10000, 10000.5, .01, '지난달보다 +0.01%'],
+  ['변화율 +0.01%', 'grid', 10000, 10001, .01, '지난달보다 +0.01%'],
+  ['변화율 +0.1%', 'grid', 10000, 10010, .1, '지난달보다 +0.1%'],
+  ['이웃 Δ +0.004%p', 'neighbor', 10, 10.004, 0, '지난달과 같음'],
+  ['이웃 Δ +0.01%p', 'neighbor', 10, 10.01, .01, '지난달보다 +0.01%p'],
+  ['지난달 0 → 이번 0.004', 'grid', 0, .004, 0, '지난달과 같음'],
+  ['지난달 0 → 이번 0.01', 'grid', 0, .01, .01, '지난달 0에서 바뀜'],
+];
+for (const [label, key, before, value, shown, tag] of visibleBoundaries) {
+  // 0 출발은 변화율 크기가 Infinity로 동률이다. evening을 앞세워 경계 후보를 5단계에서 검사한다.
+  const previous = { ...standard, ...(before === 0 ? { evening: 0 } : {}), [key]: before };
+  const values = { evening: 300, grid: 60, neighbor: 30, [key]: value };
+  for (const role of ['team', 'solo']) {
+    test(`S1 V7 보이는 변화 경계 ${label}/남은 자리/${role}`, () => {
+      assert.equal(displayedChange(key, value, before), shown, '입력의 JS toFixed(2) 표시값');
+      const f = fixture(h, { role, previous, values }), v = assertCandidates(h, f);
+      const keys = ['evening', 'grid', 'neighbor'].filter(k => shown !== 0 || k !== key);
+      assert.deepEqual(v.keys, keys, '표시 0은 제외, 표시가 남으면 세 번째 후보 유지');
+      const item = copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key);
+      if (shown === 0) {
+        assert.equal(item, undefined, '반환 후보에서도 표시 0 제외');
+        assert.equal(v.cards.find(c => cardKey(c) === key), undefined, '화면 카드에서도 표시 0 제외');
+      } else {
+        assert.equal(item?.tag, tag, '표시가 남은 반환 꼬리표');
+        assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+          tag, '표시가 남은 화면 꼬리표');
+      }
+    });
+    if (shown !== 0) continue;
+    test(`S1 V7 보이는 변화 경계 ${label}/기존 선택의 같음 꼬리표/${role}`, () => {
+      const f = fixture(h, { role, previous, values, note: { s1Pick: key } }), v = assertCandidates(h, f);
+      assert.deepEqual(v.keys, ['evening', 'grid', 'neighbor'], '표시 0이어도 기존 선택 보존');
+      assert.deepEqual(selected(v), [key]);
+      assert.equal(note(h).s1Pick, key);
+      assert.equal(copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key)?.tag, tag,
+        '반환 꼬리표는 지난달과 같음');
+      assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+        tag, '화면 꼬리표도 지난달과 같음');
+    });
+    test(`S1 V7 보이는 변화 경계 ${label}/최소 두 장 보충/${role}`, () => {
+      const other = key === 'grid' ? 'neighbor' : 'grid';
+      const f = fixture(h, { role, previous, values: { ...values, [other]: null } }), v = assertCandidates(h, f);
+      assert.deepEqual(v.keys, ['evening', key], '표시 0을 건너뛴 뒤 한 장이면 두 장까지 보충');
+      assert.equal(copy(h.U.__evidenceCandidates(h.L.snap)).find(x => x.key === key)?.tag, tag,
+        '보충된 반환 꼬리표는 지난달과 같음');
+      assert.equal(v.cards.find(c => cardKey(c) === key).querySelector('.lg-s1-tag')?.textContent,
+        tag, '보충된 화면 꼬리표도 지난달과 같음');
+    });
+  }
+}
 contractCase('V7 G 보충할 후보도 없으면 한 장 유지',
   { previous: standard, values: { evening: 200, grid: null, neighbor: null } }, ['evening'],
   { evening: '지난달보다 +100%' });
@@ -787,8 +855,9 @@ for (const [label, opt] of cases) {
       if (candidate.rule === 1 || candidate.rule === 5 && Number.isFinite(before) &&
           (candidate.key !== 'neighbor' || f.previous.s1EvidenceNeighborId === 'dangjin')) {
         const delta = f.values[candidate.key] - before;
-        if (delta === 0) {
-          assert.ok(text.includes('지난달과 같음'), '규칙1 변화 0 꼬리표');
+        if (displayedChange(candidate.key, f.values[candidate.key], before) === 0) {
+          assert.equal(tag, '지난달과 같음', '규칙1 표시 변화 0 꼬리표');
+          assert.equal(card.querySelector('.lg-s1-tag')?.textContent, tag, '화면에도 같은 꼬리표');
           assert.doesNotMatch(tag, /0%|지난달보다/, '변화 0 꼬리표는 퍼센트 대신 같음(현재 값의 10% 등과 구별)');
         } else if (candidate.key === 'neighbor' || before !== 0) {
           const amount = candidate.key === 'neighbor' ? delta : delta / Math.abs(before) * 100;
