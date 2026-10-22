@@ -594,6 +594,8 @@
   // 기술 표시는 공개 연구 상태를 그대로 읽는다. 칭호는 점수에 더하지 않는다.
   // T2 화면 연출 시간(게임 계수 아님): 0.8초. CSS의 lg-tech-reveal과 일치한다.
   const TECH_FLIP_MS = 800;
+  // 서랍 안을 누르는 중·직후 다시 그리기를 미루는 시간. 누른 채 끌어 서랍 밖에서 뗀 경우를 위해 누름 상태는 최대 3초만 믿는다.
+  const PANEL_PRESS_MS = 300, PANEL_PRESS_HOLD_MS = 3000;
   const techData = () => KCP.TECH_DATA;
   const techCard = id => techData()?.cards.find(c => c.id === id);
   const techResearch = (V, id) => V.teams?.[id]?.research || V.econ?.cities?.[id]?.research || V.teams?.[id]?.rs || {};
@@ -4253,6 +4255,21 @@
       refreshCityTownLook(V, L.team);
       if (prev && (prev.phase !== V.phase || prev.round !== V.round)) phaseChanged(V);
       else if (!prev && V.phase === "plan") closePanel();
+      // 진행자는 연결 복구용으로 4초마다 같은 공개 상태를 다시 보낸다. 화면에 쓰는 내용(now 제외)과
+      // 수신 처리로 바뀌는 기기 쪽 대기 값이 지난번과 같으면 머리 막대·서랍을 갈아 끼우지 않는다.
+      // 학생이 누르던 체크박스·입력칸이 내용 변화 없이 바뀌어 조작을 놓치지 않게 한다.
+      // 이미 받은 상태를 다시 그리는 호출(replay)과 혼자 하기는 늘 그린다.
+      if (L.role === "team" && !replay) {
+        const viewKey = JSON.stringify([{ ...V, now: 0 }, L.team, L.rev, L.techPending, L.techError,
+          L.pendingCrit, L.pendingPol, L.wantReady, L.readyAcked, L.awaitReady]);
+        if (viewKey === L.snapViewKey) { if (L.panelDirty && L.panel) snapRenderPanel(); return; }
+        // 그리다 예외가 나면 다음 같은 상태에서 다시 시도하도록 키는 그린 뒤에 남긴다.
+        L.snapViewKey = null;
+        renderBar();
+        if (L.panel) snapRenderPanel();
+        L.snapViewKey = viewKey;
+        return;
+      }
       renderBar();
       if (L.panel) renderPanel();
     });
@@ -4911,6 +4928,11 @@
       const r = e.target.closest("#lg-price");
       if (r) { const o = document.getElementById("lg-price-v"); if (o) o.textContent = (+r.value).toFixed(3); }
     });
+    // 누름 시각: snapRenderPanel이 누르는 중·직후 PANEL_PRESS_MS 동안 스냅숏 다시 그리기를 미룬다.
+    panel.addEventListener("pointerdown", () => { L.panelPress = { down: true, at: performance.now() }; }, true);
+    for (const type of ["pointerup", "pointercancel"]) {
+      panel.addEventListener(type, () => { if (L.panelPress) L.panelPress = { down: false, at: performance.now() }; }, true);
+    }
     panel.addEventListener("focusout", () => {
       const session = L;
       // 다음 포커스와 change 처리가 끝난 뒤 갱신한다. 다른 입력으로 옮기면 계속 미룬다.
@@ -4919,7 +4941,8 @@
         // 서랍 버튼을 누르려고 옮긴 포커스라면 pointerup·click 전에 버튼을 없애지 않는다.
         const active = document.activeElement;
         if (active && panel.contains(active) && active.matches("button")) return;
-        renderPanel();
+        // 초점을 주지 않고 누른 체크박스·버튼도 누름 보호로 막는다(팀 화면).
+        L.role === "team" ? snapRenderPanel() : renderPanel();
       }, 0);
     });
     renderBar();
@@ -5021,7 +5044,7 @@
   }
   function closePanel(restore = false) {
     L.resultReplayWait?.();
-    L.panel = null; const p = document.getElementById("lg-panel"); if (p) p.hidden = true;
+    L.panel = null; L.panelDirty = false; const p = document.getElementById("lg-panel"); if (p) p.hidden = true;
     syncResultMapSpace();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", "false"));
     if (restore && L.panelTrigger?.isConnected) L.panelTrigger.focus({ preventScroll: true });
@@ -5032,6 +5055,18 @@
     if (!st) return false;
     const N = BG.network(st);
     return N.nodes.some(n => n.kind === "import" && (BG.SITES[n.si].to || []).includes(other) && n.comp >= 0 && n.att.length > 0 && N.comps.some(Cc => Cc.disp.includes(n) && (Cc.towns.length || Cc.ren.length || Cc.disp.length > 1)));
+  }
+  // 스냅숏 수신으로 서랍을 다시 그릴 때만 쓴다. 학생이 서랍 안을 누르는 중이거나 막 누른 직후
+  // (초점을 주지 않는 체크박스·탭 포함)에는 요소를 갈아 끼우지 않고 잠시 뒤 다시 그린다.
+  // 학생 자신의 조작에 따른 다시 그리기는 바로 해야 하므로 renderPanel에는 넣지 않는다.
+  function snapRenderPanel() {
+    const press = L.panelPress, pressAge = press ? performance.now() - press.at : Infinity;
+    const pressWait = !press ? 0 : press.down ? (pressAge < PANEL_PRESS_HOLD_MS ? PANEL_PRESS_MS : 0) : PANEL_PRESS_MS - pressAge;
+    if (pressWait <= 0) { renderPanel(); return; }
+    L.panelDirty = true;
+    const session = L;
+    clearTimeout(L.panelPressT);
+    L.panelPressT = setTimeout(() => { if (L === session && session.panelDirty && session.panel) snapRenderPanel(); }, pressWait);
   }
   function renderPanel() {
     if (L.away) return;
