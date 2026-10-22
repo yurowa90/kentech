@@ -608,11 +608,34 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
     equal(calls.length, 0, '옛 작은 선택 재렌더링 추가 계산 0');
   }
 }
-// 약속 예측 판정 쪽은 공개 S7 API가 아니므로 해당 함수 범위의 기존 부호 계약을 보존한다.
-const promiseSource = source.slice(source.indexOf('  function promiseResultHTML('), source.indexOf('  function newBuildCost('));
-// D-80 B-2: 계통 주제도 정전 주제와 같은 근거 부호 표를 쓴다.
-ok(/const sign = topic === "uns" \|\| topic === "grid" \? \{ evening: 1, grid: -1, wind: -1, neighbor: 1 \}/.test(promiseSource),
-  '약속 예측 쪽 grid −1 유지(S7 전용 grid 0과 분리)');
+// 총괄 10-22 녹화 전 점검: S6·S7 근거 부호 통일(옛 D-80 B-2 grid −1 분리 계약 대체).
+// S6(promiseResultHTML)은 공개 API가 아니므로 공용 도우미 evidenceEffect를 소스에서 꺼내 VM으로 동작을 확인하고,
+// 두 화면이 그 도우미 하나만 부르는지 소스 범위로 확인한다.
+{
+  const slice = (from, to) => { const a = source.indexOf(from), b = source.indexOf(to, a + 1);
+    ok(a >= 0 && b > a, `소스 범위 찾기: ${from.trim()}`); return source.slice(a, b); };
+  const promiseSource = slice('  function promiseResultHTML(', '  function newBuildCost(');
+  const s7Source = slice('  function outageEvidenceText(', '  function outageTargetClues(');
+  const effectSource = slice('  function evidenceEffect(', '  function promiseResultHTML(');
+  ok(!promiseSource.includes('{ evening: 1, grid: -1, wind: -1, neighbor: 1 }'), 'S6: 옛 부호표(grid −1) 제거');
+  ok(!s7Source.includes('{ evening: 1, grid: 0,'), 'S7: 따로 둔 부호표 제거');
+  ok(/evidenceEffect\(n\.evidence\.key,/.test(promiseSource) && /effectSign = evidenceEffect\(key,/.test(s7Source),
+    'S6·S7이 같은 도우미 evidenceEffect로 부호를 정함');
+  ok(/고른 근거도 같은 쪽으로 움직였나요: \$\{esc\(evidenceText\)\}/.test(promiseSource) &&
+    /const evidenceText = !effect\.sign \? effect\.reason/.test(promiseSource),
+    'S6: 부호 0이면 같은/다른 방향 대신 비교하지 않는 이유를 보임');
+  const effect = vm.runInNewContext(`${effectSource}; evidenceEffect`, {});
+  for (const topic of ['uns', 'grid']) {
+    const sign = (key, hasConnectedWind = false) => effect(key, { topic, hasConnectedWind }).sign;
+    equal([sign('evening'), sign('neighbor'), sign('grid'), sign('grid', true), sign('wind', true), sign('wind', false), sign('fuel')],
+      [1, 1, 0, 0, -1, 0, 0], `${topic}: 저녁 +1·이웃 +1·접속 여유 0·풍속(접속 풍력 있음 −1/없음 0)·LNG 0`);
+    for (const key of ['grid', 'fuel', 'wind']) {
+      const e = effect(key, { topic, hasConnectedWind: false });
+      ok(e.sign === 0 && typeof e.reason === 'string' && e.reason.includes('비교하지 않아요') &&
+        !/같은 방향|다른 방향/.test(e.reason), `${topic}/${key}: 부호 0이면 비교하지 않는 이유`);
+    }
+  }
+}
 
 // 수정 1의 재현: 재생 0·풍력 없음인데 무더위 수요로 정전이 늘어나는 두 씨앗.
 {
