@@ -27,7 +27,7 @@
     "...LLW.DDMLD...",
     ".........L.....",
   ]);
-  const TCOL = { L: "#c8483a", W: "#72cdc4", M: "#7a6152", D: "#e1b870", F: "#3f8a4c", G: "#b9dc5a" };
+  const TCOL = { L: "#c8483a", W: "#72cdc4", M: "#7a6152", D: "#e1b870", F: "#3b8448", G: "#b9dc5a" };
   const MAX_TILES = 7;
   const MAX_ITEMS = 10;
   const MAP_V = 2;
@@ -261,7 +261,7 @@
               <div class="hexwrap" id="map"></div>
               <p class="sr-only" id="map24-help">Tab으로 지도에 들어갑니다. ↑↓는 위·아래, ←→는 왼쪽·오른쪽 위, Shift+←→는 왼쪽·오른쪽 아래로 옮기고 Enter·Space로 고르거나 뺍니다.</p>
               <div class="sr-only" id="map24-live" aria-live="polite" aria-atomic="true"></div>
-              <div class="map24-pad" role="group" aria-label="지도 방향 패드">
+              <div class="map24-pad" role="group" aria-label="커서 이동과 칸 선택 단추">
                 ${MAP_DIRECTIONS.map(([dir, arrow, label]) => `<button type="button" class="btn" data-map24-dir="${dir}" aria-label="${label}">${arrow}</button>`).join("")}
                 <button type="button" class="btn primary" id="pick24" ${locked ? "disabled" : ""}></button>
               </div>
