@@ -71,6 +71,23 @@
       .map(([dc, dd]) => { const cc = c + dc, yy = y + dd; return tileId((yy - (cc % 2 === 0 ? 1 : 0)) / 2, cc); })
       .filter((id) => TILE[id]);
   };
+  // nbrs와 같은 (열, 두 배 높이) 오프셋. 짝수 열의 반 칸 내림을 그대로 따른다.
+  const MAP_STEPS = { N: [0, -2], S: [0, 2], NW: [-1, -1], NE: [1, -1], SW: [-1, 1], SE: [1, 1] };
+  const MAP_DIRECTIONS = [
+    ["NW", "↖", "커서를 왼쪽 위 칸으로"], ["N", "↑", "커서를 위 칸으로"], ["NE", "↗", "커서를 오른쪽 위 칸으로"],
+    ["SW", "↙", "커서를 왼쪽 아래 칸으로"], ["S", "↓", "커서를 아래 칸으로"], ["SE", "↘", "커서를 오른쪽 아래 칸으로"],
+  ];
+  const directionNeighbor = (id, direction) => {
+    const { r, c } = TILE[id];
+    const [dc, dd] = MAP_STEPS[direction];
+    const cc = c + dc, yy = dy(r, c) + dd;
+    const dest = tileId((yy - (cc % 2 === 0 ? 1 : 0)) / 2, cc);
+    return TILE[dest] ? dest : null;
+  };
+  const tileLabel = (id) => {
+    const t = TILE[id], ter = TER[t.t];
+    return `${t.r + 1}번째 줄 ${t.c + 1}번째 칸, ${ter.n} ${ter.k}K`;
+  };
   const connected = (ids) => {
     if (ids.length <= 1) return true;
     const set = new Set(ids);
@@ -199,9 +216,9 @@
   KCP.on("route:change", () => { prepView = null; });
   KCP.on("phase:change", ({ to }) => { if (to !== "prep") prepView = null; });
 
-  function mapSVG(G, disabled) {
+  function mapSVG(G, disabled, cursor) {
     const s = 18, h = Math.sqrt(3) * s, m = 6;
-    let out = "";
+    let out = "", cursorPoints = "";
     tiles.forEach((t) => {
       const cx = m + s + 1.5 * s * t.c;
       const cy = m + (h / 2) * (dy(t.r, t.c) + 1);
@@ -210,10 +227,11 @@
         return (cx + s * Math.cos(a)).toFixed(1) + "," + (cy + s * Math.sin(a)).toFixed(1);
       }).join(" ");
       const on = G.sel.includes(t.id);
-      out += `<g><polygon class="t-${t.t} ${on ? "sel" : ""}" points="${pts}" data-hex="${t.id}" tabindex="${disabled ? -1 : 0}" role="button" aria-pressed="${on}" aria-label="${TER[t.t].n} ${TER[t.t].k}K"><title>${TER[t.t].n} · 연간 채굴가능량 ${TER[t.t].k}K</title></polygon>${G.showK ? `<text x="${cx}" y="${cy + 3.5}" text-anchor="middle">${TER[t.t].k}</text>` : ""}</g>`;
+      if (t.id === cursor) cursorPoints = pts;
+      out += `<g><polygon class="t-${t.t} ${on ? "sel" : ""}" points="${pts}" data-hex="${t.id}" tabindex="${t.id === cursor ? 0 : -1}" role="button" aria-pressed="${on}" aria-disabled="${disabled}" aria-label="${tileLabel(t.id)}"><title>${TER[t.t].n} · 연간 채굴가능량 ${TER[t.t].k}K</title></polygon><text class="${G.showK ? "" : "map24-terrain-only"}" x="${cx}" y="${cy + 3.5}" text-anchor="middle" aria-hidden="true"><tspan class="map24-glyph">${TER[t.t].n[0]}</tspan>${G.showK ? TER[t.t].k : ""}</text></g>`;
     });
     const W = m * 2 + s * 2 + 1.5 * s * 14, H = m * 2 + (h / 2) * 26;
-    return `<svg class="hexmap" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="group" aria-label="정착지 지역 배치도">${out}</svg>`;
+    return `<svg class="hexmap" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="group" aria-label="정착지 지역 배치도" aria-describedby="map24-help">${out}<polygon class="map24-cursor" points="${cursorPoints}" aria-hidden="true"></polygon></svg>`;
   }
 
   KCP.games["2024"] = {
@@ -241,6 +259,13 @@
               <h3>정착지 <span class="chip num" id="tcount"></span><span class="spacer"></span>
                 <label class="small row" style="gap:4px"><input type="checkbox" id="showK" ${G.showK ? "checked" : ""}> 연간 켄트로늄 채굴가능량 보기</label></h3>
               <div class="hexwrap" id="map"></div>
+              <p class="sr-only" id="map24-help">Tab으로 지도에 들어갑니다. ↑↓는 위·아래, ←→는 왼쪽·오른쪽 위, Shift+←→는 왼쪽·오른쪽 아래로 옮기고 Enter·Space로 고르거나 뺍니다.</p>
+              <div class="sr-only" id="map24-live" aria-live="polite" aria-atomic="true"></div>
+              <div class="map24-pad" role="group" aria-label="지도 방향 패드">
+                ${MAP_DIRECTIONS.map(([dir, arrow, label]) => `<button type="button" class="btn" data-map24-dir="${dir}" aria-label="${label}">${arrow}</button>`).join("")}
+                <button type="button" class="btn primary" id="pick24" ${locked ? "disabled" : ""}></button>
+              </div>
+              <p class="small muted map24-pad-hint">점선 테두리를 방향 단추로 옮겨 큰 단추로 고르세요. 칸을 바로 눌러도 됩니다.</p>
               <div class="table-wrap" style="margin-top:10px"><table class="spec"><thead><tr><th>지역</th><th>채굴가능량</th><th>지역 특성</th><th>연관 특별 아이템</th></tr></thead><tbody>
                 ${Object.entries(TER).map(([k, v]) => `<tr><td><span class="legend"><span><i style="background:${TCOL[k]}"></i>${v.n}</span></span></td><td class="num">${v.k}K</td><td class="small">${v.feat}</td><td class="small">${v.rel || "(해당 없음)"}</td></tr>`).join("")}
               </tbody></table></div>
@@ -282,30 +307,74 @@
       }
 
       const src = () => (locked ? G.locked : { sel: G.sel, items: G.items });
+      // 커서는 화면에만 둔다. 확정 뒤에도 지도에 Tab 정지점 하나를 남겨 읽고 이동할 수 있다.
+      let cursor = src().sel[0] || "6-7";
+      const map = KCP.$("#map", root);
+      const live = KCP.$("#map24-live", root);
+      const paintCursor = () => {
+        KCP.$$("[data-hex]", map).forEach((p) => { p.tabIndex = p.dataset.hex === cursor ? 0 : -1; });
+        const p = KCP.$(`[data-hex="${cursor}"]`, map);
+        KCP.$(".map24-cursor", map).setAttribute("points", p.getAttribute("points"));
+        MAP_DIRECTIONS.forEach(([dir]) => {
+          const btn = KCP.$(`[data-map24-dir="${dir}"]`, root);
+          btn.disabled = !directionNeighbor(cursor, dir);
+          // 초점을 가진 단추가 꺼지면 초점이 문서 처음으로 빠지므로 큰 단추로 옮긴다.
+          if (btn.disabled && document.activeElement === btn) (KCP.$("#pick24", root).disabled ? KCP.$(`[data-hex="${cursor}"]`, map) : KCP.$("#pick24", root)).focus();
+        });
+        const ter = TER[TILE[cursor].t];
+        KCP.$("#pick24", root).textContent = `이 칸 ${src().sel.includes(cursor) ? "빼기" : "고르기"} · ${ter.n} ${ter.k}K`;
+      };
+      const setCursor = (id, focus = false) => {
+        const changed = cursor !== id;
+        cursor = id;
+        paintCursor();
+        if (focus) KCP.$(`[data-hex="${cursor}"]`, map).focus();
+        if (changed) live.textContent = `${tileLabel(cursor)}, ${src().sel.includes(cursor) ? "고른 칸" : "안 고른 칸"}`;
+      };
+      const moveCursor = (direction, focus = false) => {
+        const dest = directionNeighbor(cursor, direction);
+        if (dest) setCursor(dest, focus);
+      };
+      const toggleTile = (id) => {
+        if (locked) return;
+        const removing = G.sel.includes(id);
+        if (removing) {
+          const rest = G.sel.filter((x) => x !== id);
+          if (!connected(rest)) return KCP.toast("정착지가 둘로 나뉘어 뺄 수 없습니다");
+          G.sel = rest;
+        } else {
+          if (G.sel.length >= MAX_TILES) return KCP.toast(`정착지는 최대 ${MAX_TILES}칸입니다`);
+          const t = TILE[id];
+          if (G.sel.length && !nbrs(t.r, t.c).some((n) => G.sel.includes(n))) return KCP.toast("이미 고른 칸과 붙어 있는 칸만 고를 수 있습니다");
+          G.sel = G.sel.concat(id);
+        }
+        save(); paintMap(); paintStatus(false);
+        const ter = TER[TILE[id].t];
+        live.textContent = `${ter.n} ${ter.k}K ${removing ? "뺌" : "고름"}, 정착지 ${G.sel.length} / ${MAX_TILES}칸`;
+      };
       const paintMap = () => {
         const s = src();
-        KCP.$("#map", root).innerHTML = mapSVG({ sel: s.sel, showK: G.showK }, locked);
+        const restoreFocus = map.contains(root.ownerDocument.activeElement);
+        map.innerHTML = mapSVG({ sel: s.sel, showK: G.showK }, locked, cursor);
         KCP.$("#tcount", root).textContent = `${s.sel.length} / ${MAX_TILES}칸`;
-        if (locked) return;
-        KCP.$$("[data-hex]", root).forEach((p) => {
-          const act = () => {
-            const id = p.dataset.hex;
-            if (G.sel.includes(id)) {
-              const rest = G.sel.filter((x) => x !== id);
-              if (!connected(rest)) return KCP.toast("정착지가 둘로 나뉘어 뺄 수 없습니다");
-              G.sel = rest;
-            } else {
-              if (G.sel.length >= MAX_TILES) return KCP.toast(`정착지는 최대 ${MAX_TILES}칸입니다`);
-              const t = TILE[id];
-              if (G.sel.length && !nbrs(t.r, t.c).some((n) => G.sel.includes(n))) return KCP.toast("이미 고른 칸과 붙어 있는 칸만 고를 수 있습니다");
-              G.sel = G.sel.concat(id);
-            }
-            save(); paintMap(); paintStatus(false);
-          };
-          p.addEventListener("click", act);
-          p.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+        paintCursor();
+        KCP.$$("[data-hex]", map).forEach((p) => {
+          const id = p.dataset.hex;
+          p.addEventListener("focus", () => { if (cursor !== id) setCursor(id); });
+          p.addEventListener("click", () => { setCursor(id); toggleTile(id); });
+          p.addEventListener("keydown", (e) => {
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+            const direction = { ArrowUp: "N", ArrowDown: "S", ArrowLeft: e.shiftKey ? "SW" : "NW", ArrowRight: e.shiftKey ? "SE" : "NE" }[e.key];
+            if (direction) { e.preventDefault(); moveCursor(direction, true); }
+            else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!e.repeat) toggleTile(cursor); }
+          });
         });
+        if (restoreFocus) KCP.$(`[data-hex="${cursor}"]`, map).focus({ preventScroll: true });
       };
+      MAP_DIRECTIONS.forEach(([dir]) => {
+        KCP.$(`[data-map24-dir="${dir}"]`, root).onclick = () => moveCursor(dir);
+      });
+      KCP.$("#pick24", root).onclick = () => toggleTile(cursor);
       const paintItems = () => {
         const s = src();
         KCP.$("#icount", root).textContent = `${itemCount(s.items)} / ${MAX_ITEMS}개`;
