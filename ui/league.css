@@ -1485,3 +1485,47 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   .lg-map-guidance #lg-coach button,
   .lg-map-guidance #lg-plan-issues button { font-size: 12px; padding-inline: 4px; }
 }
+
+/* 설명은 문서 흐름에서 아래로 펼친다. 22px 원 + 투명 여백으로 44px 누름 영역을 확보한다. */
+.lg-info { display: inline-block; box-sizing: border-box; max-width: 100%; min-width: 0; vertical-align: middle; color: var(--ui-text); }
+.lg-info > .lg-info-btn { display: grid; place-items: center; justify-content: center; align-items: center; box-sizing: border-box; width: 44px; min-width: 44px; height: 44px; padding: 11px; list-style: none; cursor: pointer; color: var(--ui-cyan); font: 800 14px/22px var(--mono, monospace); border: 0; border-radius: 50%; background: radial-gradient(circle at center, var(--ui-hud) 10px, var(--ui-cyan) 10px, var(--ui-cyan) 11px, transparent 11px); }
+.lg-info > .lg-info-btn::-webkit-details-marker { display: none; }
+.lg-info[open] { display: block; width: 100%; flex-basis: 100%; }
+.lg-info-pop { box-sizing: border-box; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); color: var(--ui-text); font: 400 13px/1.6 var(--body, sans-serif); white-space: normal; overflow-wrap: anywhere; }
+.lg-info-pop > :first-child { margin-top: 0; }
+.lg-info-pop > :last-child { margin-bottom: 0; }
+.lg-info-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; min-width: 0; max-width: 100%; }
+.lg-info-line > :is(p, h4) { min-width: 0; margin-block: 4px; overflow-wrap: anywhere; }
+/* HTML의 제목·같음 문단 인접 계약을 보존하고, 화면에서는 제목·! 다음 행에 판정을 둔다. */
+#lg-missed > .lg-info-line > h4 { flex-basis: auto; max-width: calc(100% - 48px); }
+#lg-missed .lg-info-line > #lg-outage-same { order: 1; flex-basis: 100%; }
+.lg-tipbox { box-sizing: border-box; min-width: 0; max-width: 100%; margin-block: 8px; padding: 0 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); overflow-wrap: anywhere; }
+.lg-tipbox > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; list-style: none; cursor: pointer; color: var(--ui-text); }
+.lg-tipbox > summary::-webkit-details-marker { display: none; }
+.lg-tipbox > summary > .lg-tip-b { flex: 0 0 auto; padding: 3px 8px; border-radius: 6px; background: var(--ui-gold); color: #1a1405; font: 700 11.5px var(--mono, monospace); letter-spacing: .12em; }
+.lg-tipbody { min-width: 0; padding-bottom: 10px; white-space: normal; }
+.lg-data-chip { display: flex; flex-wrap: nowrap; align-items: center; min-width: 0; max-width: 100%; font-size: 12px; color: var(--ui-text); }
+.lg-data-chip > span { padding-inline: 6px; border: 1px solid var(--ui-border); border-radius: 6px; }
+.lg-data-chip > .lg-info { flex: 0 0 44px; height: 44px; line-height: 0; }
+/* 칩은 상태 줄(넘침을 자르는 칸) 안에 있으므로 설명은 화면 기준으로 띄운다. 띠 높이는 바뀌지 않는다. top은 열 때 JS가 단추 바로 아래로 맞춘다. */
+.lg-data-chip .lg-info-pop { position: fixed; z-index: 60; top: var(--lg-chip-pop-top, 120px); right: 16px; width: min(360px, calc(100vw - 32px)); line-height: 1.6; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+/* 닫힌 칩은 기존 상태 44px 안에 둔다. 열었을 때만 상태 행을 늘려 본문을 띠 안에서 펼친다. */
+.lg-team-map #lg-bar .lg-data-chip:has(.lg-info[open]) { flex-basis: 100%; white-space: normal; }
+.lg-host .lg-hbar > .lg-data-chip:has(.lg-info[open]) { flex-basis: 100%; }
+
+@media print {
+  .lg-tipbox, .lg-tipbox *, .lg-info, .lg-info * {
+    background: transparent !important; color: #111 !important; border-color: #666 !important; box-shadow: none !important;
+  }
+  .lg-tipbox > .lg-tipbody, .lg-info > .lg-info-pop { display: block !important; }
+  .lg-tipbox::details-content, .lg-info::details-content { display: block !important; content-visibility: visible !important; }
+  .lg-data-chip > .lg-info { height: auto; flex-basis: 100%; }
+  .lg-data-chip { flex-wrap: wrap; }
+}
+
+/* D-86: 리그에서는 머리 띠의 '가상 데이터' 칩(! 설명)이 같은 뜻을 맡는다. 건설 HUD의 옛 '가상 자료' 표지를 겹쳐 두지 않는다. */
+.bd-league #bd-virtual { display: none; }
+/* 폰에서는 상태 줄의 행동 칸('근거 고르기' 등)을 지키려고 칩 글자를 감추고 '!' 원만 남긴다. 이름은 단추의 aria-label('가상 데이터')로 읽힌다. */
+@media (max-width: 480px) {
+  .lg-data-chip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}

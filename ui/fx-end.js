@@ -96,7 +96,7 @@
     }).join("");
     // 진행자는 기존 DOM 보존 훅이 재연출을 막는다. 팀 서랍만 세션 키로 중복을 막는다.
     const endKey = opts.allCities ? "" : JSON.stringify([V.room, team, end]);
-    return `<section class="lg-fx-end" data-fx-end-key="${esc(endKey)}" aria-label="달별 도시 궤적"><h3>달별 도시 궤적</h3><div class="lg-fx-strip" role="region" aria-label="연대기 띠 · 좌우 스크롤" tabindex="0"><ol>${strip}</ol></div><p class="lg-fx-key">${opts.allCities ? "도시별 색·선무늬" : "청록 실선: 내 도시 · 회색 점선: 이웃 평균"} · ●: 정전 표시</p><div class="lg-fx-charts" role="region" aria-label="지표 그래프 4개 · 좁은 화면에서는 좌우로 넘겨요" tabindex="0">${graphs}</div><p class="lg-fx-note">출처: 공개된 달별 경제 이력·운영 결과(${esc(KCP.gradeWords("M·G"))}). CO₂는 생산 기준·결과 서랍과 같은 월 환산. 주민은 각 도시 시작 인구 대비 변화(%)이고 가운데 실선이 0(변화 없음)이에요. 이웃 평균은 같은 달 활성 이웃 중 값이 있는 도시의 산술 평균이며 주민은 도시별 시작 대비 %를 평균해요. 값이 없는 달은 선을 끊어요.</p></section>`;
+    return `<section class="lg-fx-end" data-fx-end-key="${esc(endKey)}" aria-label="달별 도시 궤적"><h3>달별 도시 궤적</h3><div class="lg-fx-strip" role="region" aria-label="연대기 띠 · 좌우 스크롤" tabindex="0"><ol>${strip}</ol></div><p class="lg-fx-key">${opts.allCities ? "도시별 색·선무늬" : "청록 실선: 내 도시 · 회색 점선: 이웃 평균"} · ●: 정전 표시</p><div class="lg-fx-charts" role="region" aria-label="지표 그래프 4개 · 좁은 화면에서는 좌우로 넘겨요" tabindex="0">${graphs}</div>${KCP.league.tipBox("end-trajectory-note", "궤적 자료와 읽는 법", `<p class="lg-fx-note">출처: 공개된 달별 경제 이력·운영 결과(${esc(KCP.gradeWords("M·G"))}). CO₂는 생산 기준·결과 서랍과 같은 월 환산. 주민은 각 도시 시작 인구 대비 변화(%)이고 가운데 실선이 0(변화 없음)이에요. 이웃 평균은 같은 달 활성 이웃 중 값이 있는 도시의 산술 평균이며 주민은 도시별 시작 대비 %를 평균해요. 값이 없는 달은 선을 끊어요.</p>`)}</section>`;
   }
   function mount(root) {
     if (!root) return;
