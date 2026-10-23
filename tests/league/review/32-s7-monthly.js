@@ -1,4 +1,5 @@
 'use strict';
+const weatherShort = require('./v8-weather-contract');
 // 기준: ../_briefs/lanes/league/V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix3.md + V3B-s7.md(영상 3차), 여섯 단계·호출 상한·0.005%p 재현 문턱. // D-80: C-1·2·4·5 대상별 검사.
 // 예상값은 S7 반환값/사본/호출 로그가 아니라 운영 직전 상태와 build/core 모델로 만든다.
 // 잡는 회귀: 시험 기준 회귀, 단계 교환/입력 조기 변경, 재현의 합계/후보 혼입,
@@ -186,7 +187,7 @@ function weatherClue(a, before, after, old, current) {
   weatherCoverage.add(differentDays ? 'hot-rate' : 'hot-count');
   const expected = [...physical, hot, ...winds,
     `계절 ${season[old.season]} → ${season[current.season]}`].join(' · ');
-  ok(short === expected, `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
+  ok(short === weatherShort(before, after, old, current), `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
   ok(full.startsWith(expected + ' · ') &&
     full.includes(`최대 수요 ${fmt(before.peakDemand, 2)} → ${fmt(after.peakDemand, 2)} MW`) &&
     full.includes(`하루 재생 공급량 ${fmt(before.renewable, 1)} → ${fmt(after.renewable, 1)} MWh/일`) &&
@@ -211,7 +212,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   eq(!!small, showSmall, `${label}: 작은 대기 줄은 양의 대기·유한 효과·0.05%p 미만`);
   if (small) { // D-80: 계통 단위도 작은 효과 문구에서 검사.
     if (isGrid) ok(small[1].includes('MWh/일') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-82: 작은 반사실도 하루 평균 단위.
-    else eq(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 미만)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
+    else eq(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 이하)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
   } // D-80: 작은 효과.
 
   eq((html.match(/id="lg-outage-grid"/g) || []).length, Number(show), `${label}: grid 설명은 병목 상자 있을 때만`);
@@ -518,7 +519,7 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
     ok(timeline.includes(names[ranked[0].key]), '월간 타임라인 최대 이름 일치');
     for (const cause of causes) {
       const labelled = clone(frozenData); labelled.interview.months[res.round].missed = cause; saveTeam(labelled);
-      ok(U.uiMath.trendHTML(V, id, true).includes(`놓친 것: ${names[cause]}`), `${cause} 월간 타임라인 선택 이름 일치`);
+      ok(U.uiMath.trendHTML(V, id, true).includes(`내가 고른 원인: ${names[cause]}`), `${cause} 월간 타임라인 선택 이름 일치`);
     }
     saveTeam(frozenData);
   }
@@ -833,7 +834,7 @@ test('월간 높은 정전 차이 원인 없음·고르기 생략', () => {
       if (reload) { saveTeam(clone(teamData())); resetCache(); } // 기기 저장 JSON 재독, 브라우저 재로딩은 s7.py
       const before = clone(teamData());
       const carry = U.__carryHTML(next), journal = U.__worksheet(next), trend = U.uiMath.trendHTML(next, id, true);
-      eq(carry, `<p id="lg-missed-carry" class="lg-hint">지난달 놓친 것: ${expectedLabel}</p>`,
+      eq(carry, `<p id="lg-missed-carry" class="lg-hint">지난달 원인 고르기: ${expectedLabel}</p>`,
         `${legacy ? '옛' : '새'} 기록/${reload}: S4 다음 달 줄 정확히 보존`);
       ok(journal.includes(expectedLabel) && trend.includes(expectedLabel),
         `${legacy ? '옛' : '새'} 기록/${reload}: 일지·타임라인 이어짐`);
@@ -913,8 +914,8 @@ test('수정 5 사례 B: outageSingleShown + missed 고정본의 붙이기·선�
     ok(/id="lg-outage-carry" disabled/.test(after), `${label}: 붙이기 완료 표시`);
     const next = { ...clone(V), round: res.round + 1 };
     const carry = U.__carryHTML(next), journal = U.__worksheet(next), trend = U.uiMath.trendHTML(next, id, true);
-    ok(carry.includes('지난달 놓친 것: 이웃 거래') && journal.includes('놓친 것: 이웃 거래') &&
-      trend.includes('놓친 것: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
+    ok(carry.includes('지난달 내가 고른 원인: 이웃 거래') && journal.includes('내가 고른 원인: 이웃 거래') &&
+      trend.includes('내가 고른 원인: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
     ok(![carry, journal, trend].some(text => text.includes('고르기 생략')), `${label}: 기록을 고르기 생략으로 덮지 않음`);
     eq(teamData().interview.months[res.round], saved, `${label}: 재렌더/기록 읽기로 저장값 불변`);
     eq(JSON.stringify({ S, V }), publicBefore, `${label}: 공개·운영 상태 불변`);
@@ -1370,8 +1371,8 @@ test('열지 않은 월간 선택도 다음 달 타임라인 이름을 월간 �
   C.host(S, 'next', 0); const current = operate(S);
   const before = clone(teamData().interview.months[2]);
   const html = U.uiMath.trendHTML(current.V, id, true);
-  ok(html.includes('놓친 것: 날씨·계절·운전 기간'), '옛 frozen 없이 missedBasis만으로 월간 이름');
-  ok(!html.includes('놓친 것: 날씨·운전 기간') && !html.includes('가장 큰 몫'),
+  ok(html.includes('내가 고른 원인: 날씨·계절·운전 기간'), '옛 frozen 없이 missedBasis만으로 월간 이름');
+  ok(!html.includes('내가 고른 원인: 날씨·운전 기간') && !html.includes('가장 큰 몫'),
     '열지 않은 선택을 시험 이름·최대 답으로 꾸미지 않음');
   eq(teamData().interview.months[2], before, '닫힌 선택의 다음 달 렌더링은 기록 불변');
 });

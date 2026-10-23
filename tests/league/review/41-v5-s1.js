@@ -277,9 +277,10 @@ function expected(f) {
   const comparable = ranked.map(x => x.key);
   const remaining = [...comparable, ...order.filter(k => !comparable.includes(k))]
     .filter(k => valid(k) && (k !== 'fuel' || fuel) && !found.has(k));
+  const missingPrevious = remaining.filter(k => !comparable.includes(k));
   const deferred = remaining.filter(k => comparable.includes(k) && displayedChange(k, f.values[k], prev[k]) === 0);
-  for (const key of remaining.filter(k => !deferred.includes(k))) add(key, 5);
-  for (const key of deferred) {
+  for (const key of remaining.filter(k => !deferred.includes(k) && !missingPrevious.includes(k))) add(key, 5);
+  for (const key of [...deferred, ...missingPrevious]) {
     if (found.size >= 2) break;
     add(key, 5);
   }
@@ -340,7 +341,7 @@ function s4GridBasis(h) {
 }
 const gridCases = [
   ['세 후보 중간', { previous: standard, values: { evening: 110, grid: 3.65, neighbor: 11 } }],
-  ['세 후보 마지막(390에서는 접힘)', { wind: 'wind', values: { fuel: null } }],
+  ['세 후보 마지막(390에서는 접힘)', { wind: 'wind', previous: standard, values: { evening: 200, grid: 30, fuel: null } }],
   ['두 후보', { values: { wind: null, fuel: null, neighbor: null } }],
   ['grid만 숫자', { values: { evening: null, wind: null, fuel: null, neighbor: null } }],
 ];
@@ -386,7 +387,7 @@ for (const role of ['team', 'solo']) for (const width of [1280, 390]) for (const
     }
   });
 for (const width of [1280, 390]) for (const [label, opt] of [
-  ['grid 값은 있으나 후보에서 탈락', { wind: 'wind', cash: -1 }],
+  ['grid 값은 있으나 후보에서 탈락', { wind: 'wind', cash: -1, previous: standard }],
   ['grid 값 없음', { values: { grid: null } }],
   ['모든 값 없음', { values: Object.fromEntries(order.map(k => [k, null])) }],
 ]) test(`접속 기준 계약 3·4 ${width}/${label}`, () => {
@@ -423,14 +424,14 @@ for (const role of ['team', 'solo']) test(`접속 기준 계약 6 ${role}/처리
 const gridBasisOriginal = makeHarness(execFileSync('git', ['show', 'fb8b48b:ui/league.js'],
   { cwd: ROOT, encoding: 'utf8' }), true);
 for (const role of ['team', 'solo']) for (const width of [1280, 390])
-  test(`접속 기준 계약 7 ${role}/${width}/S4 HTML = fb8b48b 끝 구절 1회 교체`, () => {
+  test(`접속 기준 계약 7 ${role}/${width}/S4 HTML = fb8b48b 승인된 두 구절 교체`, () => {
     const opt = { role, width, previous: standard, values: { grid: 3.65 } };
     for (const a of [h, gridBasisOriginal]) fixture(a, opt);
     const original = s4GridBasis(gridBasisOriginal).raw;
     assert.equal(original.split('더 작을 수 있어요').length - 1, 1, 'fb8b48b S4 원문에 옛 구절 정확히 한 번');
-    const expectedHTML = original.replace('더 작을 수 있어요', '다를 수 있어요');
+    const expectedHTML = original.replace('더 작을 수 있어요', '다를 수 있어요').replace('값이에요. 지도 칩은', '값이고, 지도 칩은');
     assert.deepEqual(Buffer.from(s4GridBasis(h).raw, 'utf8'),
-      Buffer.from(expectedHTML, 'utf8'), '승인된 구절 1회 교체 외 S4 HTML UTF-8 바이트 동일');
+      Buffer.from(expectedHTML, 'utf8'), '승인된 두 구절 교체 외 S4 HTML UTF-8 바이트 동일');
   });
 
 test('하네스 HTML 파서: 그룹·속성·조상 클릭·이스케이프', () => {
@@ -562,7 +563,7 @@ function contractCase(label, opt, keys, tags = {}) {
 }
 for (const previous of [undefined, { ...standard, wind: 0 }, standard])
   contractCase('계약 1·3·5 풍력 없으면 0 출발·거대 변화도 풍속 제외',
-    { previous, values: { evening: 110, wind: 1e9, grid: 22, neighbor: 11 } }, ['evening', 'grid', 'neighbor']);
+    { previous, values: { evening: 110, wind: 1e9, grid: 22, neighbor: 11 } }, previous ? ['evening', 'grid', 'neighbor'] : ['evening', 'grid']);
 for (const wind of ['wind', 'offshore'])
   contractCase(`계약 3 ${wind} 하나면 계절 대표값`, { wind, previous: standard,
     values: { evening: 300 }, oldNote: { outageLargest: { key: 'choice' } } },
@@ -587,7 +588,7 @@ for (const [label, oldNote, keys] of [
 contractCase('계약 1 LNG 조건 미충족이어도 최대 변화면 포함',
   { previous: standard, values: { evening: 110, grid: 22, fuel: 400 } }, ['evening', 'grid', 'fuel'], { fuel: '지난달보다 +300%' });
 contractCase('계약 2 LNG 조건 미충족이어도 S7 growth 연결이면 포함',
-  { oldNote: { outageLargest: { key: 'growth', value: .001 } } }, ['evening', 'grid', 'fuel'],
+  { oldNote: { outageLargest: { key: 'growth', value: .001 } } }, ['evening', 'fuel'],
   { fuel: '지난달 가장 큰 몫(도시 성장·연료 값)과 이어짐' });
 contractCase('계약 5 남은 자리 변화율 순서가 고정 순서와 다름',
   { wind: 'wind', previous: standard, values: { evening: 200, grid: 60, neighbor: 50 } },
@@ -596,8 +597,8 @@ contractCase('계약 5 지난달 값 있는 grid가 앞선 목록의 evening보�
   { wind: 'wind', previous: { grid: 20, neighbor: 10 }, values: { grid: 30, neighbor: 30 } },
   ['wind', 'grid', 'neighbor'], { grid: '지난달보다 +50%' });
 contractCase('계약 5 지난달 값 없는 근거는 고정 순서로 뒤에·빈 꼬리표',
-  { previous: { neighbor: 10 }, values: { neighbor: 30 } }, ['evening', 'grid', 'neighbor'],
-  { evening: '', grid: '', neighbor: '지난달보다 +20%p' });
+  { previous: { neighbor: 10 }, values: { neighbor: 30 } }, ['evening', 'neighbor'],
+  { evening: '', neighbor: '지난달보다 +20%p' });
 contractCase('계약 6 풍속·LNG 값이 있어도 제외 뒤 두 후보 유지',
   { previous: standard, values: { neighbor: null } }, ['evening', 'grid'],
   { evening: '지난달과 같음', grid: '지난달과 같음' });
@@ -622,8 +623,8 @@ contractCase('V7 G d 지난달·이번 달 모두 0인 1단계 선발 보존',
   { wind: 'wind', cash: -1, previous: zeros, values: zeros }, ['evening', 'wind', 'fuel'],
   { evening: '지난달과 같음', wind: '계절 대표값', fuel: '국제 지수' });
 contractCase('V7 G e 지난달 값 없는 근거는 변화율 뒤에 유지',
-  { previous: { evening: 100, neighbor: 10 }, values: { neighbor: 30 } }, ['grid', 'neighbor'],
-  { grid: '', neighbor: '지난달보다 +20%p' });
+  { previous: { evening: 100, neighbor: 10 }, values: { neighbor: 30 } }, ['evening', 'neighbor'],
+  { evening: '지난달과 같음', neighbor: '지난달보다 +20%p' });
 contractCase('V7 G 반올림하면 0인 변화도 제외',
   { previous: standard, values: { evening: 200, grid: 30, neighbor: 10.000001 } },
   ['evening', 'grid'], { evening: '지난달보다 +100%', grid: '지난달보다 +50%' });
@@ -771,7 +772,7 @@ for (const target of ['uns', 'grid']) for (const role of ['team', 'solo'])
 for (const role of ['team', 'solo']) for (const wind of [false, 'wind', 'offshore'])
   for (const pick of wind ? ['wind', 'grid'] : ['grid'])
   test(`V7 C ${role}/${wind}/${pick} 시작 메모 저장·풍력 추가·철거 후 후보와 선택 유지`, () => {
-    fixture(h, { role, wind });
+    fixture(h, { role, wind, previous: standard, values: { evening: 200, grid: 30, neighbor: 11 } });
     // 최초 저장 경로를 실행하기 위해 기기의 현재 달 메모만 비운다.
     const write = data => role === 'solo' ? h.L.interview = data :
       h.storage.set(`kcp-league-data-v1:${h.L.room}:${h.L.team}`, JSON.stringify(data));
@@ -800,7 +801,7 @@ for (const role of ['team', 'solo']) for (const wind of [false, 'wind', 'offshor
     assert.equal(new Set(after.keys).size, after.keys.length); assert.ok(after.keys.length <= 3);
   });
 for (const wind of [false, 'wind']) test(`V7 C 옛 기록 풍력 메모 없음/${wind} 현재 계획으로 판정`, () => {
-  fixture(h, { wind });
+  fixture(h, { wind, previous: standard, values: { evening: 200, grid: 30, neighbor: 11 } });
   assert.ok(!Object.hasOwn(note(h), 's1HasWind'));
   assert.deepEqual(view(h).keys, wind ? ['evening', 'wind', 'grid'] : ['evening', 'grid', 'neighbor']);
   h.plan.builds = h.plan.builds.filter(b => !['wind', 'offshore'].includes(b.t));
@@ -817,14 +818,14 @@ for (const role of ['team', 'solo']) for (const pick of ['wind', 'fuel'])
   });
 test('S1 계약 1~6 독립 기대값 검산·고정 순서', () => {
   const examples = [
-    [{ first: true }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
+    [{ first: true }, [['evening', 5], ['grid', 5]]],
     [{ wind: 'wind', previous: standard, values: { neighbor: 30 }, oldNote: { missedBasis: 'monthly', outageLargest: { key: 'choice' } } }, [['wind', 3], ['grid', 2], ['neighbor', 1]]],
-    [{ values: { wind: null, fuel: null } }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
+    [{ values: { wind: null, fuel: null } }, [['evening', 5], ['grid', 5]]],
     [{ previous: standard, values: { wind: null, fuel: null, grid: 100 } }, [['evening', 5], ['grid', 1]]],
     [{ values: { wind: null, fuel: null, neighbor: null } }, [['evening', 5], ['grid', 5]]],
-    [{ wind: 'wind', values: { fuel: null } }, [['evening', 5], ['wind', 3], ['grid', 5]]],
+    [{ wind: 'wind', values: { fuel: null } }, [['evening', 5], ['wind', 3]]],
     [{ previous: standard }, [['evening', 1], ['grid', 5]]],
-    [{ oldNote: { outageLargest: { key: 'event' } } }, [['evening', 5], ['grid', 5], ['neighbor', 5]]],
+    [{ oldNote: { outageLargest: { key: 'event' } } }, [['evening', 5], ['grid', 5]]],
     [{ wind: 'offshore', cash: -1, previous: standard, values: { grid: 60 }, oldNote: { missedCarry: { largest: { key: 'event' } } } }, [['wind', 3], ['grid', 1], ['fuel', 4]]],
   ];
   for (const [opt, wanted] of examples) assert.deepEqual(expected(fixture(h, opt)).map(x => [x.key, x.rule]), wanted);
@@ -1029,6 +1030,64 @@ for (const field of ['name', 'text']) test(`11 §1 조건 줄 ${field === 'name'
   } finally { h.R.events[at] = f.E; }
 });
 
+// V8 N1: 입력한 시작 메모와 변경한 공개 계획 값으로 기대값을 만든다.
+for (const role of ['team', 'solo']) test(`V8 N1 S4 시작 3.65 → 지금 7.65/${role}`, () => {
+  fixture(h, { role, previous: standard, values: { grid: 3.65 } });
+  h.plan.builds.push({ t: 'battery', i: 0 });
+  // 공개 계획 갱신 경계: 배터리 추가 뒤의 처리 전 여유를 합성한다(엔진 재검산은 총괄 범위).
+  h.L.snap.econ.cities[h.L.team].grid.headroomMW = 7.65;
+  let root = htmlTree(api(h, 'predictionHTML')(h.L.snap));
+  let chip = root.querySelector('[data-evidence="grid"]');
+  for (const text of [chip.textContent, chip.getAttribute('title'), chip.getAttribute('aria-label')])
+    assert.equal(text, '접속 여유: 3.65 MW', '값·title·aria 모두 S1 시작 값');
+  click(h, chip);
+  const saved = note(h).evidence;
+  assert.equal(saved.key, 'grid'); assert.equal(saved.value, 3.65);
+  assert.equal(saved.text, '접속 여유: 3.65 MW');
+  assert.equal(saved.nowValue, 7.65); assert.equal(typeof saved.nowValue, 'number');
+  root = htmlTree(api(h, 'predictionHTML')(h.L.snap));
+  assert.equal(root.querySelectorAll('#lg-evidence-now-s4').length, 1);
+  assert.equal(root.querySelector('#lg-evidence-now-s4').textContent,
+    '계획 시작(S1) 3.65 → 지금 7.65 MW(계획 변경·시작 값으로 비교)');
+  h.L.snap.econ.cities[h.L.team].grid.headroomMW = 8.65;
+  assert.equal(htmlTree(api(h, 'predictionHTML')(h.L.snap)).querySelector('#lg-evidence-now-s4').textContent,
+    '계획 시작(S1) 3.65 → 지금 8.65 MW(계획 변경·시작 값으로 비교)', 'S4는 약속 때가 아니라 그릴 때 값');
+  assert.equal(note(h).evidence.nowValue, 7.65, '그리기가 저장한 클릭 값은 바꾸지 않음');
+});
+for (const role of ['team', 'solo']) for (const now of [3.65, 3.654, 3.656])
+  test(`V8 N1 S4 표시 두 자리 경계/${role}/${now}`, () => {
+    fixture(h, { role, values: { grid: now }, note: { s1EvidenceValues: { ...standard, grid: 3.65 },
+      evidence: { key: 'grid', text: '접속 여유: 3.65 MW', value: 3.65 } } });
+    const root = htmlTree(api(h, 'predictionHTML')(h.L.snap));
+    assert.equal(root.querySelectorAll('#lg-evidence-now-s4').length, now === 3.656 ? 1 : 0);
+    if (now === 3.656) assert.equal(root.querySelector('#lg-evidence-now-s4').textContent,
+      '계획 시작(S1) 3.65 → 지금 3.66 MW(계획 변경·시작 값으로 비교)');
+  });
+for (const key of order) test(`V8 N1 S4 옛 기록 대체/${key}`, () => {
+  fixture(h, { note: { s1EvidenceValues: null } });
+  const chip = htmlTree(api(h, 'predictionHTML')(h.L.snap)).querySelector(`[data-evidence="${key}"]`);
+  click(h, chip);
+  assert.equal(note(h).evidence.value, standard[key]);
+  assert.equal(note(h).evidence.nowValue, standard[key]);
+  assert.equal(htmlTree(api(h, 'predictionHTML')(h.L.snap)).querySelector('#lg-evidence-now-s4'), null);
+});
+contractCase('V8 N6 두 장이면 지난달 값 없는 세 번째는 채우지 않음',
+  { wind: 'wind', previous: { evening: 100 }, values: { evening: 200 } }, ['evening', 'wind']);
+contractCase('V8 N6 하나면 변화 0을 값 없음보다 먼저 보충',
+  { previous: { evening: 100, neighbor: 10 }, values: { evening: 200 } }, ['evening', 'neighbor'],
+  { neighbor: '지난달과 같음' });
+contractCase('V8 N6 변화 0도 없으면 값 없음에서 두 장까지만',
+  { previous: { neighbor: 10 }, values: { neighbor: 30 } }, ['evening', 'neighbor'], { evening: '' });
+test('V8 문구 16 조건 줄만 교체·사건 원문 보존', () => {
+  fixture(h, { event: 'regulation' });
+  const f = { E: h.R.events.find(e => e.id === 'finedust_coal_cap') }, original = copy(f.E);
+  h.L.snap.events = [{ id: f.E.id, round: h.L.snap.round }];
+  assert.equal(view(h).focus.querySelector('p.lg-s1-condition').textContent, `이번 달 조건 · ${f.E.name}: 계절관리제 시행으로 석탄발전 출력을 제한해요.`);
+  const drawer = htmlTree(eventDrawerHTML(h));
+  assert.ok(drawer.textContent.includes(f.E.text), '사건 카드 원문 text 유지');
+  assert.deepEqual(copy(f.E), original, '자료 원문 변경 없음');
+});
+
 async function privacy() {
   assertions++;
   try {
@@ -1037,8 +1096,10 @@ async function privacy() {
     const key = cardKey(card);
     const beforeState = JSON.stringify(h.C.publicView(h.L.S, 0));
     click(h, card); assert.equal(note(h).s1Pick, key);
+    click(h, view(h).promise);
+    assert.equal(typeof note(h).evidence.nowValue, 'number', '실제 저장 경로에 nowValue 존재');
     assert.equal(JSON.stringify(h.C.publicView(h.L.S, 0)), beforeState, 'S1 선택은 공개 상태 불변');
-    assert.ok(!JSON.stringify(h.U.state()).includes('s1Pick'), '공개 검사 상태에도 로컬 필드 없음');
+    assert.ok(!/s1Pick|s1EvidenceValues|s1EvidenceNeighborId|nowValue/.test(JSON.stringify(h.U.state())), '공개 검사 상태에도 로컬 필드 없음');
     assert.equal(h.wire.length, 0, '로컬 카드 클릭은 전송 없음');
     // 실제 팀 공개 plan API로 서명 경로를 거친 진행자 요청을 만든다.
     // 서명은 메모리 어댑터이며 requestBody를 그대로 보존한다. 외부 전송은 없다.
@@ -1047,7 +1108,7 @@ async function privacy() {
     const requests = h.wire.filter(x => x[0] === 'req').map(x => h.ctx.KCP.leagueNet.requestBody(x[1]));
     assert.ok(requests.length > 0, '비어 있지 않은 진행자 요청을 검사');
     const hasPrivate = x => x && typeof x === 'object' && Object.entries(x).some(([k, value]) =>
-      k === 's1Pick' || value === key || hasPrivate(value));
+      ['s1Pick', 's1EvidenceValues', 's1EvidenceNeighborId', 'nowValue'].includes(k) || value === key || hasPrivate(value));
     assert.ok(!requests.some(hasPrivate), '요청 본문의 로컬 필드·고른 값 없음');
     console.log('PASS 6 §4·5 D-65 실제 공개 상태·진행자 요청');
   } catch (e) { failures++; if (e.blocked) blocked++; console.error(`${e.blocked ? 'BLOCKED' : 'FAIL'} 6 §4·5 D-65 실제 공개 상태·진행자 요청: ${e.message}`); }
