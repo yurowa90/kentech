@@ -126,7 +126,7 @@
 | `ui/econ-data.js` intl.events ship_red | fx {ship −0.3, lng 0.1} | {ship −0.3} | M | 7.9 | R1 |
 | `ui/econ-data.js` intl.schedule | [{t: 12, id: cbam}] | [{t: 0, id: cbam}] | O | 7.14 | R2(F16과 함께) |
 | `ui/econ-data.js` intl.events cbam text | '철강 수출 도시는 쓰는 전력의 탄소 배출이 많을수록…' | '철강 공정의 직접배출이 많을수록, EU 수출 비중만큼 산출이 깎여요(단계 도입)' | — | 7.14 | R1 |
-| `ui/econ-data.js` intl.theta | 0.15(하나) | {lng 0.03, fx 0.015, ship 0.15, export 0.05} | M(ship G) | 7.5–7.7 | R2(F15) |
+| `ui/econ-data.js` intl.theta | 0.15(하나) | {lng 0.03, fx 0.015, ship 0.15, export 0.05} | M(ship·export G — 대장 §7.7, 2026-10-21 정정) | 7.5–7.7 | R2(F15) |
 | `ui/econ-data.js` intl.sigma | {lng .05, fx .02, ship .03, export .04} | {lng .07, fx .019, ship .012, export .025}(표준화 잡음 기준) | M(ship·export G) | 7.5–7.7 | R2(F15) |
 | `ui/econ-data.js` start.* | — | natShare(화성·평택·안성 0, 아산·천안 0.45, 당진 0.65), landCapMul(충남 1.3, 화성·평택 1.15, 안성 1.1), univ0·lab0(실제 대학·연구소 수, 기존 uni·lab에서 이름 변경) | O·G·O\* | 4.7, 4.9, 4.8 | R2 |
 | `ui/league-data.js` 지역 | scale 문자열('게임 1 MW ≈ 실제 약 230 MW')만 | 숫자 필드 mwScale 230 추가 | G(지도 설계) | 5.9, 6.14 | R3(H03·H04) |
@@ -173,7 +173,7 @@
 | F16 | `outIdx()` cbam·`industryAttract()` w.carbon·intl 사건 | 0.02 × steel × xs × (co2Int/0.45), CBAM이면 w.carbon += 0.3 × steelX | cbam = steel × xs × cbamEuShare × cbamDrop × cbamPhase[연도] × eduCbam(연도 키가 없으면 가장 가까운 값). 실제 CBAM에서 w.carbon = wA.carbon(가중 추가 없음). 가상 사건 eu_indirect(이름 'EU, 철강 간접배출 포함 결정(가상)', sched 아님, 기본 꺼짐 또는 진행자 선택)일 때만 carbonWeight × steelX를 더하고 전력 탄소 연동을 켠다 | 7.13–7.15 |
 | F17 | 바이오매스 CO₂(build.js·league-core.js) | 0.1t/MWh를 co2에 합산 | co2에는 0, 별도 bioCo2(정보 항목)로 집계해 화면에 '바이오 CO₂(국가 총량 밖)' | 9.5 |
 | F18 | `score()` rel(econ.js) | 100 × (1 − unsS/unsZeroL) | 100 × (1 − unsS/scoreUnsZero) | 5.10 |
-| F19 | `score()` co2·`groupTargets()` co2(econ.js) | 100 × exp(−co2pc/scoreCo2Ref) | I = 소비 CO₂/공급 MWh(λslow 지연). G10: 시작 지도의 기존 설비만 고정 전선으로 연결해 첫 달 운전한다. 부족 MWh에 normalCo2·normalCost를 곱해 실제 탄소·연료비에 각각 더하고 전체 수요 MWh로 나눈 값을 시작 탄소·원가로 저장한다. 무발전 네 도시는 같은 혼합 규칙의 공급 0 특수 경우이며 대체값임을 명시한다. 공급 0인 달은 직전 집약도 유지, 직전 값이 없을 때만 시작값을 쓴다. 값 = clamp(100 × (scoreCo2Worst − I)/(scoreCo2Worst − scoreCo2Best)). co2pc는 화면용으로 남겨도 된다 | 13.5 |
+| F19 | `score()` co2·`groupTargets()` co2(econ.js) | 100 × exp(−co2pc/scoreCo2Ref) | I = 소비 CO₂/공급 MWh(λslow 지연). G10: 시작 지도의 기존 설비만 고정 전선으로 연결해 첫 달 운전한다. 부족 MWh에 normalCo2·normalCost를 곱해 실제 탄소·연료비에 각각 더하고 전체 수요 MWh로 나눈 값을 시작 탄소·원가로 저장한다. 무발전 네 도시는 같은 혼합 규칙의 공급 0 특수 경우이며 대체값임을 명시한다. 공급 0인 달은 직전 집약도 유지, 직전 값이 없을 때만 시작값을 쓴다. D-73: 값 = max(절대 세 기준점 눈금, 시작 대비 감축 세 기준점 눈금). 절대 기준 0.82/0.25038/0에 0/80/100점, 상대 감축 0/0.4/1에 0/80/100점; 현재·시작 결측 규칙은 ECON-SPEC §9.1. co2pc는 화면용으로 남겨도 된다 | 13.5 |
 | F20 | 지역 CO₂ 목표(econ.js `monthStep()` region, league-core.js `goalsOf()`) | 대표 7일 3,000t × 달 일수/7(호스트는 실제 TWh 몫으로 축소) | goal = 지역 수요 MWh(demMWh 합) × normalCo2 × (1 − coopCo2Cut × min(1, (연도 − 2018)/12)) × coopEase. 2027년 계수 0.70. 호스트 goalsOf와 단독 기본값이 같은 식을 쓴다 | 13.6 |
 | F21 | 사건 추첨(league-core.js) | monthEventP로 0/1개를 정한 뒤 weight로 고름. finedust_coal_cap은 겨울 무작위, typhoon은 tieDown 선이 있는 방에서만 | 두 단계 추첨은 유지하고, 기상 사건의 weight를 '함의 빈도 = monthEventP × w_e ÷ Σw(그 계절 유효 사건) = P_real × hazardFreq'가 되게 다시 정한다: 태풍 여름 0.056·가을 0.026, 황사 봄 0.077(P_real 0.56·0.26·0.77). P_real이 없는 사건은 지금 weight 유지. finedust_coal_cap은 12·1·2·3월 확정 일정(추첨·B9 집계에서 제외). typhoon은 선이 없어도 발생하고 tieDown 효과만 선이 있을 때 | 13.7, 9.13 |
 | F22 | 접속·출력제어(league-core.js) | connPerMonth, curtailLoss 키 | connPerMonthReal × eduConn, curtailLossReal × eduCurtail. 경제 모드에서는 light_load_curtailment를 추첨하지 않는다 | 8.12, 8.14, 8.15 |
@@ -195,7 +195,7 @@
 | F38 | SMR 유레카·sat0(tech-data.js·league-core.js·econ.js) | 절대 지지율 ≥ 55, sat0 미사용 | approval ≥ approval0 − 5 또는 시위 없음(G). sat0 삭제(initCities는 neutralScore로 초기화 후 setBase) | 11.8 |
 | F39 | 점수 집계(econ.js `score()`) | wsum(가중 산술평균) + coop | G7 D4 보류: S = exp(Σ w_k·ln max(scorePartFloor, x_k) / Σw), scorePartFloor=1(G, G7 복원; G6 하한30 보류). 표시 부분점수는 0~100 유지. 화면 이름 '균형 점수', 식 공개 | 13.2 |
 | F40 | 성장 눈금(econ.js `score()`) | K = 500 공통 | K_pop(L), K_ind(L) 표(L = 게임 길이 12·24·36). 임시값: 12달 pop 1000·ind 3300, 24달 pop 700·ind 2000, 36달 pop 500·ind 1250. R2 묶음 뒤 bots36에서 \|g\|의 97.5 백분위 B로 K = 50/B를 다시 산출해 교체 | 13.3 |
-| F41 | HVDC·초전도 적용 범위(league-core.js `effectiveTie()`) | 양 끝 중 한 도시라도 도입하면 기존 선 전체 | hvdc 손실은 kind === 'hvdc'인 선만. scable은 결정 전까지 지금 동작 유지(§9 D2) | 12.1 |
+| F41 | HVDC·초전도 적용 범위(league-core.js `effectiveTie()`) | 양 끝 중 한 도시라도 도입하면 기존 선 전체 | D-79: kind === 'hvdc'인 선만 용량 ×1.5(G), 손실 .01(G, 기본 교류선과 같음), 새 선 비용 ×1.3 유지. scable·사건 배수는 계속 곱함 | 12.1 |
 | F42 | 수소 혼소(league-core.js 기술 효과) | 도입하면 LNG 전체 CO₂ × 0.88 | 그 달 수소 탱크 방전량(또는 저장 잔량)이 있을 때만, 혼소 가능량만큼 적용. 소비한 수소 몫의 LNG 연료비·CO₂를 함께 차감하고 재고·시간별 방전 상한을 지킨다. 혼소량과 CO₂ 감축 >0 검사 포함 | 9.12 |
 | F43 | heatDamage 조건(league-core.js) | 예측 또는 VPP | VPP만 | 12.8 |
 
@@ -362,6 +362,7 @@ eduSpeed: p(4.4, G, "교육용 배속(시간 압축): 게임 κ 0.0396 ÷ 현실
 | 28 | v1.0.4 SMR 근거 규모와 B16 | 4×170MWe/230, 기존 MW당 단가 유지 | 3MW도 저탄소·차익 이득, 낮아진 총건설비로 안성 착공 빨라짐 | G5 최종 SMR6/6: B16 실패·추가 목표≤3 미달을 그대로 보고. smrFuelMul4 진단도 6/6. 근거 값·단언 유지, 다음 G 후보는 SMR 연구량 need36→72/144/216의 지연·기회비용 민감도(미검증) |
 | 29 | AI 부채 대응과 지속 운영 적자 | 세금·서비스·건설은 사람과 같은 요청 | 기존 균형2·공격2/6 한도 초과 | G5 warn/crisis 대응 후 균형 아산1/6만 잔여. 연구·기존 전력 운영비는 연구 큐를 비워도 남으며 자동 철거하지 않음. 연료·서비스·건설 원인과 초과 시점은 G5 보고 |
 | 30 | G8 기술 전략 비교의 투자 기회비용 | SMR과 같은 달까지의 누적 건설·연구비를 재생+저장·연계선·혼합에도 배정 | 기존 기술4전략에는 같은 예산 탈탄소 대안이 없어 SMR6/6을 기술 자체의 불균형으로 단정할 수 없음 | G9: 양쪽 모두36달 건설+운영·연료+구매. 공개 계획 급전의 거래 비용 예상·비용만의 사전 반복으로 한도 맞춤. 7전략 B16 필수·SMR≤3 관찰, 결과·미집행은 G9 보고·비교표 |
+| 31 | 설비 공사 기간 비대칭(D-81) | EIA AEO2022 lead time(P): 태양광 2년·육상풍력 3년·ESS 1년·바이오매스 4년·내연기관 2년·SMR 6년, 한국 LNG 복합 27~32개월·육상풍력 인허가 포함 약 10년(O*) | SMR만 공사 12달(55개월 ×4.4), 다른 설비는 즉시 건설·접속 대기(×27) | 사용자 결정(D-81)으로 비대칭 유지. SMR을 현실보다 상대적으로 불리하게 그린다는 점을 배속표(#lg-build-lead·#lg-build-rule)에 밝힌다. 균일 적용은 12달 판의 월별 학습 고리를 약하게 하고 근거 빈 칸(지붕 태양광·소형 디젤·한국 ESS)을 G로 채워야 해서 보류. 연계선 공사(H08)는 미구현으로 함께 공개 대상 |
 
 
 **G3 보정 이력 — 아래 네 값 조정은 G4에서 철회(나머지 보고 필드·REF 정정은 유지).**
@@ -397,7 +398,9 @@ T5는 양쪽 모두 36달 건설+운영·연료+구매 총지출로 맞춘다. �
 
 **G10 독립 검토 보완(2026-10-07).** F19 시작 보정의 부분 공급 도시도 부족분을 normalCo2=.4567·normalCost=.008로 보충한 가중 평균을 쓴다. 발전소가 없는 도시는 같은 규칙의 공급 0 특수 경우이다. 학생 운영 중 공급 0인 달의 직전 집약도 보존은 유지한다. B12는 계열별 ≤3 외에 세율 축별 한 방향의 6도시 독식을 금지한다. G10 결과는 감세·증세 계열 각각 3/6, 주민세 인상/인하 4/6·2/6, 산업세 인상/인하 3/6·5/6이다. `aiLocalFuelWeight=4`는 종류 내 입지에만 쓰고 종류 간 비교는 실제 연료비 차이×예상 발전량+건설비로 바꾼다. `aiFuelMonths=36`, `aiResearchDebtShare=0`(새 연구 인력의 차입 금지)을 사용하며 `aiDebtRepair`는 삭제한다. 공급 여유·접속량·보완 페이스 값은 유지한다. T5는 월별 누계+부동소수 허용 오차 0.000001억으로 단언을 복원한다. 최종 연구 이득 +4.483점·B16 통과·SMR 1위 2/6으로 G9의 충돌 (35)는 이 비교 집합에서 해소됐다. 탄소 100 상한과 추가 씨앗의 부채 초과는 아래에 남긴다. 실제 수치·변경 키·검사는 [G10 보고](../tests/league/review/G10-report.md)를 따른다.
 
-**남은 충돌 (36): 저탄소 전략의 탄소 부분점수 100 상한.** 절대 기준 점수의 상한과 바이오매스 영토 배출 0 회계 때문에 저탄소 전략끼리 구별되지 않는다. 근거 키·점수식은 불변이다. 사용자 결정 후보로 별도 보고되는 `bioCo2`의 일부 반영 여부를 남긴다. 회계 경계·비율·근거를 결정하기 전에는 구현하지 않으며 탄소 0 설비를 몰래 선호하는 AI 가중으로 대체하지 않는다.
+**충돌 (36)의 후속 결정 D-73(2026-10-20).** 종전 절대 기준의 100점 포화는 B80으로 바꾼다. 절대 눈금 0.82→0점·0.25038→80점·0→100점과 시작 대비 감축 눈금 0%→0점·40%→80점·100%→100점 중 큰 값을 쓴다. 각 구간은 선형이며 중간 점수·감축률은 params로 둔다. `normalCo2`·`co2IntDef`는 0.4173(O, [S36])으로 갱신한다. F19의 종전 단일 선형식은 이 결정으로 대체하며 집단 만족에도 같은 탄소 점수를 쓴다. `bioCo2`의 총량 밖 정보 항목 처리는 유지한다. 상세 식·결측 규칙은 [ECON-SPEC §9.1](ECON-SPEC.md#91-d-73d-74-탄소-눈금제한-수입-2026-10-20)을 따른다. T5 기술 전략과 씨앗 강건성은 후속 측정이다.
+
+**D-74·D-79(2026-10-20).** 경제 운영에서 이웃 연계선 정산 후 시간별 잔여 부족에 현재 수요의 50%까지 외부 계통 공급을 더한다. 단가 normalCost×1.5(G), 소비 탄소 normalCo2, 지역 생산·PM 추가 0이다. C1 측정기의 고정 시작 수요 상한과 다르다. F41의 HVDC 효과는 kind가 hvdc인 선에만 용량 ×1.5(G), 손실은 기본 교류선과 같은 .01(G), 건설비 ×1.3(G)으로 확정했다. 초전도·사건 배수는 유지한다. 시험 운전 연결과 AI 예측의 적용 여부·한계는 [최초 구현 보고](../tests/league/review/D73-report.md)와 [독립 검토 반영·정정](D73-INDEPENDENT-REVIEW.md)에 기록한다.
 
 **남은 충돌 (37): 정책0의 씨앗 간 재정 안정성.** 지정된 공통 씨앗에서는 호스트·기본 봇 36달 초과 0이지만 별도 alpha/beta/gamma/delta/epsilon에서 화성의 초과 달은 0/8/11/3/10이다. 다른 다섯 도시는 초과 0이다. 고정 씨앗 수용 결과를 모든 씨앗의 안전 보증으로 확대하지 않는다.
 

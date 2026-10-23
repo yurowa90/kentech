@@ -32,6 +32,22 @@
   const plain = (v) => v && typeof v === "object" && !Array.isArray(v);
   const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const pending = new Map();
+  // 저장에 실패한 키와 그 값. 다시 그려도 화면의 답변이 옛 저장값으로 돌아가지 않게 read가 먼저 읽는다.
+  // 실패하면 경고를 한 번만 띄우고, 실패한 키가 모두 다시 저장되면 경고를 내린다(다음 실패 때 다시 알림).
+  const unsaved = new Map();
+  function saveWarn() {
+    if (document.getElementById("kcp-save-warn") || !document.body) return;
+    const t = document.createElement("div");
+    t.id = "kcp-save-warn";
+    t.className = "kcp-save-warn";
+    t.setAttribute("role", "alert");
+    t.textContent = "쓴 내용을 이 브라우저에 저장하지 못했어요. 창을 닫기 전에 쓴 내용을 복사해 따로 옮겨 두세요. 다시 저장되면 이 알림은 사라져요.";
+    document.body.appendChild(t);
+  }
+  function saveSettle(key) {
+    unsaved.delete(key);
+    if (!unsaved.size) document.getElementById("kcp-save-warn")?.remove();
+  }
   function cancel(key) {
     const entry = pending.get(key);
     if (entry) clearTimeout(entry.timer);
@@ -43,7 +59,19 @@
     cancel(key);
     try {
       localStorage.setItem(key, JSON.stringify(entry.value));
-    } catch (e) {}
+      saveSettle(key);
+      // 저장이 되살아났으면, 드물게 저장되는 다른 실패 키(목표·설정 등)도 한 번 더 써 본다.
+      unsaved.forEach((value, other) => {
+        if (pending.has(other)) return;
+        try {
+          localStorage.setItem(other, JSON.stringify(value));
+          saveSettle(other);
+        } catch (e) {}
+      });
+    } catch (e) {
+      unsaved.set(key, entry.value);
+      saveWarn();
+    }
   }
   function schedule(key, value) {
     cancel(key);
@@ -52,6 +80,10 @@
   function read(key, def) {
     try {
       if (pending.has(key)) return clone(pending.get(key).value);
+      if (unsaved.has(key)) {
+        // 직렬화가 안 되는 값이면 아래의 마지막 저장값으로 넘어간다.
+        try { return clone(unsaved.get(key)); } catch (e) {}
+      }
       const value = localStorage.getItem(key);
       if (value !== null) return JSON.parse(value);
     } catch (e) {}
@@ -59,6 +91,7 @@
   }
   function remove(key) {
     cancel(key);
+    saveSettle(key);
     try {
       localStorage.removeItem(key);
     } catch (e) {}
@@ -79,6 +112,8 @@
   KCP.flush = function () {
     Array.from(pending.keys()).forEach(run);
   };
+  // 검사 도우미가 대기 저장이 끝났는지 확인할 때만 읽는다(동작은 바꾸지 않음).
+  KCP.savePending = () => pending.size;
   KCP.reset = function (year) {
     remove(KEY(year));
     const goal = KCP.goal.get();
@@ -88,6 +123,7 @@
     Timer.stop();
     KCP.speakStop();
     Array.from(pending.keys()).forEach(cancel);
+    Array.from(unsaved.keys()).forEach(saveSettle);
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
@@ -299,7 +335,7 @@
         else paintTalk();
       }
     }
-    const widget = { end };
+    const widget = { end, container };
     speakers.set(container, widget);
     button.onclick = () => {
       if (phase === "talk") { end(); return; }
@@ -890,6 +926,7 @@
     const qs = game.questions(state);
     const recap = game.recap(state);
     const orphans = orphanKeys(state, qs);
+    const folded = qs.filter((q, i) => q.fold && !hasAnswer(state, i)).length;
     const c = KCP.findCriterion(year, /비판적 의견|한계점/);
     const f = KCP.findCriterion(year, /유연한 사고/);
     let advice = "반문을 받으면 답을 고치거나, 유지한다면 그 이유를 말합니다.";
@@ -904,16 +941,18 @@
             <p class="small muted room-tip" style="margin-bottom:10px">${meta.roomTip || "질문을 소리 내어 읽고 1~3분 안에 말로 답해 보세요. 짝이 있다면 짝이 면접위원이 되어 읽어 줍니다. 답한 뒤 핵심만 적어 둡니다."}</p>
             <p class="small muted room-sources">${meta.roomSources || (meta.original
               ? "이 게임의 질문은 모두 연습실이 준비실 결과에 맞춰 만든 연습용 질문입니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다."
-              : "'보고서 문항'은 보고서에 실린 과제를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다). '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다.")}</p>
-            ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}
+              : "'보고서 문항'은 보고서에 실린 과제나 질문 예시를 면접 질문 형태로 바꾼 것입니다(일부는 내가 고른 내용이 들어갑니다)." + (qs.some((q) => q.frame) ? " '내 계획으로 채움'이 붙은 질문은 보고서 질문의 틀에 내 계획을 넣어 만든 것입니다." : "") + " '연습용 질문'은 이 연습실이 준비실 결과에 맞춰 고르거나 만든 질문이며, 일부는 보고서의 질문 예시를 바탕으로 했습니다. 실제 면접에서는 면접위원이 답을 들으며 후속 질문을 이어 갑니다.")}</p>
+            ${legacyAnswers(state) ? '<p class="small muted" id="room-legacy">질문이 기록되기 전에 쓴 옛 메모가 있습니다. 준비실 내용이 바뀌었다면 다른 질문 아래에 보일 수 있습니다.</p>' : ""}${folded ? `<p class="small muted" id="room-folds">가벼운 질문 ${folded}개는 처음에 접혀 있습니다. '질문 보기'를 누르면 열립니다.</p>` : ""}
             <div id="room-tools" class="stack ext-slot"></div>
             ${qs.length ? "" : `<div class="caution room-empty" id="room-empty">아직 질문이 없습니다. 준비실에서 계획을 확정하면 내 선택에 맞춘 질문이 만들어집니다.
               <div class="row" style="margin-top:6px"><button class="btn small" type="button" id="room-to-prep">준비실로 돌아가기</button></div></div>`}
             <div class="qdeck">
               ${qs
                 .map(
-                  (q, i) => `<div class="qcard">
-                    <div class="who">질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""} ${KCP.srcTag(q)}</div>
+                  (q, i) => `<div class="qcard${q.fold ? " qfold" : ""}">
+                    <div class="who"${q.fold ? ` id="qwho-${esc(year)}-${i}"` : ""}>질문 ${i + 1}${q.tag ? " · " + esc(q.tag) : ""} ${KCP.srcTag(q)}</div>${q.fold ? `
+                    <button type="button" class="btn small qfold-toggle" aria-expanded="${hasAnswer(state, i)}" aria-controls="qfold-${esc(year)}-${i}" aria-describedby="qwho-${esc(year)}-${i}" style="min-height:44px;min-width:44px">${hasAnswer(state, i) ? "질문 접기" : "질문 보기"}</button>
+                    <div class="qfold-body" id="qfold-${esc(year)}-${i}"${hasAnswer(state, i) ? "" : " hidden"}>` : ""}
                     <div class="q">${esc(q.q)}</div>
                     ${q.time ? `<div class="rec">권장 답변 시간: ${esc(q.time)}</div>` : ""}
                     ${q.rec ? `<div class="rec">${esc(q.rec)}</div>` : ""}
@@ -924,7 +963,8 @@
                     <textarea class="note" data-a="${i}" id="ans-${year}-${i}" aria-label="질문 ${i + 1} 답변 메모" placeholder="답변의 핵심 한두 문장">${esc(
                       state.answers[i] || ""
                     )}</textarea>
-                    <div class="qx ext-slot" data-qx="${i}"></div>
+                    <div class="qx ext-slot" data-qx="${i}"></div>${q.fold ? `
+                    </div>` : ""}
                   </div>`
                 )
                 .join("")}
@@ -955,6 +995,43 @@
         </div>
       </div>
       </div><div id="room-alt" hidden></div>`;
+    const untilFound = "onbeforematch" in document.body;
+    const setFold = (b, body, closed) => {
+      if (closed) {
+        body.setAttribute("hidden", untilFound ? "until-found" : "");
+        if (untilFound) body.style.setProperty("display", "block", "important");
+      } else body.hidden = false;
+      if (!closed || !untilFound) body.style.removeProperty("display");
+      b.setAttribute("aria-expanded", String(!closed));
+      b.textContent = closed ? "질문 보기" : "질문 접기";
+    };
+    const refreshFolds = () => {
+      const count = KCP.$$(".qfold-body", root).filter((body) => body.hidden).length;
+      let notice = KCP.$("#room-folds", root);
+      if (!count) { notice?.remove(); return; }
+      if (!notice) {
+        notice = document.createElement("p");
+        notice.id = "room-folds";
+        notice.className = "small muted";
+        KCP.$("#room-tools", root).before(notice);
+      }
+      notice.textContent = `가벼운 질문 ${count}개는 처음에 접혀 있습니다. '질문 보기'를 누르면 열립니다.`;
+    };
+    KCP.$$(".qfold-toggle", root).forEach((b) => {
+      const body = KCP.$(".qfold-body", b.parentElement);
+      setFold(b, body, !!body.hidden);
+      b.onclick = () => {
+        const closed = !body.hidden;
+        if (closed && active && body.contains(active.container)) active.end();
+        setFold(b, body, closed);
+        refreshFolds();
+        b.focus();
+      };
+      if (untilFound) body.addEventListener("beforematch", () => {
+        setFold(b, body, false);
+        refreshFolds();
+      });
+    });
     const refreshLegacy = () => {
       if (!legacyAnswers(state)) KCP.$("#room-legacy", root)?.remove();
     };
@@ -1004,6 +1081,14 @@
       const q = qs[i], slot = KCP.$(`.qx[data-qx="${i}"]`, card);
       KCP.emit("room:card", { card, slot, q, i, key: KCP.qkey(q), year, meta, state, save });
     });
+    KCP.$$(".qfold-toggle", root).forEach((b) => {
+      const body = KCP.$(".qfold-body", b.parentElement);
+      if (body.hidden && (KCP.$('[aria-expanded="true"]', body) ||
+        KCP.$$("textarea, input", body).some((t) => t.value.trim() !== ""))) {
+        setFold(b, body, false);
+      }
+    });
+    refreshFolds();
     KCP.emit("room:render", { root, main: KCP.$("#room-main", root), alt: KCP.$("#room-alt", root),
       tools: KCP.$("#room-tools", root), side: KCP.$("#room-side", root), qs, year, meta, state, save });
   }

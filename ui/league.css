@@ -1,6 +1,78 @@
 /* 멀티플레이 리그: 로비 · 진행자 판 · 팀 띠/서랍. 앱 공통 토큰(--ink, --paper, --sheet, --line, --accent)을 쓴다. */
 .lg-lobby, .lg-host { max-width: 1180px; margin: 0 auto; padding: 16px 16px 48px; color: var(--ink); }
 .lg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* W6: 끝 요약 바로 아래의 연대기·비교 그래프. 띠 안에서만 가로 스크롤한다. */
+/* 주민 변화율 그래프의 0(변화 없음) 기준선: 격자보다 진하게. */
+.lg-fx-end .lg-fx-zero { stroke: var(--ui-text); stroke-width: 1; opacity: .55; }
+.lg-fx-end { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; margin: 10px 0 16px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); opacity: 1; transform: translateY(0); transition: opacity .8s, transform .8s; }
+.lg-fx-end h3 { margin: 0 0 8px; font-size: 16px; }
+/* position: relative — 칸마다 있는 화면 낭독용 .lg-sr(절대 위치)이 띠를 기준 상자로 삼게 한다.
+   없으면 띠의 잘림을 벗어나 문서 폭을 늘린다(진행자 390px 끝 화면 scrollWidth 864). */
+.lg-fx-strip { position: relative; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.lg-fx-strip:focus-visible { outline: 2px solid var(--ui-cyan); outline-offset: 2px; }
+.lg-fx-strip ol { display: flex; gap: 0; width: max-content; margin: 0; padding: 0 0 6px; list-style: none; }
+.lg-fx-strip li { flex: 0 0 76px; box-sizing: border-box; padding: 6px; border-right: 1px solid var(--ui-border); font-size: 11px; text-align: center; }
+.lg-fx-strip li > span { display: block; }
+.lg-fx-icons { min-height: 24px; font-size: 18px; }
+.lg-fx-outage { padding-left: 4px; color: var(--ui-danger); font-size: 12px; font-style: normal; }
+.lg-fx-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.lg-fx-chart { min-width: 0; margin: 0; padding: 6px; border: 1px solid var(--ui-border); border-radius: 14px; }
+.lg-fx-end .lg-fx-charts .lg-fx-chart h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin: 0; font-size: 14px; }
+.lg-fx-chart h4 small { color: var(--ui-muted); font-size: 11px; font-weight: 400; }
+.lg-fx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lg-fx-chart svg text { fill: var(--ui-muted); font: 12px system-ui, sans-serif; }
+.lg-fx-gridline { fill: none; stroke: var(--ui-border); stroke-width: 1; }
+.lg-fx-axis { fill: none; stroke: var(--ui-muted); stroke-width: 1; }
+.lg-fx-line { fill: none; stroke: var(--fx-line); stroke-width: 2.2; stroke-linejoin: round; transition: stroke-dashoffset .8s; }
+.lg-fx-line[pathLength] { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.lg-fx-reveal { clip-path: inset(0); transition: clip-path .8s; }
+.lg-fx-chart circle { fill: var(--fx-line); transition: opacity .8s; }
+.lg-fx-values p { margin: 3px 0; color: var(--ui-text); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.lg-fx-values p::before { content: ""; display: inline-block; width: 16px; margin-right: 4px; vertical-align: middle; border-top: 2px solid var(--fx-line); }
+.lg-fx-values p[data-dashed="true"]::before { border-top-style: dashed; }
+.lg-fx-key, .lg-fx-note { margin: 6px 0; color: var(--ui-muted); font-size: 11px; line-height: 1.5; }
+.lg-fx-end.lg-fx-enter { opacity: 0; transform: translateY(12px); }
+.lg-fx-enter .lg-fx-line[pathLength] { stroke-dashoffset: 1; }
+.lg-fx-enter .lg-fx-reveal { clip-path: inset(0 100% 0 0); }
+.lg-fx-enter circle { opacity: 0; }
+/* 기존 순위 meter의 최종 너비·값은 유지하고 보이는 폭만 0에서 펼친다. */
+#lg-rank .lg-scoreparts meter { clip-path: inset(0); transition: clip-path .6s; }
+#lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: inset(0 100% 0 0); }
+/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 네 장은 옆으로 밀어 넘긴다.
+   세로로 쌓으면 그래프 블록만 서랍 약 4화면이라 아래 단추(2022 기출·다시 하기)가 너무 멀어진다(2026-10-20 측정).
+   페이지 가로 스크롤은 없고 이 칸 안에서만 넘긴다. 다음 그래프의 가장자리를 조금 보여 넘길 수 있음을 알린다. */
+@media (max-width: 480px) {
+  .lg-fx-end .lg-fx-charts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 88%; overflow-x: auto;
+    overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+  .lg-fx-end .lg-fx-charts > .lg-fx-chart { scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-fx-end, .lg-fx-end .lg-fx-line, .lg-fx-end .lg-fx-reveal, .lg-fx-end circle, #lg-rank .lg-scoreparts meter { transition: none; }
+  .lg-fx-end.lg-fx-enter { opacity: 1; transform: none; }
+  .lg-fx-enter .lg-fx-line[pathLength] { stroke-dashoffset: 0; }
+  .lg-fx-enter .lg-fx-reveal, #lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: none; }
+  .lg-fx-enter circle { opacity: 1; }
+}
+@media print {
+  /* build.css의 지도 숨김을 끝 그래프가 있을 때만 풀고, 서랍을 종이 흐름으로 바꾼다. */
+  #bd-root.lg-team-map:has(.lg-fx-end) { display: block !important; position: static !important; height: auto !important; overflow: visible !important; }
+  #bd-root.lg-team-map:has(.lg-fx-end) > :not(#lg-panel) { display: none !important; }
+  #bd-root.lg-team-map #lg-panel:has(.lg-fx-end) { display: block !important; position: static !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; overflow: visible !important; background: #fff; color: #111; border: 0; }
+  #lg-panel:has(.lg-fx-end) .lg-pbody { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; }
+  #lg-panel:has(.lg-fx-end) > :not(.lg-pbody), #lg-panel:has(.lg-fx-end) .lg-pbody > :not(#lg-final-summary):not(.lg-fx-end):not(#lg-rank) { display: none !important; }
+  .lg-fx-end { color: #111; background: #fff; border-color: #666; break-inside: avoid; opacity: 1 !important; transform: none !important; }
+  .lg-fx-strip { overflow: visible; }
+  .lg-fx-strip ol { width: auto; flex-wrap: wrap; }
+  .lg-fx-strip li, .lg-fx-chart { border-color: #aaa; }
+  .lg-fx-end svg text, .lg-fx-values p, .lg-fx-chart h4 small, .lg-fx-key, .lg-fx-note { color: #111; fill: #111; }
+  .lg-fx-gridline { stroke: #ccc; }
+  .lg-fx-axis { stroke: #333; }
+  .lg-fx-reveal { clip-path: none !important; transition: none; }
+  .lg-fx-line, .lg-fx-values p::before { stroke: #111; border-color: #111; stroke-dashoffset: 0 !important; transition: none; }
+  .lg-fx-line[stroke-dasharray], .lg-fx-values p[data-dashed="true"]::before { stroke: #555; border-color: #555; }
+  .lg-fx-chart circle, .lg-fx-outage { fill: #111; color: #111; opacity: 1 !important; }
+  #lg-rank .lg-scoreparts meter { clip-path: none !important; }
+}
 .lg-back { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); text-decoration: none; font-weight: 600; }
 .lg-lhead h1 { margin: 4px 0 6px; font-size: clamp(24px, 4vw, 34px); }
 .lg-sub { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
@@ -241,7 +313,8 @@
 .lg-solo-cities { display: grid; gap: 6px; }
 .lg-panel[data-econ="true"] .lg-ptabs { flex-wrap: wrap; }
 .lg-panel[data-econ="true"] .lg-ptab { padding: 0 9px; font-size: 13px; }
-.lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; }
+/* 한글 낱말 중간에서 줄이 바뀌지 않게 한다(예: '개월'). 칸보다 긴 낱말은 anywhere로 끊어 넘치지 않는다. */
+.lg-panel[data-econ="true"] .lg-pbody { overflow-wrap: anywhere; word-break: keep-all; }
 .lg-panel[data-econ="true"] .lg-pbody h2 { font-size: 19px; }
 .lg-panel[data-econ="true"] .lg-pbody h4 { margin: 14px 0 6px; }
 /* B18: 요약은 한 줄로 묶고 좁은 서랍에서는 줄바꿈한다. 팀 화면의 남색 토큰을 쓴다. */
@@ -292,6 +365,7 @@
 .lg-rankrow small { color: var(--ink-2); }
 .lg-scoreparts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 12px; }
 .lg-scoreparts [data-leader="true"] { font-weight: 700; }
+.lg-scoreparts [data-grid-total] { display: block; overflow-wrap: anywhere; }
 .lg-pred,
 .lg-ask,
 .lg-cause { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
@@ -317,7 +391,7 @@
 section#lg-missed.lg-outage { display: block; }
 .lg-outage { min-width: 0; margin-top: 14px; overflow-wrap: anywhere; }
 .lg-outage h4 { margin: 8px 0; }
-.lg-out-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lg-out-cards { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .lg-out-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid var(--ui-border); border-top: 3px solid var(--ui-cyan); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .lg-out-card[aria-pressed="true"] { outline: 2px solid var(--ui-cyan); outline-offset: -2px; }
 .lg-out-card:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
@@ -339,18 +413,24 @@ section#lg-missed.lg-outage { display: block; }
 [data-out-step="trial"] .lg-out-bar, [data-out-step="actual"] .lg-out-bar { background: var(--ui-muted); }
 #lg-outage-verdict { padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }
 #lg-outage-verdict p { margin: 6px 0; }
+.lg-out-fold > summary { min-height: 44px; display: flex; align-items: center; color: var(--ink-2); cursor: pointer; }
+.lg-out-fold > summary > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.lg-out-fold > summary::after { content: "▾"; margin-left: 6px; flex-shrink: 0; }
+.lg-out-fold[open] > summary::after { content: "▴"; }
 #lg-outage-carry { max-width: 100%; margin: 8px 4px 0 0; }
 #lg-missed-carry { padding: 8px 10px; border-left: 3px solid var(--ui-gold); background: var(--ui-hud); }
+#lg-outage-grid-bottleneck { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--ui-gold); border-left-width: 4px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); font-size: 13px; }
+#lg-outage-grid-bottleneck p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; }
 .lg-y2022 { overflow-wrap: anywhere; }
 .lg-y2022 a { display: inline-flex; align-items: center; color: var(--ui-cyan); }
 @media (max-width: 600px) {
-  .lg-out-cards { grid-template-columns: minmax(0, 1fr); }
+  .lg-out-cards { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; }
   .lg-out-card { min-height: 44px; }
   .lg-out-row { grid-template-columns: 76px minmax(0, 1fr) 78px; gap: 4px; }
 }
 /* N1: 리그 서랍(폭 약 360px)에서는 카드를 세로로 쌓고 한 장을 낮게 만든다 — 열기 뒤 카드 앞면의 몫·꼬리표와
    폭포 첫 줄이 한 화면에 들어오게. 단서는 두 줄로 줄이고 전체는 '단서 더 보기'(#lg-outage-more)에 둔다. */
-#lg-panel .lg-out-cards { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+#lg-panel .lg-out-cards { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; gap: 6px; }
 #lg-panel .lg-out-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: start; padding: 8px 10px; }
 #lg-panel .lg-out-card > strong, #lg-panel .lg-out-clue { grid-column: 1; }
 #lg-panel .lg-out-size { grid-column: 2; grid-row: 1 / span 2; align-self: center; margin: 0; padding: 4px 6px; min-width: 4.5em; }
@@ -359,7 +439,6 @@ section#lg-missed.lg-outage { display: block; }
 #lg-outage-more { margin: 4px 0 8px; }
 #lg-outage-more ul { margin: 4px 0 0; padding-left: 18px; }
 #lg-outage-more li { margin: 2px 0; }
-#lg-outage-single-grid { margin: 4px 0 8px; }
 
 /* U5: 팀 플레이와 이어지는 로비·자리 선택·진행자 남색 판. */
 @media screen {
@@ -472,22 +551,24 @@ section#lg-missed.lg-outage { display: block; }
   html.v2-league-host .lg-hmeta h1 { font: 400 21px/1.4 var(--display); }
   html.v2-league-host .lg-room { order: 3; margin-left: auto; background: transparent; color: var(--ui-muted); padding: 6px; gap: 6px; }
   html.v2-league-host .lg-room b { font: 600 14px var(--mono); letter-spacing: .06em; color: var(--ui-gold); }
-  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
-  html.v2-league-host .lg-host-board { display: grid; grid-template-columns: auto minmax(110px, auto) auto minmax(0, 1fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
+  .lg-host-command { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: start; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); backdrop-filter: blur(10px); }
+  #lg-host-overview { display: contents; }
+  html.v2-league-host .lg-host-board { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, 1.6fr) minmax(0, .9fr); gap: 16px; margin: 0; padding: 0; border: 0; background: transparent; line-height: 1.4; }
   .lg-host-board > div { min-width: 0; display: grid; align-content: center; gap: 6px; }
+  html.v2-league-host .lg-host-board > .lg-proj-key { min-height: 132px; align-content: start; grid-template-rows: auto 1fr auto; padding: 10px; box-sizing: border-box; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
   .lg-host-board small { color: var(--ui-muted); font: 600 12px var(--body); }
-  .lg-command-month > b { font: 400 40px/1.1 var(--display); white-space: nowrap; }
+  /* 핵심 네 칸은 기존 달 숫자 규칙을 공유한다. 크기는 시각 갈래에서 조정한다. */
+  .lg-proj-key > b { font: 400 40px/1.1 var(--display); overflow-wrap: anywhere; }
   .lg-phase-chip { width: max-content; padding: 4px 10px; border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-gold); font-size: 12px; }
-  #lg-host-time { font: 600 34px/1.2 var(--mono); white-space: nowrap; }
-  #lg-host-time[data-unlimited="true"] { font: 600 14px var(--body); white-space: normal; }
   #lg-host-time[data-low="true"] { color: var(--ui-danger); }
-  #lg-host-ready > b { font: 600 30px/1.2 var(--mono); white-space: nowrap; }
   #lg-host-ready b small { margin-left: 2px; }
   .lg-ready-pips { display: flex; gap: 4px; }
   .lg-ready-pips i { width: 10px; height: 16px; background: var(--ui-border); clip-path: polygon(0 0,100% 0,100% 100%,50% 75%,0 100%); }
   .lg-ready-pips i[data-ready="true"] { background: var(--ui-mint); }
-  .lg-command-goals { border-left: 1px solid var(--ui-border); padding-left: 14px; }
-  #lg-host-goals { font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
+  .lg-command-goals { min-width: 0; }
+  #lg-host-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
+  .lg-goal-chip { display: grid; align-content: start; gap: 4px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
+  .lg-goal-note { grid-column: 1 / -1; }
   .lg-goalbar { display: grid; grid-template-columns: 34px minmax(20px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
   .lg-goalbar > div { position: relative; height: 8px; border-radius: var(--ui-radius); background: var(--ui-border); }
   .lg-goalbar i { display: block; height: 100%; border-radius: var(--ui-radius); background: var(--ui-mint); }
@@ -495,16 +576,18 @@ section#lg-missed.lg-outage { display: block; }
   .lg-goalbar b { font: 600 12px var(--mono); white-space: nowrap; }
   .lg-goalbar[data-bad="true"] b { color: var(--ui-danger); }
   .lg-goalbar[data-bad="true"] i { background: var(--ui-danger); }
-  .lg-host-actions { display: grid; gap: 8px; }
+  .lg-host-actions { display: grid; grid-template-rows: minmax(56px, auto) auto; gap: 8px; align-self: start; }
   .lg-host-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
   .lg-host-tools #lg-extend { grid-column: 1 / -1; }
   html.v2-league-host .lg-host-tools .v2-btn { padding: 6px 8px; font-size: 11px; white-space: nowrap; overflow-wrap: normal; background: transparent; color: var(--ui-muted); }
   .lg-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
   #lg-host-risk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .lg-host-city-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .lg-unready-chip { padding: 6px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   .lg-risk-chip { display: inline-flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border: 1px solid var(--ui-danger); border-radius: var(--ui-radius); color: var(--ui-danger); font-size: 12px; }
   /* A16: 접속 대기만 있는 도시는 '주의' — 위험(정전·남은 돈·지지율)과 색·기호·테두리를 나눈다. */
   .lg-risk-chip[data-level="caution"] { border-style: dashed; border-color: var(--ui-gold); color: var(--ui-muted); }
-  #lg-host-unready { color: var(--ui-muted); font-size: 12px; }
+  #lg-host-unready { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ui-muted); font-size: 12px; }
   html.v2-league-host #lg-host-summary { padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host #lg-host-summary h2 { font: 400 23px var(--display); margin: 0 0 8px; }
   html.v2-league-host #lg-host-summary-table { table-layout: auto; font-size: 18px; }
@@ -518,6 +601,7 @@ section#lg-missed.lg-outage { display: block; }
   .lg-ledger-value { white-space: nowrap; }
   .lg-ledger-value small { font: 500 11px var(--body); color: var(--ui-muted); margin-left: 2px; }
   .lg-warning-symbol { font: 700 11px var(--body); color: var(--ui-danger); }
+  .lg-grid-symbol { font: 700 11px var(--body); color: var(--ui-gold); }
   .lg-ledger-note { border-top: 1px solid var(--ui-border); padding-top: 10px; margin: 10px 0 0; font: 400 12px/1.6 var(--body); color: var(--ui-muted); }
   html.v2-league-host .lg-host-details { border-radius: var(--ui-radius); background: var(--ui-panel); }
   html.v2-league-host .lg-tcard { border-left: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
@@ -529,10 +613,6 @@ section#lg-missed.lg-outage { display: block; }
   html.v2-league-host .lg-table td[data-bad="true"] { text-decoration: none; }
   html.v2-league-host #lg-host-summary-table td[data-bad="true"] { border-bottom-color: var(--ui-border); }
   html.v2-league-host .lg-evsize i { color: var(--ui-panel); }
-  @media (max-width: 1100px) {
-    html.v2-league-host .lg-host-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .lg-command-goals { grid-column: 1 / -1; border-left: 0; padding-left: 0; }
-  }
   @media (max-width: 900px) {
     html.v2-league-lobby .lg-topline { flex-wrap: wrap; }
     html.v2-league-lobby .lg-modes { order: 4; flex-basis: 100%; }
@@ -571,9 +651,10 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-seat .lg-hud-pill { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
     .lg-host-command { grid-template-columns: minmax(0, 1fr); padding: 12px; }
     html.v2-league-host .lg-host-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
-    .lg-command-month { grid-column: 1 / -1; }
-    .lg-command-month > b { font-size: 36px; }
-    #lg-host-time { font-size: 32px; }
+    .lg-command-room { grid-column: 1 / -1; }
+    .lg-proj-key > b { font-size: 36px; }
+    #lg-host-goals { grid-template-columns: minmax(0, 1fr); }
+    .lg-host[data-econ="true"] .lg-host-actions { grid-row: 2; }
     .lg-host-tools .v2-btn { font-size: 12px; }
     html.v2-league-host .lg-hmeta { flex-basis: 180px; }
     html.v2-league-host .lg-hmeta h1 { font-size: 18px; }
@@ -582,6 +663,30 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-host #lg-host-summary-table td { font-size: 18px; }
     html.v2-league-host .lg-hgrid { grid-template-columns: minmax(0, 1fr); }
     html.v2-league-host .lg-evs { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* 품질8 F: 프로젝터(1920×1080)용 진행자 원거리 가독. 넓은 화면의 진행자만 바꾸고 팀 화면·좁은 화면은 그대로 둔다.
+     기준(docs/QUALITY-ux.md F): 방 코드 48px, 핵심 숫자 32px, 표 본문 18px, 머리글·목표 줄 16px, 14px 미만은 보조 각주만. */
+  @media (min-width: 1400px) {
+    html.v2-league-host #lg-roomcode { font-size: 48px; letter-spacing: .06em; }
+    html.v2-league-host .lg-host-board small,
+    html.v2-league-host .lg-phase-chip { font-size: 16px; }
+    html.v2-league-host #lg-host-ready b small { font-size: 20px; }
+    html.v2-league-host #lg-host-goals,
+    html.v2-league-host .lg-goalbar,
+    html.v2-league-host .lg-goalbar b { font-size: 16px; }
+    html.v2-league-host .lg-goalbar { grid-template-columns: 44px minmax(20px, 1fr) auto; }
+    html.v2-league-host .lg-command-goals > small { font-size: 16px; }
+    html.v2-league-host .lg-command-goals small.lg-goal-note { font: 400 14px/1.5 var(--body); }
+    html.v2-league-host #lg-host-risk > .lg-hint,
+    html.v2-league-host #lg-host-unready > .lg-hint { font-size: 16px; }
+    html.v2-league-host #lg-host-summary > .lg-hint,
+    html.v2-league-host .lg-host-city-chips .lg-hint,
+    html.v2-league-host .lg-hbar :is(.v2-kicker, .lg-conn) { font-size: 14px; }
+    html.v2-league-host #lg-host-summary-table thead th { font-size: 16px; }
+    html.v2-league-host #lg-host-unready,
+    html.v2-league-host .lg-risk-chip { font-size: 16px; }
+    html.v2-league-host .lg-host-tools .v2-btn { font-size: 15px; }
+    html.v2-league-host .lg-ledger-note { font-size: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     html:is(.v2-league-lobby, .v2-league-seat, .v2-league-host) *,
@@ -607,12 +712,13 @@ section#lg-missed.lg-outage { display: block; }
 .lg-regionviewport:active { cursor: grabbing; }
 .lg-regionboard { position: relative; width: 100%; margin: 0 auto; }
 .lg-regionboard canvas { touch-action: none; }
-.lg-regionlabels { position: absolute; inset: 0; pointer-events: none; }
-.lg-regionlabel { position: absolute; transform: translate(-50%, 20px); width: 140px; max-width: 22%; padding: 4px 6px; border-left: 4px solid var(--c); border-radius: 6px; background: var(--sheet); color: var(--ink); font-size: 12px; line-height: 1.4; }
+.lg-regionlabels { position: absolute; top: 0; left: 0; transform-origin: 0 0; pointer-events: none; }
+.lg-regionlabel { position: absolute; box-sizing: border-box; width: 140px; max-width: 32%; padding: 4px 6px; border-left: 4px solid var(--c); border-radius: 6px; background: var(--sheet); color: var(--ink); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.lg-regionlabel-name::before { content: attr(aria-label); display: block; font-weight: 800; }
 .lg-regioncities { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 8px 12px; }
 .lg-regioncity { min-width: 0; min-height: 44px; text-align: left; padding: 8px; border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font: inherit; cursor: pointer; }
 .lg-regioncity span { display: block; font-size: 12px; }
-.lg-regioncap { margin: 0; padding: 0 12px; font-size: 13px; }
+.lg-regioncap { margin: 0; padding: 0 12px; font-size: 12px; line-height: 1.4; white-space: pre-line; }
 .lg-regioncap:empty { display: none; }
 .lg-peek #lg-peek { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
 .lg-peek .lg-awaybar { pointer-events: auto; position: fixed; inset: 0 0 auto; transform: none; max-width: none; border-radius: 0; z-index: 40; }
@@ -621,7 +727,7 @@ section#lg-missed.lg-outage { display: block; }
 .lg-bar .lg-bbtn { min-height: 44px; }
 @media (max-width: 760px) {
   .lg-regioncities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lg-regionlabel { font-size: 11px; padding: 2px 3px; transform: translate(-50%, 12px); }
+  .lg-regionlabel { width: 114px; font-size: 11px; padding: 2px 3px; }
 }
 
 /* ECON-NEXT §2: 팀 탐색은 막대 한 곳, 서랍은 접어서 지도를 더 보이게 한다. */
@@ -653,6 +759,9 @@ section#lg-missed.lg-outage { display: block; }
 /* ECON-NEXT §3: 월 결과와 진행자 요약. 색은 밝음·어두움 공통 토큰을 따른다. */
 .lg-result-deltas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 10px 0; }
 .lg-result-deltas > div { padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); min-width: 0; }
+/* D-74 계통 칸은 숫자 셋 아래 한 줄로 둔다(넷째 칸이 혼자 한 행을 차지하지 않게). */
+.lg-result-deltas > [data-grid-fill] { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.lg-result-deltas > [data-grid-fill] dd { margin: 0; }
 .lg-result-deltas dt,
 .lg-result-deltas small { font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
 .lg-result-deltas dd { margin: 4px 0; font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -664,6 +773,11 @@ section#lg-missed.lg-outage { display: block; }
 .lg-contrib { display: grid; gap: 8px; margin: 8px 0; padding-left: 20px; font-size: 13px; }
 .lg-host-board { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); font-size: 14px; line-height: 1.6; }
 .lg-host-board span { min-width: 0; overflow-wrap: anywhere; }
+.lg-verdicts { margin-top: 14px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 12px; background: var(--sheet); }
+.lg-verdicts h2 { margin: 0 0 6px; font: inherit; font-weight: 600; }
+.lg-verdict-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lg-verdict-chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; }
+.lg-verdict-chip[data-verdict="pending"] { border-style: dashed; color: var(--ink-2); }
 #lg-host-summary h2 { margin: 14px 0 6px; font-size: 18px; }
 #lg-host-summary .lg-tablewrap { max-width: 100%; margin-top: 8px; }
 #lg-host-summary-table button { min-height: 44px; min-width: 44px; padding: 4px 8px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }
@@ -793,7 +907,6 @@ section#lg-missed.lg-outage { display: block; }
 .lg-team-map .bd-toast { top: auto; bottom: calc(var(--bd-dock, 90px) + 16px); }
 #lg-previous-change { margin: 0 0 10px; font-size: 14px; color: var(--ink); }
 @media (max-width: 760px) {
-  .lg-regionlabels { display: none; }
   .lg-regioncity span { overflow-wrap: anywhere; }
   .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
   .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
@@ -832,10 +945,7 @@ section#lg-missed.lg-outage { display: block; }
 .lg-lenses { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-panel); }
 .lg-lenses .bd-layer { min-width: 44px; min-height: 44px; color: var(--ui-text); }
 .lg-lenses .bd-layer[aria-pressed="true"] { color: #102b34; background: #71dceb; }
-.lg-map-result, .lg-first-guide { position: fixed; z-index: 29; left: 8px; top: calc(var(--bd-top, 160px) + 62px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; overflow-wrap: anywhere; }
-.lg-first-guide { z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.lg-first-guide b { flex: 1 1 100%; }
-.lg-first-guide .v2-btn { min-width: 44px; min-height: 44px; font-size: 13px; }
+.lg-map-result { position: fixed; z-index: 29; left: 8px; top: calc(var(--bd-top, 160px) + 62px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; overflow-wrap: anywhere; }
 .lg-map-result[data-faded="true"] { opacity: .65; }
 .lg-map-result[hidden], .lg-lens-grid[hidden] { display: none; }
 .lg-lens-grid { margin: 0; padding: 5px 8px; border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; max-width: 100%; }
@@ -849,10 +959,13 @@ section#lg-missed.lg-outage { display: block; }
 #lg-missed h4 { flex-basis: 100%; }
 #lg-result-reasons, #lg-result-details { border-top: 1px solid var(--line); margin-top: 8px; }
 .lg-team-map [data-cap][role="button"] { cursor: pointer; min-height: 44px; }
-.lg-team-map [data-cap]:focus-visible, .lg-lenses button:focus-visible, .lg-first-guide button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map [data-cap]:focus-visible, .lg-lenses button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
 .lg-team-map #bd-mapbar { max-width: calc(100vw - 16px); }
 .lg-team-map #bd-drawer { z-index: 31; }
 #lg-help ol { padding-left: 22px; }
+#lg-sound-controls { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
+#lg-sound-controls #lg-sound { position: static; flex: 0 0 auto; min-height: 44px; }
+#lg-sound-vol { box-sizing: border-box; width: 120px; max-width: 100%; min-width: 0; height: 44px; margin: 0; }
 #lg-class-time, #lg-solo-practice { min-height: 44px; max-width: 100%; color: var(--ink); background: var(--paper); font: inherit; }
 @media (max-width: 760px) {
   .lg-team-map .bd-title, .lg-team-map .bd-virtual { display: none; }
@@ -869,12 +982,11 @@ section#lg-missed.lg-outage { display: block; }
   .lg-team-map .bd-tool { min-height: 44px; }
   .lg-team-map .bd-tool-c { display: none; }
   .lg-team-map .bd-runs button { min-height: 44px; font-size: 11px; }
-  .lg-team-map .lg-first-guide { top: calc(var(--bd-top, 180px) + 58px); padding: 6px 8px; }
   .lg-team-map .lg-map-result { top: calc(var(--bd-top, 180px) + 58px); pointer-events: none; }
   .lg-team-map #lg-panel { top: var(--bd-top, 180px); max-height: min(36dvh, calc(100dvh - var(--bd-top, 180px) - var(--bd-dock, 100px) - 12px)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lg-first-guide, .lg-map-result, .lg-trends { animation: none; transition: none; }
+  .lg-map-result, .lg-trends { animation: none; transition: none; }
 }
 /* 휴대폰에서는 반복 월 표시를 줄이고 경고는 지도 가장자리에 둔다. */
 @media (max-width: 760px) {
@@ -899,12 +1011,15 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 #lg-watch button { max-width: 88px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg-team-map #bd-mapnote { display: none; }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
-.lg-lens-key { display: none; position: absolute; left: 0; top: 48px; width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
+.lg-team-map #bd-mapbar { z-index: 28; }
+.lg-lens-key { display: none; position: absolute; left: 0; top: var(--lg-lens-key-top, 48px); width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
+/* 마을 모양 범례: 지도 아래쪽 왼쪽, 도크 바로 위. 사건 카드 층(z 35)보다 아래이고 fx-turn 배치의 장애물이 아니라 카드 자리를 줄이지 않는다. */
+.lg-town-key { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 5px 8px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; overflow-wrap: anywhere; word-break: keep-all; pointer-events: none; }
 .lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
-.lg-map-result { top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
+.lg-map-result { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); pointer-events: none; }
 .lg-map-result[data-faded="true"] { opacity: 1; color: var(--ui-muted); }
-.lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+.lg-first-guide { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); }
 .lg-trends text { font-size: 16px; }
 .lg-team-map .lg-lens-grid { position: fixed; left: 8px; top: var(--lg-mapbar-bottom, 210px); pointer-events: none; }
 .lg-team-map #lg-panel { z-index: 46; }
@@ -923,7 +1038,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   .lg-team-map .lg-lenses .bd-layer { padding: 0 7px; }
   .lg-team-map .bd-mapbar { flex-wrap: nowrap; }
   .lg-team-map .bd-zoom { order: 0; }
-  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-mapbar-bottom, 210px); }
+  .lg-team-map .lg-map-result, .lg-team-map .lg-first-guide { top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); }
   .lg-team-map .lg-lens-grid { top: calc(var(--lg-mapbar-bottom, 210px) + 64px); }
   .lg-team-map #lg-sound { position: static; }
   .lg-team-map #lg-panel { top: var(--bd-top, 180px); }
@@ -957,9 +1072,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
   #lg-plan-co2-drawer { display: block; }
 }
 
-/* M5·M6: 태블릿 가로(761~1279px)에서 단계가 바뀌어도 머리 막대 첫 줄과 아래 도구 막대가 한 줄을 유지한다.
-   준비 단추 폭을 고정해 '준비'→'기준 확인'·'다음 달'로 바뀌어도 줄이 접히지 않게 하고, 넘치면 메뉴만 가로로 민다.
-   서랍(성적표)이 열리면 도구 막대를 좁히지 않고 서랍을 도구 막대 위로 올린다. 1280 이상·760 이하는 바꾸지 않는다. */
+/* M5·M6: 태블릿 막대는 넘치는 메뉴만 가로로 민다. */
 @media (min-width: 761px) and (max-width: 1279px) {
   .lg-team-map .lg-bar:not(.lg-awaybar) .lg-bbtn { padding: 0 9px; }
   .lg-team-map .lg-bar:not(.lg-awaybar) .lg-readybtn { min-width: 6.4em; }
@@ -974,7 +1087,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 }
 
 /* S8 이유와 다음 달 계획 비교는 기기 안에서만 읽는다. */
-#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; bottom: calc(var(--bd-dock, 100px) + 10px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
+#lg-plan-reminder { position: absolute; z-index: 27; left: 10px; right: 10px; top: var(--lg-mapbar-bottom, 210px); display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); font-size: 13px; }
 html.bd-drawer-open #lg-plan-reminder,
 #bd-root:has(#lg-panel:not([hidden])) #lg-plan-reminder { display: none; }
 #lg-plan-reminder span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -986,6 +1099,24 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-trend-scroll { overflow-x: auto; }
 #lg-timeline [data-change] text { font-size: 11px; }
 #lg-decisions li { margin: 8px 0; }
+#lg-evidence-focus { border-left: 3px solid var(--ui-gold); padding-left: 10px; }
+/* S1: S7과 같은 카드 언어. 후보의 표시 순서는 고정하고 선택한 카드만 강조한다. */
+.lg-s1-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; }
+.lg-s1-card { display: grid; gap: 6px; width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 10px; border: 1px solid var(--ui-border); border-top: 3px solid var(--ui-cyan); border-radius: var(--ui-radius); background: var(--ui-hud); color: var(--ui-text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.lg-s1-card[aria-pressed="true"] { outline: 2px solid var(--ui-cyan); outline-offset: -2px; }
+.lg-s1-card:focus-visible { outline: 3px solid var(--ui-cyan); outline-offset: 2px; }
+.lg-s1-card small { color: var(--ui-muted); font-size: 12px; line-height: 1.6; }
+.lg-s1-tag { justify-self: start; max-width: 100%; box-sizing: border-box; padding: 3px 6px; border: 1px dashed var(--ui-border); border-radius: var(--ui-radius); font-size: 12px; }
+.lg-s1-condition { margin: 0 0 8px; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
+.lg-s1-fold { min-width: 0; }
+/* #lg-panel summary(display:flex)보다 우선하도록 같은 id 범위로 쓴다. */
+#lg-panel .lg-s1-fold > summary { display: none; }
+.lg-s1-promise { min-height: 44px; max-width: 100%; margin-top: 10px; white-space: normal; overflow-wrap: anywhere; }
+.lg-s1-mark { display: inline-block; margin-left: 4px; color: inherit; font-size: 11px; }
+@media (max-width: 760px) {
+  #lg-panel .lg-s1-fold > summary { display: flex; min-height: 44px; justify-content: space-between; }
+}
+#lg-watch [data-evidence-focus="true"] { border-color: var(--ui-gold); color: var(--ui-gold); }
 .lg-host-details [data-host-card]:not([open]) { align-self: start; }
 @media (min-width: 761px) and (max-width: 1279px) {
   .lg-team-map #lg-panel[data-stage="review"]:is([data-tab="result"], [data-tab="journal"]),
@@ -993,8 +1124,228 @@ html.bd-drawer-open #lg-plan-reminder,
   .lg-team-map[data-result-drawer="true"] #lg-map-result { max-width: calc(50vw - 28px); }
 }
 
+/* 학생 흐름: 표지가 늘어도 상태·탐색·주 행동의 칸과 높이는 그대로 둔다. */
+.lg-team-map #lg-bar:not(.lg-awaybar) {
+  display: grid; grid-template-columns: minmax(0, 1fr) 112px; grid-template-rows: 44px 44px;
+  align-items: center; justify-content: stretch; gap: 4px; box-sizing: border-box;
+}
+.lg-team-map #lg-bar .lg-status {
+  grid-column: 1 / -1; grid-row: 1; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; overflow: hidden;
+}
+.lg-team-map #lg-bar .lg-status > * { flex-shrink: 0; white-space: nowrap; }
+.lg-team-map #lg-bar #lg-hud-chips { flex: 0 1 300px; overflow: hidden; }
+.lg-team-map #lg-bar #lg-watch {
+  position: static; flex: 1 1 240px; flex-direction: row; min-width: 0; max-width: none; overflow-x: auto; overflow-y: hidden;
+}
+.lg-team-map #lg-bar #lg-watch button { flex: 0 0 auto; }
+.lg-team-map #lg-bar .lg-actions {
+  grid-column: 1 / 2; grid-row: 2; flex-wrap: nowrap; justify-content: flex-start; min-width: 0;
+  width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;
+}
+.lg-team-map #lg-bar .lg-actions > :first-child { margin-left: 0; }
+.lg-team-map #lg-bar #lg-ready {
+  grid-column: 2; grid-row: 2; position: static; width: 112px; min-width: 112px; height: 44px; margin: 0; box-shadow: none;
+  background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
+}
+.lg-team-map[data-promise-open="true"] #lg-bar #lg-ready {
+  background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
+}
+/* HUD 주 동작은 금색, 약속 카드의 primary는 기존 청록·파랑 그라데이션이다. */
+/* 약속 카드가 열려 있으면(data-promise-open) 위 규칙대로 보조로 둔다: 주 단추가 둘처럼 보이지 않게(UX 조건). */
+.lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="false"] { background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); }
+.lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="true"] { background: var(--ui-cyan); color: #0d2a33; border-color: var(--ui-cyan); }
+#bd-hud[data-last-outage="true"] { border-color: color-mix(in srgb, var(--ui-danger) 75%, white); }
+.lg-team-map #lg-bar #lg-plan-co2 { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 서랍 자체 대신 본문만 스크롤한다. 확정 줄은 언제나 서랍 아래에 남는다. */
+.lg-team-map #lg-panel {
+  display: flex; flex-direction: column; top: var(--bd-top, 180px); bottom: calc(var(--bd-dock, 100px) + 8px);
+  max-height: none; overflow: hidden; box-sizing: border-box;
+}
+.lg-team-map #lg-panel[data-folded="true"] { bottom: auto; }
+.lg-team-map #lg-panel .lg-ptabs { position: static; flex: none; align-items: center; }
+.lg-team-map #lg-panel .lg-pbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.lg-team-map #lg-panel .lg-promise-actions {
+  position: static; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px 8px; padding: 2px 12px; border-top: 1px solid var(--line); background: var(--sheet);
+}
+.lg-promise-actions button { min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 4px 8px; white-space: nowrap; }
+.lg-promise-actions #lg-promise-remaining { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 16px; }
+.lg-promise-actions:not(:has(#lg-predict-skip)) #lg-ready-confirm { grid-column: 1 / -1; }
+.lg-promise-actions #lg-predict-skip { background: transparent; color: var(--ink-2); border-color: transparent; }
+
+/* 태블릿 이상에서는 서랍 아래까지 본문을 쓰고 도구·시험 막대는 왼쪽에서 조작한다. */
+@media (min-width: 768px) {
+  .lg-team-map { --lg-drawer-width: 360px; }
+  #bd-root.lg-team-map[data-league-drawer="true"] .bd-dock {
+    right: calc(var(--lg-drawer-width) + 16px); justify-content: flex-start;
+  }
+  .lg-team-map[data-league-drawer="true"] .bd-tools {
+    min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: auto;
+  }
+  .lg-team-map[data-league-drawer="true"] .bd-tools > button { flex-shrink: 0; }
+  .lg-team-map[data-league-drawer="true"] .bd-runs {
+    flex-wrap: wrap; max-width: 100%; box-sizing: border-box;
+  }
+  .lg-team-map[data-league-drawer="true"] #lg-panel:not([data-folded="true"]) {
+    bottom: 8px; width: var(--lg-drawer-width);
+  }
+}
+@media (min-width: 768px) and (max-width: 1279px) {
+  .lg-team-map[data-result-drawer="true"] { --lg-drawer-width: calc(50vw - 12px); }
+}
+.lg-promise-summary { margin: 0 0 10px; padding: 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--paper); }
+.lg-promise-summary button { min-height: 44px; margin-top: 4px; }
+#lg-month-details > summary { min-height: 44px; gap: 8px; color: var(--ink); }
+.lg-team-map #lg-panel .lg-compared {
+  position: relative; display: flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 8px 52px 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); cursor: pointer;
+}
+/* 투명 입력이 라벨 테두리(1px)까지 덮게 해 누르는 칸 자체도 44px 이상이 되게 한다. */
+.lg-compared input[data-compared] { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); margin: 0; opacity: 0; cursor: pointer; }
+.lg-compared::after { content: ""; position: absolute; right: 10px; width: 28px; height: 18px; border-radius: 999px; background: var(--ink-2); pointer-events: none; }
+.lg-compared::before { content: ""; position: absolute; z-index: 1; right: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--sheet); pointer-events: none; }
+.lg-compared:has(input:checked)::after { background: var(--accent); }
+.lg-compared:has(input:checked)::before { right: 12px; }
+.lg-compared:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lg-reason-starts { margin: 8px 0; }
+.lg-reason-starts button { min-height: 44px; text-align: left; }
+
+/* 결과의 결정: 설명은 접고, 비교·선택·이유는 계속 보인다. */
+#lg-panel .lg-result-decision { margin: 8px 0; }
+#lg-panel .lg-result-decision :is(#lg-loop-review, .lg-ask) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px;
+  margin: 0; padding: 0; border: 0; min-width: 0;
+}
+#lg-panel .lg-result-decision :is(h3, .lg-ask, .lg-question-full, .lg-decision-actions, .lg-reason-starts, .lg-jq) { grid-column: 1 / -1; margin: 0; min-width: 0; }
+#lg-panel .lg-result-decision .lg-decision-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: stretch; gap: 4px; }
+#lg-panel .lg-result-decision .lg-decision-actions:not(:has(.lg-compared)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#lg-panel .lg-result-decision .lg-compared { margin: 0; }
+#lg-panel .lg-result-decision .lg-compared > span { min-height: 0; }
+#lg-panel .lg-result-decision .lg-reason-starts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+#lg-panel .lg-result-decision .lg-reason-starts button { padding: 4px 6px; white-space: normal; overflow-wrap: anywhere; }
+#lg-panel .lg-result-decision .lg-jq textarea { height: 44px; min-height: 44px; padding: 4px 8px; }
+#lg-panel .lg-result-decision #lg-learning-mission { margin: 0; align-self: center; }
+#lg-panel .lg-result-decision .lg-learning-details { min-width: 0; }
+#lg-panel .lg-result-decision .lg-learning-details[open] { grid-column: 1 / -1; }
+#lg-panel .lg-question-full > summary { gap: 8px; }
+#lg-panel .lg-question-full > summary > span:last-child { flex-shrink: 0; }
+#lg-panel .lg-question-preview { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#lg-panel .lg-question-full[open] .lg-question-preview { display: none; }
+#lg-panel #lg-to-decision { display: none; }
+@media (max-width: 1024px) {
+  #lg-panel #lg-to-decision { display: block; margin: 0 0 8px; }
+  #lg-panel button#lg-to-decision { min-height: 44px; width: 100%; }
+}
+@media (max-width: 760px) {
+  #lg-panel .lg-result-decision .lg-decision-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #lg-panel .lg-result-decision .lg-decision-actions .lg-compared { grid-column: 1 / -1; }
+  #lg-panel .lg-result-decision .lg-reason-starts { grid-template-columns: minmax(0, 1fr); }
+  #lg-panel .lg-result-decision #lg-learning-mission { grid-column: 1 / -1; }
+}
+
+/* 시작 버튼은 도시·게임 설정보다 먼저 보인다. */
+html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* 다음 달 알림은 지도 아래 접속 칩과 떨어진 지도 위쪽에 둔다. */
+/* 토스트는 지도 아래쪽에 두되 왼쪽 아래 접속 칩 줄보다 위로(서랍 제목과 겹치지 않게). */
+.lg-team-map .bd-toast { top: auto; bottom: calc(var(--bd-dock, 90px) + 56px); }
+
+@media (max-width: 760px) {
+  .lg-team-map #lg-bar .lg-status { gap: 4px; }
+  .lg-team-map #lg-bar #lg-hud-chips { display: none; }
+  .lg-team-map #lg-bar .lg-bteam { flex: 0 1 90px; min-width: 0; }
+  .lg-team-map #lg-bar #lg-watch { flex-basis: 44px; }
+  .lg-team-map .bd-mapbar { flex-wrap: wrap; }
+  .lg-team-map .bd-layers { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .lg-team-map .lg-lenses { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; gap: 2px; }
+  .lg-team-map #lg-panel { bottom: calc(var(--bd-dock, 100px) + 8px); max-height: none; }
+}
+
+/* 폰 결과를 읽는 동안 도구 자리를 본문에 돌려준다. 접으면 도구도 즉시 복원한다.
+   visibility는 dock의 실측 높이(--bd-dock)를 보존해 계획·다른 서랍의 배치를 유지한다. */
+@media (max-width: 760px) {
+  #bd-root.lg-team-map[data-result-drawer="true"] #lg-panel:not([data-folded="true"]) {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-dock {
+    visibility: hidden; pointer-events: none;
+  }
+  /* 서랍이 화면 아래까지 오므로 알림은 서랍 머리 쪽에 띄워 이유 칸·마지막 줄을 가리지 않는다. */
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-toast {
+    top: calc(var(--bd-top, 180px) + 8px); bottom: auto;
+  }
+}
+
+/* 계획: 필수 렌즈는 바깥에, 자료 지도 네 개만 한 펼침 안에 둔다. */
+.lg-team-map .lg-map-views { position: relative; }
+.lg-team-map .lg-map-views > summary { min-width: 44px; min-height: 44px; box-sizing: border-box; }
+.lg-team-map .lg-map-views > summary::after { content: "▾"; }
+.lg-team-map .lg-map-views[open] > summary::after { content: "▴"; }
+.lg-team-map .lg-map-views > summary:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map .lg-map-choices {
+  position: absolute; z-index: 1; top: calc(100% + 4px); left: 0; display: grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr)); gap: 2px; padding: 4px;
+  width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box;
+  border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-panel);
+}
+.lg-team-map .lg-map-views:not([open]) .lg-map-choices { display: none; }
+.lg-team-map #lg-hud-chips > span { max-width: 290px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 약속: 지난달 두 줄 다음에 근거 두 줄·방향·확신을 연속 배치한다. */
+.lg-team-map #lg-panel .lg-promise-carry > p {
+  margin: 0 0 4px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+/* 영상 판정 S4 근거 줄: 지난달 놓친 것은 강조선을 유지한다. */
+.lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 4px 8px; border-left: 3px solid var(--ui-gold); }
+.lg-team-map #lg-panel #lg-predict { margin: 0 0 4px; padding: 8px; }
+.lg-team-map #lg-panel #lg-predict h3 { margin: 0 0 4px; }
+.lg-team-map #lg-panel #lg-predict h4 { margin: 0 0 4px; }
+.lg-team-map #lg-panel #lg-evidence { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; }
+.lg-team-map #lg-panel #lg-evidence button { min-width: 44px; min-height: 44px; padding: 2px 4px; white-space: normal; }
+.lg-team-map #lg-panel #lg-promise-baseline { margin: 4px 0; }
+.lg-team-map #lg-panel #lg-predict .lg-field {
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr); align-items: center; gap: 4px; margin: 4px 0;
+}
+.lg-team-map #lg-panel .lg-promise-confidence { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.lg-team-map #lg-panel .lg-promise-confidence h4 { flex: none; margin: 0; }
+.lg-team-map #lg-panel .lg-promise-confidence .lg-acts { flex-wrap: nowrap; gap: 4px; }
+.lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
+@media (max-width: 760px) {
+  /* 폰: 지난달 두 줄·근거 세 줄 뒤에도 방향과 확신이 본문 첫 화면에 들어가게 한다. */
+  /* 지난달 두 줄은 폰에서도 두 줄까지 보인다. '가장 큰 몫' 숫자와 학생이 쓴 문장이 말줄임으로 사라지지 않게(터치 기기는 title을 못 본다). */
+  .lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 2px 8px; }
+  .lg-team-map #lg-panel #lg-predict { display: grid; grid-template-columns: minmax(0, 1fr) 140px; column-gap: 8px; }
+  .lg-team-map #lg-panel #lg-predict > * { grid-column: 1 / -1; min-width: 0; }
+  .lg-team-map #lg-panel .lg-promise-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .lg-team-map #lg-panel .lg-promise-heading > * { white-space: nowrap; }
+  .lg-team-map #lg-panel #lg-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg-team-map #lg-panel #lg-evidence button {
+    display: block; min-width: 0; height: 44px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* 비교 기준은 한 줄로 조작 아래에 둔다. 상세 설명은 기존 약속 비교 기준 펼침을 쓴다. */
+  .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* D-82 결정 1·화면 지시서: 계통의 하루 평균·보조 월 합계는 폰에서도 잘리지 않게 줄바꿈한다. */
+  .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-grid-baseline { white-space: normal; overflow-wrap: anywhere; }
+  .lg-team-map #lg-panel #lg-predict > .lg-field {
+    grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
+  }
+  .lg-team-map #lg-panel .lg-promise-direction { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel #lg-predict select { width: 100%; height: 44px; }
+  .lg-team-map #lg-panel #lg-predict > .lg-promise-confidence {
+    grid-column: 2; grid-row: 3; display: grid; align-self: end; gap: 4px;
+  }
+  .lg-team-map #lg-panel #lg-predict .lg-promise-confidence h4 { margin: 0; }
+  .lg-team-map #lg-panel .lg-promise-confidence button { flex: 0 0 44px; width: 44px; height: 44px; padding: 4px; }
+}
+@media (min-width: 768px) {
+  /* 계획 서랍 폭은 기존 360px 유지(s8n [17]). 약속 카드는 근거 칩 격자를 폭에 맞춰 접는다. */
+}
+
 /* W1 달 끝 덧층: 기존 HUD·서랍·도구 조작은 그대로 통과한다. */
 .fx-turn-layer { position: fixed; z-index: 35; pointer-events: none; overflow: hidden; color: var(--ui-text); font-family: var(--body); }
+/* 서랍 위 배치는 명시적인 펼치기 또는 열린 패널이 없는 경우에만 쓴다. */
+.fx-turn-layer[data-over="true"] { z-index: 47; }
 .fx-turn-summary { width: max-content; max-width: calc(100% - 8px); box-sizing: border-box; margin: 4px auto; padding: 10px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow); animation: fx-toast-in .35s ease-out; }
 .fx-turn-summary-values { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px 12px; font-size: 14px; }
 .fx-turn-stat { display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; }
@@ -1005,16 +1356,48 @@ html.bd-drawer-open #lg-plan-reminder,
 .fx-turn-cards button { pointer-events: auto; min-width: 44px; min-height: 44px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: 14px; color: var(--ui-text); background: var(--ui-panel); font: inherit; cursor: pointer; }
 .fx-turn-cards button:disabled { opacity: .4; cursor: default; }
 .fx-turn-cards button:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: -3px; }
+.fx-turn-strip { display: none; animation: none; transition: none; }
+.fx-turn-layer[data-strip="true"] { animation: none; transition: none; }
+.fx-turn-layer[data-strip="true"] .fx-turn-cards { inset: 0; display: block; }
+.fx-turn-layer[data-strip="true"] :is(.fx-turn-card-row, .fx-turn-close) { display: none; }
+.fx-turn-layer[data-strip="true"] .fx-turn-strip {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 100%; min-width: 0;
+  box-sizing: border-box; padding: 0 4px 0 8px; border-radius: 12px;
+  background: var(--ui-panel); box-shadow: inset 0 0 0 1px var(--ui-border); pointer-events: auto;
+}
+.fx-turn-strip-icon { flex: none; color: var(--ui-gold); }
+.fx-turn-strip-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.fx-turn-strip-count { flex: none; white-space: nowrap; color: var(--ui-muted); font-size: 12px; }
+.fx-turn-strip .fx-turn-expand { flex: none; height: 44px; padding: 0 8px; font-size: 12px; }
+.fx-turn-layer[data-chip="true"] .fx-turn-strip { padding: 0; }
+.fx-turn-layer[data-chip="true"] :is(.fx-turn-strip-icon, .fx-turn-strip-title, .fx-turn-strip-count) { display: none; }
+.fx-turn-layer[data-chip="true"] .fx-turn-expand { width: 44px; padding: 0; font-size: 0; }
+.fx-turn-layer[data-chip="true"] .fx-turn-expand::before { content: "◆"; color: var(--ui-gold); font-size: 18px; }
 .fx-turn-card-row { align-self: center; width: min(100%, 794px); height: min(100%, 330px); min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; perspective: 1200px; }
 .fx-turn-card-row:has(.fx-turn-card:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 520px; }
 .fx-turn-card-row:has(.fx-turn-card:only-child) { grid-template-columns: minmax(0, 1fr); max-width: 280px; }
 .fx-turn-card { pointer-events: auto; min-width: 0; min-height: 0; box-sizing: border-box; padding: 18px; border: 1px solid var(--ui-gold); border-radius: 14px; background: var(--ui-panel); box-shadow: var(--ui-shadow), inset 0 0 0 5px var(--ui-border); overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 10px; opacity: 0; transform: rotateY(180deg) translateY(30px); backface-visibility: hidden; transition: transform .7s cubic-bezier(.2,.8,.2,1), opacity .3s; }
 .fx-turn-card.fx-revealed { opacity: 1; transform: none; }
+.fx-turn-card[data-forecast="true"] { transform: translateX(36px) translateY(12px); }
+.fx-turn-card[data-forecast="true"].fx-revealed { transform: none; }
+.fx-turn-face { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; flex: 1; overflow-y: auto; overflow-wrap: anywhere; }
+.fx-turn-card.fx-turn-flip { opacity: 1; transform: none; overflow: hidden; }
+.fx-turn-rotor { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); transform-style: preserve-3d; transition: transform .9s cubic-bezier(.2,.8,.2,1); }
+.fx-turn-flip .fx-turn-face { grid-area: 1 / 1; backface-visibility: hidden; }
+.fx-turn-back { transform: rotateY(180deg); }
+.fx-revealed .fx-turn-rotor { transform: rotateY(180deg); }
+.fx-turn-mood-note { color: var(--ui-muted); font-size: 10px; line-height: 1.4; }
+/* 한 장씩 넘기기: 카드 수에 따른 :has 열 규칙(특이성 0,4,0)보다 뒤에서 같은 특이성으로 덮는다. */
+.fx-turn-layer[data-paged="true"] .fx-turn-card-row:has(.fx-turn-card) { width: min(100%, 360px); max-width: none; grid-template-columns: minmax(0, 1fr); }
+.fx-turn-layer[data-paged="true"] .fx-turn-card { grid-area: 1 / 1; }
+.fx-turn-layer[data-paged="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
+.fx-turn-layer[data-paged="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .fx-turn-card h3 { margin: 0; color: var(--ui-text); font: 400 24px var(--display); }
 .fx-turn-card p { margin: 0; color: var(--ui-muted); font-size: 13px; line-height: 1.55; }
 .fx-turn-big { margin-top: auto; color: var(--ui-gold); font: 600 19px var(--mono); }
 .fx-turn-card-nav { display: none; }
-.fx-turn-layer[data-compact="true"] .fx-turn-card-row { width: min(100%, 360px); max-width: 360px; grid-template-columns: minmax(0, 1fr); }
+/* 좁은 덧층: 카드 수에 따른 :has 열 규칙(특이성 0,4,0)을 같은 특이성으로 뒤에서 덮어 한 장씩 보인다. */
+.fx-turn-layer[data-compact="true"] .fx-turn-card-row:has(.fx-turn-card) { width: min(100%, 360px); max-width: 360px; grid-template-columns: minmax(0, 1fr); }
 .fx-turn-layer[data-compact="true"] .fx-turn-card { grid-area: 1 / 1; padding: 12px; gap: 6px; }
 .fx-turn-layer[data-compact="true"] .fx-turn-card[data-active="false"] { visibility: hidden; pointer-events: none; }
 .fx-turn-layer[data-compact="true"] .fx-turn-card-nav { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; color: var(--ui-muted); font: 12px var(--mono); }
@@ -1036,10 +1419,69 @@ html.bd-drawer-open #lg-plan-reminder,
 @media (prefers-reduced-motion: reduce) {
   .fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down { animation: none; transition: none; transform: none; }
   .fx-turn-card { opacity: 1; }
+  .fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-revealed .fx-turn-rotor, .fx-turn-back { animation: none; transition: none; transform: none; }
+  .fx-turn-front { display: none; }
   .fx-flash-up { outline: 2px solid var(--ui-danger); }
   .fx-flash-down { outline: 2px solid var(--ui-mint); }
 }
 html.v2-still :is(.fx-turn-summary, .fx-turn-card, .fx-flash-up, .fx-flash-down) { animation: none; transition: none; transform: none; }
 html.v2-still .fx-turn-card { opacity: 1; }
+html.v2-still :is(.fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-turn-back),
+.fx-turn-card[data-still="true"], .fx-turn-card[data-still="true"] :is(.fx-turn-rotor, .fx-turn-back) { animation: none; transition: none; transform: none; opacity: 1; }
+html.v2-still .fx-turn-front, .fx-turn-card[data-still="true"] .fx-turn-front { display: none; }
 html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
+
+/* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
+/* 안내 묶음은 build.js가 잡는 지도 정보 시작선(--lg-map-info-top: 다음 달 이유 띠 아래)부터 — 띠와 겹치던 결함. */
+.lg-map-guidance { position: fixed; z-index: 47; top: var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)); left: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.lg-map-guidance .lg-map-result { position: static; }
+#lg-plan-issues { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; pointer-events: auto; }
+#lg-plan-issues button { flex: none; min-height: 44px; border: 1px solid var(--ui-border); background: var(--ui-panel); color: var(--ui-text); }
+#lg-coach { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; max-width: 680px; padding: 4px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); pointer-events: auto; }
+#lg-coach-task { min-width: 0; overflow-wrap: anywhere; }
+#lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
+#lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#lg-issue-check { position: fixed; z-index: 48; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; max-width: 540px; max-height: calc(100dvh - var(--lg-mapbar-bottom, 210px) - 8px); overflow-y: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); }
+#lg-issue-check h3 { margin: 0; }
+#lg-issue-check button, #lg-coach-again { min-width: 44px; min-height: 44px; }
+#lg-issue-check button:focus-visible, #lg-coach button:focus-visible, #lg-plan-issues button:focus-visible { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+#bd-root:has(#lg-coach) #lg-plan-reminder { display: none; }
+
+@media (max-width: 760px) {
+  #lg-coach { grid-template-columns: repeat(3, minmax(44px, 1fr)); }
+  #lg-coach-task { grid-column: 1 / -1; }
+}
+
+/* 열린 서랍은 코치 아래부터 시작해 지도 안내가 조작을 가리지 않게 한다. */
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #lg-panel,
+#bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #bd-drawer { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
+
+/* 좁은 화면: 지도 위 결과 한 줄(U2 계약상 늘 보임)이 서랍을 덮지 않게 서랍을 그 아래부터 시작하고,
+   잠깐 뜨는 토스트는 서랍 제목과 겹치지 않게 화면 맨 아래로 내린다. */
+@media (max-width: 760px) {
+  #bd-root.lg-team-map:has(.lg-map-guidance .lg-map-result:not([hidden])) #lg-panel { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
+  #bd-root.lg-team-map[data-league-drawer="true"] .bd-toast { top: auto; bottom: 8px; }
+}
+
+/* 폰: 지도 레이어 단추는 원래 숨겼다. '지도 보기' 묶음도 같은 기준으로 숨긴다. */
+@media (max-width: 760px) {
+  .lg-team-map .lg-map-views { display: none; }
+}
+
+/* '지도 보기'를 펼친 동안은 안내 묶음(문제 칩·코치)을 지도 막대(z 25) 아래로 내려 펼친 선택지가 깔리지 않게 한다. */
+#bd-root:has(.lg-map-views[open]) .lg-map-guidance { z-index: 24; }
+
+/* 안내의 위치·조작 크기는 유지하고 배경만 조금 비치게 한다. */
+@media (max-width: 480px) {
+  .lg-map-guidance .lg-map-result,
+  .lg-map-guidance #lg-coach,
+  .lg-map-guidance #lg-plan-issues button { background: rgba(10, 25, 42, .88); }
+  .lg-map-guidance .lg-map-result { font-size: 12px; padding: 6px 8px; }
+  /* 폰 결과 서랍(폭 360) 뒤로 다 들어가게 같은 폭으로 줄인다. */
+  .lg-town-key { max-width: min(360px, calc(100vw - 16px)); background: rgba(10, 25, 42, .88); font-size: 11px; padding: 4px 8px; }
+  .lg-map-guidance #lg-coach { font-size: 12px; padding: 3px; }
+  .lg-map-guidance #lg-coach button,
+  .lg-map-guidance #lg-plan-issues button { font-size: 12px; padding-inline: 4px; }
+}

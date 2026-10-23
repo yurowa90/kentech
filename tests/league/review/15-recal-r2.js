@@ -12,7 +12,8 @@ let checks = 0;
 const ok = (v, msg) => { assert.ok(v, msg); checks++; };
 const near = (v, want, msg, eps = 1e-8) => ok(Number.isFinite(v) && Math.abs(v - want) <= eps, `${msg}: ${v}/${want}`);
 const sum = xs => xs.reduce((a, x) => a + x, 0);
-const inp = (E, f = () => ({})) => Object.fromEntries(E.order.map(id => [id, { energy: { demMWh: 100, servedMWh: 100, unsPct: 0, hospH: 0, co2: 45.67, co2Local: 45.67, costPerMWh: .008, opex: .8, renPct: 15, ...f(id).energy }, policy: f(id).policy || {} }]));
+// D-73: 국가 계수로 보정하는 가상 입력도 45.67→100×normalCo2(41.73)로 갱신.
+const inp = (E, f = () => ({})) => Object.fromEntries(E.order.map(id => [id, { energy: { demMWh: 100, servedMWh: 100, unsPct: 0, hospH: 0, co2: 100 * D.params.normalCo2.v, co2Local: 100 * D.params.normalCo2.v, costPerMWh: .008, opex: .8, renPct: 15, ...f(id).energy }, policy: f(id).policy || {} }]));
 const data = clone(D); data.intl.eventP = 0; data.intl.schedule = []; Object.keys(data.intl.sigma).forEach(k => data.intl.sigma[k] = 0);
 const initial = () => { const E = X.initCities(ids, data, { months: 36, seed: "recal-r2" }); return X.calibrate(E, inp(E), data); };
 {
@@ -75,8 +76,9 @@ const initial = () => { const E = X.initCities(ids, data, { months: 36, seed: "r
   const zero = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 0, unsPct: 100, co2: 0 } })), data);
   near(zero.E.cities[a].co2Intensity, E.cities[a].co2Intensity, "F19 공급0 시작 탄소 사용");
   const half = X.monthStep(E, inp(E, () => ({ energy: { servedMWh: 50, unsPct: 50, co2: 41 } })), data);
-  near(half.E.cities[a].co2Intensity, .4567 + .15 * (.82 - .4567), "F19·29 공급량 분모와 지연");
-  near(r.report.region.goal.co2, 600 * .4567 * .7, "F20 2027 수요 기반 공동 목표");
+  // D-73: 기준 .4567→.4173; 지연식·수요 기반 목표의 의도는 유지.
+  near(half.E.cities[a].co2Intensity, data.params.co2IntDef.v + .15 * (.82 - data.params.co2IntDef.v), "F19·29 공급량 분모와 지연");
+  near(r.report.region.goal.co2, 600 * data.params.normalCo2.v * .7, "F20 2027 수요 기반 공동 목표");
   const score = X.score(E, data).by[a], w = data.params.wScore.v;
   near(score.score, Math.round(Math.exp(sum(Object.entries(w).map(([k, v]) => v * Math.log(Math.max(data.params.scorePartFloor.v, score.parts[k])))) / sum(Object.values(w))) * 10) / 10, "F39 기하평균·G6 투입 하한");
 }
@@ -85,7 +87,8 @@ const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0,
   const S = game(); S.round = 1;
   const view = C.publicView(S, 0);
   near(view.econ.speeds.monthsPerTurn, 4.4, "화면 이동 시간 배속");
-  near(C.goalsOf(S, 100).co2, 100 * .4567 * .7, "F20 호스트와 단독 같은 목표");
+  // D-73: 호스트 목표의 국가 계수 .4567→.4173(단독 목표와 같은 기준).
+  near(C.goalsOf(S, 100).co2, 100 * D.params.normalCo2.v * .7, "F20 호스트와 단독 같은 목표");
   S.events = [{ id: "regional_tariff", round: 1 }];
   for (const id of ids) {
     const input = C.econInput(S, R, id, { dem: 100, uns: 0, cost: {}, cpList: [] }, 1);
@@ -132,7 +135,8 @@ const R = C.regionOf("south"), game = () => C.newState("recal-r2-host", R.id, 0,
   };
   const bio = B.simulate(plan(["biomass"]), 7, {league:true,mods:{demandMul:10}});
   near(bio.bioCo2, bio.tot.by.biomass * .1, "F17 별도 바이오 배출");
-  near(bio.co2, bio.tot.by.coal * .82 + bio.tot.by.lng * .37 + bio.tot.by.diesel * .75 + bio.tot.by.import * .4567, "F17 국가 총량 바이오 제외", 1e-6);
+  // D-73: 수입 발전원 국가 계수 .4567→normalCo2(.4173), 바이오 별도 회계 유지.
+  near(bio.co2, bio.tot.by.coal * .82 + bio.tot.by.lng * .37 + bio.tot.by.diesel * .75 + bio.tot.by.import * D.params.normalCo2.v, "F17 국가 총량 바이오 제외", 1e-6);
   const hs = plan(["hydro"]), cold = B.simulate(hs,7,{league:true,mods:{hydroMonth:1}}), wet = B.simulate(hs,7,{league:true,mods:{hydroMonth:7}});
   near(wet.tot.renAvail/cold.tot.renAvail,(.5+.5*(11.08*31)/(1229.6525/12))/(.5+.5*(.7*31)/(1229.6525/12)),"F35 월 강수 출력 비", .1);
   const cp = B.complaints(plan(["diesel","solar","wind"]),null);

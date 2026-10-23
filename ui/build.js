@@ -9,12 +9,18 @@
   const KCP = window.KCP;
   if (!KCP || typeof KCP.route !== "function") return;
   const esc = KCP.esc;
+  // D-72: 화면 문구를 만드는 곳에서만 변환한다. 자료의 등급과 출처 줄은 그대로 둔다.
+  // D-72: 학생 화면의 근거 등급 글자를 학생 말로. 모르는 값은 낮춰 보이지 않게 원래 글자를 그대로 둔다.
+  const GRADE_WORDS = { G: "게임 가정", M: "모형 계산", O: "공식 자료", "O*": "공식 자료(보도로 확인)", P: "논문·보고서" };
+  KCP.gradeWords = grade => [...new Set(String(grade || "G").split("·").map(g => g.trim().replace(/^추정$/, "G"))
+    .filter(Boolean).map(g => GRADE_WORDS[g] || g))].join(" · ");
   const html = document.documentElement;
   const KEY = "kcp-build-v1";
   const TRIAL_KEY = "kcp-build-trial-v1";
   let trialMemory = {};
   // 설비 대조 자료도 모듈 메모리에만 보관한다. 원본 결과·저장 문서에 필드를 붙이지 않는다.
   const replayLayouts = new WeakMap();
+  const gridFillContexts = new WeakMap(); // 시간별 수요·성적표 재계산은 기기 메모리에만 둔다.
   const replayLayout = st => JSON.stringify({ builds: st.builds.map(b => [b.t, b.i]), lines: st.lines.map(l => l.p) });
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -205,6 +211,7 @@
    * ===================================================================== */
   const M = {
     solarMW: 2, rated: 12, cutout: 25, cutin: 3,
+    hotTmax: 28, // G · 무더위 구분과 냉방 수요의 일 최고기온 기준(℃)
     // P · 왕복 85%의 √값 0.922 [I13][I14] · REF 8.6
     batMW: 4, batMWh: 16, batEff: 0.922, socFloor: 0.1,
     lossPerHex: 0.015, taxPerT: 0.005 / 0.75,
@@ -212,21 +219,23 @@
     // M · 경사면 이득 포함 실적 수율 0.8×14.2/12.4≈0.92 [S22][S31] · REF 8.1
     wxSun: [1, 0.45, 0.2], tidalPeriod: 12.42, pvYield: 0.92
   };
+  // 기존 출력 계수: 계산과 도움말이 같은 값을 읽는다.
+  const TIDAL_FACTOR = 0.31, HYDRO_MEAN_FACTOR = 0.25;
   // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
   const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
   const BLD0 = {
-    solar: { hostLimited: true, variable: true, name: "태양광", spec: "2 MW", mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
-    roof: { hostLimited: true, variable: true, name: "지붕 태양광", spec: "0.6 MW", mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
-    wind: { hostLimited: true, variable: true, name: "풍력", spec: "2 MW", mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
-    offshore: { hostLimited: true, variable: true, name: "해상풍력", spec: "4 MW", mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
-    tidal: { hostLimited: true, variable: true, name: "조력", spec: "2 MW", mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
-    hydro: { hostLimited: true, name: "소수력", spec: "0.8 MW", mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
-    diesel: { name: "디젤", spec: "3 MW", mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
-    biomass: { name: "바이오매스", spec: "2 MW", mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
-    battery: { name: "배터리", spec: "4 MW/16 MWh", mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" },
+    solar: { hostLimited: true, variable: true, name: "태양광", get spec() { return buildingSpec("solar", this); }, mw: 2, cost: 8, cls: "ren", ok: LAND4, icon: "sun" },
+    roof: { hostLimited: true, variable: true, name: "지붕 태양광", get spec() { return buildingSpec("roof", this); }, mw: 0.6, cost: 4, cls: "ren", ok: { urban: 1 }, roof: true, icon: "roof" },
+    wind: { hostLimited: true, variable: true, name: "풍력", get spec() { return buildingSpec("wind", this); }, mw: 2, cost: 10, cls: "ren", ok: Object.assign({ mount: 1 }, LAND4), icon: "wind" },
+    offshore: { hostLimited: true, variable: true, name: "해상풍력", get spec() { return buildingSpec("offshore", this); }, mw: 4, cost: 24, cls: "ren", sea: "offshore", icon: "offshore" },
+    tidal: { hostLimited: true, variable: true, name: "조력", get spec() { return buildingSpec("tidal", this); }, mw: 2, cost: 18, cls: "ren", sea: "tidal", icon: "tidal" },
+    hydro: { hostLimited: true, name: "소수력", get spec() { return buildingSpec("hydro", this); }, mw: 0.8, cost: 9, cls: "ren", ok: { river: 1 }, icon: "hydro" },
+    diesel: { name: "디젤", get spec() { return buildingSpec("diesel", this); }, mw: 3, cost: 6, cls: "disp", ok: LAND4, icon: "diesel" },
+    biomass: { name: "바이오매스", get spec() { return buildingSpec("biomass", this); }, mw: 2, cost: 10, cls: "disp", ok: { plain: 1, forest: 1 }, icon: "leaf" },
+    battery: { name: "배터리", get spec() { return buildingSpec("battery", this); }, mw: 4, cost: 12, cls: "bat", ok: Object.assign({ urban: 1 }, LAND4), icon: "battery" },
     // 연구 기관(cls inst): 발전하지 않는다. 가까운 마을 수요에 load MW를 더한다. 연구 규칙은 아래 RS·TECHS.
-    uni: { name: "에너지공학대학", spec: "연구인력 2 · 0.3 MW", mw: 0, cost: 40, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "uni", load: 0.3 },
-    lab: { name: "기후에너지데이터연구소", spec: "연구석 3 · 0.3억/주", mw: 0, cost: 25, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "lab", load: 0.15 }
+    uni: { name: "에너지공학대학", get spec() { return buildingSpec("uni", this); }, mw: 0, cost: 40, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "uni", load: 0.3 },
+    lab: { name: "기후에너지데이터연구소", get spec() { return buildingSpec("lab", this); }, mw: 0, cost: 25, cls: "inst", ok: { plain: 1, hill: 1, urban: 1 }, icon: "lab", load: 0.15 }
   };
   /* ---------- 연구 → 실증 → 도입 (설계안 v0.1 §5·§13, 숫자는 모두 게임 가정 G) ----------
    * 유효 연구인력 = min(전문인력, 연구석). 전문인력 = 연구소마다 1 + 대학마다 2(지은 뒤 준비 기간이 지나야).
@@ -234,8 +243,8 @@
    * 연구소를 지었다고 효율이 저절로 오르지 않는다: 연구를 고르고, 인력·자리가 맞고, 실증을 거쳐야 한다. */
   const RS = { uniStaff: 2, uniPrepW: 4, labStaff: 1, labSeats: 3, labOpexW: 0.3, labOpexR: 3, roundSteps: 3, retroBat: 1 };
   const TECHS = [
-    { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, eff: "쓸 수 있는 범위 하한 10% → 5% · 변환 효율 95% → 95.5%", why: "잔량을 정확히 알면 안전 여유를 줄여 더 넓게 쓴다. 95%에 이미 변환 손실이 들어 있어 효율 상승은 작게 잡았다. 도입 때 배터리마다 개조비 1억", grade: "M·G" },
-    { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, eff: "송전 손실 1.5%/칸 → 1.0%/칸", why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
+    { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, get eff() { return bmsEffectText(); }, get why() { return `잔량을 정확히 읽어 안전 여유를 줄이고, 충전·방전 손실을 줄여요. ${bmsEffectText()}. 도입 때 배터리마다 개조비 ${fmt(RS.retroBat, 1)}억`; }, grade: "M·G" },
+    { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, get eff() { return gridEffectText(); }, why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
     { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, eff: "배터리를 저녁 피크(17–22시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다", why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
   ];
   // 혼자 하기: 운영 기간(주) 안에서 연구가 어디까지 가는지. 시험 운전마다 처음부터(운영해도 연구가 쌓이지 않는다).
@@ -260,24 +269,25 @@
   let BLD = BLD0;
   // 급전 발전원: 용량, 최소 출력, 연료비(억/MWh), CO₂(t/MWh)
   // 석탄: 최소 출력 30%(멈추기 어렵다), 연료비 싸고 CO₂ 많다. 리그에서는 외부 연결점이 수입하지 않고 이웃과의 거래로만 오간다.
-  // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂ O: 법정 0.4567 [L14] REF 9.4.
-  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: 0.4567 }
+  // 석탄 M: LNG×0.56 [S16] REF 7.1; 수입 CO₂: normalCo2의 국가 계수(D-73).
+  const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: KCP.ECON_DATA.params.normalCo2.v }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0, bioCo2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
   // 계산에 쓰는 기존 개선 비율(2/3)을 그대로 표시한다. 지도별 손실률을 고정 문구로 덮지 않는다.
   const gridLossPerHex = () => (PK.lossPerHex || M.lossPerHex) * (2 / 3);
-  const bmsEffectText = () => {
-    const text = TECHS.find(t => t.id === "bms").eff;
-    const floor = text.match(/하한\s*[\d.]+%\s*→\s*([\d.]+)%/);
-    const efficiency = text.match(/효율\s*[\d.]+%\s*→\s*([\d.]+)%/);
+  function bmsParams() {
     const p = KCP.TECH_DATA?.params;
-    const newFloor = p?.bmsFloor?.v ?? (floor ? Number(floor[1]) / 100 : null);
-    const newEff = p?.bmsEfficiency?.v ?? (efficiency ? Number(efficiency[1]) / 100 : null);
-    return `잔량 하한 ${fmt(M.socFloor * 100, 1)}% → ${newFloor == null ? "자료 없음" : fmt(newFloor * 100, 1) + "%"} · 변환 효율 ${fmt(M.batEff * 100, 2)}% → ${newEff == null ? "자료 없음" : fmt(newEff * 100, 2) + "%"}`;
-  };
+    // 자료 키가 아직 없는 판에서는 기존 계산값을 유지한다(REF 8.6).
+    return { floor: p?.bmsFloor?.v ?? 0.05, efficiency: p?.bmsEfficiency?.v ?? 0.933 };
+  }
+  function bmsEffectText() {
+    const p = bmsParams();
+    return `잔량 하한 ${fmt(M.socFloor * 100)}% → ${fmt(p.floor * 100)}% · 왕복 효율 ${fmt(M.batEff ** 2 * 100)}% → ${fmt(p.efficiency ** 2 * 100)}%(한 방향 약 ${fmt(p.efficiency * 100, 1)}%)`;
+  }
   const gridEffectText = () => `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 2)}%/칸 → ${fmt(100 * gridLossPerHex(), 2)}%/칸`;
+  const leagueImportText = () => `연결점 직접 수입 없음${leagueMonth() ? ` · 월 운영은 남은 부족을 시간별 수요의 ${+(KCP.ECON_DATA.params.gridImportShare.v * 100).toFixed(2)}%까지 계통에서 보충` : ""}`;
   const cityName = (pack = PK) => KCP.ECON_DATA?.start?.[pack.id]?.name ||
     Object.values(KCP.LEAGUE_REGIONS || {}).flatMap(r => r.teams).find(t => t.pack === pack.id)?.name || pack.name;
   const WX = [{ k: "sun", name: "맑음" }, { k: "cloud", name: "흐림" }, { k: "rain", name: "비" }];
@@ -285,10 +295,16 @@
   // 평택 계절 날씨: 달마다 맑음·흐림·비 비율(7월 장마)
   const PW = [[.55, .35, .10], [.55, .33, .12], [.50, .35, .15], [.55, .30, .15], [.55, .30, .15], [.40, .35, .25], [.20, .35, .45], [.35, .35, .30], [.50, .30, .20], [.65, .25, .10], [.50, .35, .15], [.50, .38, .12]];
   const POLICIES = [
-    { id: "tax", name: "탄소세", icon: "co2", eff: () => "CO₂ 값 매김 (디젤 ×1.5)", cost: "0억/일" },
-    { id: "dr", name: "수요반응 계약", icon: "clock", eff: () => demandResponseText(), cost: "0.05억/일" },
-    { id: "share", name: "주민 이익공유", icon: "people", eff: () => "풍력·태양광 민원 ½", cost: "0.1억/일" },
-    { id: "save", name: "절전 캠페인", icon: "bolt", eff: () => "수요 −5% · 만족 −5", cost: "0억/일" }
+    { id: "tax", name: "탄소세", icon: "co2", eff: () => {
+      const D = dispOf("diesel"), fuel = D.fuel * (S && leagueMods(S.st)?.fuelMul?.diesel || 1);
+      return `CO₂ 값 매김 (디젤 ×${+((fuel + D.co2 * M.taxPerT) / fuel).toFixed(4)})`;
+    }, cost: "0억/일" },
+    { id: "dr", name: "수요반응 계약", icon: "clock", eff: () => demandResponseText(), get cost() { return `${+(M.drCost * (S && leagueMods(S.st)?.drCost || 1)).toFixed(3)}억/일`; } },
+    { id: "share", name: "주민 이익공유", icon: "people", eff: () => {
+      const remaining = 1 - (KCP.ECON_DATA?.params.shareRelief?.v ?? 0.5);
+      return `풍력·태양광 민원 ${remaining === 0.5 ? "½" : fmt(remaining * 100, 1) + "%"}`;
+    }, get cost() { return `${M.shareCost}억/일`; } },
+    { id: "save", name: "절전 캠페인", icon: "bolt", eff: () => `수요 −${fmt(M.save * 100)}% · 만족 −${fmt(KCP.ECON_DATA?.params.saveSatPenalty?.v ?? 5)}`, cost: "0억/일" }
   ];
   const costTarget = days => Math.round(PK.goals.costBase + PK.goals.costPerDay * days);
   const MISSIONS = [
@@ -307,13 +323,13 @@
     "결론 먼저, 근거는 두세 개.",
     "얻는 것과 잃는 것을 한 문장에 함께.",
     "배터리는 전기를 만들지 않는다 — 남는 전기를 옮길 뿐.",
-    "충전·방전마다 조금씩 잃는다(여기서는 각 95%).",
-    "흐린 날 태양광은 맑은 날의 절반도 안 된다.",
+    () => `충전·방전마다 조금씩 잃는다(여기서는 각 ${fmt(M.batEff * 100, 1)}%, 왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%).`,
+    () => M.wxSun[1] / M.wxSun[0] < 0.5 ? "흐린 날 태양광은 맑은 날의 절반도 안 된다." : `흐린 날 태양광은 맑은 날의 ${fmt(M.wxSun[1] / M.wxSun[0] * 100)}%다.`,
     "버린 전력도 비용이다 — 건설비는 이미 냈다.",
     "짧게 보면 연료가 싸고, 길게 보면 연료 없는 발전이 싸질 수 있다.",
     "전기가 모자라면 병원은 마지막까지 받는다 — 우선순위가 있다."
   ];
-  const tips = () => (PK.tips || []).concat(TIPS0);
+  const tips = () => (PK.tips || []).concat(TIPS0.map(t => typeof t === "function" ? t() : t));
 
   function mulberry32(a) {
     return function () {
@@ -341,8 +357,8 @@
       const day = { w, mult, noise: [], m, doy };
       if (C) {
         day.tmax = C.temp_c[m] + 5 + (r3 - 0.5) * 6 + (w === 0 ? 1.5 : w === 2 ? -2.5 : 0);
-        day.hot = day.tmax > 28;
-        day.coolF = 0.15 + clamp((day.tmax - 28) * 0.025, 0, 0.1);
+        day.hot = day.tmax > M.hotTmax;
+        day.coolF = 0.15 + clamp((day.tmax - M.hotTmax) * 0.025, 0, 0.1);
         day.winter = m === 11 || m <= 1;
         sunny = w === 0 ? sunny + 1 : 0;
         day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= 3 ? 0.7 : 0.85;
@@ -612,10 +628,10 @@
       if (!C) return B.mw * Math.min(1, (v / M.rated) ** 3);
       return v < M.cutin ? 0 : B.mw * Math.min(1, (v ** 3 - M.cutin ** 3) / (M.rated ** 3 - M.cutin ** 3));
     }
-    if (g.kind === "tidal") return B.mw * 0.31 * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
+    if (g.kind === "tidal") return B.mw * TIDAL_FACTOR * Math.abs(Math.sin(2 * Math.PI * (k + 3) / M.tidalPeriod));
     if (g.kind === "hydro") {
       const rain = C?.precip_mm, q = rain ? 0.5 + 0.5 * rain[MODS?.hydroMonth != null ? MODS.hydroMonth - 1 : day.m] / (rain.reduce((a, v) => a + v, 0) / 12) : 1;
-      return B.mw * Math.min(1, 0.25 * q * (day.flow || 1) / (day.flowMean || 1));
+      return B.mw * Math.min(1, HYDRO_MEAN_FACTOR * q * (day.flow || 1) / (day.flowMean || 1));
     }
     return 0;
   }
@@ -657,6 +673,7 @@
     });
     const flow = new Float32Array(Math.max(1, H * E));
     const hrDem = new Float32Array(H), hrSup = new Float32Array(H), hrUns = new Float32Array(H * NT), hrWind = new Float32Array(H), hrDiesel = new Uint32Array(H);
+    const townDemand = lgOut ? new Float64Array(H * NT) : null;
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
     const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0, bioCo2: 0, h2mixMWh: 0 };
     if (curtail) { tot.curtailMWh = 0; tot.curtailCapturedMWh = 0; }
@@ -711,7 +728,7 @@
     for (let d = 0; d < days; d++) {
       const wx = W[d];
       // G · 설계 선택: BMS 왕복 85→87%, 한 방향 0.933 [I13][I14] · REF 8.6
-      if (techDay.bms === d) { bEff = 0.933; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * 0.05; }); }
+      if (techDay.bms === d) { const bms = bmsParams(); bEff = bms.efficiency; gens.forEach(g => { if (isStorage(g) && g.kind !== "h2store") g.floor = storedMWh(g) * bms.floor; }); }
       if (techDay.fcst === d) fcst = true;
       // 예측: 그날 아침에 오늘 저녁(17–22시) 부족분(수요 − 재생 − 화력 용량)을 미리 계산해 배터리마다 그만큼(여유 10%) 남길 몫을 정한다.
       // 이 모형의 날씨·수요는 정해진 값이라 예측이 맞는다 — 실제 예측에는 오차가 있다(한계).
@@ -745,6 +762,7 @@
           }
         });
         const dem = TOWNS.map((_, ti) => demand(ti, h, wx, pol, fab2) + instLoad[ti]);
+        if (townDemand) townDemand.set(dem, k * NT);
         const rem = dem.slice();
         const dem0 = dem.reduce((a, b) => a + b, 0);
         let deliv = 0;
@@ -864,15 +882,15 @@
     };
     cost.research = RR ? RR.cost.total : 0;
     cost.total = cost.capex + cost.fuel + cost.policy + cost.research;
-    const sat = TOWNS.map((W, ti) => {
-      const Dt = town[ti], K = KIND[W.kind] || { w: 1 };
+    const satisfaction = towns => TOWNS.map((W, ti) => {
+      const Dt = towns[ti], K = KIND[W.kind] || { w: 1 };
       const outPen = Math.min(80, (Dt.outH / H) * 300 * K.w + (K.old ? (Dt.hotH / H) * 300 : 0));
       const cpPen = cp.items.filter(it => it.ti === ti).reduce((a, it) => a + it.pts, 0);
       return Math.round(clamp(100 - outPen - cpPen - (pol.save ? 5 : 0), 0, 100));
     });
     const res = {
       days, H, E, NT, edges: N.edges, flow, hrDem, hrSup, hrUns, hrWind, hrDiesel, wx: W.slice(0, days),
-      town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat, pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
+      town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat: satisfaction(town), pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
       hrHosp, hrHospDem, hrHospUns, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
       gx: GX.map(G => ({ to: G.to, byHead: G.byHead, byDisp: G.byDisp, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
@@ -881,6 +899,7 @@
     res.news = headlines(st, res, N);
     res.questions = questions(st, res, N);
     replayLayouts.set(res, replayLayout(st));
+    if (lgOut) gridFillContexts.set(res, { townDemand, hospTi, finish: r => { r.sat = satisfaction(r.town); r.missions = judge(st, r); r.news = headlines(st, r, N); r.questions = questions(st, r, N); replayLayouts.set(r, replayLayout(st)); } });
     return res;
   }
 
@@ -928,14 +947,14 @@
     });
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(55, `남는 전기 ${fmt(R.tot.curt)} MWh 버려져… "담아 둘 곳이 없다"`);
     const hiCO2 = PK.climate ? PK.goals.co2Day * 1.3 : 30;
-    if (R.co2 / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(R.co2)} t… 탄소세 도입 논의`);
+    if ((LG ? R.tot.co2 : R.co2) / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(LG ? R.tot.co2 : R.co2)} t… 탄소세 도입 논의`);
     if (R.tot.by.import > 0 && R.tot.by.import / Math.max(1, R.tot.sup) > 0.3) add(48, `전기 ${fmt(100 * R.tot.by.import / R.tot.sup)}%를 밖에서 사 왔다… "자립은 멀다"`);
     const lossShare = R.tot.loss / Math.max(1, R.tot.sup + R.tot.loss);
     // 섬의 기존 6% 문턱을 기준으로 리그 지도 손실률에 비례한다. #build의 뉴스는 보존한다.
     const lossThreshold = LG ? 0.06 * (PK.lossPerHex || M.lossPerHex) / M.lossPerHex : 0.06;
     if (lossShare > lossThreshold) add(45, `먼 송전선에서 전기 ${fmt(100 * lossShare, 1)}% 새어 나가`);
     if (R.outTotal === 0 && R.tot.dem > 0) add(75, `${R.days}일 무정전 운영… "불 한 번 안 꺼졌다"`);
-    if (R.co2 / R.days <= (PK.climate ? PK.goals.co2Day * 0.5 : 5) && R.outTotal < R.H * 0.02) add(52, `화석 연료 거의 안 쓰고 ${place}을 밝혔다`);
+    if ((LG ? R.tot.co2 : R.co2) / R.days <= (PK.climate ? PK.goals.co2Day * 0.5 : 5) && R.outTotal < R.H * 0.02) add(52, `${LG ? "지역에서 " : ""}화석 연료 거의 안 쓰고 ${place}을 밝혔다`);
     const idleG = N.nodes.filter(n => n.kind !== "town" && !n.live && n.bi !== undefined).length;
     if (idleG) add(57, `선 없는 발전소 ${idleG}곳… "지어 놓고 못 쓴다"`);
     if (!out.length) add(1, `${R.days}일 운영 끝… ${place} 전력망 첫 성적표`);
@@ -964,7 +983,7 @@
     if (spent >= budgetOf() - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
       ["무엇을 가장 중요하게 봤나", `연료비 ${fmt(R.cost.fuel, 1)}억 · 건설비 ${fmt(R.cost.capex, 1)}억`, "기간이 길어지면 답이 바뀌나?"]);
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(65, `남아서 버린 전력이 ${fmt(R.tot.curt)} MWh입니다. 어떻게 쓸 수 있었을까요?`,
-      ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, "배터리 1대 12억의 값어치는?"]);
+      ["언제 남고 언제 모자랐나", `버린 전력 ${fmt(R.tot.curt)} MWh`, `배터리 1대 ${BLD.battery.cost}억의 값어치는?`]);
     if (R.fab2 && R.town.some((Dt, ti) => TOWNS[ti].kind === "factory_big" && Dt.outH > 0)) add(85, "반도체 2라인 증설로 전기가 모자랐습니다. 공장과 주민 중 누구를 먼저 지켜야 합니까?",
       ["차단 순서를 무엇으로 정했나", "부족한 MW와 시간", "송전선을 새로 놓을 때의 갈등"]);
     const lost = R.missions.filter(m => m.chosen && !m.ok);
@@ -1053,16 +1072,23 @@
     doc.jAuto = o.jAuto === true;
     return doc;
   }
+  const fmtSpec = x => +x.toFixed(2);
+  function buildingSpec(kind, B) {
+    if (kind === "uni") return `연구인력 ${fmtSpec(RS.uniStaff)} · ${fmtSpec(B.load)} MW`;
+    if (kind === "lab") return `연구석 ${fmtSpec(RS.labSeats)} · ${fmtSpec(RS.labOpexW)}억/주`;
+    if (kind === "battery") return `${fmtSpec(B.mw)} MW/${fmtSpec(M.batMWh)} MWh`;
+    return `${fmtSpec(B.mw)} MW`;
+  }
   function bldFor(P) {
     const out = {};
-    Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); });
+    Object.keys(BLD0).forEach(k => { out[k] = Object.assign({}, BLD0[k], (P.bld && P.bld[k]) || {}); out[k].spec = P.bld?.[k]?.spec ?? buildingSpec(k, out[k]); });
     if (LG && KCP.TECH_DATA) {
       const v = k => KCP.TECH_DATA.params[k].v;
-      out.tandem = { ...out.solar, name: "탠덤 태양광", spec: `${out.solar.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.solar.mw * v("tandemOutput"), cost: out.solar.cost * v("tandemCost") };
-      out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${out.roof.mw * v("tandemOutput")} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
-      out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: "4 MW/20 MWh" };
-      out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: "4 MW/200 MWh · 왕복 35%" };
-      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${+v("smrMW").toFixed(2)} MW · 건설 ${v("smrTurns")}턴` };
+      out.tandem = { ...out.solar, name: "탠덤 태양광", spec: `${fmtSpec(out.solar.mw * v("tandemOutput"))} MW`, tech: "tandem", mw: out.solar.mw * v("tandemOutput"), cost: out.solar.cost * v("tandemCost") };
+      out.tandem_roof = { ...out.roof, name: "탠덤 지붕 태양광", spec: `${fmtSpec(out.roof.mw * v("tandemOutput"))} MW`, tech: "tandem", mw: out.roof.mw * v("tandemOutput"), cost: out.roof.cost * v("tandemCost") };
+      out.nbat = { ...out.battery, name: "차세대 배터리", tech: "nbat", mwh: M.batMWh * v("nbatCapacity"), cost: v("nbatCost"), spec: `${fmtSpec(out.battery.mw)} MW/${fmtSpec(M.batMWh * v("nbatCapacity"))} MWh` };
+      out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: `${fmtSpec(v("h2MW"))} MW/${fmtSpec(v("h2MWh"))} MWh · 왕복 ${fmt(v("h2Efficiency") * 100)}%` };
+      out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${fmtSpec(v("smrMW"))} MW · 건설 ${fmtSpec(v("smrTurns"))}턴` };
     }
     return out;
   }
@@ -1074,6 +1100,7 @@
 
   selectPack(PACK_IDS[0]);
   KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
+  KCP.buildGame.gridFillContext = res => gridFillContexts.get(res);
 
   /* =====================================================================
    * 3. 아이콘
@@ -1146,6 +1173,94 @@
   const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
   const lockedMsg = () => (S && S.opts.locked ? S.opts.locked() : "");
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
+  // 지도 효과는 화면 메모리에만 둔다. 시간·reduced를 인자로 받아 Node에서도 검사한다.
+  const MAP_FX_MS = 300;
+  // G: 바다의 느린 위상 변화(초당 0.5~1.1 rad)를 12fps 상한으로 이어 보이게 하고 유휴 전체 그리기 비용을 낮춘다.
+  // 타이머 뒤 rAF를 기다리므로 실제 유휴 빈도는 약 10~12fps다.
+  const AMBIENT_FPS = 12;
+  const MAP_INK = { cyan: "#71dceb", danger: "#dc7890", dust: "#edf4fc" }; // v2.css 토큰
+  const mapMotion = {
+    needsFrame: (state, rm, hidden) => (!rm && !hidden) || !!(state.run || state.mapFx.length || state.floaters.length),
+    // '계속 움직일지'는 needsFrame이 정하고(검사가 이 공개 함수를 엿본다), 여기서는 '언제'만 정한다.
+    frameDelay(state, rm, hidden, visible) {
+      if (!mapMotion.needsFrame(state, rm, hidden)) return null;
+      if (state.run || state.mapFx.length || state.floaters.length) return 0;
+      if (!visible) return null;
+      return 1000 / AMBIENT_FPS;
+    },
+    active: (items, now, rm, ms = MAP_FX_MS) => rm ? [] : items.filter(f => now - f.t0 < ms),
+    register(items, event, now, rm) {
+      if (rm) return [];
+      const key = event.p ? `l:${event.p.join("-")}` : `b:${event.i}`;
+      return [...mapMotion.active(items, now, false).filter(f => f.key !== key),
+        { ...event, ...(event.p ? { p: event.p.slice() } : {}), key, t0: now }];
+    },
+    pose(f, now) {
+      const p = clamp((now - f.t0) / MAP_FX_MS, 0, 1), q = p - 1;
+      return { p, scale: f.kind === "place" ? (p === 0 ? 0 : 1 + 2.70158 * q ** 3 + 1.70158 * q ** 2) : 1 - p * p,
+        alpha: f.kind === "place" ? 1 : 1 - p, drop: f.kind === "place" ? 0 : p * p * 0.45 };
+    },
+    flowRoutes(net, res, lines) {
+      const live = new Set(), towns = [], owners = [], index = new Map();
+      const edgeKey = (a, b) => a < b ? `${a}-${b}` : `${b}-${a}`;
+      res.edges.forEach(([a, b], e) => index.set(edgeKey(a, b), e));
+      lines.forEach((L, li) => { for (let j = 1; j < L.p.length; j++) {
+        const e = index.get(edgeKey(L.p[j - 1], L.p[j]));
+        if (e !== undefined) (owners[e] ||= []).push(li);
+      } });
+      // 기존 network의 발전·충방전 경로를 읽는다. 급전·조류 계산은 추가하지 않는다.
+      net.comps.forEach(C => [C.RL, C.RB, C.BL, C.DL].forEach(pairs => pairs.forEach(P => {
+        if (!P.g.live || !P.l.live) return;
+        P.path.forEach(([e0, dir]) => {
+          const [a, b] = net.edges[e0], e = index.get(edgeKey(a, b));
+          if (e === undefined) return;
+          live.add(e);
+          if (P.l.kind === "town") {
+            const list = towns[e] ||= [];
+            if (!list.some(n => n.ti === P.l.ti && n.dir === dir)) list.push({ ti: P.l.ti, dir });
+          }
+        });
+      })));
+      return { live, towns, owners };
+    },
+    townOutage: (res, k, ti, eps, outHour) =>
+      res.hrUns[k * res.NT + ti] > eps && (!outHour || !!outHour(k)),
+    flowMarks(res, k, routes, rm, eps, replay = false, outHour) {
+      if (!res.flow || !res.E) return [];
+      const marks = [];
+      res.edges.forEach(([a, b], e) => {
+        if (!routes.live.has(e)) return;
+        const f = res.flow[k * res.E + e], amount = Math.abs(f);
+        if (!Number.isFinite(amount)) return;
+        const outage = (routes.towns[e] || []).some(n =>
+          (!f || Math.sign(f) === n.dir) && mapMotion.townOutage(res, k, n.ti, eps, outHour));
+        if (amount < 0.03 && !outage) return;
+        // 재생 flow는 거래 전 값이다. 방향만 읽고 굵기·점 크기·밀도·속도는 고정한다.
+        const shownAmount = replay ? 1 : amount;
+        const desired = amount < 0.03 ? 0 : replay ? 2 : Math.min(6, 2 + Math.floor(amount / 2));
+        marks.push({ e, from: f < 0 ? b : a, to: f < 0 ? a : b, amount: shownAmount, outage,
+          desired: outage && !replay && desired ? Math.max(1, Math.floor(desired * 0.45)) : desired, count: 0,
+          speed: rm ? 0 : 0.65 + Math.min(2, shownAmount * 0.12) });
+      });
+      // 첫 순회에 통전 선분마다 1개씩 배분한다(전체 200개까지). 긴 선은 선분 수만큼 허용한다.
+      let budget = 200;
+      const lineCounts = new Map(), lineSegments = new Map();
+      (routes.owners || []).forEach(owners => owners.forEach(id =>
+        lineSegments.set(id, (lineSegments.get(id) || 0) + 1)));
+      for (let pass = 0; pass < 6 && budget; pass++) for (const m of marks) {
+        const owners = routes.owners?.[m.e] || [];
+        if (m.count >= m.desired || !budget || owners.some(id =>
+          (lineCounts.get(id) || 0) >= Math.max(6, lineSegments.get(id) || 0))) continue;
+        m.count++; budget--;
+        owners.forEach(id => lineCounts.set(id, (lineCounts.get(id) || 0) + 1));
+      }
+      return marks;
+    }
+  };
+  function mapEffect(event) {
+    S.mapFx = mapMotion.register(S.mapFx, event, performance.now(), reduced());
+    request();
+  }
   const dprOf = () => Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   const $ = sel => (S ? S.root.querySelector(sel) : null);
   // 훅이 내부에서 다른 도시 지도를 조회해도 화면은 원래 지도를 유지한다.
@@ -1155,7 +1270,13 @@
     try { return S.opts.leagueMods(st); }
     finally { if (PK.id !== pack) selectPack(pack, "league"); }
   }
-  function rememberTrial(res, st, round) {
+  function leagueGrid(st) {
+    if (!S?.opts.league || typeof S.opts.leagueGrid !== "function") return null;
+    const pack = PK.id;
+    try { return S.opts.leagueGrid(st); }
+    finally { if (PK.id !== pack) selectPack(pack, "league"); }
+  }
+  function rememberTrial(res, st, round, gridMWh = 0) {
     const scope = S?.opts.trialScope || "", key = JSON.stringify([scope, res.map]);
     const trial = {
       map: res.map, scope, year: round?.year || null, month: round?.month || null,
@@ -1166,6 +1287,8 @@
       outTotal: res.outTotal, co2: res.co2, cost: res.cost.total,
       capex: res.cost.capex, opex: res.cost.total - res.cost.capex,
       loss: res.tot.loss, idle: res.tot.idle,
+      // D-80: gridFill이 더한 바깥 계통 전기(대표 기간 MWh). 지도의 수입 설비 출력은 섞지 않는다. 옛 기록에는 없다.
+      gridMWh,
       plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, rq: st.rq }
     };
     // 수치와 선택만 저장한다. 일지·이유·매시 배열·사건의 실제 크기는 저장하지 않는다.
@@ -1281,14 +1404,71 @@
       fillPoly(g, [[x - w * 0.08, y - h], [x - w * 0.32, y - h * 0.66], [x - w * 0.14, y - h * 0.72], [x + w * 0.02, y - h * 0.62], [x + w * 0.2, y - h * 0.7]], "#f3f6f8");
     }
   }
-  function house(g, x, y, s, roof) {
+  function house(g, x, y, s, roof, vacant = false) {
     const w = s * 0.42, h = s * 0.26, d = s * 0.3;
     shadow(g, x, y, w * 0.8, s * 0.12, 0.2);
-    box(g, x, y, w, d, h, "#d9cdb8", "#f1e8d8", "#c4b69e");
+    box(g, x, y, w, d, h, vacant ? "#a5a5a0" : "#d9cdb8", vacant ? "#b8b8b1" : "#f1e8d8", vacant ? "#898d8e" : "#c4b69e");
     const dx = d * 0.55, dy = d * 0.42;
     fillPoly(g, [[x - w / 2 - 1, y - h], [x, y - h - s * 0.2], [x + w / 2 + 1, y - h]], rgb(mul(roof, 1.08)));
     fillPoly(g, [[x, y - h - s * 0.2], [x + w / 2 + 1, y - h], [x + w / 2 + dx + 1, y - h - dy], [x + dx, y - h - dy - s * 0.2]], rgb(mul(roof, 0.82)));
     return [x - w * 0.22, y - h * 0.72, w * 0.18, h * 0.32];
+  }
+
+  const RESIDENTIAL = new Set(["village", "town_s", "city", "city_m", "city_l"]);
+  const TOWN_LOOK_KEY = "집 한 채 = 시작 주민 2% · 불 꺼진 창 = 최근 운영한 달에 못 보낸 전기 몫 · 마을별 인구가 아니라 도시 전체 변화를 모든 마을에 똑같이 보인 것";
+  // 공개 도시 값만 받는다. 저장 문서·계산 모형에는 붙이지 않는다.
+  function syncTownLook() {
+    const raw = S.opts.townLook?.();
+    const next = raw ? { houses: clamp(Math.trunc(raw.houses) || 0, -3, 3),
+      darkShare: Number.isFinite(raw.darkShare) ? clamp(raw.darkShare, 0, 1) : null } : null;
+    const prev = S.townAppearance;
+    if (!!prev === !!next && prev?.houses === next?.houses && prev?.darkShare === next?.darkShare) return;
+    S.townAppearance = next;
+    S.dirtyStatic = true;
+    const legend = S.root.querySelector("#bd-town-look-key");
+    if (legend) legend.hidden = !next;
+    request();
+  }
+
+  function townLook() {
+    if (!S?.townAppearance) return null;
+    return Object.freeze({ ...S.townAppearance, ...S.townWindowCounts });
+  }
+
+  // 정적 층에서만 창문 순서를 정한다. 반올림은 칸별이 아닌 도시 전체 기준이다.
+  function paintTownLights(g, rec) {
+    const look = S.townAppearance;
+    S.townLights = !curHour();
+    if (!look) { S.townWindowCounts = { darkWins: 0, totalWins: 0 }; return; }
+    const windows = rec.wins.filter(w => RESIDENTIAL.has(TOWNS[w.ti].kind)).flatMap(w =>
+      w.list.map((rect, n) => ({ rect, i: TOWNS[w.ti].tile, n, rank: hash(TOWNS[w.ti].tile, n, 83) })));
+    const totalWins = windows.length;
+    const darkWins = look.darkShare != null && S.townLights ? Math.round(totalWins * look.darkShare) : 0;
+    S.townWindowCounts = { darkWins, totalWins };
+    if (look.darkShare == null || !S.townLights) return;
+    windows.sort((a, b) => a.rank - b.rank || a.i - b.i || a.n - b.n);
+    windows.forEach(({ rect }, n) => {
+      g.fillStyle = n < darkWins ? "rgba(20,24,40,0.9)" : "rgba(255,211,107,0.85)";
+      g.fillRect(...rect);
+    });
+  }
+
+  // 주민 변화로 덧붙는 집 자리(칸 가장자리, 칸 번호로 시작 자리만 달라짐). 기존 그림 목록과 같은 깊이 순서로 그린다.
+  function extraHouses(T, K) {
+    const houses = RESIDENTIAL.has(K) ? S.townAppearance?.houses || 0 : 0;
+    if (!houses) return [];
+    const spots = [[-0.53, 0], [0, 0.66], [0.53, 0]], start = Math.floor(hash(T.i, 0, 82) * spots.length);
+    return spots.slice(start).concat(spots.slice(0, start)).slice(0, Math.abs(houses)).map(([dx, dy], n) => ({ extra: true, dx, dy, n, vacant: houses < 0 }));
+  }
+  function drawExtraHouse(g, at, E, wins) {
+    const [hx, hy] = at(E.dx, E.dy), size = V.S * 0.95 * 0.7;
+    const w = house(g, hx, hy, size, E.vacant ? [90, 94, 100] : hex2(["#c8553d", "#d7843d", "#b5483a"][E.n]), E.vacant);
+    if (!E.vacant) wins.push(w, [w[0] + size * 0.17 / 0.95, w[1], w[2], w[3]]);
+  }
+  // list의 [dx, dy, ...] 항목과 덧붙는 집을 화면 깊이로 섞어 차례로 그린다.
+  function depthDraw(list, extras, g, at, wins, draw) {
+    const depth = p => (p.extra ? uv(p.dx, p.dy) : uv(p[0], p[1]))[1];
+    list.concat(extras).sort((p, q) => depth(p) - depth(q)).forEach((p, k) => p.extra ? drawExtraHouse(g, at, p, wins) : draw(p, k));
   }
 
   // 수요지·시설: 정적 그림 + 밤 창문 자리 기록
@@ -1296,8 +1476,8 @@
     const W = SITES[T.site], [x, y] = tileTop(T), s = V.S;
     const wins = [];
     const at = (dx, dy) => scr(T.X + dx, T.Y + dy, HGT[T.t]);
-    const K = W.kind;
-    if (K !== "hospital" && K !== "village" && K !== "town_s" && K !== "city" && K !== "port") { drawFacility(g, T, W, at, wins); }
+    const K = W.kind, extras = extraHouses(T, K);
+    if (K !== "hospital" && K !== "village" && K !== "town_s" && K !== "city" && K !== "port") { drawFacility(g, T, W, at, wins, extras); }
     else if (K === "hospital") {
       const [px, py] = at(-0.45, 0.25);
       g.beginPath(); g.ellipse(px, py, s * 0.24, s * 0.24 * SQ, 0, 0, Math.PI * 2); g.fillStyle = "#4b5966"; g.fill();
@@ -1312,15 +1492,16 @@
       for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) wins.push([bx - s * 0.3 + c * s * 0.17, by - s * 0.34 + r * s * 0.15, s * 0.09, s * 0.08]);
     } else if (K === "village" || K === "town_s") {
       const spots = [[-0.42, -0.3, "#c8553d"], [0.32, -0.38, "#d7843d"], [-0.05, 0.05, "#b5483a"], [0.45, 0.25, "#d7843d"], [-0.45, 0.38, "#c8553d"]];
-      spots.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, rc], k) => {
-        const [hx, hy] = at(dx, dy);
+      let nth = 0;
+      depthDraw(spots, extras, g, at, wins, ([dx, dy, rc]) => {
+        const k = nth++, [hx, hy] = at(dx, dy);
         const w = house(g, hx, hy, s * 0.95, hex2(rc));
         wins.push(w, [w[0] + s * 0.17, w[1], w[2], w[3]]);
         if (k === 1) roundTree(g, hx + s * 0.32, hy + s * 0.08, s * 0.5);
       });
     } else if (K === "city") {
       const towers = [[-0.35, -0.25, 1.2], [0.3, -0.35, 1.55], [0.42, 0.28, 0.95], [-0.25, 0.32, 0.8], [0.0, 0.0, 1.9]];
-      towers.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]).forEach(([dx, dy, hgt]) => {
+      depthDraw(towers, extras, g, at, wins, ([dx, dy, hgt]) => {
         const [tx, ty] = at(dx, dy), w = s * 0.32, h = s * 0.62 * hgt;
         shadow(g, tx, ty, w * 0.9, s * 0.13, 0.22);
         box(g, tx, ty, w, s * 0.26, h, "#d5dee8", "#b9c9d8", "#8ea2b6");
@@ -1350,7 +1531,7 @@
     if (rec && T.town >= 0) rec.wins.push({ ti: T.town, list: wins, x, y });
   }
   // 평택 시설 그림
-  function drawFacility(g, T, W, at, wins) {
+  function drawFacility(g, T, W, at, wins, extras = []) {
     const s = V.S, K = W.kind;
     const tower = (dx, dy, hgt, w, cols) => {
       const [tx, ty] = at(dx, dy), h = s * 0.62 * hgt;
@@ -1366,8 +1547,8 @@
     const order = list => list.sort((p, q) => uv(p[0], p[1])[1] - uv(q[0], q[1])[1]);
     if (K === "city_l" || K === "city_m") {
       const big = K === "city_l";
-      order(big ? [[-0.4, -0.25, 1.5], [0.3, -0.38, 2.1], [0.45, 0.25, 1.2], [-0.25, 0.32, 1.0], [0.02, 0.0, 2.4]] : [[-0.32, -0.22, 1.1], [0.32, -0.3, 1.4], [0.35, 0.28, 0.9], [-0.1, 0.12, 1.7]])
-        .forEach(([dx, dy, hgt]) => tower(dx, dy, hgt, s * (big ? 0.3 : 0.28), big ? ["#dbe3ec", "#bfcedc", "#93a7ba"] : ["#e6e0d6", "#cfc6b6", "#a89c88"]));
+      depthDraw(big ? [[-0.4, -0.25, 1.5], [0.3, -0.38, 2.1], [0.45, 0.25, 1.2], [-0.25, 0.32, 1.0], [0.02, 0.0, 2.4]] : [[-0.32, -0.22, 1.1], [0.32, -0.3, 1.4], [0.35, 0.28, 0.9], [-0.1, 0.12, 1.7]], extras, g, at, wins,
+        ([dx, dy, hgt]) => tower(dx, dy, hgt, s * (big ? 0.3 : 0.28), big ? ["#dbe3ec", "#bfcedc", "#93a7ba"] : ["#e6e0d6", "#cfc6b6", "#a89c88"]));
     } else if (K === "industry") {
       order([[-0.3, -0.2], [0.3, 0.15]]).forEach(([dx, dy]) => {
         const [bx, by] = at(dx, dy), w = s * 0.62, h = s * 0.26;
@@ -1715,20 +1896,25 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.lineJoin = "round";
     const rec = { hubs: [], stacks: [], wins: [], pylons: new Map() };
+    const rising = new Set(S.mapFx.filter(f => f.kind === "place").map(f => f.i));
+    const growing = new Set(S.mapFx.filter(f => f.kind === "line").map(f => f.key));
     const bAt = new Map(st.builds.map((b, bi) => [b.i, bi]));
     const lineTiles = new Set();
     st.lines.forEach(L => L.p.forEach(i => lineTiles.add(i)));
     for (const T of ORDER) {
       drawTile(g, T, layer);
-      if (T.site >= 0) { drawTown(g, T, rec); if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); } }
-      else if (bAt.has(T.i)) { const bi = bAt.get(T.i); drawBuilding(g, st.builds[bi].t, T, rec, bi); }
-      else if (!T.out) drawDeco(g, T, layer);
+      if (T.site >= 0) drawTown(g, T, rec);
+      if (bAt.has(T.i)) {
+        const bi = bAt.get(T.i);
+        if (!rising.has(T.i)) drawBuilding(g, st.builds[bi].t, T, rec, bi);
+      } else if (T.site < 0 && !T.out) drawDeco(g, T, layer);
       if (lineTiles.has(T.i)) { drawPylon(g, T); rec.pylons.set(T.i, pylonTop(T)); }
     }
+    paintTownLights(g, rec);
     // 전선(모든 타일 위)
     g.strokeStyle = "rgba(24,30,38,0.85)"; g.lineWidth = Math.max(1, V.S * 0.035);
     g.beginPath();
-    st.lines.forEach(L => { for (let k = 1; k < L.p.length; k++) wirePath(g, rec.pylons.get(L.p[k - 1]), rec.pylons.get(L.p[k]), V.S * 0.08); });
+    st.lines.forEach(L => { if (!growing.has(`l:${L.p.join("-")}`)) for (let k = 1; k < L.p.length; k++) wirePath(g, rec.pylons.get(L.p[k - 1]), rec.pylons.get(L.p[k]), V.S * 0.08); });
     g.stroke();
     // 데이터 층 숫자
     if (layer !== "map" && V.S >= 21) {
@@ -1799,11 +1985,91 @@
     const k = clamp(R.k, 0, R.res.H - 1);
     return { k, d: Math.floor(k / 24), h: k % 24 };
   }
-  function paintDynamic(g, t) {
-    const st = S.st, R = S.run, ch = curHour(), s = V.S, rm = reduced();
-    const anim = rm ? 0 : t;
-    // 풍력 날개
-    S.rec.hubs.forEach(hb => {
+  function paintMapEffects(g, now, t) {
+    const s = V.S;
+    S.mapFx.forEach(f => {
+      const { p, scale, alpha, drop } = mapMotion.pose(f, now);
+      if (f.p) {
+        const points = f.p.map(i => pylonTop(TILES[i]));
+        const lengths = points.slice(1).map((B, i) => Math.hypot(B[0] - points[i][0], B[1] - points[i][1]));
+        let left = lengths.reduce((a, b) => a + b, 0) * (f.kind === "line" ? Math.min(1, p / 0.75) : 1);
+        g.save();
+        if (f.kind === "unline") { g.globalAlpha = alpha; g.translate(0, drop * s); }
+        g.strokeStyle = "rgba(24,30,38,0.85)"; // 정적 선과 같아 캐시 복귀 때 색이 튀지 않는다.
+        g.lineWidth = Math.max(1, s * 0.035); g.beginPath();
+        for (let j = 0; j < lengths.length && left > 0; j++) {
+          const A = points[j], B = points[j + 1], u = Math.min(1, left / Math.max(0.001, lengths[j]));
+          const cx = (A[0] + B[0]) / 2, cy = (A[1] + B[1]) / 2 + s * 0.08;
+          const qx = lerp(A[0], cx, u), qy = lerp(A[1], cy, u);
+          g.moveTo(A[0], A[1]);
+          g.quadraticCurveTo(qx, qy, lerp(qx, lerp(cx, B[0], u), u), lerp(qy, lerp(cy, B[1], u), u));
+          left -= lengths[j];
+        }
+        g.stroke();
+        if (f.kind === "line" && p >= 0.75) {
+          const [x, y] = points[points.length - 1], flash = Math.sin((p - 0.75) * 4 * Math.PI);
+          g.globalAlpha = Math.max(0, flash); g.fillStyle = MAP_INK.cyan;
+          g.beginPath(); g.arc(x, y, 2 + s * 0.12 * flash, 0, Math.PI * 2); g.fill();
+        }
+        g.restore();
+        if (f.kind === "line") return;
+      } else {
+        const T = TILES[f.i], [x, y] = tileTop(T), rec = { hubs: [], stacks: [] };
+        g.save(); g.globalAlpha = alpha;
+        g.translate(x, y + drop * s); g.scale(1, scale); g.translate(-x, -y);
+        drawBuilding(g, f.t, T, rec, -1);
+        paintHubs(g, rec.hubs, t, S.run, curHour());
+        g.restore();
+      }
+      // 8개의 먼지 원: 타일 바닥에서 타원 고리로 퍼진다.
+      const [x, y] = tileTop(TILES[f.i]);
+      g.save(); g.globalAlpha = (1 - p) * 0.65; g.fillStyle = MAP_INK.dust;
+      for (let j = 0; j < 8; j++) {
+        const a = j * Math.PI / 4, r = s * (0.2 + p * 0.65);
+        g.beginPath(); g.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * SQ,
+          Math.max(0.5, s * (0.055 + p * 0.055)), 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    });
+  }
+  function paintPowerFlow(g, t, R, ch, rm) {
+    const res = R.res, s = V.S;
+    if (S.flowView?.net !== S.net || S.flowView?.res !== res) {
+      S.flowView = { net: S.net, res, routes: mapMotion.flowRoutes(S.net, res, S.st.lines), k: -1,
+        phase: new Float32Array(res.E), time: t };
+    }
+    const view = S.flowView;
+    if (view.k !== ch.k || view.rm !== rm) {
+      view.marks = mapMotion.flowMarks(res, ch.k, view.routes, rm, R.replay ? 0 : OUT_EPS(),
+        !!R.replay, R.replay ? R.opts.outHour : undefined);
+      view.k = ch.k; view.rm = rm;
+    }
+    const dt = rm ? 0 : clamp(t - view.time, 0, 0.1); view.time = t;
+    g.save(); g.lineCap = "round";
+    view.marks.forEach(m => {
+      const A = S.rec.pylons.get(m.from), B = S.rec.pylons.get(m.to);
+      if (!A || !B) return;
+      const w = 1.2 + Math.min(7, m.amount * 1.3);
+      g.globalAlpha = m.outage ? 0.45 : 0.4;
+      g.strokeStyle = m.outage ? MAP_INK.danger : MAP_INK.cyan; g.lineWidth = w + 3;
+      g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
+      g.globalAlpha = 1; g.strokeStyle = "rgba(200,250,255,0.9)"; g.lineWidth = Math.max(1, w * 0.4);
+      g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
+      view.phase[m.e] = (view.phase[m.e] + dt * m.speed) % 1;
+      g.globalAlpha = 1; g.fillStyle = "#f2feff";
+      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2 + s * 0.08;
+      for (let j = 0; j < m.count; j++) {
+        const u = rm ? (j + 0.5) / m.count : (view.phase[m.e] + j / m.count + m.e * 0.17) % 1;
+        const x = (1 - u) * (1 - u) * A[0] + 2 * (1 - u) * u * mx + u * u * B[0];
+        const y = (1 - u) * (1 - u) * A[1] + 2 * (1 - u) * u * my + u * u * B[1];
+        g.beginPath(); g.arc(x, y, 1.6 + Math.min(3, m.amount * 0.5), 0, Math.PI * 2); g.fill();
+      }
+    });
+    g.restore();
+  }
+  function paintHubs(g, hubs, anim, R, ch) {
+    const s = V.S;
+    hubs.forEach(hb => {
       let v = TILES[hb.tile].wind;
       if (ch) v *= R.res.hrWind[ch.k];
       const w = v > M.cutout ? 0 : 0.5 + v * 0.32;
@@ -1814,6 +2080,12 @@
       g.stroke();
       g.beginPath(); g.arc(hb.x, hb.y, Math.max(1.6, s * 0.06), 0, Math.PI * 2); g.fillStyle = "#c9d3dc"; g.fill();
     });
+  }
+  function paintDynamic(g, t) {
+    const st = S.st, R = S.run, ch = curHour(), s = V.S, rm = reduced();
+    const anim = rm ? 0 : t;
+    // 풍력 날개
+    paintHubs(g, S.rec.hubs, anim, R, ch);
     // 디젤 연기: 서풍이라 동쪽으로 흐른다(세로 화면에서는 아래쪽)
     const [ex, ey] = (() => { const A = scr(0, 0, 0), B = scr(1, 0, 0); const L = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1; return [(B[0] - A[0]) / L, (B[1] - A[1]) / L]; })();
     S.rec.stacks.forEach(sk => {
@@ -1862,34 +2134,12 @@
     if (e > -0.15 && e < 0.4) { g.fillStyle = `rgba(255,140,70,${(0.13 * (1 - Math.abs(e - 0.1) / 0.4)).toFixed(3)})`; g.fillRect(0, 0, V.W, V.H); }
     if (dark > 0.01) { g.fillStyle = `rgba(6,14,40,${dark.toFixed(3)})`; g.fillRect(0, 0, V.W, V.H); }
     // 전력 흐름
-    const res = R.res, E = res.E;
-    if (E) {
-      g.lineCap = "round";
-      res.edges.forEach(([a, b], e2) => {
-        const f = res.flow[ch.k * E + e2];
-        const af = Math.abs(f);
-        if (af < 0.03) return;
-        const A = S.rec.pylons.get(a), B = S.rec.pylons.get(b);
-        if (!A || !B) return;
-        const w = 1.2 + Math.min(7, af * 1.3);
-        g.strokeStyle = "rgba(113,220,235,0.4)"; g.lineWidth = w + 3;
-        g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
-        g.strokeStyle = "rgba(200,250,255,0.9)"; g.lineWidth = Math.max(1, w * 0.4);
-        g.beginPath(); wirePath(g, A, B, s * 0.08); g.stroke();
-        const [P0, P1] = f > 0 ? [A, B] : [B, A];
-        for (let j = 0; j < 2; j++) {
-          const u = rm ? (j + 0.5) / 2 : ((anim * (0.7 + af * 0.12) + j / 2 + e2 * 0.17) % 1);
-          const mx = (P0[0] + P1[0]) / 2, my = (P0[1] + P1[1]) / 2 + s * 0.08;
-          const x = (1 - u) * (1 - u) * P0[0] + 2 * (1 - u) * u * mx + u * u * P1[0];
-          const y = (1 - u) * (1 - u) * P0[1] + 2 * (1 - u) * u * my + u * u * P1[1];
-          g.beginPath(); g.arc(x, y, 1.6 + Math.min(3, af * 0.5), 0, Math.PI * 2); g.fillStyle = "#f2feff"; g.fill();
-        }
-      });
-    }
+    const res = R.res;
+    paintPowerFlow(g, t, R, ch, rm);
     // 창문·정전 표시
     const blink = rm ? 1 : (Math.sin(t * 9) > 0 ? 1 : 0.25);
     S.rec.wins.forEach(W => {
-      const uns = R.replay ? R.opts.outHour?.(ch.k) && res.hrUns[ch.k * res.NT + W.ti] > 0 : res.hrUns[ch.k * res.NT + W.ti] > OUT_EPS();
+      const uns = mapMotion.townOutage(res, ch.k, W.ti, R.replay ? 0 : OUT_EPS(), R.replay ? R.opts.outHour : undefined);
       if (dark > 0.12) {
         if (!uns) {
           const gl = g.createRadialGradient(W.x, W.y - s * 0.3, 2, W.x, W.y - s * 0.3, s * 1.3);
@@ -2024,7 +2274,6 @@
     g.restore();
   }
   function paintFloaters(g, now) {
-    S.floaters = S.floaters.filter(f => now - f.t0 < 1100);
     S.floaters.forEach(f => {
       const p = (now - f.t0) / 1100;
       g.globalAlpha = 1 - p;
@@ -2035,26 +2284,132 @@
     });
   }
 
+  // 사건 표시 전용 층. 모형·날씨·효과 크기와 독립적이며 배너·라벨 DOM 아래에 그린다.
+  function setMapMood(mood) {
+    if (!S?.alive) return;
+    const next = ["heat", "cold", "snow", "storm", "cloud", "haze"].includes(mood) ? mood : null;
+    if (S.mapMood === next) return;
+    S.mapMood = next;
+    request();
+  }
+  function paintMapMood(g, t, rm) {
+    const mood = S.mapMood;
+    if (!mood) return;
+    // 전체 투명도 상한 0.06: 별도 캔버스를 한 번 합성하므로 입자가 겹쳐도 상한이 유지된다.
+    const canvas = S.moodCanvas ||= document.createElement("canvas");
+    if (canvas.width !== V.W) canvas.width = V.W;
+    if (canvas.height !== V.H) canvas.height = V.H;
+    const ink = canvas.getContext("2d"), a = V.area, w = Math.max(0, a.r - a.l), h = Math.max(0, a.b - a.t);
+    ink.clearRect(0, 0, V.W, V.H);
+    const anim = rm ? 0 : t;
+    if (mood === "heat") {
+      const tint = ink.createLinearGradient(0, a.t, 0, a.b);
+      tint.addColorStop(0, "rgba(240,146,63,0)"); tint.addColorStop(1, "#f0923f");
+      ink.fillStyle = tint; ink.fillRect(a.l, a.t, w, h);
+      if (!rm) {
+        ink.strokeStyle = "#ffb768"; ink.lineWidth = 2;
+        for (let k = 0; k < 6; k++) {
+          ink.beginPath();
+          for (let x = 0; x <= w; x += 12) {
+            const y = a.t + h * (.55 + k * .065) + Math.sin(x / 75 + anim * .6 + k) * 5;
+            if (!x) ink.moveTo(a.l + x, y); else ink.lineTo(a.l + x, y);
+          }
+          ink.stroke();
+        }
+      }
+    } else if (mood === "cold" || mood === "snow") {
+      const frost = ink.createRadialGradient((a.l + a.r) / 2, (a.t + a.b) / 2, 0,
+        (a.l + a.r) / 2, (a.t + a.b) / 2, Math.max(w, h) * .6);
+      frost.addColorStop(0, "rgba(166,220,250,0)"); frost.addColorStop(.55, "rgba(166,220,250,0.15)"); frost.addColorStop(1, "#a6dcfa");
+      ink.fillStyle = frost; ink.fillRect(a.l, a.t, w, h);
+      if (mood === "snow" && !rm) {
+        ink.fillStyle = "#f1f8ff";
+        for (let k = 0; k < 60; k++) {
+          const x = a.l + (hash(k, 1, 71) * w + Math.sin(anim * .3 + k) * 8 + w) % Math.max(1, w);
+          const y = a.t + (hash(k, 2, 71) * h + anim * (9 + k % 5)) % Math.max(1, h);
+          ink.beginPath(); ink.arc(x, y, 1 + k % 3 * .35, 0, Math.PI * 2); ink.fill();
+        }
+      }
+    } else {
+      ink.fillStyle = mood === "haze" ? "#a89c87" : "rgba(38,58,80,0.45)";
+      ink.fillRect(a.l, a.t, w, h);
+      if ((mood === "storm" || mood === "cloud") && !rm) {
+        ink.fillStyle = "#263a50";
+        for (let k = 0; k < 7; k++) {
+          const x = a.l - 160 + (hash(k, 3, 71) * (w + 320) + anim * (mood === "storm" ? 85 : 12)) % (w + 320);
+          const y = a.t + hash(k, 4, 71) * h;
+          ink.beginPath(); ink.ellipse(x, y, 100 + k * 7, 18 + k * 2, -.15, 0, Math.PI * 2); ink.fill();
+        }
+      }
+      if (mood === "storm" && !rm) {
+        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        for (let k = 0; k < 80; k++) {
+          const x = a.l + (hash(k, 5, 71) * w + anim * 100) % Math.max(1, w);
+          const y = a.t + (hash(k, 6, 71) * h + anim * 290) % Math.max(1, h);
+          ink.moveTo(x, y); ink.lineTo(x - 6, y + 12);
+        }
+        ink.stroke();
+      }
+    }
+    g.save(); g.globalAlpha = 0.06;
+    g.drawImage(canvas, 0, 0, V.W, V.H); g.restore();
+  }
+
   function frame(now) {
     if (!S || !S.alive) return;
+    // raf를 비우기 전에 동기화해 setMapMood의 request와 다음 프레임을 중복 예약하지 않는다.
+    try { if (S.opts.league) KCP.fxTurn?.syncMapMood?.(S.root); }
+    catch (_) { /* 사건 표시 실패가 지도 프레임 예약을 막지 않게 한다. */ }
     S.raf = 0;
     if (S.dirtyLayout) layout();
+    const active = mapMotion.active(S.mapFx, now, reduced());
+    if (active.length !== S.mapFx.length) { S.mapFx = active; S.dirtyStatic = true; }
+    S.floaters = mapMotion.active(S.floaters, now, reduced(), 1100);
+    if (S.run && !S.run.done) stepRun(now);
+    if (S.townAppearance?.darkShare != null && S.townLights !== !curHour()) S.dirtyStatic = true;
     if (S.dirtyStatic) { paintStatic(); S.dirtyStatic = false; }
     const g = S.g, t = (now - S.born) / 1000, dpr = dprOf();
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (S.run && !S.run.done) stepRun(now);
     const ch = curHour();
     paintSea(g, reduced() ? 0 : t, ch);
     g.drawImage(S.base, 0, 0, V.W, V.H);
+    if (S.mapFx.length) paintMapEffects(g, now, reduced() ? 0 : t);
     paintDynamic(g, t);
     paintCursor(g, t);
     if (S.opts.league) paintLeagueLayers(g);
     if (S.floaters.length) paintFloaters(g, now);
+    paintMapMood(g, t, reduced());
     placeBanners();
-    const keep = !reduced() && !document.hidden;
-    if (keep || S.floaters.length) S.raf = requestAnimationFrame(frame);
+    const delay = mapMotion.frameDelay(S, reduced(), document.hidden, S.mapVisible);
+    // 그리는 도중의 조작이 이미 예약한 프레임과 중복하지 않는다.
+    if (S.raf || S.ambientTimer || delay === null) return;
+    if (delay === 0) request();
+    else {
+      const state = S;
+      // 대기 중에는 rAF를 호출하지 않고, 이전 화면의 타이머가 새 화면을 깨우지 않게 한다.
+      state.ambientTimer = setTimeout(() => {
+        state.ambientTimer = 0;
+        if (S === state && state.alive) request();
+      }, delay);
+    }
   }
-  function request() { if (S && S.alive && !S.raf) S.raf = requestAnimationFrame(frame); }
+  // 운영·재생을 시작하면 정적 층(창문 불빛 등)을 그 자리에서 다시 그린다.
+  // 유휴 지연 중 새로 건 rAF는 다른 rAF 콜백보다 늦게 돌 수 있어, 첫 실행 프레임이 옛 정적 층을 읽지 않게 한다.
+  function paintStaticNow() {
+    if (!S?.alive) return;
+    if (S.dirtyLayout) layout();
+    paintStatic();
+    S.dirtyStatic = false;
+  }
+  function clearAmbientFrame() {
+    if (S.ambientTimer) clearTimeout(S.ambientTimer);
+    S.ambientTimer = 0;
+  }
+  function request() {
+    if (!S || !S.alive) return;
+    clearAmbientFrame();
+    if (!S.raf) S.raf = requestAnimationFrame(frame);
+  }
 
   /* =====================================================================
    * 6. 조작
@@ -2088,33 +2443,80 @@
     if (reduced()) return;
     const [x, y] = tileTop(TILES[i]);
     S.floaters.push({ x, y: y - V.S * 0.6, text, col, t0: performance.now() });
+    request();
   }
   function place(type, i) {
     if (toolLocked(type)) { toast(toolLocked(type)); return; }
     const chk = canPlace(type, i);
     if (!chk.ok) { toast(chk.why); return; }
-    S.st.builds.push({ t: type, i });
+    const item = { t: type, i };
+    S.st.builds.push(item);
+    S.undo.push({ kind: "b", item, st: S.st, turn: undoTurn() });
+    mapEffect({ kind: "place", t: type, i });
     floater(i, `−${fmt(chk.cost)}억`, "#ecd083");
     changed(`${BLD[type].name} 설치 · ${fmt(chk.cost)}억${chk.clear ? " (숲 정리 포함)" : ""}`);
+    S.opts.onFx?.("build");
   }
   // 철거 때 돌려받는 몫: 혼자 하기는 시험 운전이라 전액, 리그는 opts.salvage(이름표)가 정한다(지난 라운드 것 30%).
   const salvageOf = key => (S.opts && S.opts.salvage ? S.opts.salvage(key) : 1);
+  // 설치 순서는 화면에만 둔다. 지난 달·라운드 및 이미 철거한 항목은 되돌리지 않는다.
+  const undoTurn = () => JSON.stringify(S.opts.leagueRound?.() || null);
+  const undoKey = entry => entry.kind === "b" ? `b:${entry.item.t}:${entry.item.i}` : `l:${entry.item.p.join("-")}`;
+  function lastUndo() {
+    const turn = undoTurn();
+    S.undo = S.undo.filter(entry => entry.st === S.st && entry.turn === turn && salvageOf(undoKey(entry)) === 1 &&
+      (entry.kind === "b" ? S.st.builds : S.st.lines).includes(entry.item));
+    return S.undo.at(-1);
+  }
+  function refreshUndo() {
+    const button = $("#bd-undo");
+    if (button) button.disabled = !lastUndo() || !!S.run || !!lockedMsg();
+  }
+  function undoPlacement() {
+    if (!S || S.run || lockedMsg()) return false;
+    const entry = lastUndo();
+    if (!entry) return false;
+    S.undo.pop();
+    cancelLine();
+    S.sel = null;
+    hideTip();
+    if (entry.kind === "b") removeBuild(entry.item);
+    else removeLines([entry.item]);
+    return true;
+  }
+  function undoShortcut(e) {
+    if (!S || e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+    if (e.target.closest("input, textarea, select") || e.target.isContentEditable || document.querySelector("dialog[open]")) return;
+    if (S.lineStart != null || S.pending) { cancelLine(); e.preventDefault(); return; }
+    if (undoPlacement()) e.preventDefault();
+  }
+  function removeBuild(b) {
+    const c = buildCost(b.t, b.i), back = c * salvageOf(`b:${b.t}:${b.i}`);
+    S.st.builds.splice(S.st.builds.indexOf(b), 1);
+    floater(b.i, `+${fmt(back, 1)}억`, "#7be3b4");
+    changed(leagueWords(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`));
+  }
+  function removeLines(gone, i = gone[0].p.at(-1)) {
+    const full = gone.reduce((a, L) => a + lineCost(L.p), 0);
+    const back = gone.reduce((a, L) => a + lineCost(L.p) * salvageOf(`l:${L.p.join("-")}`), 0);
+    S.st.lines = S.st.lines.filter(L => !gone.includes(L));
+    floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
+    changed(leagueWords(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`));
+  }
   function removeAt(i) {
     const bi = S.st.builds.findIndex(b => b.i === i);
     if (bi >= 0) {
-      const b = S.st.builds[bi], c = buildCost(b.t, b.i), back = c * salvageOf(`b:${b.t}:${b.i}`);
-      S.st.builds.splice(bi, 1);
-      floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
-      changed(leagueWords(back < c - 1e-9 ? `${BLD[b.t].name} 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(c - back, 1)}억 손실)` : `${BLD[b.t].name} 철거 · ${fmt(c)}억 환불`));
+      const b = S.st.builds[bi];
+      removeBuild(b);
+      mapEffect({ kind: "remove", t: b.t, i: b.i });
+      S.opts.onFx?.("remove");
       return;
     }
-    const keep = S.st.lines.filter(L => !L.p.includes(i));
-    if (keep.length !== S.st.lines.length) {
-      const gone = S.st.lines.filter(L => L.p.includes(i)), full = gone.reduce((a, L) => a + lineCost(L.p), 0);
-      const back = gone.reduce((a, L) => a + lineCost(L.p) * salvageOf(`l:${L.p.join("-")}`), 0);
-      S.st.lines = keep;
-      floater(i, `+${fmt(back, 1)}억`, "#7be3b4");
-      changed(leagueWords(back < full - 1e-9 ? `송전선 철거 · ${fmt(back, 1)}억 회수(지난 라운드 것 — ${fmt(full - back, 1)}억 손실)` : `송전선 철거 · ${fmt(back, 1)}억 환불`));
+    const gone = S.st.lines.filter(L => L.p.includes(i));
+    if (gone.length) {
+      removeLines(gone, i);
+      gone.forEach(L => mapEffect({ kind: "unline", p: L.p, i }));
+      S.opts.onFx?.("remove");
       return;
     }
     toast("철거할 것이 없다");
@@ -2149,11 +2551,15 @@
     const P = S.pending;
     if (!P) return;
     if (P.cost > budgetLeft() + 1e-9) { toast(`예산 부족(${fmt(P.cost, 1)}억)`); return; }
-    S.st.lines.push({ p: P.p });
+    const item = { p: P.p };
+    S.st.lines.push(item);
+    S.undo.push({ kind: "l", item, st: S.st, turn: undoTurn() });
+    mapEffect({ kind: "line", p: P.p });
     floater(P.end, `−${fmt(P.cost, 1)}억`, "#ecd083");
     S.pending = null; S.lineStart = null; S.preview = null;
     showConfirm();
     changed(`송전선 연결 · ${P.p.length - 1}칸 · ${fmt(P.cost, 1)}억`);
+    S.opts.onFx?.("line");
   }
   function cancelLine() {
     S.pending = null; S.lineStart = null; S.preview = null;
@@ -2186,6 +2592,23 @@
     if (S.hover != null) showTip(S.hover);
     request();
   }
+  // Esc로 그리던 송전선·고른 도구를 취소한다(D-83 각주). 도구 해제만 하고 리그의 onTool(서랍 닫기)은 부르지 않아
+  // Esc 한 번에 한 층만 닫히게 하고, 잠금 검사도 건너뛴다(이미 고른 도구를 푸는 일이므로). 취소했으면 true.
+  function escCancel() {
+    if (S.lineStart != null || S.pending) { cancelLine(); announce("송전선 취소"); return true; }
+    if (!S.tool) return false;
+    S.tool = null;
+    cancelLine();
+    S.sel = null;
+    closePops();
+    renderTools();
+    S.root.dataset.mode = "";
+    if (S.hover != null) showTip(S.hover);
+    request();
+    if (S.opts.league) S.opts.onToolCancel?.();
+    announce("도구 해제");
+    return true;
+  }
   /* ---------- 도구 막대: 섬은 6개 그대로, 평택은 묶음(재생·화력·저장·송전·철거) ---------- */
   const toolLocked = id => {
     const tech = BLD[id]?.tech;
@@ -2213,12 +2636,14 @@
     if (!box) return;
     const groups = toolGroups();
     S.root.classList.toggle("bd-grouped", !!PK.groups);
-    if (!PK.groups) { box.innerHTML = toolsOf().map(id => toolBtn(id)).join(""); sub.hidden = true; return; }
+    const undo = '<button type="button" class="bd-tool" id="bd-undo" title="방금 놓은 것 되돌리기 (Ctrl/⌘+Z)" disabled><span>되돌리기</span></button>';
+    if (!PK.groups) { box.innerHTML = toolsOf().map(id => toolBtn(id)).join("") + undo; sub.hidden = true; refreshUndo(); return; }
     box.innerHTML = groups.map(G => {
       if (G.tools.length === 1) return toolBtn(G.tools[0]);
       const cur = G.tools.includes(S.tool) ? toolMeta(S.tool) : null;
       return `<button type="button" class="bd-tool bd-group" data-group="${esc(G.id)}" aria-expanded="${S.openGroup === G.id}" aria-controls="bd-subtools"${cur ? ' data-active="true"' : ""}>${ico(cur ? cur.icon : G.icon)}<span class="bd-tool-n">${esc(G.name)}</span><span class="bd-tool-c num">${cur ? esc(cur.name) : G.tools.length + "종"}</span></button>`;
-    }).join("");
+    }).join("") + undo;
+    refreshUndo();
     const G = groups.find(g => g.id === S.openGroup);
     sub.hidden = !G;
     if (G) { sub.setAttribute("aria-label", G.name); sub.innerHTML = G.tools.map(id => toolBtn(id)).join(""); }
@@ -2265,6 +2690,7 @@
     S.doc.map = id;
     selectPack(id);
     S.st = S.doc.maps[id];
+    S.mapFx = []; S.flowView = null;
     S.tool = null; S.hover = null; S.sel = null; S.lineStart = null; S.pending = null; S.preview = null; S.result = null;
     S.openGroup = null; S.seasonOpen = false;
     S.root.dataset.mode = "";
@@ -2307,6 +2733,7 @@
     const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     on(cv, "pointerdown", e => {
       if (S.run) return;
+      if (e.pointerType !== "touch") S.sel = null;
       const [x, y] = pos(e);
       down = { x, y, px: V.panX, py: V.panY, id: e.pointerId, moved: false, type: e.pointerType };
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
@@ -2330,7 +2757,9 @@
       if (i == null) { setHover(null); return; }
       if (d.type === "touch" && S.tool && S.tool !== "line" && S.sel !== i) {
         // 손가락: 첫 탭은 미리보기, 같은 타일을 한 번 더 누르면 설치
-        S.sel = i; setHover(i, false);
+        S.sel = i;
+        if (S.hover === i && !S.kbd) showTip(i);
+        else setHover(i, false);
         return;
       }
       S.sel = null;
@@ -2341,6 +2770,7 @@
     on(cv, "pointerleave", e => { if (e.pointerType !== "touch" && !S.kbd) setHover(null); });
     on(cv, "keydown", e => {
       if (S.run) return;
+      S.sel = null;
       const dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
       if (dirs[e.key]) {
         e.preventDefault();
@@ -2357,10 +2787,7 @@
         if (S.hover != null) act(S.hover);
         return;
       }
-      if (e.key === "Escape") {
-        if (S.lineStart != null || S.pending) { e.preventDefault(); cancelLine(); announce("송전선 취소"); }
-        else if (S.tool) { e.preventDefault(); setTool(S.tool); announce("도구 해제"); }
-      }
+      if (e.key === "Escape" && escCancel()) e.preventDefault();
     });
     on(cv, "focus", () => { if (S.hover == null && cv.matches(":focus-visible")) setHover(TOWNS[0].tile, true); });
     on(cv, "blur", () => { if (S.kbd) { S.kbd = false; hideTip(); request(); } });
@@ -2391,17 +2818,21 @@
     hideTip();
     S.hover = null;
     const mods = leagueMods(S.st);
-    const res = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
-    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.());
+    const raw = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
+    // D-74 계통 수입은 경제 모드(달이 있는 월 리그)의 실제 운영에만 있으므로 시험도 그때만 보정한다. 계절 4라운드는 그대로.
+    const res = S.opts.league && leagueMonth() ? KCP.leagueCore.gridFill(raw) : raw;
+    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.(), res === raw ? 0 : Math.max(0, res.tot.by.import - raw.tot.by.import));
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
     let n = 0;
     S.st.builds.forEach((b, bi) => { if (SMOKY[b.t]) dk[bi] = n++; });
     S.runNet = { dk };
     S.run = { res, days, t0: performance.now(), k: 0, done: false, tip: -1, tipBase: S.tipSeq++ };
+    refreshUndo();
     S.result = null;
     html.classList.add("bd-running");
     closeDrawer(true);
+    paintStaticNow(); // 서랍을 닫아 바뀐 배치까지 한 번에 맞춘다.
     const panel = $("#bd-run");
     panel.hidden = false;
     $("#bd-replay-note").hidden = true;
@@ -2450,10 +2881,11 @@
     S.root.classList.add("bd-replaying");
     $("#bd-run").hidden = false;
     $("#bd-run-len").textContent = opts.label || "실제 운영 · 재생";
-    $("#bd-replay-note").textContent = opts.note || "";
-    $("#bd-replay-note").hidden = !opts.note;
+    $("#bd-replay-note").textContent = (opts.note ? `${opts.note} · ` : "") + "선 위 점은 전기가 통하는 길(양 아님)";
+    $("#bd-replay-note").hidden = false;
     $("#bd-skip span").textContent = "건너뛰기";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
+    paintStaticNow(); // 재생 표시줄을 연 뒤의 배치로 그린다.
     updateRunPanel(0);
     request();
     return true;
@@ -2619,6 +3051,7 @@
         <div class="bd-tip" id="bd-tip" hidden></div>
       </div>
       <p id="bd-keys" class="bd-sr">화살표로 타일 이동, Enter로 설치, Esc로 취소.</p>
+      <p id="bd-town-look-sr" class="bd-sr"></p>
       <header class="bd-hud" id="bd-hud">
         <a class="bd-back" href="#home" aria-label="연습실 홈으로">${ico("back")}</a>
         <div class="bd-title"><p class="v2-kicker" id="bd-kicker"></p><h1 id="bd-h1"></h1></div>
@@ -2693,8 +3126,9 @@
     return root;
   }
 
-  const powerChipDefinition = "설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(7월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.";
+  const powerChipDefinition = `설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(${PLAIN_DAY.m + 1}월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.`;
   function refreshHUD() {
+    refreshUndo();
     const set = (k, v, tone) => {
       const el = S.root.querySelector(`[data-cap="${k}"]`);
       if (!el) return;
@@ -2727,17 +3161,9 @@
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {
-      const grid = LG && S.opts.leagueGrid?.(S.st);
+      const grid = leagueGrid(S.st);
       const disabled = LG ? leagueMods(S.st)?.disabledBuilds || [] : [];
-      const capMW = S.net.nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => {
-        if (LG && disabled.includes(`${n.kind}:${n.tile}`)) return a;
-        if (LG && n.kind !== "lng" && n.kind !== "coal" && n.kind !== "import") {
-          const b = BLD[n.kind];
-          if (b.cls === "bat") return a; // 저장은 발전 용량에 더하지 않는다.
-          if (b.hostLimited && grid && !grid.entries?.some(e => e.key === `${n.kind}:${n.tile}` && e.allocatedMW >= e.mw)) return a;
-        }
-        return a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw);
-      }, 0);
+      const capMW = plannedSupplyMW(S.net.nodes, grid, disabled);
       const peak = previewPeak(S.st);
       const outageRisk = LG ? S.opts.leagueOutageRisk?.() : null;
       const powerRisk = capMW < peak || outageRisk === true;
@@ -2752,7 +3178,8 @@
     const rd = S.opts.league && S.opts.leagueRound ? S.opts.leagueRound() : null;
     if (rd) {
       const season = (SEASONS.find(q => q.id === rd.season) || SEASONS[1]).name;
-      set("time", rd.month ? `${rd.month}월 · ${season}` : season);
+      // 표시만: 390 칩(안쪽 약 50px)에서 '2월 / · / 겨울' 세 줄로 갈라지지 않게 가운뎃점 앞뒤 공백을 뺀다. title·aria-label은 아래에서 띄어 쓴 원문 그대로.
+      set("time", rd.month ? `${rd.month}월·${season}` : season);
       const time = S.root.querySelector('[data-cap="time"] [data-v]');
       if (rd.month && time) { time.title = `${rd.year}년 ${rd.month}월 · ${season}`; time.setAttribute("aria-label", time.title); }
     }
@@ -2833,9 +3260,9 @@
   }
 
   /* ---------- 말풍선(타일 정보) ---------- */
-  function gridAdvice(type, tile, grid, installed = false) {
+  function gridWaitInfo(type, tile, grid, installed = false) {
     const B = BLD[type];
-    if (!B?.hostLimited || !grid) return "";
+    if (!B?.hostLimited || !grid) return null;
     const key = `${type}:${tile}`, entries = grid.entries || [], own = entries.find(e => e.key === key);
     const need = Math.max(0, B.mw - (own?.allocatedMW || 0));
     const ahead = grid.entries ? (own ? entries.slice(0, entries.indexOf(own)) : entries).reduce((sum, e) => sum + Math.max(0, e.mw - e.allocatedMW), 0) :
@@ -2846,16 +3273,60 @@
     const blocked = ahead + need > room;
     const months = monthly > 0 ? Math.ceil((ahead + need) / monthly) : Infinity;
     const wait = installed && !own ? "이 설비 대기 순서 확인 필요" : need === 0 ? "이 설비 0달 대기" : blocked || !Number.isFinite(months) ? "이 설비 상한 확보까지 대기" : `이 설비 ${months}달 대기`;
-    return `이번 달 접속 가능 ${fmt(available, 2)} MW · ${wait} · 상한 넘으면 ESS 필요`;
+    // 상한·처리량·대기 순서를 확정할 수 없을 때는 개월 수를 만들어 내지 않는다.
+    return { available, wait, waiting: need > 0, months: installed && !own || blocked || !Number.isFinite(months) ? null : need === 0 ? 0 : months };
+  }
+  function gridAdvice(type, tile, grid, installed = false) {
+    const info = gridWaitInfo(type, tile, grid, installed);
+    return info ? `이번 달 접속 가능 ${fmt(info.available, 2)} MW · ${info.wait} · 상한 넘으면 ESS 필요` : "";
+  }
+  // HUD의 기존 정격 합계: 리그에서는 저장·수입·접속 대기·건설 대기를 제외한다.
+  function plannedSupplyMW(nodes, grid, disabled) {
+    return nodes.filter(n => n.kind !== "town" && n.live).reduce((a, n) => {
+      if (LG && disabled.includes(`${n.kind}:${n.tile}`)) return a;
+      if (LG && n.kind !== "lng" && n.kind !== "coal" && n.kind !== "import") {
+        const b = BLD[n.kind];
+        if (b.cls === "bat") return a;
+        if (b.hostLimited && grid && !grid.entries?.some(e => e.key === `${n.kind}:${n.tile}` && e.allocatedMW >= e.mw)) return a;
+      }
+      return a + (n.kind === "lng" || n.kind === "coal" ? n.cap : n.kind === "import" ? (LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length)) : BLD[n.kind].mw);
+    }, 0);
+  }
+  function planIssues() {
+    if (!S) return { unlinked: [], waiting: [], supplyMW: 0 };
+    const grid = leagueGrid(S.st), disabled = leagueMods(S.st)?.disabledBuilds || [];
+    const nodes = network(S.st).nodes;
+    const unlinked = nodes.filter(n => n.kind !== "town" && n.kind !== "import" && !n.live)
+      .map(n => ({ t: n.kind, i: n.tile, name: BLD[n.kind]?.name || SITES[n.si].name }));
+    const waiting = S.st.builds.flatMap(b => {
+      const info = gridWaitInfo(b.t, b.i, grid, true);
+      return info?.waiting ? [{ t: b.t, i: b.i, name: BLD[b.t].name, months: info.months }] : [];
+    });
+    return { unlinked, waiting, supplyMW: plannedSupplyMW(nodes, grid, disabled) };
   }
   function placementAdvice(type, tile) {
     const T = TILES[tile], B = BLD[type], notes = [];
     if (!B || T.out) return notes;
+    if (S.opts.league) {
+      if (["diesel", "biomass"].includes(type) && !siteRule(type, T) && !S.st.builds.some(b => b.i === tile)) {
+        const before = complaints(S.st, null), bi = S.st.builds.length;
+        const after = complaints({ ...S.st, builds: [...S.st.builds, { t: type, i: tile }] }, null);
+        const affected = new Set(after.items.filter(x => x.bi === bi && x.kind !== "green" && x.pts > 0).map(x => `${x.ti}:${x.kind}`));
+        const villages = new Set(after.list.filter(x => x.kind !== "green" && affected.has(`${x.ti}:${x.kind}`)).map(x => x.ti)).size;
+        notes.push(`이 칸에 지으면 민원 +${after.issues - before.issues}건(예상 · 가동 60% 가정, 실제 가동 시간에 따라 달라짐) · 영향 주변 시설·마을 ${villages}곳`);
+      }
+      if (type === "smr") notes.push("모형에 SMR 민원 미반영");
+      if (["solar", "roof", "tandem", "tandem_roof"].includes(type) && !siteRule(type, T)) {
+        const distance = TOWNS.length ? Math.min(...TOWNS.map(w => hexDist(tile, w.tile))) : null;
+        const smartGrid = leagueMods(S.st)?.tech?.includes("grid");
+        const loss = smartGrid ? gridLossPerHex() : PK.lossPerHex || M.lossPerHex;
+        notes.push(`일사 배수 ×${T.sun.toFixed(2)}${T.t === "forest" ? ` · 숲 정리비 ${fmt(CLEAR_COST, 1)}억` : ""}`);
+        if (distance !== null) notes.push(`가장 가까운 수요지까지 ${distance}칸 · 예상 손실률 ${fmt(100 * Math.min(0.6, loss * distance), 2)}%${smartGrid ? "(스마트 송전 적용)" : ""}(헥스 최단거리 기준 · 실제 전선 경로에 따라 달라져요)`);
+        notes.push("도시 전체 접속 여유는 칸과 무관");
+      }
+    }
     if (S.opts.league && B.hostLimited && S.opts.leagueGrid) {
-      const pack = PK.id;
-      let grid;
-      try { grid = S.opts.leagueGrid(S.st); }
-      finally { if (PK.id !== pack) selectPack(pack, "league"); }
+      const grid = leagueGrid(S.st);
       const text = gridAdvice(type, tile, grid, S.st.builds.some(b => b.t === type && b.i === tile));
       if (text) notes.push(text);
     }
@@ -2874,7 +3345,7 @@
     let verdict = "";
     if (S.tool && S.tool !== "line" && S.tool !== "remove") {
       const c = canPlace(S.tool, i);
-      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}${S.sel === i ? " · 한 번 더" : ""}</p>` : `<p class="no">${ico("x")}${esc(c.why)}</p>`;
+      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}</p>` : `<p class="no">${ico("x")}${esc(c.why)}</p>`;
     } else if (S.tool === "line") {
       const P = S.pending || S.preview;
       if (S.lineStart == null) verdict = validStart(i) ? `<p class="ok">${ico("line")}여기서 시작</p>` : `<p class="no">${ico("x")}시작: 발전소·마을·선</p>`;
@@ -2891,10 +3362,14 @@
     const mulTxt = T.out ? "선 못 지남" : stepMul(T) > 1 ? `선 ×${stepMul(T)}` : "";
     let siteRow = "";
     if (W && W.dem) siteRow = `<p class="bd-tip-row"><span>${esc((KIND[W.kind] || {}).label || "")}</span><span>평균 ${fmt(avgDem(W.ti), avgDem(W.ti) < 1 ? 2 : 1)} MW</span>${CRIT[W.kind] ? "<span>필수</span>" : ""}</p>`;
-    else if (W) siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `LNG ${fmt(W.cap || 9.5, 1)} MW` : `수입 ${fmt(PK.gridCap || 4, 1)} MW`}</span><span>CO₂ ${W.kind === "plant" ? "0.37" : "0.46"} t/MWh</span></p>`;
+    else if (W) {
+      const kind = W.kind === "plant" ? W.fuel === "coal" ? "coal" : "lng" : "import", D = dispOf(kind);
+      siteRow = `<p class="bd-tip-row"><span>${W.kind === "plant" ? `${kind === "coal" ? "석탄" : "LNG"} ${fmt(W.cap || dispOf("lng").cap, 1)} MW` : LG ? leagueImportText() : `수입 ${fmt(D.cap, 1)} MW`}</span><span>CO₂ ${D.co2} t/MWh</span></p>`;
+    }
     el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${mulTxt ? `<span>${mulTxt}</span>` : ""}${T.tidal ? "<span>조력 후보</span>" : ""}</p>` + siteRow +
       (T.wind > 0 ? `<p class="bd-tip-row">${T.sun ? `<span>${ico("sun")}×${T.sun.toFixed(2)}</span>` : ""}<span>${ico("wind")}${T.wind.toFixed(1)} m/s</span>${T.land ? `<span>${ico("people")}${fmt(T.near)}</span>` : ""}</p>` : "") + verdict +
-      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(esc).join("<br>")}</p>` : "");
+      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
+      (S.sel === i && BLD[S.tool] && canPlace(S.tool, i).ok ? "<p>한 번 더 누르면 설치</p>" : "");
     el.hidden = false;
     const [x, y] = tileTop(T);
     const w = el.offsetWidth, h = el.offsetHeight;
@@ -2927,9 +3402,15 @@
   }
 
   let toastTimer = 0;
-  function toast(msg) {
+  // 경고 토스트(opts.warn)가 떠 있는 동안에는 일반 토스트가 덮지 못한다: 같은 동작 안의 '결과가 나왔어요'가
+  // 저장 실패 경고를 75ms 만에 지우던 문제(2026-10-20 재현).
+  let toastWarnUntil = 0;
+  function toast(msg, opts) {
     const el = $("#bd-toast");
     if (!el) return;
+    const warn = !!opts?.warn, now = Date.now();
+    if (!warn && now < toastWarnUntil) return;
+    if (warn) toastWarnUntil = now + 2200;
     el.textContent = msg;
     el.dataset.show = "true";
     clearTimeout(toastTimer);
@@ -2994,7 +3475,7 @@
         ${PK.climate ? `<p class="bd-sub bd-sub2"${uiVisible("fab2") ? "" : " hidden"}>${ico("flask")}시나리오</p>
         <button type="button" class="bd-card" data-fab2="1" aria-pressed="${!!S.st.fab2}"${uiVisible("fab2") ? "" : " hidden"}>
           <span class="bd-card-ico">${ico("diesel")}</span>
-          <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>공장 5 → 10 MW</span></span>
+          <span class="bd-card-txt"><b>반도체 2라인 증설</b><span>${SITES.filter(s => s.dem?.fab2 != null).map(s => `공장 ${s.dem.base} → ${s.dem.fab2} MW`).join(" · ") || "공장 증설 수요 정의 없음"}</span></span>
           <span class="bd-card-mark" aria-hidden="true">${S.st.fab2 ? ico("check") : ""}</span></button>` : ""}`;
     } else if (tab === "mission") {
       body.innerHTML = `<p class="bd-sub">${ico("flag")}이번 운영 미션 <b>${S.opts.league ? "선택" : "2개"}</b></p>
@@ -3028,9 +3509,9 @@
         const k = q.indexOf(T.id), onR = k >= 0;
         return `<button type="button" class="bd-card" data-rq="${T.id}" aria-pressed="${onR}">
           <span class="bd-card-ico">${onR ? `<b class="num">${k + 1}</b>` : ico("flask")}</span>
-          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.id === "bms" ? bmsEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${T.grade}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
+          <span class="bd-card-txt"><b>${esc(T.name)}</b><span>${esc(T.bundle)} · ${esc(T.id === "grid" ? gridEffectText() : T.id === "bms" ? bmsEffectText() : T.eff)}</span><small>필요 ${T.need}인·주 · 실증 ${T.demo}억 · 근거 ${esc(KCP.gradeWords(T.grade))}${onR ? ` · ${host ? hostTxt(T.id) : wk(T.id)}` : ""}</small></span></button>`;
       }).join("")}</div>
-      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1${leagueMonth() ? "달" : "턴"}, 그다음 ${leagueMonth() ? "달" : "턴"}부터 효과. 연구소 운영비 ${RS.labOpexR}억/${leagueMonth() ? "달" : "턴"}.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 게임 가정(G).</p>`;
+      <p class="bd-note">누른 순서대로 하나씩 연구한다. ${LG ? `리그는 ${S.opts.leagueRound?.()?.month ? `한 달마다 ${KCP.TECH_DATA?.params.roundSteps.v ?? RS.roundSteps}` : `한 턴마다 ${RS.roundSteps}`}주치 진척, 실증 1${leagueMonth() ? "달" : "턴"}, 그다음 ${leagueMonth() ? "달" : "턴"}부터 효과. 연구소 운영비 ${RS.labOpexR}억/${leagueMonth() ? "달" : "턴"}.` : `혼자 하기는 운영 기간 안에서만 진행한다(1주·1달로는 대개 못 끝남). 연구소 운영비 ${RS.labOpexW}억/주.`} 숫자는 ${esc(KCP.gradeWords("G"))}이에요.</p>`;
   }
   function satBar(v) {
     const tone = v >= 70 ? "ok" : v >= 40 ? "mid" : "bad";
@@ -3044,7 +3525,8 @@
     if (!info) return "";
     const rows = (info.rows || []).map(m => `<p class="bd-mis-row" data-ok="${!!m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "목표 안" : "목표 넘음"}">${ico(m.ok ? "check" : "x")}</span><b>${esc(m.name)}</b><span class="num">${esc(m.val)}</span></p>`).join("");
     const notes = (info.notes || []).map(t => `<p class="bd-trade">${esc(t)}</p>`).join("");
-    return rows || notes ? `<div class="bd-mis" id="bd-league-goals">${rows}${notes}</div>` : "";
+    const cause = info.cause ? `<p id="bd-no-supply-cause" class="bd-trade">${esc(info.cause)}</p>` : "";
+    return rows || notes || cause ? `<div class="bd-mis" id="bd-league-goals">${rows}${cause}${notes}</div>` : "";
   }
   function renderResult() {
     const R = S.result;
@@ -3065,7 +3547,7 @@
       <div class="bd-kpis">
         <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>${S.opts.league ? "건설(지도 전체 설비비)" : "건설"} ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
         ${R.research && (R.research.unis || R.research.labs) ? `<p><span>연구</span><b class="num">${Object.keys(R.research.adoptW).length ? Object.keys(R.research.adoptW).map(id => `${TECHS.find(T => T.id === id).name.split(/[·\s]/)[0]} ${R.research.adoptW[id] + 1}주차`).join(", ") : "도입 없음"}</b><small>${(R.st && R.st.rq || []).length || (R.research.log.length) ? `실증 ${R.research.log.filter(x => x.ev === "demo").length}건 · ` : ""}연구비 ${fmt(R.research.cost.total, 1)}억</small></p>` : ""}
-        <p><span>CO₂</span><b class="num">${fmt(R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
+        <p><span>CO₂${LG ? " 생산" : ""}</span><b class="num">${fmt(LG ? R.tot.co2 : R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
       <table class="bd-towns"><thead><tr><th scope="col">수요지</th><th scope="col">정전 h</th><th scope="col">부족 MWh</th><th scope="col">만족</th></tr></thead>
@@ -3097,21 +3579,27 @@
     if (!S.help) return;
     S.help.setTitle(PK.title);
     const C = PK.climate, li = t => `<li>${esc(t)}</li>`;
+    const diesel = dispOf("diesel"), bio = dispOf("biomass"), imp = dispOf("import");
+    const plants = SITES.filter(s => s.kind === "plant");
+    const leagueState = LG && KCP.league?.state?.();
+    const region = LG && (KCP.LEAGUE_REGIONS?.[(leagueState?.snap || leagueState?.S)?.region] ||
+      Object.values(KCP.LEAGUE_REGIONS || {}).find(r => r.teams.some(t => t.pack === PK.id)));
+    const scale = region ? `게임 1 MW ≈ 실제 약 ${region.mwScale} MW` : PK.scale || "";
     const model = C ? [
-      `태양광: 월별 일사량(GHI) × 성능비 0.8, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 1 · 흐림 0.45 · 비 0.2`,
-      `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, 3 m/s 아래 0 · 12 m/s 정격 · 25 m/s 넘으면 정지`,
-      "해상풍력 4 MW(100 m 풍속) · 조력 2 MW × |sin(2πt/12.42h)| · 소수력은 비 오면 ×1.3, 맑은 날 사흘 넘으면 ×0.7",
-      `기존 LNG 9.5 MW(CO₂ 0.37 t/MWh) · 외부 전력망 연결점마다 ${fmt(PK.gridCap || 4, 1)} MW(CO₂ 0.46 t/MWh)`,
-      "디젤 3 MW(최소 1 MW, CO₂ 0.75) · 바이오매스 2 MW(CO₂ 0.1로 셈 — 바이오 탄소는 회계상 일부만 셈, 축산 단지 옆은 연료비 싸짐)",
-      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×2 · 바다·호수 ×3) · ${cityName()} 밖은 못 지남`,
-      "급전 순서: 재생 → 배터리 → 싼 연료부터(LNG → 수입 → 디젤·바이오매스, 탄소세 포함)",
-      `${PK.scale || ""} · 수요는 실제 규모의 축소판`
+      `태양광: 월별 일사량(GHI) × 성능비 ${M.pvYield} × 날씨 가중치 / 월평균 날씨 가중치, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}`,
+      `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, ${M.cutin} m/s 아래 0 · ${M.rated} m/s 정격 · ${M.cutout} m/s 넘으면 정지`,
+      `해상풍력 ${BLD.offshore.mw} MW(100 m 풍속) · 조력 ${BLD.tidal.mw} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 사흘째부터 더 줄어듦), 정격 상한`,
+      [...plants.map(s => `${s.fuel === "coal" ? "기존 석탄" : "기존 LNG"} ${fmt(s.cap || dispOf("lng").cap, 1)} MW(CO₂ ${dispOf(s.fuel === "coal" ? "coal" : "lng").co2} t/MWh)`), LG ? `${leagueImportText()}(CO₂ ${imp.co2} t/MWh)` : `외부 전력망 수입 총 ${fmt(imp.cap * SITES.filter(s => s.kind === "gridpt").length, 1)} MW, 연결점마다 ${fmt(imp.cap, 1)} MW(CO₂ ${imp.co2} t/MWh)`].join(" · "),
+      `디젤 ${BLD.diesel.mw} MW(최소 ${diesel.min} MW, CO₂ ${diesel.co2}) · 바이오매스 ${BLD.biomass.mw} MW(CO₂ 총량에는 ${bio.co2}, 바이오 배출 ${bio.bioCo2} t/MWh는 별도 정보 — 축산 단지 옆은 연료비 싸짐)`,
+      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×${stepMul({ t: "mount" })} · 바다·호수 ×${stepMul({ t: "sea" })}) · ${cityName()} 밖은 못 지남`,
+      LG ? `급전 순서: 재생 → 배터리 → 도시 급전원(석탄·LNG·디젤·바이오매스·SMR 등, 연료 가격·탄소세에 따라 순서 변동) → 이웃 거래(부족 보충, 더 싸면 우리 화력 대체)${leagueMonth() ? " → 자동 계통 수입" : ""}` : "급전 순서: 재생 → 배터리 → 연료 가격·탄소세에 따라 싼 급전원부터(석탄·LNG·수입·디젤·바이오매스 등)",
+      `${scale} · 수요는 실제 규모의 축소판`
     ] : [
-      "태양광 2 MW × 일사(맑음 1 · 흐림 0.45 · 비 0.2) × 타일 계수",
-      "풍력 2 MW × (풍속/12)³, 25 m/s 넘으면 정지",
-      "디젤 3 MW(켜면 최소 1 MW) · CO₂ 0.75 t/MWh · 연료 0.01억/MWh",
-      "배터리 4 MW/16 MWh · 충전·방전 각 95% · 바닥 10%",
-      "송전 손실 1.5%/칸 · 선 0.5억/칸(산 ×2 · 바다 ×3)"
+      `태양광 ${BLD.solar.mw} MW × 일사(맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}) × 타일 계수`,
+      `풍력 ${BLD.wind.mw} MW × min(1, (풍속/${M.rated})³), ${M.cutout} m/s 넘으면 정지`,
+      `디젤 ${BLD.diesel.mw} MW(켜면 최소 ${diesel.min} MW) · CO₂ ${diesel.co2} t/MWh · 연료 ${diesel.fuel}억/MWh`,
+      `배터리 ${BLD.battery.mw} MW/${M.batMWh} MWh · 충전·방전 각 ${fmt(M.batEff * 100, 1)}%(왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%) · 바닥 ${fmt(M.socFloor * 100)}%`,
+      `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(산 ×${stepMul({ t: "mount" })} · 바다 ×${stepMul({ t: "sea" })})`
     ];
     S.help.body.innerHTML = `<ol class="bd-steps">
           <li>${ico("hammer")}<b>짓기</b><span>도구 → 타일</span></li>
@@ -3311,17 +3799,25 @@
     }
     let b = (dock.height ? dock.top : H) - 6;
     if (S.opts.league) {
+      const stripTop = Math.max(top, $("#bd-mapbar").getBoundingClientRect().bottom) + 8;
       const reminder = S.root.querySelector("#lg-plan-reminder");
+      let infoTop = stripTop;
       if (reminder) {
         const stage = S.root.querySelector(".bd-stage").getBoundingClientRect();
         reminder.style.left = `${Math.max(10, 8 - stage.left)}px`;
         reminder.style.right = `${Math.max(10, stage.right - r)}px`;
-        reminder.style.bottom = `${stage.bottom - (dock.height ? dock.top : H) + 10}px`;
+        reminder.style.top = `${stripTop - stage.top}px`;
         const height = reminder.getBoundingClientRect().height;
-        if (height) b -= height + 10;
+        if (height) infoTop += height + 8;
       }
+      html.style.setProperty("--lg-map-info-top", `${Math.ceil(infoTop)}px`);
+      const lenses = S.root.querySelector(".lg-lenses");
+      // 띠가 보이면 범례를 띠 아래로 내린다. 범례 top은 렌즈 부모 기준이다.
+      if (lenses) lenses.style.setProperty("--lg-lens-key-top", `${infoTop > stripTop ? Math.max(48, Math.ceil(infoTop - lenses.getBoundingClientRect().top)) : 48}px`);
+      S.leagueMapTop = infoTop;
     }
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
+    if (S.opts.league) V.area.t = S.leagueMapTop;
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -3351,16 +3847,20 @@
     if (!S) return;
     const root = S.root, replayDone = S.run?.replay ? S.run.opts.onDone : null;
     S.run = null;
+    S.mapFx = []; S.flowView = null;
     S.alive = false;
     if (S.raf) cancelAnimationFrame(S.raf);
+    clearAmbientFrame();
     S.timers.forEach(t => clearTimeout(t));
     S.off.forEach(f => f());
     if (S.ro) S.ro.disconnect();
+    if (S.io) S.io.disconnect();
     if (S.speak) clearInterval(S.speak);
     [S.help, S.jdlg].forEach(d => { if (d) d.close(); });
     html.classList.remove("bd-on", "bd-running", "bd-drawer-open");
     html.style.removeProperty("--bd-top");
     html.style.removeProperty("--bd-dock");
+    if (S.opts.league) html.style.removeProperty("--lg-map-info-top");
     S = null;
     replayDone?.({ cancelled: true });
     KCP.fxTurn?.clearForMap?.(root);
@@ -3410,10 +3910,11 @@
     root.classList.toggle("bd-league", !!opts.league);
     S = {
       opts, alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
-      g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
+      g: null, raf: 0, ambientTimer: 0, mapVisible: true, born: performance.now(), off: [], timers: [], ro: null, io: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
-      lineStart: null, pending: null, preview: null, run: null, result: null, drawerOpen: false, drawerTab: "policy",
-      floaters: [], rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
+      townAppearance: null, townWindowCounts: { darkWins: 0, totalWins: 0 }, townLights: true,
+      lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy",
+      floaters: [], mapFx: [], flowView: null, rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     if (opts.league) {
@@ -3423,6 +3924,9 @@
       root.querySelector(".bd-layers").append(lenses);
       const legend = document.createElement("span"); legend.className = "lg-lens-key"; legend.textContent = "하늘색: 선 닿음 · 노랑: 선 안 닿음 · 분홍 점선: 민원 반경";
       lenses.append(legend);
+      // 마을 모양 범례는 렌즈 도움말(마우스·초점 때만 보임)이 아니라 지도 왼쪽 아래에 늘 보이게 둔다(사건 카드 배치의 장애물 아님).
+      const townKey = document.createElement("p"); townKey.id = "bd-town-look-key"; townKey.className = "lg-town-key"; townKey.hidden = true;
+      townKey.textContent = TOWN_LOOK_KEY; root.querySelector(".bd-stage").append(townKey);
       lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; rememberLenses(); syncLensButtons(); placeBannerValues(); request(); });
       const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
       const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
@@ -3432,10 +3936,12 @@
       root.querySelectorAll('[data-run="30"], [data-run="90"]').forEach(b => { b.hidden = !uiVisible("longTrial"); });
       root.querySelector("#bd-pm span").textContent = "정책·결과";
     }
+    syncTownLook();
     V.zoom = 1; V.panX = 0; V.panY = 0; V.lastRot = -1;
     applyPack();
     bindCanvas(S.canvas);
     on(root.querySelector("#bd-dock"), "click", e => {
+      if (e.target.closest("#bd-undo")) { undoPlacement(); return; }
       const t = e.target.closest("[data-tool]"), gr = e.target.closest("[data-group]"), se = e.target.closest("[data-season]");
       if (t) setTool(t.dataset.tool);
       else if (gr) openGroup(gr.dataset.group);
@@ -3490,14 +3996,33 @@
         changed(); S.root.querySelector(`[data-mis="${id}"]`).focus({ preventScroll: true });
       }
     });
+    on(document, "keydown", undoShortcut);
     on(document, "keydown", e => {
       if (e.key !== "Escape" || !S || e.defaultPrevented) return;
       if (document.querySelector("dialog[open]")) return;
       if (S.openGroup || S.seasonOpen) { const back = S.openGroup ? `[data-group="${S.openGroup}"]` : "#bd-season"; closePops(); const b = $(back); if (b) b.focus({ preventScroll: true }); e.preventDefault(); return; }
-      if (S.drawerOpen && isMobile()) { closeDrawer(); e.preventDefault(); }
+      if (S.drawerOpen && isMobile()) { closeDrawer(); e.preventDefault(); return; }
+      // D-83 각주: 포커스가 캔버스 밖이어도 Esc는 그리던 송전선·고른 도구를 취소한다. 캔버스 처리기가 먼저 취소하면
+      // defaultPrevented라 여기 오지 않고, 리그 처리기(document 캡처)가 코치·서랍을 닫은 Esc도 건너뛴다.
+      // 캔버스 처리기처럼 시험 운전 중에는 쉬고, 글자 입력 중의 Esc는 입력칸 몫으로 둔다.
+      if (S.run || e.isComposing || e.target.matches?.("input, textarea, select, [contenteditable]")) return;
+      if (escCancel()) e.preventDefault();
     });
     on(window, "resize", () => { S.dirtyLayout = true; request(); });
     on(document, "visibilitychange", () => request());
+    if (window.IntersectionObserver) {
+      const state = S;
+      state.io = new IntersectionObserver(entries => {
+        if (S !== state || !state.alive) return;
+        for (const entry of entries) {
+          if (entry.target !== state.canvas || state.mapVisible === entry.isIntersecting) continue;
+          state.mapVisible = entry.isIntersecting;
+          if (state.mapVisible) request();
+          else clearAmbientFrame();
+        }
+      });
+      state.io.observe(state.canvas);
+    }
     if (window.ResizeObserver) { S.ro = new ResizeObserver(() => { if (S) { S.dirtyLayout = true; request(); } }); S.ro.observe(root.querySelector("#bd-hud")); S.ro.observe(root.querySelector("#bd-dock")); S.ro.observe(root.querySelector("#bd-drawer")); }
     renderDrawer();
     refreshHUD();
@@ -3512,11 +4037,11 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
-    current: () => (S ? S.st : null),
-    refresh: () => { if (S) { S.net = network(S.st); S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
+    current: () => (S ? S.st : null), planIssues, townLook,
+    refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
-    toast: msg => { if (S) toast(msg); }
+    toast: (msg, opts) => { if (S) toast(msg, opts); }
   });
 })();

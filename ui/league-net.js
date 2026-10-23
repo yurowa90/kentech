@@ -9,7 +9,27 @@
   "use strict";
   const KCP = window.KCP;
   if (!KCP) return;
-  const MAX_BYTES = 200000;
+  const MAX_BYTES = 200000; // 로컬 BroadcastChannel의 기존 제한.
+  const SEND_CAP = 256000; // Supabase 무료 요금제 문서상 256KB. 실측 256KB까지 도착, 300KB 이상은 error로 거부됐다.
+  const ACK_WAIT = 5000; // 실제 측정 지연 중앙 약 230ms·최대 약 500ms에 재시도 여유를 둔다.
+
+  // 공개 키 입력 실수를 막는 검사다. JWT 서명을 검증하는 인증 절차는 아니다.
+  function publicKeyProblem(key) {
+    key = String(key || "").trim();
+    if (key.includes("sb_secret_")) return "secret";
+    if (!key.startsWith("eyJ")) return null;
+    try {
+      // JWT는 header.payload.signature 세 부분이어야 한다(서명 검증은 하지 않는다 — 실수 방지 목적).
+      const parts = key.split("."), part = parts[1];
+      if (parts.length !== 3 || !parts[2] || !part || !/^[A-Za-z0-9_-]+={0,2}$/.test(part)) return "malformed";
+      const encoded = part.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
+        Uint8Array.from(atob(encoded + "=".repeat((4 - encoded.length % 4) % 4)), c => c.charCodeAt(0))
+      ));
+      if (payload?.role === "service_role") return "service_role";
+      return payload?.role === "anon" ? null : "not_anon";
+    } catch (e) { return "malformed"; }
+  }
 
   const bytes = value => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value));
   const secure = () => !!globalThis.crypto?.subtle;
@@ -48,49 +68,133 @@
     const room = Array.from({ length: 8 }, (_, i) => alphabet[parseInt(bits.slice(i * 5, i * 5 + 5), 2)]).join("");
     return { room, fingerprint: btoa(String.fromCharCode(...hash)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "").slice(0, 22) };
   }
-  // base의 키·비용과 trialGrid 배분은 모두 필요하다. 전송에서만 반복 필드명을 없앤다.
+  // D-77: 사전은 고정된 네 경로에서만 쓴다. 경로 참조·재계산은 하지 않는다.
+  const snapshotObject = x => x !== null && typeof x === "object" && !Array.isArray(x) &&
+    (Object.getPrototypeOf(x) === null || Object.getPrototypeOf(x).constructor?.name === "Object");
+  const snapshotKey = k => typeof k === "string" && !["__proto__", "constructor", "prototype"].includes(k);
+  function snapshotSafe(value) {
+    if (!value || typeof value !== "object") return true;
+    return Object.keys(value).every(k => snapshotKey(k) && snapshotSafe(value[k]));
+  }
+  function snapshotEnvelope(view, keys) {
+    // 수신기의 서명 세션 결속 검사는 확장 전이므로 기존 sid도 최상위에 둔다.
+    const { room, region, sid, ...body } = view;
+    return { _cp: 1, ...(Object.hasOwn(view, "room") ? { room } : {}),
+      ...(Object.hasOwn(view, "region") ? { region } : {}),
+      ...(Object.hasOwn(view, "sid") ? { sid } : {}), keys, body };
+  }
+  function snapshotRows(view, row, packing) {
+    for (const t of Object.values(view.teams || {}))
+      if (snapshotObject(t) && Array.isArray(t.hist)) t.hist = t.hist.map(row);
+    for (const c of Object.values(view.econ?.cities || {}))
+      if (snapshotObject(c) && Array.isArray(c.hist)) c.hist = c.hist.map(row);
+    if (Array.isArray(view.results)) view.results = view.results.map(value => {
+      // team 없는 옛 결과도 통째로 보존한다. 배열 원본과 행 배열은 -1 표지로 구분한다.
+      if (packing) {
+        if (!snapshotObject(value) || !snapshotObject(value.team)) return [-1, value];
+        value.team = Object.fromEntries(Object.entries(value.team).map(([id, t]) => [id, row(t)]));
+        return row(value);
+      }
+      const result = row(value);
+      if (value[0] !== -1) {
+        if (!snapshotObject(result) || !snapshotObject(result.team)) throw Error("snapshot-row");
+        result.team = Object.fromEntries(Object.entries(result.team).map(([id, t]) => [id, row(t)]));
+      }
+      return result;
+    });
+  }
+  // base와 배분은 정확한 두 필드일 때만 기존 행 배열로 바꾼다(누락·추가 필드 보존).
   function compactSnapshot(data) {
-    const view = structuredClone(data);
-    for (const t of Object.values(view.teams)) {
-      if (t.base) { t.baseRows = t.base.map(({ k, c }) => [k, c]); delete t.base; }
-      if (t.trialGrid?.entries) {
+    const view = JSON.parse(JSON.stringify(data));
+    if (!snapshotSafe(view)) throw Error("snapshot-key");
+    const pairs = (rows, a, b) => Array.isArray(rows) && rows.every(x => snapshotObject(x) &&
+      Object.keys(x).length === 2 && Object.hasOwn(x, a) && Object.hasOwn(x, b));
+    for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+      if (!Object.hasOwn(t, "baseRows") && pairs(t.base, "k", "c")) {
+        t.baseRows = t.base.map(({ k, c }) => [k, c]); delete t.base;
+      }
+      if (snapshotObject(t.trialGrid) && !Object.hasOwn(t.trialGrid, "rows") && pairs(t.trialGrid.entries, "key", "allocatedMW")) {
         t.trialGrid.rows = t.trialGrid.entries.map(({ key, allocatedMW }) => [key, allocatedMW]);
         delete t.trialGrid.entries;
       }
     }
-    // 한 번 측정하고 오래된 기록을 바이트 비율로 한 번에 덜어낸다. 현재 계획은 보존한다.
-    let size = bytes(view).length;
+    const pack = () => {
+      const keys = [], index = new Map();
+      const row = obj => {
+        if (!snapshotObject(obj)) return [-1, obj];
+        const ks = Object.keys(obj), signature = JSON.stringify(ks);
+        if (!index.has(signature)) { index.set(signature, keys.length); keys.push(ks); }
+        return [index.get(signature), ...ks.map(k => obj[k])];
+      };
+      snapshotRows(view, row, true);
+      return snapshotEnvelope(view, keys);
+    };
+    // 사전까지 포함한 최종 봉투로 판단한다. 행마다 축약률이 달라 보정은 최대 두 번이다.
+    const MAX_COMPACTION_PASSES = 2;
+    let packed = pack(), size = bytes(packed).length;
     if (size > 178000) {
-      // 예전 저장에 남은 계획 전문은 그 팀의 건설 속도 요약으로 바꾼다.
-      for (const t of Object.values(view.teams)) {
-        t.hist?.forEach((row, i) => {
-          if (i >= t.hist.length - 2 || !row.plan) return;
-          const summary = Object.fromEntries(["t", "r", "cap", "n", "l"].filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
-          size -= bytes(row).length - bytes(summary).length;
-          t.hist[i] = summary;
-        });
-      }
-      const rows = Object.values(view.teams).flatMap(t => (t.hist || []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
-      const removable = rows.reduce((sum, x) => sum + x.size, 0);
-      const ratio = Math.max(0, Math.min(1, (size - 177000) / Math.max(1, removable)));
-      for (const t of Object.values(view.teams)) {
-        const old = rows.filter(x => x.t === t), target = old.reduce((sum, x) => sum + x.size, 0) * ratio;
-        let removed = 0, count = 0;
-        while (count < old.length && removed < target) removed += old[count++].size;
-        if (count) t.hist = t.hist.slice(count);
+      for (let pass = 0; pass < MAX_COMPACTION_PASSES && size > 178000; pass++) {
+        // base·배분은 유지하고, 기록만 객체로 되돌린 뒤 비율을 한 번 계산한다.
+        snapshotRows(view, values => values[0] === -1 ? values[1] :
+          Object.fromEntries(packed.keys[values[0]].map((k, i) => [k, values[i + 1]])), false);
+        // 예전 저장에 남은 계획 전문은 그 팀의 건설 속도 요약으로 바꾼다.
+        for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+          (Array.isArray(t.hist) ? t.hist : []).forEach((row, i) => {
+            if (!snapshotObject(row)) return;
+            if (i >= t.hist.length - 2 || !row.plan) return;
+            const summary = Object.fromEntries(["t", "r", "cap", "n", "l"].filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
+            // 객체 바이트로 절감량을 근사한다. 다음 차례 여부는 재포장한 봉투 실측으로 결정한다.
+            size -= bytes(row).length - bytes(summary).length;
+            t.hist[i] = summary;
+          });
+        }
+        const rows = Object.values(view.teams || {}).filter(snapshotObject).flatMap(t => (Array.isArray(t.hist) ? t.hist : []).slice(0, -2).map(row => ({ t, row, size: bytes(row).length + 1 })));
+        const removable = rows.reduce((sum, x) => sum + x.size, 0);
+        const ratio = Math.max(0, Math.min(1, (size - 177000) / Math.max(1, removable)));
+        for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+          const old = rows.filter(x => x.t === t), target = old.reduce((sum, x) => sum + x.size, 0) * ratio;
+          let removed = 0, count = 0;
+          while (count < old.length && removed < target) removed += old[count++].size;
+          if (count) t.hist = t.hist.slice(count);
+        }
+        // 한 행씩 전체를 재측정하지 않는다. 한 차례 삭제가 끝난 뒤 한 번만 재포장한다.
+        packed = pack();
+        size = bytes(packed).length;
       }
     }
-    return view;
+    return packed;
   }
   function expandSnapshot(view) {
-    for (const t of Object.values(view.teams || {})) {
-      if (t.baseRows) { t.base = t.baseRows.map(([k, c]) => ({ k, c })); delete t.baseRows; }
-      if (t.trialGrid?.rows) {
-        t.trialGrid.entries = t.trialGrid.rows.map(([key, allocatedMW]) => ({ key, allocatedMW }));
-        delete t.trialGrid.rows;
+    if (!snapshotObject(view)) return null;
+    try {
+      if (Object.hasOwn(view, "_cp")) {
+        if (view._cp !== 1 || !snapshotObject(view.body) || !Array.isArray(view.keys) || !snapshotSafe(view)) return null;
+        const keys = view.keys;
+        if (!keys.every(ks => Array.isArray(ks) && ks.every(snapshotKey) && new Set(ks).size === ks.length)) return null;
+        const row = values => {
+          if (!Array.isArray(values)) throw Error("snapshot-row");
+          if (values[0] === -1 && values.length === 2) return values[1];
+          const ks = Number.isSafeInteger(values[0]) && values[0] >= 0 && keys[values[0]];
+          if (!ks || values.length !== ks.length + 1) throw Error("snapshot-row");
+          return Object.fromEntries(ks.map((k, i) => [k, values[i + 1]]));
+        };
+        const envelope = view;
+        view = envelope.body;
+        if (Object.hasOwn(envelope, "room")) view.room = envelope.room;
+        if (Object.hasOwn(envelope, "region")) view.region = envelope.region;
+        if (Object.hasOwn(envelope, "sid")) view.sid = envelope.sid;
+        snapshotRows(view, row, false);
       }
-    }
-    return view;
+      // _cp 없는 옛 진행자·혼자 하기 값에는 기존 base/배분 복원만 적용한다.
+      for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
+        if (t.baseRows && !Object.hasOwn(t, "base")) { t.base = t.baseRows.map(([k, c]) => ({ k, c })); delete t.baseRows; }
+        if (t.trialGrid?.rows && !Object.hasOwn(t.trialGrid, "entries")) {
+          t.trialGrid.entries = t.trialGrid.rows.map(([key, allocatedMW]) => ({ key, allocatedMW }));
+          delete t.trialGrid.rows;
+        }
+      }
+      return view;
+    } catch (_) { return null; }
   }
   async function signHost(identity, event, room, sid, data) {
     identity.n = Math.max(Date.now(), (identity.n || 0) + 1);
@@ -100,38 +204,63 @@
     return wire;
   }
   function hostReceiver(trust, apply, rejected = () => {}) {
-    let chain = Promise.resolve(), queued = 0;
+    let chain = Promise.resolve(), queued = 0, waitingSnap = null;
     const retiredSessions = new Set();
     const cheap = wire => wire && wire.event && wire.room === trust.room && typeof wire.sid === "string" && wire.sid.length <= 64 &&
       Number.isSafeInteger(wire.n) && wire.n > (trust.hostN || 0) &&
       (!trust.sid || wire.sid === trust.sid || wire.event === "snap" && !retiredSessions.has(wire.sid));
     return (event, incoming) => {
-      if (queued >= 16 || !cheap(incoming) || incoming.event !== event) return Promise.resolve(false);
-      let wire, signed, json;
+      const snap = event === "snap";
+      // 16개 상한은 snap이 아닌 메시지(ack·nack)만 센다. snap은 아래에서 최신 하나만 기다리게 한다.
+      if (!snap && queued >= 16 || !cheap(incoming) || incoming.event !== event) return Promise.resolve(false);
       try {
         if (typeof incoming.sig !== "string" || incoming.sig.length > 128) return Promise.resolve(false);
-        if (bytes(incoming).length > MAX_BYTES) return Promise.resolve(false);
-        const { sig, ...data } = incoming;
-        json = canonical(data); signed = JSON.parse(json); wire = { ...signed, sig };
+        if (bytes(incoming).length > SEND_CAP) return Promise.resolve(false);
       } catch (_) { rejected(event); return Promise.resolve(false); }
-      queued++;
+      // 공개 상태는 가장 새것만 쓸모 있다. 검증을 시작하지 않은 옛 snap은 '처리하지 않음'으로 건너뛴다.
+      // 건너뛴 snap은 hostN을 올리지 않으므로 순번 재사용 검사는 실제로 검증하는 snap에 그대로 걸린다.
+      // 늦게 도착한 옛 순번 snap이 기다리던 더 새 snap을 밀어내지 못하게 순번으로 비교한다.
+      // 밀어내지 못한 snap도 예비 후보로 둔다(순번이 가장 큰 하나). 기다리던 snap이 순번만 큰 위조여도 그 뒤 정상 snap이 남는다.
+      if (snap && waitingSnap && waitingSnap.incoming.n >= incoming.n) {
+        if (!waitingSnap.prev || waitingSnap.prev.incoming.n < incoming.n) waitingSnap.prev = { incoming };
+        return Promise.resolve(false);
+      }
+      const item = { incoming, skip: false, prev: null };
+      if (snap) {
+        // 밀려난 snap 하나는 예비로 둔다. 최신 snap이 위조라 거절되면 그것을 대신 검증한다(예비 후보는 순번이 가장 큰 하나).
+        if (waitingSnap) { waitingSnap.skip = true; item.prev = waitingSnap; waitingSnap.prev = null; }
+        waitingSnap = item;
+      } else queued++;
+      const check = async it => {
+        const { sig, ...data } = it.incoming;
+        const json = canonical(data), signed = JSON.parse(json), wire = { ...signed, sig };
+        if (!cheap(wire)) return false;
+        const binding = await hostBinding(wire.hostKey);
+        if (binding.room !== trust.room || trust.fingerprint && binding.fingerprint !== trust.fingerprint ||
+            trust.hostKey && canonical(publicJWK(trust.hostKey)) !== canonical(publicJWK(wire.hostKey))) throw Error("host");
+        const key = await crypto.subtle.importKey("jwk", publicJWK(wire.hostKey), algorithm, false, ["verify"]);
+        if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig), c => c.charCodeAt(0)), bytes(json))) throw Error("host");
+        if (event === "snap" && (wire.data?.sid !== wire.sid || wire.data?.room !== trust.room)) throw Error("host");
+        it.prev = null; // 검증을 통과했으니 예비는 필요 없다(무거운 apply 동안 붙잡지 않음, apply 예외 때 옛 상태 재반영도 막음).
+        if (trust.sid && trust.sid !== wire.sid) retiredSessions.add(trust.sid);
+        trust.hostKey = publicJWK(wire.hostKey); trust.fingerprint = binding.fingerprint;
+        trust.sid = wire.sid; trust.hostN = wire.n;
+        await apply(event, signed.data);
+        return true;
+      };
       const work = async () => {
+        if (waitingSnap === item) waitingSnap = null;
+        // 건너뛴 snap의 내용은 뒤 snap의 예비로 남을 수 있어 여기서 지우지 않는다.
+        if (item.skip) return false;
         try {
-          if (!cheap(wire)) return false;
-          const { sig } = wire;
-          const binding = await hostBinding(wire.hostKey);
-          if (binding.room !== trust.room || trust.fingerprint && binding.fingerprint !== trust.fingerprint ||
-              trust.hostKey && canonical(publicJWK(trust.hostKey)) !== canonical(publicJWK(wire.hostKey))) throw Error("host");
-          const key = await crypto.subtle.importKey("jwk", publicJWK(wire.hostKey), algorithm, false, ["verify"]);
-          if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig), c => c.charCodeAt(0)), bytes(json))) throw Error("host");
-          if (event === "snap" && (wire.data?.sid !== wire.sid || wire.data?.room !== trust.room)) throw Error("host");
-          if (trust.sid && trust.sid !== wire.sid) retiredSessions.add(trust.sid);
-          trust.hostKey = publicJWK(wire.hostKey); trust.fingerprint = binding.fingerprint;
-          trust.sid = wire.sid; trust.hostN = wire.n;
-          await apply(event, signed.data);
-          return true;
-        } catch (_) { rejected(event); return false; }
-        finally { queued--; }
+          try { return await check(item); }
+          catch (_) {
+            rejected(event);
+            const back = item.prev; item.prev = null;
+            if (!back) return false;
+            try { return await check(back); } catch (_) { rejected(event); return false; }
+          }
+        } finally { if (!snap) queued--; item.incoming = null; item.prev = null; }
       };
       chain = chain.then(work);
       return chain;
@@ -160,12 +289,12 @@
     const chains = new Map(), queued = new Map();
     return envelope => {
       const team = envelope?.team;
-      if (typeof team !== "string" || !Object.hasOwn(S.teams, team) || (queued.get(team) || 0) >= 16 || typeof envelope.body !== "string" || envelope.body.length > MAX_BYTES || bytes(envelope.body).length > MAX_BYTES || typeof envelope.sig !== "string" || envelope.sig.length > 128) return Promise.resolve({ ok: false, err: "bad" });
+      if (typeof team !== "string" || !Object.hasOwn(S.teams, team) || (queued.get(team) || 0) >= 16 || typeof envelope.body !== "string" || envelope.body.length > SEND_CAP || bytes(envelope.body).length > SEND_CAP || typeof envelope.sig !== "string" || envelope.sig.length > 128) return Promise.resolve({ ok: false, err: "bad" });
       const wire = { team, body: envelope.body, sig: envelope.sig };
       queued.set(team, (queued.get(team) || 0) + 1);
       const work = async () => {
         const m = requestBody(wire), T = S.teams[team];
-        if (!m || m.team !== team || typeof m.type !== "string" || !Number.isSafeInteger(m.n) || m.n <= 0 || bytes(wire.body).length > MAX_BYTES) return { ok: false, err: "bad" };
+        if (!m || m.team !== team || typeof m.type !== "string" || !Number.isSafeInteger(m.n) || m.n <= 0 || bytes(wire.body).length > SEND_CAP) return { ok: false, err: "bad" };
         const claim = m.type === "claim", epoch = T.seatVersion || 0;
         const stateful = ["hello", "plan", "econ", "crit", "ready"].includes(m.type);
         // kick 뒤 새 키/자리는 독립된 순번 공간이다. lastN은 퇴거 차단용 최댓값으로 남긴다.
@@ -191,12 +320,13 @@
         T.lastN = Math.max(T.lastN || 0, m.n);
         // 같은 요청 id를 새 순번으로 재전송해도 거래·연구를 두 번 적용하지 않는다.
         const cached = typeof m.id === "string" && T.receipts?.find(x => x.id === m.id && x.kid === token);
-        if (cached) return { ...cached.result, quiet: true, request: m, verified: true };
-        if (m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
+        // D-75는 자체적으로 멱등이다. 같은 id의 재전송도 추가 필드·판정 변경을 규칙에서 검사한다.
+        if (cached && m.type !== "verdict") return { ...cached.result, quiet: true, request: m, verified: true };
+        if (!cached && m.id && m.born <= (T.receiptFloor || 0)) return reject("expired");
         const trusted = { ...m, token };
         if (claim) trusted.publicKey = publicJWK(key);
         const result = apply(trusted);
-        if (typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
+        if (!cached && typeof m.id === "string" && m.id.length <= 64 && result.err !== "stale") {
           T.receipts ||= [];
           T.receipts.push({ id: m.id, born: m.born, kid: token, result });
           if (T.receipts.length > 64) T.receiptFloor = Math.max(T.receiptFloor || 0, T.receipts.shift().born || 0);
@@ -265,10 +395,34 @@
     return base.replace(/^https/, "wss").replace(/\/$/, "") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(key) + "&vsn=1.0.0";
   }
 
-  function supabase(room, url, key, canSend = () => true) {
-    const H = hub(), topic = "realtime:kcp-league-" + room, addr = wsUrl(url, key);
-    let ws = null, ref = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
-    const queue = [];
+  function supabase(room, url, key, canSend = () => true, ack = false) {
+    const H = hub(), topic = "realtime:kcp-league-" + room, addr = publicKeyProblem(key) ? null : wsUrl(url, key);
+    let ws = null, ref = 0, seq = 0, joinRef = null, hb = 0, retry = 0, closed = false, joined = false, timer = 0;
+    const queue = [], pending = ack ? new Map() : null;
+    // 미확인(ack 없음)은 크기 때문인지 일시 끊김 때문인지 가를 수 없다. 그래서 미확인 기록으로 보내기를 막지 않는다:
+    // 교실 와이파이가 한 번 흔들려 100KB 상태의 ack가 늦으면 이후 100KB 넘는 상태를 영영 못 보내게 되기 때문이다.
+    // 미확인 결과는 진행자 경고에만 쓴다.
+    const cap = () => SEND_CAP;
+    function reset() {
+      pending?.forEach(p => clearTimeout(p.timer)); pending?.clear();
+    }
+    function settle(id, success, reason) {
+      const p = pending?.get(id);
+      if (!p) return;
+      pending.delete(id); clearTimeout(p.timer);
+      H.fire(success ? "delivered" : "undelivered", { ev: p.ev, bytes: p.bytes, seq: p.seq, ...(reason ? { reason } : {}) });
+    }
+    function transmit(m) {
+      const size = bytes(m).length, ev = m.payload.event;
+      if (size > cap()) { H.fire("oversize", { ev, bytes: size }); return false; }
+      seq++; // 재연결 뒤에도 연결 객체 안의 전송 순서를 유지한다.
+      if (ack) {
+        if (pending.size >= 64) settle(pending.keys().next().value, false, "pending-limit");
+        pending.set(m.ref, { ev, bytes: size, seq, timer: setTimeout(() => settle(m.ref, false, "timeout"), ACK_WAIT) });
+      }
+      raw(m);
+      return true;
+    }
     if (!addr || !key) { H.set("error"); return { kind: "supabase", send() {}, on: H.on, onStatus: H.onStatus, status: () => H.status, close() {} }; }
     const raw = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
     function enqueue(m) {
@@ -290,12 +444,14 @@
       for (let i = 0; i < queue.length;) {
         const m = queue[i];
         if (!canSend(m.payload.event, m.payload.payload)) { i++; continue; }
-        queue.splice(i, 1); m.join_ref = joinRef; raw(m);
+        queue.splice(i, 1); m.join_ref = joinRef; transmit(m);
       }
     }
     function join() {
+      if (closed || !ws || ws.readyState !== 1) return;
+      reset(); joined = false;
       joinRef = String(++ref);
-      const payload = { config: { broadcast: { self: false, ack: false }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
+      const payload = { config: { broadcast: { self: false, ack }, presence: { key: "", enabled: false }, postgres_changes: [], private: false } };
       if (/^eyJ/.test(key)) payload.access_token = key; // 예전 anon 키(JWT)만. 새 publishable 키는 주소의 apikey로 충분하다.
       raw({ topic, event: "phx_join", payload, ref: joinRef, join_ref: joinRef });
     }
@@ -313,10 +469,15 @@
           else { H.set("error"); }
           return;
         }
-        if (m.event === "phx_error" || m.event === "phx_close") { joined = false; H.set("reconnecting"); setTimeout(join, 1000); return; }
+        if (m.event === "phx_reply") {
+          if (m.payload?.status === "ok" || m.payload?.status === "error")
+            settle(m.ref, m.payload.status === "ok", m.payload.status === "error" ? m.payload.response?.reason || "error" : undefined);
+          return;
+        }
+        if (m.event === "phx_error" || m.event === "phx_close") { joined = false; reset(); H.set("reconnecting"); clearTimeout(timer); timer = setTimeout(join, 1000); return; }
         if (m.event === "broadcast" && m.payload && typeof m.payload.event === "string") H.fire(m.payload.event, m.payload.payload);
       };
-      ws.onclose = () => { joined = false; clearInterval(hb); if (!closed) { H.set("reconnecting"); schedule(); } };
+      ws.onclose = () => { joined = false; reset(); clearTimeout(timer); clearInterval(hb); if (!closed) { H.set("reconnecting"); schedule(); } };
       ws.onerror = () => {};
     }
     function schedule() { clearTimeout(timer); retry++; timer = setTimeout(connect, Math.min(15000, 500 * 2 ** Math.min(retry, 5))); }
@@ -325,18 +486,19 @@
       kind: "supabase",
       send(ev, data) {
         const m = broadcastMessage(room, ev, data, String(++ref), joinRef);
-        if (bytes(m).length > MAX_BYTES) { H.fire("oversize", { ev }); return false; }
+        const size = bytes(m).length;
+        if (size > cap()) { H.fire("oversize", { ev, bytes: size }); return false; }
         enqueue(m); flush(); return true;
       },
       flush,
       on: H.on, onStatus: H.onStatus, status: () => H.status,
-      close() { closed = true; clearInterval(hb); clearTimeout(timer); if (ws) try { ws.close(); } catch (e) { /* 이미 닫힘 */ } H.set("closed"); }
+      close() { closed = true; joined = false; reset(); clearInterval(hb); clearTimeout(timer); if (ws) try { ws.close(); } catch (e) { /* 이미 닫힘 */ } H.set("closed"); }
     };
   }
 
   KCP.leagueNet = {
-    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend) : local(o.room); },
+    open(o) { return o && o.kind === "supabase" ? supabase(o.room, o.url, o.key, o.canSend, o.ack) : local(o.room); },
     replyGate, compactSnapshot, expandSnapshot, canonical, sessionId, hostBinding, signHost, hostReceiver,
-    wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
+    publicKeyProblem, wsUrl, secure, createIdentity, fingerprint, signEnvelope, verifyEnvelope, requestBody, receiver, broadcastMessage, byteLength: value => bytes(value).length
   };
 })();

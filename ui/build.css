@@ -174,7 +174,7 @@ html.bd-running .bd-canvas { cursor: progress; }
 }
 .bd-caps { display: flex; flex: 1; justify-content: center; gap: 6px; min-width: 0; }
 .bd-cap { min-height: 44px; }
-.bd-cap .v2-cap-v { white-space: nowrap; }
+#bd-hud .bd-cap .v2-cap-v { font-variant-numeric: tabular-nums; white-space: normal; word-break: keep-all; overflow-wrap: normal; }
 .bd-virtual {
   flex: none;
   padding: 3px 9px;
@@ -503,6 +503,7 @@ html.bd-running .bd-dock { visibility: hidden; }
 .bd-tool[aria-pressed="true"] { border-color: var(--ui-gold); background: rgba(236, 208, 131, 0.14); color: var(--ui-gold); }
 .bd-tool[data-tool="remove"][aria-pressed="true"] { border-color: #ff8fa6; color: #ffb3c4; background: rgba(220, 120, 144, 0.14); }
 .bd-tool[data-tool="remove"] .bd-tool-c { color: var(--ui-mint); }
+#bd-undo:disabled { cursor: default; color: var(--ui-muted); }
 .bd-runs { align-items: center; }
 .bd-pm {
   display: inline-flex;
@@ -929,6 +930,9 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
   .bd-tool { width: 62px; }
   .bd-caps .bd-cap .v2-ico { display: none; }
   .bd-virtual { display: none; }
+  #bd-hud .bd-cap { padding-inline: 4px; }
+  #bd-hud .bd-cap .v2-cap-v { font-size: 12px; }
+  #bd-hud .bd-cap .v2-cap-k { font-size: 11px; }
 }
 @media (max-width: 760px) {
   .bd-hud { top: 6px; left: 6px; right: 6px; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 14px; }
@@ -936,24 +940,24 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
   .bd-title h1 { font-size: 18px; }
   .bd-virtual { padding: 2px 7px; font-size: 11px; }
   .bd-caps { order: 5; flex-basis: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-  .bd-cap { justify-content: center; min-height: 40px; padding: 3px 4px; gap: 0; overflow: hidden; }
+  .bd-cap { justify-content: center; min-height: 40px; padding: 3px 4px; gap: 0; }
   .bd-cap .v2-ico { display: none; }
   .bd-cap .v2-cap-txt { justify-items: center; min-width: 0; }
-  .bd-cap .v2-cap-v { font-size: 11px; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  #bd-hud .bd-cap .v2-cap-v { font-size: 11px; }
   .bd-unit { display: none; }
-  .bd-cap .v2-cap-k { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  #bd-hud .bd-cap .v2-cap-k { font-size: 11px; white-space: normal; overflow-wrap: normal; word-break: keep-all; letter-spacing: 0; }
   .bd-mapbar, html.bd-drawer-open .bd-mapbar { left: 6px; gap: 6px; max-width: calc(100vw - 12px); }
   .bd-layer { gap: 4px; padding: 0 8px; font-size: 12px; }
   .bd-layer .v2-ico { width: 16px; height: 16px; }
   .bd-legend { min-height: 30px; font-size: 11.5px; }
   .bd-dock, html.bd-drawer-open .bd-dock { left: 6px; right: 6px; bottom: 6px; flex-direction: column; gap: 6px; }
-  .bd-tools { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 14px; }
+  .bd-tools { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 14px; }
   .bd-tool { width: auto; min-width: 0; min-height: 58px; padding: 4px 0; font-size: 11.5px; }
   .bd-tool .v2-ico { width: 22px; height: 22px; }
   .bd-tool-c { font-size: 10px; }
   .bd-runs { display: grid; grid-template-columns: 1.5fr repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; }
   .bd-root.bd-grouped .bd-runs { grid-template-columns: 1.3fr 1.2fr repeat(3, minmax(0, 1fr)); }
-  .bd-root.bd-grouped .bd-tools { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .bd-root.bd-grouped #bd-tools { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .bd-season { min-width: 0; min-height: 46px; padding: 2px 4px; font-size: 11px; }
   .bd-subtools, .bd-seasons { left: 0; right: 0; transform: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; }
   .bd-mapbtn { padding: 0 9px; font-size: 12px; }
@@ -1002,6 +1006,13 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
   .bd-jmodal .v2-modal-body { padding: 10px; }
   .bd-mis-row { grid-template-columns: 28px minmax(0, 1fr); }
   .bd-mis-row .num { grid-column: 2; justify-self: start; text-align: left; }
+}
+
+/* 390px의 다섯 칩: 숫자를 자르지 않고 숫자·단위가 들어갈 폭을 확보한다. */
+@media (max-width: 480px) {
+  #bd-hud .bd-cap { padding-inline: 0; }
+  #bd-hud .bd-cap .v2-cap-v { font-size: 11px; letter-spacing: -0.025em; }
+  #bd-hud .bd-cap .v2-cap-k { letter-spacing: -0.025em; }
 }
 
 @media (prefers-reduced-motion: reduce) {

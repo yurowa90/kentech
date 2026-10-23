@@ -6,13 +6,15 @@ Public APIs/storage envelopes from existing harnesses are bootstrap conventions,
 not acceptance criteria. Unspecified UI ids are never used as selectors.
 """
 
+from league_flow import pass_issue_check, wait_unfolded
 import argparse
 import json
 import re
 import sys
+import time
 from urllib.parse import urlsplit
 
-from playwright.sync_api import expect
+from playwright.sync_api import Error, expect
 from league_flow import confirm_seat, select_mode, start_solo
 
 
@@ -120,6 +122,7 @@ def button(page, pattern):
 
 
 def panel(page, word):
+    wait_unfolded(page)
     # Prefer the league controls: the trial sheet also has a "결과" tab.
     controls = page.locator('#lg-bar [data-panel]').filter(has_text=re.compile(word))
     if controls.count() == 1:
@@ -331,6 +334,32 @@ def evaluated_plan_co2(state, checks, fixture):
               'S8 계획 때 보인 값 = 결과 뒤 그 달 평가 목표')
 
 
+def money_tolerance(value):
+    precision = len(value["text"].split(".")[1]) if "." in value["text"] else 0
+    return 0.5 * 10 ** (-precision) + 1e-8
+
+
+def read_left_labels(host, team, fixture):
+    host_labels = visible(host.get_by_text(re.compile(r"남은\s*돈")))
+    team_labels = visible(team.get_by_text(re.compile(r"남은\s*돈")))
+    values_h = [value for value in (money_near_label(node) for node in host_labels) if value is not None]
+    values_t = [value for value in (money_near_label(node) for node in team_labels) if value is not None]
+    # If the host displays multiple city cards, restrict the label to the
+    # smallest ancestor containing this city's name and one 남은 돈 label.
+    relevant_h = []
+    for node in host_labels:
+        belongs = node.evaluate(r"""(n,name) => {
+          for (let p=n, d=0; p && d<7; p=p.parentElement,d++) {
+            const t=p.innerText || '';
+            if (t.includes(name) && (t.match(/남은\s*돈/g)||[]).length===1) return true;
+          } return false;
+        }""", fixture["names"][0])
+        value = money_near_label(node)
+        if belongs and value:
+            relevant_h.append(value)
+    return values_h, values_t, relevant_h
+
+
 def left_consistency(host, team, checks, fixture):
     state = advance(host, team, "plan")
     plan_co2(host, team, checks, fixture)
@@ -352,34 +381,32 @@ def left_consistency(host, team, checks, fixture):
         cities[0].click()
     elif len(cities) > 1:
         raise AssertionError("ambiguous host city-card action")
-    host_labels = visible(host.get_by_text(re.compile(r"남은\s*돈")))
     panel(team, r"도시")
-    team_labels = visible(team.get_by_text(re.compile(r"남은\s*돈")))
-    values_h = [money_near_label(node) for node in host_labels]
-    values_t = [money_near_label(node) for node in team_labels]
-    values_h = [value for value in values_h if value is not None]
-    values_t = [value for value in values_t if value is not None]
+    # 진행자는 상태를 바꾼 뒤 묶음 대기(ui/league.js changed(), 150ms)를 거쳐 자기 화면을 다시 그리고
+    # 팀에 공개 상태를 보낸다. PLAN_SYNC는 진행자 상태만 보므로, 두 화면이 그 상태로 다시 그려질 때까지
+    # 조건 대기한다(기대값 left는 그대로). WAIT 안에 옛 값이 남으면 아래 단언이 그대로 실패한다.
+    started = time.monotonic()
+    deadline = started + WAIT / 1000
+    values_h = values_t = relevant_h = []
+    while True:
+        try:
+            values_h, values_t, relevant_h = read_left_labels(host, team, fixture)
+        except Error:
+            # 다시 그리는 중 떨어져 나간 요소: 다음 읽기에서 새 요소를 찾는다.
+            pass
+        shown = relevant_h + values_t
+        if (relevant_h and values_t and isinstance(expected, (int, float)) and
+                all(abs(value["number"] - expected) <= money_tolerance(value) for value in shown)) or \
+                time.monotonic() > deadline:
+            break
+        host.wait_for_timeout(50)
+    print(f"INFO left_consistency 화면 반영 대기 {round((time.monotonic() - started) * 1000)}ms", flush=True)
     checks.ok(bool(values_h), "host card has labeled remaining money")
     checks.ok(bool(values_t), "team HUD/drawer has labeled remaining money")
-    # If the host displays multiple city cards, restrict the label to the
-    # smallest ancestor containing this city's name and one 남은 돈 label.
-    relevant_h = []
-    for node in host_labels:
-        belongs = node.evaluate(r"""(n,name) => {
-          for (let p=n, d=0; p && d<7; p=p.parentElement,d++) {
-            const t=p.innerText || '';
-            if (t.includes(name) && (t.match(/남은\s*돈/g)||[]).length===1) return true;
-          } return false;
-        }""", fixture["names"][0])
-        value = money_near_label(node)
-        if belongs and value:
-            relevant_h.append(value)
     checks.ok(bool(relevant_h), "host remaining money belongs to selected city card")
     if relevant_h and values_t and isinstance(expected, (int, float)):
         for value in relevant_h + values_t:
-            precision = len(value["text"].split(".")[1]) if "." in value["text"] else 0
-            tolerance = 0.5 * 10 ** (-precision) + 1e-8
-            checks.ok(abs(value["number"] - expected) <= tolerance,
+            checks.ok(abs(value["number"] - expected) <= money_tolerance(value),
                       "host/team displayed money equals same-month left", f"shown={value['number']}, left={expected}")
         checks.ok(relevant_h[0]["number"] == values_t[0]["number"], "host card remaining money == team remaining money")
     no_overflow(team, checks, "team money / indicators")
@@ -389,25 +416,36 @@ def left_consistency(host, team, checks, fixture):
 def results(host, team, checks, fixture):
     state = advance(host, team, "review")
     evaluated_plan_co2(state, checks, fixture)
-    panel(team, r"결과")
+    # 품질8 UX U10(docs/QUALITY-ux.md 6절): 폭 760px 이하에서는 재생(2~4초) 동안 결과 서랍이 접혀 있고
+    # 결과 토스트(약 2초)는 그 사이에 뜬다. 토스트가 떠 있는 순간(결과 직후)에 서랍 제목 줄·결과 제목과
+    # 겹치지 않는지 본다. 접힌 서랍의 결과 제목은 그려지지 않으므로(크기 0) 그 항목은 건너뛴다.
     checks.ok(team.evaluate("""() => {
       const toast=document.querySelector('#bd-toast'), t=toast.getBoundingClientRect();
       return toast.dataset.show==='true' && ['.lg-ptabs','#lg-result-heading'].every(key => {
-        const h=document.querySelector(key).getBoundingClientRect();
+        const el=document.querySelector(key); if (!el) return true;
+        const h=el.getBoundingClientRect(); if (!h.width || !h.height) return true;
         return t.right<=h.left || t.left>=h.right || t.bottom<=h.top || t.top>=h.bottom;
       });
     }"""), 'D-A9 결과 토스트와 서랍·결과 제목의 겹침 없음')
+    panel(team, r"결과")
     annual = [line for line in host.locator('#lg-log li').all_inner_texts()
               if line.startswith('국가 재정지원금 연액:')]
+    pay_month_count = host.evaluate('() => KCP.ECON_DATA.params.subsidyPayMonths.v.length')
+    payout_suffix = f'(지급 월마다 1/{pay_month_count} 지급)'
     checks.ok(len(annual) == 1 and all(name in annual[0] for name in fixture['names']) and
-              annual[0].count('(분기별 1/4 지급)') == 1 and len(annual[0]) <= 120,
+              annual[0].count(payout_suffix) == 1 and len(annual[0]) <= 120,
               'D-A5 120자 안에서 지원금 여섯 도시·지급 설명 모두 표시')
     goals = host.locator('#lg-host-goals').inner_text()
     target = state['results'][-1]['econ']['region']['goal']['co2']
     shown_goal = re.search(r'CO₂ ≤ ([\d,]+)\s*t', goals)
     checks.ok(shown_goal is not None and abs(float(shown_goal.group(1).replace(',', '')) - target) <= .5,
               'D-A3 결과 CO₂ 목표 = 해당 달 평가 보고서 값')
-    checks.ok(team.locator('#lg-result-deltas > div').count() == 3, 'U2 result starts with exactly three numbers')
+    # D-74: 계통이 메운 달에는 '계통이 메운 전기' 칸(data-grid-fill)이 붙는다. 고정 숫자 셋은 그대로 센다.
+    checks.ok(team.locator('#lg-result-deltas > div:not([data-grid-fill])').count() == 3, 'U2 result starts with exactly three numbers')
+    # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+    month = team.locator('#lg-month-details')
+    if month.count() and not month.evaluate('el => el.open'):
+        month.locator(':scope > summary').click()
     for key in ('lg-result-reasons', 'lg-result-details'):
         detail = team.locator('#' + key)
         checks.ok(detail.count() == 1, 'U2 native disclosure ' + key)
@@ -589,6 +627,7 @@ def event_gate_and_journal(host, team, checks, fixture):
                            arg=[fixture["team"], f"{seeded['round']}:{seeded['event']}", seeded["option"]])
     checks.ok(True, "v1.1 event response applies before 준비")
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     checks.ok(team.locator('#lg-predict').is_visible() and team.locator('#lg-ready-confirm').is_disabled(),
               "v1.1 response → 준비 → promise gate")
     no_overflow(team, checks, "event criterion gate")
@@ -629,6 +668,7 @@ def event_gate_and_journal(host, team, checks, fixture):
     advance(host, team, "plan")
     plan_co2(host, team, checks, fixture)
     team.locator('#lg-ready').click()
+    pass_issue_check(team)
     checks.ok(team.locator('#lg-previous-change').inner_text().endswith(next_change) and
               team.locator('#lg-previous-change').evaluate("""el => {
                 const p=document.querySelector('#lg-panel').getBoundingClientRect(), r=el.getBoundingClientRect();
@@ -675,6 +715,10 @@ def solo(context, base, checks, pages):
         dialog.dismiss()
 
     page.on("dialog", cancel)
+    # 품질8 UX U2(docs/QUALITY-ux.md 6절): '처음부터'는 주 행동 옆 막대에서 도움말 서랍으로 옮겼다.
+    if not visible(page.get_by_role("button", name=re.compile(r"처음부터"))):
+        page.locator("#bd-help").click()
+        page.wait_for_timeout(300)
     button(page, r"처음부터").click()
     if dialogs:
         checks.ok(any(re.search(r"처음|다시|초기|지우|기록", message) for message in dialogs), "solo restart native confirmation has clear text")
@@ -688,6 +732,10 @@ def solo(context, base, checks, pages):
     after = page.evaluate(READ)["S"]
     checks.ok(before == after, "cancel solo restart preserves complete game state")
     page.remove_listener("dialog", cancel)
+    # 위에서 '처음부터'를 찾으려고 연 도움말 서랍을 닫고 원래 화면에서 이어 간다.
+    if page.locator("#lg-solo-restart").is_visible():
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
     # Fast-forward only this end-screen fixture with public next(). No event
     # or learning UI is replaced; confirmation above is exercised by clicks.
     compared_month_trial = False
@@ -698,6 +746,10 @@ def solo(context, base, checks, pages):
         if state['phase'] == 'review' and state['round'] == 1:
             compared_month_trial = True
             panel(page, r'^결과$')
+            # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+            month = page.locator('#lg-month-details')
+            if month.count() and not month.evaluate('el => el.open'):
+                month.locator(':scope > summary').click()
             detail = page.locator('#lg-result-details')
             if not detail.evaluate('el => el.open'):
                 detail.locator(':scope > summary').click()
@@ -709,7 +761,9 @@ def solo(context, base, checks, pages):
               [...row.querySelectorAll('td')].map(n => Number(n.textContent.replace(/[^0-9.−-]/g,'').replace('−','-'))))''')
             expected = [[month_trial['unsPct'], actual['unsPct']],
                         [month_trial['outH'] * monthly / 30, actual['outH'] * monthly / result['days']],
-                        [month_trial['co2'] * monthly / 30, actual['co2Prod'] * monthly / result['days']],
+                        # D-74(fe4473d): 경제 모드 시험은 계통 수입분을 포함하고 그 CO₂는 소비 기준에만 귀속된다.
+                        # 그래서 비교 줄은 'CO₂ 소비(계통 포함)'이며 실제 값은 co2Cons다(생산 co2Prod 아님).
+                        [month_trial['co2'] * monthly / 30, actual['co2Cons'] * monthly / result['days']],
                         [month_trial['opex'] * monthly / 30,
                          (actual['cost']['fuel'] + actual['cost']['policy']) * monthly / result['days']]]
             checks.ok(len(values) == 4 and all(len(row) == 2 for row in values) and
@@ -725,6 +779,7 @@ def solo(context, base, checks, pages):
     checks.ok(compared_month_trial, 'E 혼자 1달 시험의 첫 달 비교 검사를 실제로 수행')
     checks.ok(ended["phase"] == "end", "solo fixture reaches completed game")
     # Match phrase literally; merely showing a generic 다시 button is insufficient.
+    wait_unfolded(page)  # 품질8 UX U10: 마지막 달 재생 동안 접힌 끝 서랍이 펼쳐지기를 기다린다.
     retry = button(page, r"같은\s*조건으로\s*다시")
     checks.ok(retry.is_visible(), "solo end screen offers 같은 조건으로 다시")
     settings = {key: ended.get(key) for key in ["region", "active", "rounds", "seed"]}

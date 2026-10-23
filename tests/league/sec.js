@@ -10,7 +10,7 @@ const mutations = {
   events: ["league-core.js", 'const rnd = rng(hashStr((S.seedKey ?? S.room) + ":" + S.round)), out = [];', 'const rnd = rng(hashStr("constant:" + S.round)), out = [];', "room 모드: 실제로 뽑힌 사건"],
   replay: ["league.js", 'state: structuredClone(L.initial), initial:', 'state: structuredClone(L.S), initial:', "실제 같은 조건으로 다시"],
   host_sig: ["league-net.js", 'if (!await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig)', 'if (false && !await crypto.subtle.verify(signing, key, Uint8Array.from(atob(sig)', "진행자 서명 뒤 내용 변조"],
-  canonical: ["league-net.js", 'json = canonical(data);', 'json = JSON.stringify(data);', "정규 JSON: 재귀 키 섞기"],
+  canonical: ["league-net.js", 'const json = canonical(data),', 'const json = JSON.stringify(data),', "정규 JSON: 재귀 키 섞기"],
   code_binding: ["league-net.js", 'binding.room !== trust.room || ', '', "첫 키도 방 코드와 다르면"],
   link_binding: ["league-net.js", 'trust.fingerprint && binding.fingerprint !== trust.fingerprint ||', 'false ||', "링크 지문 불일치"],
   kid: ["league.js", 'm.kid !== await NET.fingerprint(L.identity.publicKey)', 'false', "위조 nack·다른 kid"],
@@ -31,11 +31,21 @@ const mutations = {
   claim_reject: ["league.js", '      releaseSeat();\n      BG.toast(msg);', '      BG.toast(msg);', "F3-4 taken 자리 선택"],
   early_request: ["league-net.js", 'if (m.n <= Math.max(claim && T.token !== m.kid ? 0 : lastN(), T.retired?.[m.kid] || 0)) return reject("replay");', '', "F3-5 진행자 sid·순번·크기"],
   request_queue: ["league-net.js", '(queued.get(team) || 0) >= 16', 'false', "F3-5 진행자 검증 대기열"],
-  early_host: ["league-net.js", 'if (queued >= 16 || !cheap(incoming) || incoming.event !== event)', 'if (queued >= 16 || incoming.event !== event)', "F3-5 팀 sid·순번·크기"],
+  early_host: ["league-net.js", 'if (!snap && queued >= 16 || !cheap(incoming) || incoming.event !== event)', 'if (!snap && queued >= 16 || incoming.event !== event)', "F3-5 팀 sid·순번·크기"],
+  snap_skip: ["league-net.js", 'waitingSnap.skip = true; ', '', "Q8 밀린 옛 snap은 검증 없이 건너뜀"],
+  snap_order: ["league-net.js", 'if (snap && waitingSnap && waitingSnap.incoming.n >= incoming.n) {', 'if (false) {', "Q8 늦게 온 옛 순번 snap은 기다리던 새 snap을 밀어내지 못함"],
+  snap_candidate: ["league-net.js", 'if (!waitingSnap.prev || waitingSnap.prev.incoming.n < incoming.n) waitingSnap.prev = { incoming };', '', "Q8 순번만 큰 위조 snap 뒤의 정상 snap도 예비로 남음"],
+  snap_fallback: ["league-net.js", 'if (!back) return false;', 'return false;', "Q8 최신 snap이 위조면 밀려난 정상 snap을 대신 반영"],
+  warn_snap20: ["league.js", ' && snapAge <= 20000', '', "Q8 공개 상태 20초 없음 안내"],
+  warn_snap10: ["league.js", 'snapAge <= 20000', 'snapAge <= 10000', "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음"],
+  warn_refresh30: ["league.js", 'Math.max(hostAge, snapAge) > 30000', 'Math.max(hostAge, snapAge) > 10000', "Q8 30초 전 안내에는 새로고침 권유 없음"],
+  warn_refresh_snap: ["league.js", 'Math.max(hostAge, snapAge) > 30000', 'hostAge > 30000', "Q8 공개 상태만 30초 넘게 없어도"],
+  warn_host10: ["league.js", 'if (hostAge <= 10000 && ', 'if (', "Q8 진행자 메시지 10초 없음 안내"],
+  snap_cap: ["league-net.js", 'if (!snap && queued >= 16 ||', 'if (queued >= 16 ||', "Q8 대기열이 차도 최신 snap은 남음"],
   host_queue: ["league-net.js", 'queued >= 16', 'false', "F3-5 팀 검증 대기열"],
-  compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams[Object.keys(view.teams)[0]].hist.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
+  compact_loop: ["league-net.js", 'const ratio = Math.max(0, Math.min(1,', 'while (bytes(view).length > 178000 && view.teams?.[Object.keys(view.teams)[0]]?.hist?.length > 2) view.teams[Object.keys(view.teams)[0]].hist.shift(); const ratio = Math.max(0, Math.min(1,', "F3-6 부풀린 상태"],
   compact_summary: ["league-net.js", 'if (i >= t.hist.length - 2 || !row.plan)', 'if (true)', "F3-6 오래된 계획 전문"],
-  apply_json: ["league-net.js", 'await apply(event, signed.data);', 'await apply(event, incoming.data);', "F3-7 검증한 정규 JSON"],
+  apply_json: ["league-net.js", 'await apply(event, signed.data);', 'await apply(event, it.incoming.data);', "F3-7 검증한 정규 JSON"],
   json_values: ["league-net.js", 'return encode(value);', 'return encode(JSON.parse(JSON.stringify(value)));', "F3-7 JSON 밖 값 거절"],
   room_bits: ["league-net.js", 'length: 8', 'length: 6', "F3-8 기존 ALPHA 40비트 고정 벡터"],
   room_alphabet: ["league-net.js", '"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"', '"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"', "F3-8 기존 ALPHA 40비트 고정 벡터"],
@@ -46,8 +56,8 @@ const mutations = {
   born_floor: ["league-net.js", 'm.born <= (T.receiptFloor || 0)', 'false', "F3-10 퇴거한 born"],
   pending_limit: ["league.js", 'L.pendingRequests.size >= 32', 'false', "F3-10 팀 대기 요청 상한"],
   restart_sid: ["league.js", 'L.S.sid = NET.sessionId();', 'L.S.sid ||= NET.sessionId();', "F3-11 진행자 시작마다"],
-  restore_base: ["league-net.js", '([k, c]) => ({ k, c })', '([k, c]) => ({ k, c: c + 1 })', "F3-12 운영 자료 축약 복원"],
-  restore_grid: ["league-net.js", '([key, allocatedMW]) => ({ key, allocatedMW })', '([key, allocatedMW]) => ({ key, allocatedMW: 0 })', "F3-12 운영 자료 축약 복원"],
+  restore_base: ["league-net.js", '([k, c]) => ({ k, c })', '([k, c]) => ({ k, c: c + 1 })', "F3-6 두 차례 축약 뒤 현재 base 보존"], // 89d4d0d부터 F3-12보다 먼저 잡는다
+  restore_grid: ["league-net.js", '([key, allocatedMW]) => ({ key, allocatedMW })', '([key, allocatedMW]) => ({ key, allocatedMW: 0 })', "F3-6 두 차례 축약 뒤 현재 trialGrid 보존"], // 같은 사유
   state_crit_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "crit" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 ready(568) → crit(567)"],
   state_plan_order: ["league-net.js", 'stateful ? stateNs?.values[m.type] || 0 : T.lastN || 0', 'stateful && m.type !== "plan" ? stateNs?.values[m.type] || 0 : T.lastN || 0', "F4 준비 → 계획"],
   state_replay: ["league-net.js", 'stateNs?.values[m.type] || 0', 'm.type === "crit" ? 0 : stateNs?.values[m.type] || 0', "F4 같은 type 옛 n"],
@@ -69,7 +79,7 @@ if (process.env.F2_MUTATION) {
     if (typeof value === "string" && String(name).endsWith("/ui/" + file)) {
       assert.ok(value.includes(from), "변형 대상 없음: " + file);
       let changed = value.replaceAll(from, to);
-      if (process.env.F2_MUTATION === "early_host") changed = changed.replace('if (!cheap(wire)) return false;', '').replace('          if (event === "snap" &&', '          if (!cheap(wire)) return false;\n          if (event === "snap" &&');
+      if (process.env.F2_MUTATION === "early_host") changed = changed.replace('if (!cheap(wire)) return false;', '').replace('        if (event === "snap" &&', '        if (!cheap(wire)) return false;\n        if (event === "snap" &&');
       return changed;
     }
     return value;
@@ -220,9 +230,9 @@ async function hostSecurity() {
   const trust = { room: S.room }, receive = N.hostReceiver(trust, (event, data) => { received = data; count++; });
   ok(await receive("snap", transformed), "정규 JSON: 재귀 키 섞기 + JSON 왕복 + 1.0→1/-0→0 검증");
   ok(N.canonical(wire) === N.canonical(transformed), "파싱한 값이 같으면 정규 JSON 바이트도 동일");
-  ok(trust.hostKey.x === host.publicKey.x && received.numericFixture.a === 1, "코드 결속·서명 확인 후 첫 진행자 키 고정");
+  ok(trust.hostKey.x === host.publicKey.x && received.body.numericFixture.a === 1, "코드 결속·서명 확인 후 첫 진행자 키 고정");
   ok(!await receive("snap", wire) && count === 1, "진행자 옛 순번 재방송 거절");
-  const tampered = structuredClone(wire); tampered.n++; tampered.data.phase = "end";
+  const tampered = structuredClone(wire); tampered.n++; tampered.data.body.phase = "end";
   ok(!await receive("snap", tampered) && count === 1, "진행자 서명 뒤 내용 변조 거절");
   ok(!await receive("nack", wire), "snap 봉투를 nack 이벤트로 전용 불가");
   ok(!await N.hostReceiver({ room: S.room }, () => {})("snap", await N.signHost(attacker, "snap", S.room, S.sid, V)), "첫 키도 방 코드와 다르면 거절");
@@ -230,12 +240,48 @@ async function hostSecurity() {
   ok(!await N.hostReceiver({ room: S.room, fingerprint: "wrong-link-fingerprint" }, () => {})("snap", wire), "링크 지문 불일치면 첫 키도 거절");
   ok(!await N.hostReceiver({ room: "AAAAAA" }, () => {})("snap", { ...wire, room: "AAAAAA" }), "방 코드 불일치 키 거절");
   ok(await N.hostReceiver({ room: S.room, fingerprint: binding.fingerprint }, () => {})("snap", wire), "링크 지문 일치 참가");
+  // 단위4-A: 상한을 옛 200KB로 되돌리면 유효한 큰 서명 봉투 수용 단언이 실패해야 한다.
+  // hostReceiver는 서명 봉투 전체, 팀 요청 receiver는 서명한 body의 UTF-8 바이트를 제한한다.
+  {
+    const requestKey = await N.createIdentity(), requestState = state(S.room), team = ids[0];
+    let requestApplied = 0;
+    const receiveRequest = N.receiver(requestState, m => {
+      requestApplied++; return C.reduce(requestState, m, 1, BG);
+    });
+    const request = extra => N.signEnvelope(requestKey, team, { type: "ready", ready: true, sid: requestState.sid, seat: 0, ...extra });
+    ok((await receiveRequest(await request({ type: "claim", publicKey: requestKey.publicKey }))).ok,
+      "수신 상한 검사 준비: 팀 공개 키 착석");
+    const padding = size => "가".repeat(Math.floor(size / 3)) + "x".repeat(size % 3);
+    for (const size of [200001, 230000, 256000, 256001]) {
+      const data = { room: S.room, sid: S.sid, padding: "" };
+      const empty = await N.signHost(host, "snap", S.room, S.sid, data);
+      data.padding = padding(size - Buffer.byteLength(JSON.stringify(empty), "utf8"));
+      const frame = await N.signHost(host, "snap", S.room, S.sid, data);
+      ok(Buffer.byteLength(JSON.stringify(frame), "utf8") === size, "진행자 서명 봉투 정확한 UTF-8 크기 " + size);
+      let hostApplied = 0;
+      const accepted = await N.hostReceiver({ room: S.room }, (event, received) => {
+        if (event === "snap" && received.body.padding === data.padding) hostApplied++;
+      })("snap", frame);
+      ok(size <= 256000 ? accepted && hostApplied === 1 : !accepted && hostApplied === 0,
+        "진행자 hostReceiver 수신 상한 " + size + "B: " + (size <= 256000 ? "수용" : "거절"));
+      const emptyRequest = await request({ padding: "" });
+      const content = padding(size - Buffer.byteLength(emptyRequest.body, "utf8"));
+      const envelope = await request({ padding: content });
+      ok(Buffer.byteLength(envelope.body, "utf8") === size, "팀 요청 body 정확한 UTF-8 크기 " + size);
+      const before = requestApplied, result = await receiveRequest(envelope);
+      ok(size <= 256000 ? result.ok && result.verified && requestApplied === before + 1 && result.request.padding === content :
+        !result.ok && result.err === "bad" && requestApplied === before,
+        "팀 요청 receiver 수신 상한 " + size + "B: " + (size <= 256000 ? "수용" : "거절"));
+    }
+  }
   const packed = N.compactSnapshot(V), expanded = N.expandSnapshot(structuredClone(packed));
   ok(N.canonical(expanded) === N.canonical(V), "건설 base·계통 entries 전송 축약은 무손실 복원");
   // 인위적으로 오래된 팀 기록만 키운다. 현재 계획과 최근 두 기록은 그대로 남아야 한다.
   const large = structuredClone(V); large.teams[ids[0]].hist = Array.from({ length: 40 }, (_, i) => ({ round: i, detail: "x".repeat(6000) }));
   const shrunk = N.compactSnapshot(large);
-  ok(N.byteLength(shrunk) <= 178000 && shrunk.teams[ids[0]].hist.at(-1).round === 39 && shrunk.teams[ids[0]].hist.length < 40 && JSON.stringify(shrunk.teams[ids[0]].plan) === JSON.stringify(large.teams[ids[0]].plan), "크기 위험 시 오래된 팀 기록부터 단계 축약");
+  // D-77: 크기는 전송 봉투, 보존 계약은 검증 뒤 복원한 공개 상태로 검사한다.
+  const restoredShrunk = N.expandSnapshot(structuredClone(shrunk));
+  ok(N.byteLength(shrunk) <= 178000 && restoredShrunk.teams[ids[0]].hist.at(-1).round === 39 && restoredShrunk.teams[ids[0]].hist.length < 40 && JSON.stringify(restoredShrunk.teams[ids[0]].plan) === JSON.stringify(large.teams[ids[0]].plan), "크기 위험 시 오래된 팀 기록부터 단계 축약");
 }
 async function transport() {
   const identity = await N.createIdentity(), team = ids[0];
@@ -269,13 +315,21 @@ async function transport() {
     ok(await N.verifyEnvelope(sent.at(-1).payload.payload, identity.publicKey), "큐·외부 비교 필드가 문자열 서명을 바꾸지 않음");
     let warns = 0; online.on("oversize", m => { if (m.ev === "snap") warns++; });
     const count = socket.sent.length;
-    ok(online.send("snap", { text: "가".repeat(90000) }) === false && warns === 1 && socket.sent.length === count, "Supabase UTF-8 200,000바이트 초과는 전송 안 함·경고 이벤트");
+    ok(online.send("snap", { text: "가".repeat(90000) }) === false && warns === 1 && socket.sent.length === count, "Supabase UTF-8 256,000바이트 초과는 전송 안 함·경고 이벤트");
     localA = N.open({ kind: "local", room: "MOCK02" }); localB = N.open({ kind: "local", room: "MOCK02" });
     let received; localB.on("req", m => { received = m; });
     localA.send("req", plan2);
     ok(await N.verifyEnvelope(received, identity.publicKey), "로컬 채널도 같은 서명 봉투");
     localA.on("oversize", () => warns++);
     ok(localA.send("snap", { text: "가".repeat(90000) }) === false && warns === 2, "로컬 초과도 경고 이벤트");
+    const oversized = await N.signHost(identity, "snap", "MOCK01", "fixture-session", {
+      teams: { [team]: { plan: { detail: "x".repeat(260000) },
+        hist: Array.from({ length: 20 }, (_, r) => ({ r, detail: "x".repeat(1000) })) } }
+    });
+    ok(online.send("snap", oversized) === false && warns === 3 && socket.sent.length === count,
+      "F3-6 두 차례 축약 뒤에도 전송 상한 초과 시 Supabase oversize·전송 차단");
+    ok(localA.send("snap", oversized) === false && warns === 4,
+      "F3-6 두 차례 축약 뒤에도 전송 상한 초과 시 로컬 oversize·전송 차단");
     // 네트워크 대신 메모리 모형만 사용한다. 안전하지 않은 문맥도 독립 VM에서 검사한다.
     const vm = require("node:vm"), fs = require("node:fs"), context = { window: { KCP: {} }, TextEncoder };
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, "../../ui/league-net.js"), "utf8"), context);
@@ -439,6 +493,17 @@ async function uiProtocol() {
   ui.get().snap = originalSnap; ui.get().stateRequests = {}; uiNow = null;
   ui.send("price", { price: 0.4 }); await ui.get().sending;
   const timeoutBody = N.requestBody(conn.sent.at(-1).payload), pending = ui.get().pendingRequests.get(timeoutBody.id);
+  // Q8 연결 안내 문턱 둘(D-77): 진행자 메시지(ack 포함) 10초, 받아들인 공개 상태 20초.
+  const warnAt = (host, snapAgo) => { const L = ui.get(); L.hostWarning = false; L.lastHostAt = Date.now() - host; L.lastSnapAt = Date.now() - snapAgo; tick(); return L.hostWarning; };
+  ok(!warnAt(5000, 15000), "Q8 ack는 오고 공개 상태만 15초 밀리면 안내 없음");
+  ok(warnAt(5000, 21000), "Q8 공개 상태 20초 없음 안내(형식이 안 맞는 snap만 오는 판본 혼재)");
+  ok(warnAt(11000, 1000), "Q8 진행자 메시지 10초 없음 안내");
+  // 새로고침 권유는 30초부터(짧은 밀림에 새로고침을 부추기지 않는다).
+  const REFRESH = " · 새로고침하면 다시 연결됩니다";
+  ok(warnAt(29000, 29000) && dom["lg-conn"].textContent === "진행자 화면과 연결을 확인하는 중", "Q8 30초 전 안내에는 새로고침 권유 없음");
+  ok(warnAt(31000, 1000) && dom["lg-conn"].textContent.endsWith(REFRESH), "Q8 진행자 메시지 30초 넘게 없으면 새로고침 권유");
+  ok(warnAt(5000, 31000) && dom["lg-conn"].textContent.endsWith(REFRESH), "Q8 공개 상태만 30초 넘게 없어도(판본 혼재) 새로고침 권유");
+  await ui.get().sending; ui.get().lastSnapAt = Date.now(); ui.get().stateRequests = {};
   ui.get().lastHostAt = Date.now() - 11000; ui.get().hostWarning = true; pending.sentAt = Date.now() - 6000;
   ui.get().rev = ui.get().snap.teams[team].rev + 1;
   for (let i = 0; i < 20; i++) await conn.emit("snap", { ...await hostWire("snap", fake), sig: "invalid" });
@@ -649,6 +714,136 @@ async function uiProtocol() {
       "F3-9 " + scenario.label + " 옛 방 팀 자료·S7 키 원본 보존");
     ui.close();
   }
+  // 단위3-C: 실제 팀 부팅·서명·진행자 수신기를 기존 메모리 송수신 장치로 잇는다.
+  const resumeKey = await N.createIdentity(), resumeState = state(room);
+  C.host(resumeState, "kick", 1, team);
+  const seat = resumeState.teams[team].seatVersion;
+  ok(seat > 0, "3-C 저장 seat 검사는 0이 아닌 자리 버전 사용");
+  await N.receiver(resumeState, m => C.reduce(resumeState, m, 2, BG))(
+    await N.signEnvelope(resumeKey, team, { type: "claim", publicKey: resumeKey.publicKey, sid: resumeState.sid, seat }));
+  localStorage.setItem("kcp-league-host-v1", JSON.stringify({
+    room, net: { kind: "local" }, state: resumeState, identity: hostIdentity, fingerprint: binding.fingerprint
+  }));
+  await ui.hostInit();
+  const resumeHost = ui.get(), resumeHostConn = connections.at(-1);
+  const resumeSave = { room, team, net: { kind: "local" }, identity: resumeKey,
+    hostKey: hostIdentity.publicKey, sid: resumeHost.S.sid, seat };
+  const bootResume = save => {
+    sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify(save));
+    ui.teamView(teamApp);
+    return connections.at(-1);
+  };
+  const sendBeforeSnap = () => {
+    for (const type of ["hello", "claim", "plan", "econ", "crit", "ready", "price", "verdict"])
+      ui.send(type, type === "crit" ? { chips: ["rel"], line: 57, choice: "keep" } : {});
+  };
+  ui.set(null);
+  const earlyConn = bootResume(resumeSave), earlySession = ui.get();
+  ui.teamView(teamApp); sendBeforeSnap(); await earlySession.sending;
+  ok(!earlySession.snap && earlyConn.sent.length === 1 && N.requestBody(earlyConn.sent[0].payload).type === "claim",
+    "3-C 첫 상태 전에는 동시 호출·재렌더에도 claim 한 번만 송신");
+  const earlyEnvelope = earlyConn.sent[0].payload, earlyBody = N.requestBody(earlyEnvelope);
+  ok(earlyBody.sid === resumeSave.sid && earlyBody.seat === seat &&
+    await N.verifyEnvelope(earlyEnvelope, resumeKey.publicKey), "3-C 탭 저장 sid·seat를 실제 서명에 사용");
+  uiNow = Date.now() + 35000; tick(); sendBeforeSnap(); await earlySession.sending; uiNow = null;
+  ok(earlyConn.sent.length === 1, "3-C 무응답 35초·주기 재시도에도 첫 상태 전 추가 요청 없음");
+  ui.set(resumeHost);
+  const beforeEarly = resumeHostConn.sent.length;
+  await resumeHostConn.emit("req", earlyEnvelope); await resumeHost.hostSending;
+  const immediate = resumeHostConn.sent.slice(beforeEarly);
+  ok(immediate.some(x => x.event === "ack" && x.payload.data.n === earlyBody.n) &&
+    immediate.some(x => x.event === "snap") && !resumeHost.pending,
+    "3-C 같은 세션 이른 claim 승인 뒤 4초 타이머 실행 없이 즉시 snap 송신");
+  const afterAccepted = N.canonical(resumeHost.S), beforeDuplicate = resumeHostConn.sent.length;
+  await resumeHostConn.emit("req", earlyEnvelope); await resumeHost.hostSending;
+  ok(N.canonical(resumeHost.S) === afterAccepted &&
+    resumeHostConn.sent.slice(beforeDuplicate).every(x => x.event === "nack" && x.payload.data.err === "replay"),
+    "3-C 같은 세션에서 동일 claim 봉투 두 번째는 순번 거절·상태와 토큰 불변");
+  ui.set(earlySession);
+  const mountsBeforeEarly = uiK.mounts || 0;
+  for (const message of immediate) await earlyConn.emit(message.event, message.payload);
+  await earlySession.sending;
+  ok(earlySession.claimAccepted && uiK.mounts > mountsBeforeEarly, "3-C 이른 claim ack·즉시 snap으로 도시 화면 진입");
+  const oldSave = JSON.parse(sessionStorage.getItem("kcp-league-tab-v1"));
+  ui.close(); ui.set(resumeHost); ui.close(); await ui.hostInit();
+  const newHost = ui.get(), newHostConn = connections.at(-1);
+  ok(newHost.S.sid !== oldSave.sid, "3-C 실제 진행자 재시작은 저장 sid 교체");
+  const beforeReplayState = N.canonical(newHost.S), beforeReplay = newHostConn.sent.length;
+  await newHostConn.emit("req", earlyEnvelope); await newHost.hostSending;
+  ok(N.canonical(newHost.S) === beforeReplayState &&
+    newHostConn.sent.slice(beforeReplay).every(x => x.event === "nack" && x.payload.data.err === "session"),
+    "3-C 옛 세션에서 승인된 claim 원본을 새 수신기에 replay해도 teams·seatVersion·토큰 불변");
+  ui.set(null);
+  const staleConn = bootResume(oldSave), staleSession = ui.get();
+  await staleSession.sending;
+  ok(staleConn.sent.length === 1 && N.requestBody(staleConn.sent[0].payload).sid === oldSave.sid,
+    "3-C 진행자 재시작을 모르는 팀은 옛 sid로 이른 claim 한 번만 서명");
+  ui.set(newHost);
+  const beforeStaleClaim = newHostConn.sent.length;
+  await newHostConn.emit("req", staleConn.sent[0].payload); await newHost.hostSending;
+  const staleReplies = newHostConn.sent.slice(beforeStaleClaim);
+  ok(N.canonical(newHost.S) === beforeReplayState &&
+    staleReplies.every(x => x.event === "nack" && x.payload.data.err === "session"),
+    "3-C 재시작 뒤 옛 sid 이른 claim 거절·teams·seatVersion·토큰 불변");
+  ui.set(staleSession);
+  for (const message of staleReplies) await staleConn.emit(message.event, message.payload);
+  sendBeforeSnap(); tick(); await staleSession.sending;
+  ok(staleConn.sent.length === 1 && staleSession.team === team && !staleSession.snap,
+    "3-C 새 sid의 거절을 받거나 무시해도 주기 snap 전 이른 claim 재전송 없음");
+  ui.set(newHost);
+  // nack 한도가 찬 경우에도 정상 claim의 ack·snap은 제한하지 않는다.
+  for (let i = 0; i < 3; i++) await newHostConn.emit("req", staleConn.sent[0].payload);
+  await newHost.hostSending;
+  const beforePeriodic = newHostConn.sent.length;
+  [...timers.values()].find(t => t.interval && t.ms === 4000).fn(); await newHost.hostSending;
+  const periodic = newHostConn.sent.slice(beforePeriodic).find(x => x.event === "snap");
+  ui.set(staleSession);
+  await staleConn.emit("snap", periodic.payload); await staleSession.sending;
+  ok(staleConn.sent.length === 2 && N.requestBody(staleConn.sent[1].payload).sid === newHost.S.sid,
+    "3-C 재시작 뒤 첫 주기 snap에서 5초·30초 지연 없이 정상 claim 전송");
+  ui.set(newHost);
+  const beforeRecovery = newHostConn.sent.length;
+  await newHostConn.emit("req", staleConn.sent[1].payload); await newHost.hostSending;
+  ok(newHostConn.sent.slice(beforeRecovery).some(x => x.event === "ack") &&
+    newHostConn.sent.slice(beforeRecovery).some(x => x.event === "snap"),
+    "3-C nack 제한 뒤에도 정상 claim의 ack·즉시 snap 복구");
+  ui.set(staleSession); ui.close(); ui.set(newHost); ui.close();
+  for (const missing of ["hostKey", "sid", "다른 방"]) {
+    const save = structuredClone(resumeSave);
+    if (missing === "다른 방") save.hostKey = null;
+    else delete save[missing];
+    const blockedConn = bootResume(save);
+    if (missing === "다른 방") {
+      ui.get().hostKey = hostIdentity.publicKey;
+      sessionStorage.setItem("kcp-league-tab-v1", JSON.stringify({ ...resumeSave, room: "ABCDEFGH" === room ? "HGFEDCBA" : "ABCDEFGH" }));
+    }
+    sendBeforeSnap(); await ui.get().sending;
+    ok(!ui.get().snap && blockedConn.sent.length === 0, "3-C " + missing + " 저장은 첫 상태 전 모든 요청 차단");
+    ui.close();
+  }
+  for (const err of ["taken", "legacy", "seat", "session"]) {
+    const rejectedConn = bootResume(resumeSave), rejectedSession = ui.get();
+    await rejectedSession.sending;
+    const claim = N.requestBody(rejectedConn.sent[0].payload);
+    const refusal = { team, type: "claim", kid: claim.kid, n: claim.n, err };
+    const signReply = (event, data) => N.signHost(hostIdentity, event, room, resumeSave.sid, data);
+    await rejectedConn.emit("nack", await signReply("nack", refusal));
+    sendBeforeSnap(); tick(); await rejectedSession.sending;
+    ok(rejectedSession.team === team && !rejectedSession.claimAccepted && rejectedConn.sent.length === 1 &&
+      !(rejectedSession.claimAfter > Date.now()), "3-C 이른 " + err + " 거절은 자리 해제·30초 지연·재전송 없음");
+    const snapshot = C.publicView(resumeState, Date.now()); snapshot.sid = resumeSave.sid;
+    await rejectedConn.emit("snap", await signReply("snap", snapshot)); await rejectedSession.sending;
+    const normal = N.requestBody(rejectedConn.sent.at(-1).payload);
+    ok(rejectedConn.sent.length === 2 && normal.type === "claim" && normal.n > claim.n,
+      "3-C 이른 " + err + " 거절 뒤 첫 snap에서 정상 claim 즉시 전송");
+    await rejectedConn.emit("nack", await signReply("nack", refusal));
+    ok(rejectedSession.team === team && rejectedSession.claimAfter < Date.now() + 6000,
+      "3-C snap 뒤 늦게 도착한 이른 " + err + " 거절도 정상 claim 지연 없음");
+    await rejectedConn.emit("nack", await signReply("nack", { ...refusal, n: normal.n, err: "taken" }));
+    ok(rejectedSession.team === null && rejectedSession.claimAfter > Date.now() + 20000,
+      "3-C 정상 claim taken 거절의 자리 해제·30초 지연은 유지");
+    ui.close();
+  }
   const initial = state("REPLAY", "room"), summaryState = structuredClone(initial);
   summaryState.phase = "end"; summaryState.round = 5;
   // 실제 같은 조건으로 다시 함수의 시작 상태 복원을 검사한다. DOM 시작만 대체한다.
@@ -739,7 +934,7 @@ async function floor3Network() {
   await receive(await sign({ type: "claim", publicKey: key.publicKey }));
   const good = await sign({}), old = await sign({ sid: "old-session" }), repeat = await sign({});
   await receive(repeat); const before = verifies;
-  for (const wire of [old, good, { ...good, body: "x".repeat(200001) }]) await receive(wire);
+  for (const wire of [old, good, { ...good, body: "x".repeat(256001) }]) await receive(wire);
   ok(verifies === before, "F3-5 진행자 sid·순번·크기 싼 검사가 검증보다 먼저");
   let unblock, calls = 0;
   const held = N.receiver(S, () => ({ ok: true }), async () => { calls++; await new Promise(r => { unblock = r; }); return false; });
@@ -769,28 +964,129 @@ async function floor3Network() {
     const trusted = { room: S.room, sid: S.sid, hostN: wire.n }, receiveHost = N.hostReceiver(trusted, () => {});
     await receiveHost("snap", wire);
     await receiveHost("ack", { ...wire, event: "ack", sid: "wrong", n: wire.n + 1 });
-    await receiveHost("snap", { ...wire, n: wire.n + 1, data: { text: "x".repeat(200001) } });
+    await receiveHost("snap", { ...wire, n: wire.n + 1, data: { text: "x".repeat(256001) } });
     ok(expensive === 0, "F3-5 팀 sid·순번·크기 싼 검사가 암호 계산보다 먼저");
     let hostCalls = 0;
     const crowded = N.hostReceiver({ room: S.room }, () => { hostCalls++; });
     // 서명 불일치 봉투는 hostN을 올리지 않는다. 따라서 큐 상한 자체를 측정한다.
     const start = expensive;
-    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("snap", { ...wire, n: wire.n + i + 1 })));
+    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("ack", { ...wire, event: "ack", n: wire.n + i + 1 })));
     ok(expensive - start <= 32 && hostCalls === 0, "F3-5 팀 검증 대기열 상한 16");
+    // snap은 상한을 세지 않는 대신 최신 하나와 예비 하나만 남긴다. 서명이 안 맞는 snap 60개도 검증은 두 번뿐이다.
+    const snapStart = expensive;
+    await Promise.all(Array.from({ length: 60 }, (_, i) => crowded("snap", { ...wire, n: wire.n + i + 1 })));
+    ok(expensive - snapStart <= 4 && hostCalls === 0, "Q8 밀린 옛 snap은 검증 없이 건너뜀(서명 불일치 60개 → 최신·예비 검증 2회)");
   } finally { subtle.verify = originalVerify; subtle.digest = originalDigest; }
+  {
+    // Q8: 진짜 서명 snap이 밀려 와도 마지막 것만 반영하고, ack는 건너뛰지 않으며 순서도 지킨다.
+    const signed = (event, data) => N.signHost(host, event, S.room, S.sid, data);
+    const s1 = await signed("snap", { ...view, probe: 1 }), a1 = await signed("ack", { id: "a1" });
+    const s2 = await signed("snap", { ...view, probe: 2 }), a2 = await signed("ack", { id: "a2" });
+    const s3 = await signed("snap", { ...view, probe: 3 });
+    const seen = [], t = { room: S.room }, r = N.hostReceiver(t, (event, data) => { seen.push(event === "snap" ? "snap" + data.body.probe : data.id); });
+    await Promise.all([r("snap", s1), r("ack", a1), r("snap", s2), r("ack", a2), r("snap", s3)]);
+    ok(seen.join() === "a1,a2,snap3", "Q8 밀린 snap은 최신만 반영, ack는 모두 순서대로: " + seen.join());
+    ok(t.hostN === s3.n && !await r("snap", s1) && !await r("snap", s2), "Q8 건너뛴 옛 snap은 최신 반영 뒤 순번 재사용으로 거절");
+    // 도착 순서가 뒤바뀌어도(또는 옛 snap 재방송) 기다리던 더 새 snap이 남는다.
+    const seenO = [], tO = { room: S.room }, rO = N.hostReceiver(tO, (_, data) => { seenO.push(data.body.probe); });
+    await Promise.all([rO("snap", s1), rO("snap", s3), rO("snap", s2)]);
+    ok(seenO.join() === "3" && tO.hostN === s3.n, "Q8 늦게 온 옛 순번 snap은 기다리던 새 snap을 밀어내지 못함: " + seenO.join());
+    // 최신 snap이 위조면 바로 앞에서 밀려난 정상 snap 하나를 대신 검증한다.
+    const forged = structuredClone(s2); forged.n = s3.n + 10; forged.data.body.phase = "end";
+    const seen2 = [], r2 = N.hostReceiver({ room: S.room }, (_, data) => { seen2.push(data.body.probe); });
+    await Promise.all([r2("snap", s1), r2("snap", forged)]);
+    ok(seen2.join() === "1", "Q8 최신 snap이 위조면 밀려난 정상 snap을 대신 반영: " + seen2.join());
+    // 순번만 큰 위조가 기다리는 자리를 차지해도, 그 뒤 들어오지 못한 정상 snap 가운데 가장 새것이 예비로 남는다.
+    const huge = structuredClone(s2); huge.n = Number.MAX_SAFE_INTEGER; huge.data.body.phase = "end";
+    const seenC = [], tC = { room: S.room }, rC = N.hostReceiver(tC, (_, data) => { seenC.push(data.body.probe); });
+    await Promise.all([rC("snap", s1), rC("snap", huge), rC("snap", s2), rC("snap", s3)]);
+    ok(seenC.join() === "3" && tC.hostN === s3.n, "Q8 순번만 큰 위조 snap 뒤의 정상 snap도 예비로 남음: " + seenC.join());
+    // 건너뜀은 '처리하지 않음'이다: 뒤의 snap이 모두 위조로 거절되면 순번은 오르지 않고, 건너뛴 snap은 아직 받을 수 있다.
+    const forged2 = structuredClone(forged); forged2.n = forged.n + 1;
+    const seen3n = [], t3 = { room: S.room }, r3n = N.hostReceiver(t3, (_, data) => { seen3n.push(data.body.probe); });
+    await Promise.all([r3n("snap", s1), r3n("snap", forged), r3n("snap", forged2)]);
+    ok(seen3n.length === 0 && t3.hostN === undefined, "Q8 건너뛴 snap은 순번을 올리지 않음");
+    ok(await r3n("snap", s1) && seen3n.join() === "1", "Q8 처리하지 않은 snap은 나중에 정상 반영 가능");
+    // 대기열이 ack로 가득 차도 최신 snap은 버리지 않는다.
+    const acks = [];
+    for (let i = 0; i < 20; i++) acks.push(await signed("ack", { id: "q" + i }));
+    const s4 = await signed("snap", { ...view, probe: 4 });
+    const seen3 = [], r3 = N.hostReceiver({ room: S.room }, (event, data) => { seen3.push(event === "snap" ? "snap" + data.body.probe : data.id); });
+    await Promise.all([...acks.map(a => r3("ack", a)), r3("snap", s4)]);
+    ok(seen3.filter(x => x.startsWith("q")).length === 16 && seen3.at(-1) === "snap4", "Q8 대기열이 차도 최신 snap은 남음(ack 16개 + snap)");
+  }
   for (const value of [Infinity, undefined, new String("plan"), NaN]) {
     const valid = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: value === undefined ? 1 : null });
-    valid.data.probe = value;
+    valid.data.body.probe = value;
     ok(!await N.hostReceiver({ room: S.room }, () => {})("snap", valid), "F3-7 JSON 밖 값 거절 " + String(value));
   }
   let normalized;
-  const zero = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: 0 }); zero.data.probe = -0;
+  const zero = await N.signHost(host, "snap", S.room, S.sid, { ...view, probe: 0 }); zero.data.body.probe = -0;
   await N.hostReceiver({ room: S.room }, (_, data) => { normalized = data; })("snap", zero);
-  ok(normalized && !Object.is(normalized.probe, -0), "F3-7 검증한 정규 JSON 파싱 값을 반영");
+  ok(normalized && !Object.is(normalized.body.probe, -0), "F3-7 검증한 정규 JSON 파싱 값을 반영");
+  // 객체 봉투만 문턱을 넘는 경우: 행 변환으로 충분하므로 옛 계획까지 전부 남아야 한다.
+  const below = { teams: { [team]: { hist: Array.from({ length: 3000 }, (_, r) =>
+    ({ r, t: r, cap: r * 2, n: r, l: 0, plan: { builds: [] } })) } } };
+  const belowPacked = N.compactSnapshot(below);
+  ok(N.byteLength({ _cp: 1, keys: [], body: below }) > 178000 && N.byteLength(belowPacked) < 178000,
+    "F3-6 객체 봉투만 문턱 초과인 경계 사례");
+  ok(N.canonical(N.expandSnapshot(structuredClone(belowPacked))) === N.canonical(below),
+    "F3-6 최종 행 봉투가 문턱 미만이면 hist·오래된 계획 무손실");
+  const measureCompact = value => {
+    const stringify = JSON.stringify, sizes = [];
+    let serializations = 0, packed;
+    JSON.stringify = function (v, ...args) {
+      const text = stringify.call(this, v, ...args);
+      if (v?.teams || v?._cp === 1) serializations++;
+      if (v?._cp === 1) sizes.push(Buffer.byteLength(text, "utf8"));
+      return text;
+    };
+    try { packed = N.compactSnapshot(value); } finally { JSON.stringify = stringify; }
+    ok(serializations <= 4 && sizes.length <= 3, "F3-6 부풀린 상태 최대 두 차례 축약·전체 직렬화 4회 상한");
+    return { packed, sizes, serializations };
+  };
+  for (const limit of [178000, 178001]) {
+    const boundary = { ...below, padding: "" };
+    boundary.padding = "x".repeat(limit - N.byteLength({ ...belowPacked,
+      body: { ...belowPacked.body, padding: "" } }));
+    const measured = measureCompact(boundary);
+    ok(measured.sizes[0] === limit, "F3-6 사전 포함 최종 봉투 문턱 경계");
+    if (limit === 178000) {
+      ok(measured.serializations <= 2 && N.canonical(N.expandSnapshot(structuredClone(measured.packed))) === N.canonical(boundary),
+        "F3-6 정확히 178000B는 비상 축약 없이 모든 기록 보존");
+    } else {
+      ok(measured.sizes.length > 1 && N.byteLength(measured.packed) <= 178000,
+        "F3-6 178001B부터 비상 축약 발동");
+    }
+  }
+  const retry = { teams: { [team]: {
+    hist: Array.from({ length: 2300 }, (_, r) => ({ r, repeatedLongMetricName: 0, detail: "x".repeat(65) })),
+    plan: { builds: [1] }, base: [{ k: "b:0", c: 2 }],
+    trialGrid: { entries: [{ key: "b:0", allocatedMW: 2 }] }
+  } }, econ: { cities: { [team]: { hist: [{ r: 1 }] } } },
+    results: [{ round: 1, team: { [team]: { n: 1 } } }] };
+  const retried = measureCompact(retry);
+  ok(retried.sizes.length === 3 && retried.sizes[1] > 178000 && N.byteLength(retried.packed) <= 178000,
+    "F3-6 행별 축약률 차이로 남은 초과분을 두 번째 비율 축약으로 해소");
+  const blocked = structuredClone(retry);
+  blocked.teams[team].plan.detail = "x".repeat(260000);
+  const stopped = measureCompact(blocked);
+  ok(stopped.sizes.length === 3 && N.byteLength(stopped.packed) > 256000,
+    "F3-6 두 번 뒤에도 큰 보존 항목은 전송 oversize 경로에 남김");
+  for (const [original, measured] of [[retry, retried], [blocked, stopped]]) {
+    const restored = N.expandSnapshot(structuredClone(measured.packed));
+    for (const key of ["plan", "base", "trialGrid"])
+      ok(N.canonical(restored.teams[team][key]) === N.canonical(original.teams[team][key]),
+        "F3-6 두 차례 축약 뒤 현재 " + key + " 보존");
+    ok(N.canonical(restored.teams[team].hist.slice(-2)) === N.canonical(original.teams[team].hist.slice(-2)),
+      "F3-6 두 차례 축약 뒤 최근 두 hist 보존");
+    for (const key of ["econ", "results"])
+      ok(N.canonical(restored[key]) === N.canonical(original[key]), "F3-6 재포장 뒤 " + key + " 무손실");
+  }
   const large = structuredClone(view);
   large.teams[team].hist = Array.from({ length: 400 }, (_, r) => ({ r, detail: "x".repeat(6000) }));
   const stringify = JSON.stringify; let serializations = 0;
-  JSON.stringify = function (v, ...args) { if (v?.teams) serializations++; return stringify.call(this, v, ...args); };
+  JSON.stringify = function (v, ...args) { if (v?.teams || v?._cp === 1) serializations++; return stringify.call(this, v, ...args); };
   const start = performance.now(); let compact;
   try { compact = N.compactSnapshot(large); } finally { JSON.stringify = stringify; }
   const elapsed = performance.now() - start;
@@ -798,7 +1094,18 @@ async function floor3Network() {
   const planned = structuredClone(view);
   planned.teams[team].hist = Array.from({ length: 20 }, (_, r) => ({ r, t: r, cap: r * 2, n: r, l: 0, plan: { builds: [], detail: "x".repeat(10000) } }));
   const summarized = N.compactSnapshot(planned);
-  ok(N.byteLength(summarized) <= 178000 && summarized.teams[team].hist.length === 20 && !summarized.teams[team].hist[0].plan && summarized.teams[team].hist[0].cap === 0 && summarized.teams[team].hist.at(-1).plan, "F3-6 오래된 계획 전문은 해당 팀 건설 속도 요약으로 축약");
+  const restoredSummary = N.expandSnapshot(structuredClone(summarized));
+  ok(N.byteLength(summarized) <= 178000 && restoredSummary.teams[team].hist.length === 20 && !restoredSummary.teams[team].hist[0].plan && restoredSummary.teams[team].hist[0].cap === 0 && restoredSummary.teams[team].hist.at(-1).plan, "F3-6 오래된 계획 전문은 해당 팀 건설 속도 요약으로 축약");
+  for (const [original, packed] of [[large, compact], [planned, summarized]]) {
+    const restored = N.expandSnapshot(structuredClone(packed));
+    for (const id of ids) {
+      for (const key of ["plan", "base", "trialGrid"])
+        assert.deepStrictEqual(restored.teams[id][key], original.teams[id][key], "F3-6 비상 축약 뒤 현재 " + key + " 보존");
+      assert.deepStrictEqual(restored.teams[id].hist.slice(-2), original.teams[id].hist.slice(-2),
+        "F3-6 비상 축약 뒤 모든 팀 최근 두 hist 보존");
+      checks += 4;
+    }
+  }
   console.log("F3 compact", JSON.stringify({ input: N.byteLength(large), output: N.byteLength(compact), ms: +elapsed.toFixed(3), serializations }));
 }
 function floor3Restore() {

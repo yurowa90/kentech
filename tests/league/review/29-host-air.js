@@ -17,7 +17,8 @@ const sample = { dem: 100, uns: 0, unsPct: 0, hospH: 0, co2Prod: 500, co2Cons: 9
   renPct: 0, exp: 0, imp: 300, earn: 0, pay: 0, cost: { fuel: 0, policy: 0 },
   by: { coal: 7, lng: 14, diesel: 21, biomass: 28, import: 7000 } };
 assert.deepEqual(clone(C.econInput(S, R, ids[0], sample, 31 / 7).energy.genMWh),
-  { coal: 31, lng: 62, diesel: 93, biomass: 124 }, '월 배수 한 번, 생산 4연료만 전달'); checks++;
+  // H03 내부 입력에 SMR 추가. 누락 생산량은 0이며 PM 가중 연료는 기존 4종 그대로다.
+  { coal: 31, lng: 62, diesel: 93, biomass: 124, smr: 0 }, '월 배수 한 번, 생산 5연료만 전달'); checks++;
 const initial = {};
 for (const id of ids) {
   B.selectPack(C.teamDef(R, id).pack, 'league');
@@ -64,7 +65,8 @@ const startAir = Object.fromEntries(ids.map(id => [id, off.econ.cities[id].lagL.
 C.host(off, 'next', 1); off.events = [];
 const result = C.run(off, B, 2);
 for (const id of ids) {
-  assert.equal(result.team[id].unsPct, 100); checks++;
+  // D-74: 빈 계획 정전100%→계통 수입 반영50%; 지역 생산·PM=0 계약 유지.
+  assert.equal(result.team[id].unsPct, 100 * (1 - D.params.gridImportShare.v)); checks++;
   near(result.econ.cities[id].pm25.own, 0, `${id} 정전 달 무발전`);
   near(result.econ.cities[id].Lparts.air, 80, `${id} 정전 air 상한`);
   const startDelta = initial[id] + incoming(initial)[id];

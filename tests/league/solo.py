@@ -5,6 +5,7 @@ evaluate는 상태/저장/DOM 조회만 한다. 엔진 호출·상태 주입·AI
 실행: python3 tests/league/solo.py <로컬 주소> (브라우저 실행은 총괄 담당).
 """
 
+from league_flow import pass_issue_check
 import json
 import re
 import sys
@@ -112,6 +113,8 @@ def click_next(page, state):
             if button.is_visible() and button.is_enabled():
                 ready = button.get_attribute("id") == "lg-ready"
                 button.click()
+                if ready:
+                    pass_issue_check(page)
                 previous = [state["round"], state["phase"], len(state.get("results", []))]
                 # // ECON-UI v1.1: 준비가 예측 카드만 열었으면 화면의 건너뛰기로 준비를 확정한다.
                 if ready:
@@ -208,7 +211,8 @@ def play(checks, page, base, label):
     overflow(checks, page, label + " 진행자 설정")
     observation = start(page)
     checks.ok(not shown(page, '#lg-panel'), f'{label} U1 혼자 하기 첫 화면 기준 서랍 닫힘')
-    checks.ok(shown(page, '#lg-first-guide'), f'{label} U1 첫 달 네 단계 안내')
+    # 품질8 UX U5: 한 줄 안내(#lg-first-guide)를 8단계 첫 달 코치 띠(#lg-coach)로 바꿨다.
+    checks.ok(shown(page, '#lg-coach'), f'{label} U1 첫 달 단계 안내')
     page.locator('#lg-guide-close').click()
     page.locator('#bd-help').focus(); page.locator('#bd-help').press('Enter')
     checks.ok(shown(page, '#lg-help'), f'{label} U1 혼자 하기 리그 도움말 다시 보기')
@@ -236,6 +240,7 @@ def play(checks, page, base, label):
     page.wait_for_function('() => !!KCP.buildGame.lastTrial()')
     trial_uns = page.evaluate('() => KCP.buildGame.lastTrial().unsPct')
     page.locator('#lg-ready').click()
+    pass_issue_check(page)
     checks.ok(shown(page, '#lg-predict-skip'), f'{label} U8 혼자 자유 실험에서만 건너뛰기')
     checks.ok(page.locator('#lg-ready-confirm').is_disabled(), f'{label} U8 빈 근거 제출 금지')
     page.locator('[data-evidence="evening"]').click()
@@ -260,6 +265,10 @@ def play(checks, page, base, label):
     initial_fingerprint = fingerprint(state)
     initial_room = state["room"]
     close_drawer(page)
+    # 품질8 UX U2(docs/QUALITY-ux.md 6절): '처음부터'는 주 행동 옆 막대에서 도움말 서랍으로 옮겼다.
+    # 같은 id·같은 확인 창이므로 도움말을 연 뒤 누른다.
+    page.locator("#bd-help").click()
+    page.wait_for_selector("#lg-solo-restart", state="visible")
     page.once("dialog", lambda dialog: dialog.dismiss())
     with page.expect_event("dialog") as dialog_info:
         page.locator("#lg-solo-restart").click()
@@ -315,14 +324,17 @@ def play(checks, page, base, label):
                 checks.ok('시험 1주 대비' in top and '시험 1주 대비' in prediction and
                           shown_delta(top) == shown_delta(prediction) == expected,
                           f'{label} D-A1 첫 달 위·예측 Δ = 시험 1주 대비 같은 값')
+                # 품질8 UX U1(docs/QUALITY-ux.md 6절): 서랍 자체 대신 본문(.lg-pbody)만 스크롤하고
+                # 제목 줄은 본문 밖에 고정된다. D-A7의 뜻(스크롤해도 제목이 보임)을 새 구조로 확인한다.
                 checks.ok(page.evaluate('''() => {
                   const p=document.querySelector('#lg-panel'), h=p.querySelector('.lg-ptabs');
-                  const m=p.querySelector('#lg-calibration meter'), before=p.scrollTop;
-                  p.scrollTop += m.getBoundingClientRect().top-h.getBoundingClientRect().top-h.offsetHeight/2;
+                  const s=p.querySelector('.lg-pbody') || p;
+                  const m=p.querySelector('#lg-calibration meter'), before=s.scrollTop, top0=h.getBoundingClientRect().top;
+                  s.scrollTop += m.getBoundingClientRect().top-h.getBoundingClientRect().bottom;
                   const a=h.getBoundingClientRect(), b=m.getBoundingClientRect();
-                  const covered=b.top<a.bottom && b.bottom>a.top &&
-                    h.contains(document.elementFromPoint(a.left+a.width/2, Math.max(a.top,b.top)+1));
-                  p.scrollTop=before; return covered;
+                  const kept=Math.abs(a.top-top0)<1 && a.bottom<=b.top+1 &&
+                    h.contains(document.elementFromPoint(a.left+a.width/2, a.top+a.height/2));
+                  s.scrollTop=before; return kept;
                 }'''), f'{label} D-A7 스크롤한 확신 막대 위에 고정 제목 표시')
             overflow(checks, page, f"{label} {state['round']}달 결과")
             if not reloaded:

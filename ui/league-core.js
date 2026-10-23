@@ -3,7 +3,7 @@
  * - reduce(state, msg): 팀이 보낸 요청(자리 잡기 · 계획 · 판매 단가 · 연계선 · 준비)을 검사해 반영
  * - runRound(state, bg): 팀마다 자기 도시를 따로 돌린 뒤(bg = KCP.buildGame) settle로 도시 사이 거래를 정산
  * 정산은 시간마다: 모자란 도시가 연계선으로 이어진 이웃에게서 남는 재생 전력 → 남는 화력 여유 순으로, 단가가 싼 쪽부터 산다.
- * 팔 쪽 화력은 단가가 연료비보다 비쌀 때만 판다. 연계선 손실 2%. 돈은 도착한 양만큼 낸다.
+ * 팔 쪽 화력은 단가가 연료비보다 비쌀 때만 판다. 기본 연계선 손실은 TIE_LOSS. 돈은 도착한 양만큼 낸다.
  */
 (function () {
   "use strict";
@@ -18,7 +18,9 @@
   const SALV = 0.3;
   // 실제 운영 재생은 이 기기의 메모리에만 둔다(D-65).
   let lastRun = null, replayCache = null;
-  const isOutHour = (uns, del, dem, k) => uns[k] - del[k] > Math.max(0.005, 0.02 * dem[k]);
+  // 시간 정전 문턱: 일반 정전 시간과 병원 정전 시간이 같은 규칙을 쓴다.
+  const outageFloor = dem => Math.max(KCP.ECON_DATA.params.outageHourMinMW.v, KCP.ECON_DATA.params.outageHourShare.v * dem);
+  const isOutHour = (uns, del, dem, k) => uns[k] - del[k] > outageFloor(dem[k]);
   function replayOf(round, id, salt = KCP.league?.state?.()?.S?.salt ?? 0, room = KCP.league?.state?.()?.room) {
     const data = replayCache?.round === round && replayCache.salt === salt && replayCache.room === room
       ? replayCache.data : null, t = data?.teams[id];
@@ -33,8 +35,8 @@
   const tieId = T => T.a + "~" + T.b;
   const isTeam = (R, id, S) => !!teamDef(R, id) && (!S || Object.hasOwn(S.teams, id));
   const num = (x, lo, hi, d) => (typeof x === "number" && isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d);
-  const r2 = x => Math.round(x * 100) / 100;
-  const r3 = x => Math.round(x * 1000) / 1000;
+  const r2 = x => { const mul = KCP.ECON_DATA.params.ledgerRound2.v; return Math.round(x * mul) / mul; };
+  const r3 = x => { const mul = KCP.ECON_DATA.params.ledgerRound3.v; return Math.round(x * mul) / mul; };
 
   // 참가 도시 고르기: 2~6곳, 꼭 들어갈 도시(R.must, 평택) 포함, 육상·만 횡단 연계선으로 서로 이어져야 한다(해저 연계선 후보는 이웃으로 치지 않음).
   const ALL = R => R.teams.map(t => t.id);
@@ -91,8 +93,9 @@
 
   function log(S, text, now) {
     let message = String(text);
-    const prefix = "국가 재정지원금 연액: ", suffix = "(분기별 1/4 지급)";
-    if (message.startsWith(prefix)) {
+    const econ = KCP.econ, prefix = econ?.subsidyNewsPrefix;
+    if (prefix && message.startsWith(prefix) && typeof econ.subsidyPayNote === "function" && KCP.ECON_DATA) {
+      const suffix = econ.subsidyPayNote(KCP.ECON_DATA);
       const cities = message.slice(prefix.length).replaceAll(suffix, "").split(" · ");
       let shown = cities.length;
       const compact = () => prefix + cities.slice(0, shown).join(" · ") + (shown < cities.length ? ` 외 ${cities.length - shown}곳` : "") + ` ${suffix}`;
@@ -416,15 +419,15 @@
     // 수요를 못 구해 0이 되면 저장하지 않는다('≤ 0 t' 고정 방지). run 첫머리에서 다시 시도한다.
     if (goal.co2Plan > 0) S.goalPlan = { ...S.goalPlan, [S.round]: goal };
   }
-  // 예측 기술을 도입한 팀은 이번 라운드 사건의 실제 크기 x를 원래 범위의 0.7배 폭(P, 예측 NRMSE 30.6% 감소 [P101] · REF 12.7)으로 미리 안다(가운데는 x에서 조금 비켜 둔다).
+  // 예측 기술을 도입한 팀은 실제 크기 x를 원래 범위 ×fcstWidth 폭으로 미리 안다(가운데는 x에서 조금 비켜 둔다). 근거는 tech-data params.
   function fcxOf(S, id) {
     if (!techOf(S, id).includes("fcst")) return null;
     const R = regionOf(S.region), out = {};
     (S.events || []).filter(ev => ev.round === S.round && typeof ev.x === "number").forEach(ev => {
       const E = eventDef(R, ev.id), fc = (E && E.fc) || 0;
       if (!fc) return;
-      const u = (hashStr((S.seedKey ?? S.room) + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc * 0.7) * (u - 0.5);
-      out[ev.id] = [r3(Math.max(1 - fc, c - fc * 0.7)), r3(Math.min(1 + fc, c + fc * 0.7))];
+      const u = (hashStr((S.seedKey ?? S.room) + ":" + id + ":" + ev.id) % 1000) / 1000, c = ev.x + (fc * tp("fcstWidth")) * (u - 0.5);
+      out[ev.id] = [r3(Math.max(1 - fc, c - fc * tp("fcstWidth"))), r3(Math.min(1 + fc, c + fc * tp("fcstWidth")))];
     });
     return out;
   }
@@ -445,25 +448,25 @@
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
     const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
     Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: P.eduAir.v, eduAirSpecified: P.eduAir.v,
-      smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed),
-      lngSpikeFrequency: 3, outageHoursPerPercent: 87.6, koreaOutageHours2019: 0.04,
-      islandLineLoss: 3, researchYears: [10, 30], complaintPoliticalEffect: [50, 200],
+      smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(P.smrMonthsReal.v / speed),
+      lngSpikeFrequency: P.lngSpikeFrequency.v, outageHoursPerPercent: P.outageHoursPerPercent.v, koreaOutageHours2019: P.koreaOutageHours2019.v,
+      islandLineLoss: P.islandLineLoss.v, researchYears: P.researchYears.v.slice(), complaintPoliticalEffect: P.complaintPoliticalEffect.v.slice(),
       note: `주민·기업 이동과 SMR 공사 시간 ×${speed}(게임 1달 ≈ 현실 약 ${speed}달)`,
       items: [
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
-        ["eduMemory", `지지율 회복 기억 ×${P.eduMemory.v}: 임기 4년을 게임 12달에 압축`],
-        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년`],
+        ["eduMemory", `지지율 회복 시간 ×${P.eduMemory.v}: 회복 시간을 ${P.eduMemory.v}배 압축`],
+        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년(48달)을 ×4 압축`],
         ["eduAir", `대기 영향 ×${P.eduAir.v}(교육용·집단 만족만, 이주에는 ×1)`],
         ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
         ["eduCurtail", `출력제어 손실 ×${P.eduCurtail.v}: 버림을 관찰하도록 확대`],
         ["hazardFreq", `기상 사건 빈도 ×${P.hazardFreq.v}: 정책 판단 시간을 확보`],
-        ["lngSpikeFrequency", "LNG 급등은 현실보다 약 3배 자주: 충격 관찰"],
-        ["outageHoursPerPercent", "정전 1% = 연 87.6시간: 한국 평균 연 0.04시간(2019)보다 큰 교육용 눈금"],
-        ["islandLineLoss", "섬 연습 지도 송전 손실은 리그의 3배: 짧은 지도에서 손실 관찰"],
-        ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 약 55개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(55 / speed)}달`],
-        ["researchYears", "연구 기간 수십 배 압축: 현실 10~30년 → 게임 수 달"],
-        ["complaintPoliticalEffect", "민원 정치 효과 약 50~200배 확대: 마을 민원을 도시 전체 만족에 반영"]
+        ["lngSpikeFrequency", `LNG 급등이 현실보다 약 ${P.lngSpikeFrequency.v}배 자주 나와요(추정 비교값, 추첨 확률에 곱하지 않음)`],
+        ["outageHoursPerPercent", `정전 1%를 같은 수요의 시간으로 바꾼 값: 연 ${P.outageHoursPerPercent.v}시간(에너지 미공급률의 등가 시간 환산이며, 실제 정전시간과 다름)`],
+        ["islandLineLoss", `섬 연습 지도 송전 손실은 리그의 ${P.islandLineLoss.v}배: 짧은 지도에서 손실 관찰`],
+        ["smrConstruction", `SMR 공사 시간 ×${speed}: 현실 비교 약 ${P.smrMonthsReal.v}개월 → 게임 ${KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(P.smrMonthsReal.v / speed)}달`],
+        ["researchYears", `연구 기간 수십 배 압축: 현실 ${P.researchYears.v.join("~")}년 → 게임 수 달`],
+        ["complaintPoliticalEffect", `마을 민원을 도시 전체 만족에 반영: 지지에 미치는 영향이 현실보다 약 ${P.complaintPoliticalEffect.v.join("~")}배 커요(추정 비교값, 계산 배수 아님)`]
       ].map(([key, note]) => ({ key, note })) });
     return { speeds, year: E.year, month: E.month, t: E.t, eduSpeed: KCP.ECON_DATA.params.eduSpeed.v, cities, totals: E.totals, intl: E.intl.cur, intlActive: E.intl.cur?.active || [], offers: E.offers.map(o => Object.assign({}, o, { eval: report && (report.offers || []).find(x => x.id === o.id)?.eval || null })), score: KCP.econ ? KCP.econ.score(E) : null, report, before: S.econBefore || null, previousScore: S.econPreviousScore || null, scoreState: { len: E.len, coop: E.coop || 0, order: E.order, cities: Object.fromEntries(E.order.map(id => { const c = E.cities[id]; return [id, { name: c.name, pop: c.pop, pop0: c.pop0, ind: c.ind, ind0: c.ind0, cash: c.cash, debtCap: c.debtCap, revYear: c.revYear, co2Intensity0: c.co2Intensity0, co2Intensity: c.co2Intensity, co2pc: c.co2pc, approval: c.approval, approvalHistory: (c.approvalHistory || []).slice(), unsS: c.unsS }]; })), totals: E.totals } };
   }
@@ -472,6 +475,7 @@
     const teams = {};
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
+      // D-75: 판정은 진행자의 전체 상태에만 남기고 팀 기기에 공개하지 않는다.
       const left = KCP.buildGame ? preserveMap(KCP.buildGame, () => r2(budget(S, id) - spendOf(KCP.buildGame, S, regionOf(S.region), id, T.plan || {}))) : null;
       teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
@@ -510,10 +514,21 @@
     }
     if (T.token !== m.token) return err("seat");
     // 식별자가 없는 옛 클라이언트와 claim·hello는 기존 규약을 유지한다.
-    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price"].includes(m.type) &&
+    if (["plan", "econ", "crit", "ready", "tie", "research", "license", "joint", "respond", "price", "verdict"].includes(m.type) &&
         ((Object.hasOwn(m, "rd") && m.rd !== S.round) || (Object.hasOwn(m, "ph") && m.ph !== S.phase))) return err("stale");
     T.online = now;
     if (m.type === "hello") return { ok: true, quiet: true };
+    if (m.type === "verdict") {
+      // 봉투 필드 외에는 round·hit만 허용한다. 학생 글은 저장하거나 재방송하지 않는다.
+      const allowed = ["type", "team", "token", "kid", "n", "sid", "seat", "id", "born", "rd", "ph", "round", "hit"];
+      if (Object.keys(m).some(k => !allowed.includes(k)) || !Number.isInteger(m.round) || typeof m.hit !== "boolean") return err("verdict");
+      if (!["review", "end"].includes(S.phase)) return err("phase");
+      if (m.round !== S.round || m.round !== S.results.at(-1)?.round) return err("stale");
+      // 최초 판정 고정: 재접속·ack 유실의 같은 값 재전송은 성공, 뒤늦은 변경은 거부해 집계를 보존한다.
+      if (Object.hasOwn(T.verdicts || {}, m.round)) return T.verdicts[m.round] === m.hit ? { ok: true, quiet: true } : err("verdict");
+      T.verdicts ||= {}; T.verdicts[m.round] = m.hit; S.rev++;
+      return { ok: true };
+    }
     if (m.type === "ready") {
       const ready = m.ready === true;
       if (T.ready === ready) return { ok: true, quiet: true };
@@ -881,7 +896,7 @@
   function effectiveTie(S, T, mul = 1) {
     const tech = [...techOf(S, T.a), ...techOf(S, T.b)];
     const scable = KCP.TECH_DATA && tech.includes("scable"), hvdc = KCP.TECH_DATA && T.kind === "hvdc";
-    return { id: tieId(T), a: T.a, b: T.b, cap: T.cap * mul * (scable ? tp("scableCap") : 1), loss: (hvdc ? tp("hvdcLoss") : TIE_LOSS) * (scable ? tp("scableLoss") : 1) };
+    return { id: tieId(T), a: T.a, b: T.b, cap: T.cap * mul * (hvdc ? tp("hvdcCap") : 1) * (scable ? tp("scableCap") : 1), loss: (hvdc ? tp("hvdcLoss") : TIE_LOSS) * (scable ? tp("scableLoss") : 1) };
   }
   function coolingCost(S, id) {
     if (!KCP.TECH_DATA || !techOf(S, id).includes("scable")) return 0;
@@ -1081,6 +1096,70 @@
     return { out, flow };
   }
 
+  // D-74: 이웃 거래 뒤의 부족만 현재 운영 시간별 수요에 비례해 보충한다.
+  // 기존 정산 필드만 사용한다. 지역 생산·PM·수출 연료 회계에는 넣지 않는다.
+  function gridSupply(o, s) {
+    const P = KCP.ECON_DATA.params;
+    let total = 0;
+    for (let k = 0; k < s.H; k++) {
+      const amount = Math.min(Math.max(0, s.uns[k] - o.del[k]), s.dem[k] * P.gridImportShare.v);
+      o.del[k] += amount;
+      total += amount;
+    }
+    o.fuelX += total * P.normalCost.v * P.gridImportMarkup.v;
+    o.co2In += total * P.normalCo2.v;
+    return total; // imp·pay는 이웃 거래 전용. 계통 공급량은 내부 호출에서만 쓴다.
+  }
+
+  // 거래 없는 도시 시험. 자체 생산(tot.co2)은 보존하고 co2는 소비 배출로 표시한다.
+  // 원본·공개 필드 집합은 그대로 두며 시간별 수요 보조자료는 WeakMap에서만 읽는다.
+  function gridFill(sim) {
+    const res = structuredClone(sim), uns = new Float32Array(res.H);
+    for (let k = 0; k < res.H; k++) {
+      let total = 0;
+      for (let ti = 0; ti < res.NT; ti++) total += res.hrUns[k * res.NT + ti];
+      uns[k] = total;
+    }
+    const o = { del: new Float32Array(res.H), fuelX: 0, co2In: 0 };
+    const imported = gridSupply(o, { H: res.H, dem: res.hrDem, uns });
+    const detail = KCP.buildGame.gridFillContext(sim);
+    if (!detail) throw new Error("gridFill needs an original league simulation");
+    res.town.forEach(t => { t.uns = t.outH = t.eveH = t.cloudH = t.hotH = 0; t.dayOut.fill(0); });
+    for (let k = 0; k < res.H; k++) {
+      const d = Math.floor(k / 24), h = k % 24;
+      // 실제 운영의 병원 정전 판정과 같이 수입을 병원 부족부터 배분한다.
+      let left = o.del[k];
+      for (const hospital of [true, false]) {
+        const shortage = res.town.reduce((sum, _, ti) => sum + (detail.hospTi[ti] === hospital ? sim.hrUns[k * res.NT + ti] : 0), 0);
+        const fill = Math.min(left, shortage);
+        left -= fill;
+        res.town.forEach((t, ti) => {
+          if (detail.hospTi[ti] !== hospital) return;
+          const at = k * res.NT + ti, remaining = Math.max(0, sim.hrUns[at] * (shortage > 0 ? 1 - fill / shortage : 1));
+          res.hrUns[at] = remaining; t.uns += remaining;
+          if (remaining > Math.max(.005, .02 * detail.townDemand[at])) {
+            t.outH++; t.dayOut[d]++;
+            if (h >= 17 && h < 23) t.eveH++;
+            if (res.wx[d].w > 0) t.cloudH++;
+            if (res.wx[d].hot) t.hotH++;
+          }
+        });
+      }
+      res.hrSup[k] += o.del[k];
+      res.hrHospUns[k] = Math.max(0, sim.hrHospUns[k] - o.del[k]);
+      res.hrHosp[k] = res.hrHospUns[k] > Math.max(.005, .02 * res.hrHospDem[k]) ? 1 : 0;
+    }
+    res.unsTotal = Math.max(0, sim.unsTotal - imported);
+    res.outTotal = res.town.reduce((sum, t) => sum + t.outH, 0);
+    res.hospH = res.hrHosp.reduce((sum, h) => sum + h, 0);
+    res.tot.sup += imported; res.tot.by.import += imported;
+    res.tot.fuel += o.fuelX; res.cost.fuel += o.fuelX; res.cost.total += o.fuelX;
+    res.co2 += o.co2In;
+    const bg = KCP.buildGame;
+    preserveMap(bg, () => { bg.selectPack(res.map, "league"); detail.finish(res); });
+    return res;
+  }
+
   // 라운드 하나를 돌려 결과를 state.results에 붙인다.
   function runRound(S, bg) {
     const R = regionOf(S.region), rd = roundsOf(S)[S.round - 1];
@@ -1115,6 +1194,7 @@
       }
     }
     const { out, flow } = settle(built, sims, price, H, rnd.days);
+    if (S.econ) act.forEach(({ id }) => gridSupply(out[id], sims[id]));
     lastRun = { round: S.round, days: rnd.days, seed: rnd.seed, season: rnd.season,
       teams: Object.fromEntries(act.map(({ id }) => [id, { res: sims[id]._res, del: out[id].del, uns: sims[id].uns, dem: sims[id].dem }])) };
     const team = {};
@@ -1124,9 +1204,9 @@
       let outH = 0, hospH = 0;
       for (let k = 0; k < H; k++) {
         if (isOutHour(s.uns, o.del, s.dem, k)) outH++;
-        if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > Math.max(0.005, 0.02 * (s.hospDem?.[k] || 0))) hospH++;
+        if (s.hosp && s.hosp[k] && Math.max(0, (s.hospUns?.[k] ?? s.uns[k]) - o.del[k]) > outageFloor(s.hospDem?.[k] || 0)) hospH++;
       }
-      const uns = Math.max(0, K.uns - (o.imp - o.sub));
+      const uns = Math.max(0, K.uns - o.del.reduce((sum, amount) => sum + amount, 0));
       const tie = tieShare(S, R, t.id), Tm = S.teams[t.id], loss = r2((Tm.sunk || 0) + lossOf(Tm.base, Tm.plan));
       // 현금 흐름: 이번 라운드 새 투자(누적 투자 − 지난 라운드까지) + 이번 라운드 운영비. 라운드를 더해도 건설비가 두 번 세지지 않는다.
       const rfix = r2(Tm.rfix || 0), stock = r2(K.capex + tie + loss + rfix), resp = respCost(S, R, t.id, S.round);
@@ -1256,7 +1336,7 @@
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
       // by는 거래 후 대표 운영 기간의 생산 MWh(시작 보정은 거래 없음). 수입 전기는 제외한다.
-      energy: { genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+      energy: { genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
         tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         bonus: bonusOf(S, R, id, S.round), salvage: Math.max(0, -(c.inv || 0)) },
       policy: { ...(S.teams[id].econPol || {}), save: (plan.policies || []).includes("save"), share: (plan.policies || []).includes("share") },
@@ -1294,7 +1374,7 @@
     });
     const inputs = {};
     ids.forEach(id => {
-      const o = settled.out[id], by = Object.fromEntries(["coal", "lng", "diesel", "biomass"].map(fuel =>
+      const o = settled.out[id], by = Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(fuel =>
         [fuel, Math.max(0, (sims[id].k.by[fuel] || 0) + (o.byX[fuel] || 0) - (o.saveBy[fuel] || 0))]));
       // 월 입력에서만 사용한다. 공개 결과·36달 저장에는 연료별 중간값을 싣지 않는다.
       inputs[id] = econInput(S, R, id, { ...res.team[id], by }, wk);
@@ -1362,7 +1442,7 @@
     replayOf, researchView, researchError, researchReserve, effectiveTie, royaltyLedger, techCards, connectedTie,
     gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, trialMods, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
-    budget, tieCost, tieShare, cleanPlan, capexOf,
+    budget, tieCost, tieShare, cleanPlan, capexOf, gridFill,
     SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, fixedOf, spendOf, techOf, econInput
   };
 })();

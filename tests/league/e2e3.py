@@ -1,4 +1,5 @@
 """리그 v3: 사건 예보·대응 버튼, 실제 크기 공개, 연구(대학·연구소) 진척, 철거 회수, 현금 흐름 표시."""
+from league_flow import pass_issue_check
 import sys, os, re
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode
@@ -10,7 +11,8 @@ def panel(P, name):
     if b.get_attribute("aria-expanded") != "true": b.click()
     P.wait_for_timeout(200)
     if name == "result":
-        for key in ("lg-result-reasons", "lg-result-details"):
+        # 결과 서랍(결과 단계)의 S8 아래 상세는 '이번 달 자세히'(#lg-month-details) 접힘 안에 있다(품질8 UX, 2026-10-21). 먼저 연다.
+        for key in ("lg-month-details", "lg-result-reasons", "lg-result-details"):
             detail = P.locator('#' + key)
             if detail.count() and not detail.evaluate('el => el.open'):
                 detail.locator(':scope > summary').click()
@@ -56,6 +58,7 @@ with sync_playwright() as pw:
         left1 = P.inner_text(".lg-left b")
         check(left0 != left1, f"budget left changed {left0} → {left1}")
         P.click('#lg-ready')
+        pass_issue_check(P)
         if turns:
             P.wait_for_selector('#lg-predict', timeout=10000)
             check(P.locator('#lg-evidence').count() == 1, "event response opens criterion / evidence gate")

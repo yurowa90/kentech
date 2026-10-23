@@ -1,7 +1,8 @@
 """S7 명세 수용 검사 — 브라우저 실행은 샌드박스 밖 총괄 담당.
 
 실행: tests/.venv/bin/python tests/league/s7.py http://127.0.0.1:9430/index.html
-근거: 2월 이후는 _briefs/lanes/league/C-fix2.md와 총괄 확정 여섯 단계 명세.
+근거: ../_briefs/lanes/league/V3B-fix5.md·V3B-fix4.md·V3B-fix3.md·V3B-fix2.md와 영상 3차 V3B-s7.md가 카드 문턱·단서·병목·근거 연결·숫자 문구에 우선한다.
+2월 이후는 _briefs/lanes/league/C-fix2.md와 D-74 일곱 단계 명세(옛 여섯 단계에서 계통 수입 분리).
 1월은 _briefs/lanes/league/S7-fix3.md가 우선. 아래 I 번호는 유지된 기존
 S7-impl.md 항목의 행 번호이며 '겹침=남는 값'·겹침 막대 명세는 폐기한다.
 _briefs/design/s7/notes.md 19–25, LEAGUE-CANON.md 12·14행(목표 4·6).
@@ -15,10 +16,13 @@ econui, solo의 선택자를 재사용한다. 결과/약속/분해값을 주입�
 복제 상태로 예측을 고르며 실제 판은 UI로 진행한다.
 """
 
+from league_flow import pass_issue_check
 import json
+import calendar  # D-80: 계약 A, 월 일수 독립 계산.
 import math
 import re
 import sys
+from decimal import Decimal, ROUND_HALF_UP
 
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode, start_solo
@@ -26,11 +30,53 @@ from econui import (Checks, context_for, diagnostics, local_address, monitored_p
                    open_panel, overflow, screenshot, shown)
 from solo import click_next, close_drawer, read
 
-VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%(?:p)?")
+VALUE = re.compile(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*(?:%(?:p)?|MWh(?:/일)?)")  # D-80: C-4. D-82: 일평균 단위.
+S7_SHARE = re.compile(r"[+−]?\d+\.\d{2}%p")
+S7_RATE = re.compile(r"\d+\.\d{2}%")
+# D-80: C-2·4 우선. 새 계산은 시험 4몫·월간 6몫, 계통 수입 이름은 옛 기록용.
 NAMES = {"choice": "내 선택", "weather": "날씨·운전 기간", "event": "사건·대응",
-         "trade": "이웃 거래"}
+         "trade": "이웃 거래"}  # D-80: C-2, 시험 네 몫.
 MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기간",
-                 "event": "사건·대응", "progress": "접속·공사·기술 진행", "growth": "도시 성장·연료 값", "trade": "이웃 거래"}
+                 "event": "사건·대응", "progress": "접속·공사·기술 진행", "growth": "도시 성장·연료 값", "trade": "이웃 거래"}  # D-80: C-2, 월간 여섯 몫.
+# D-80: C-4, 옛 기록 표시 이름은 새 계산 후보와 분리해서 보존.
+LEGACY_NAMES = {**NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
+LEGACY_MONTHLY_NAMES = {**MONTHLY_NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
+S7_MWH = re.compile(r"[+−]?[\d,]+\.\d MWh/일")  # D-82: 새 S7의 표시 단위.
+
+
+def part_min(a):  # D-80: C-5, 독립 문턱 식.
+    return max(max(.05, .05 * abs(a["trial"])) / 10, .05) if a.get("target") == "grid" else .05  # D-82 수정 2(총괄 결정): 하한 0.05 = 표시 눈금 절반.
+
+
+def rounded_share(value, a):  # D-80: C-4, 허용 오차 확대 없이 표시 반올림값과 대조.
+    step = ".1" if a.get("target") == "grid" else ".01"  # D-80: C-1·2·4·5 대상별 검사.
+    return float(Decimal(str(value)).quantize(Decimal(step), rounding=ROUND_HALF_UP))  # D-80: C-1·2·4·5 대상별 검사.
+
+
+def share_pattern(a):  # D-80: target 없는 옛 기록은 %p.
+    return S7_MWH if a.get("target") == "grid" else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
+
+
+def attribution_endpoints(page, a):  # D-80: C-1·계약 A, 공개 결과/시험에서 독립 계산.
+    state = page.evaluate(STATE)  # D-80: C-1·2·4·5 대상별 검사.
+    results, player = state["results"], a["id"]  # D-80: C-1·2·4·5 대상별 검사.
+    current = next(r for r in results if r["round"] == a["round"])  # D-80: C-1·2·4·5 대상별 검사.
+    previous = next((r for r in results if r["round"] == a["round"] - 1), None)  # D-80: C-1·2·4·5 대상별 검사.
+    days = lambda r: calendar.monthrange(r["year"], r["month"])[1] if r.get("month") else r["days"]  # D-80: C-1·2·4·5 대상별 검사.
+    def public_value(result):  # D-80: C-1·2·4·5 대상별 검사.
+        row = result["team"][player]  # D-80: C-1·2·4·5 대상별 검사.
+        return (max(0, row["isolated"]["uns"] - row["uns"] - row["imp"] + row["sub"]) / result["days"]  # D-82: 공개 대표기간 하루 평균.
+                if a.get("target") == "grid" else row["unsPct"])  # D-80: C-1·2·4·5 대상별 검사.
+    if a.get("basis") == "monthly":  # D-80: C-1·2·4·5 대상별 검사.
+        return public_value(previous), public_value(current)  # D-80: C-1·2·4·5 대상별 검사.
+    record = page.evaluate("""id => { // D-80: C-1·2·4·5 대상별 검사.
+      const L=KCP.league.state(), V=L.snap || L.S, C=KCP.leagueCore; // D-80: C-1·2·4·5 대상별 검사.
+      return KCP.buildGame.lastTrial(C.teamDef(C.regionOf(V.region),id).pack, JSON.stringify([L.room,id])); // D-80: C-1·2·4·5 대상별 검사.
+    }""", player)  # D-80: C-1·2·4·5 대상별 검사.
+    base = record["gridMWh"] / record["days"] if a.get("target") == "grid" else record["unsPct"]  # D-82: 시험 원기간 직접 평균.
+    return base, public_value(current)  # D-80: C-1·2·4·5 대상별 검사.
+
+
 STATE = "() => { const l=KCP.league.state(); return l.S || l.snap; }"
 SYNC = "([r,p]) => {const l=KCP.league.state(),s=l&&(l.S||l.snap); return s?.round===r&&s?.phase===p;}"
 
@@ -59,7 +105,62 @@ def required(checks, condition, label):
         raise AssertionError(label)
 
 
+def student_words(checks, page, label):
+    # text_content는 접힌 상세도 포함한다. 서랍 전체의 다른 근거 등급 문구는 대상 밖이다.
+    text = page.locator("#lg-missed").text_content()
+    checks.ok("S7" not in text and "(G)" not in text,
+              f"{label} 학생 원인 영역 전체에 내부 표기 미노출")
+
+
+def no_cause_summary(checks, page, label, before, after, monthly=False):
+    """두 정전율은 UI 시험/독립 복제 운영과 비교하고, 재현 진단은 API와 대조한다."""
+    a = current_attribution(page)  # D-80: C-1·2·4·5 대상별 검사.
+    before, after = attribution_endpoints(page, a)  # D-80: C-1·2·4·5 대상별 검사.
+    grid_target = a.get("target") == "grid"  # D-80: C-1·2·4·5 대상별 검사.
+    # D-80: 독립 비교값과 단위에 맞게 요약을 검사한다.
+    shown_high = lambda value: math.isfinite(value) and Decimal(str(value)).quantize(Decimal(".01"), rounding=ROUND_HALF_UP) >= 5
+    high = not grid_target and shown_high(before) and shown_high(after)  # D-80: C-1·2·4·5 대상별 검사.
+    actual_high = not grid_target and shown_high(after)  # D-80: C-1·2·4·5 대상별 검사.
+    difference = after - before
+    small_difference = abs(difference) < (part_min(a) if grid_target else .05)  # D-80: C-1·2·4·5 대상별 검사.
+    # API는 재현/합계 밖 진단 분기만 읽는다. 두 정전율은 UI 시험·독립 복제 운영과 비교한다.
+    a = current_attribution(page)
+    replay = a.get("replay", 0)
+    parts_sum = sum(p["value"] for p in a["parts"])
+    replay_dominates = (not a.get("replayOutsideSum", False) and not small_difference and
+                        replay * difference > 0 and abs(replay) > abs(difference) / 2 and
+                        abs(parts_sum) < abs(difference) / 2)
+    expected_label = "차이 원인 없음(정전 자체는 큼)" if high else "뚜렷한 원인 없음"
+    student_words(checks, page, label + " 한 줄 요약")
+    text = page.locator("#lg-missed").text_content()
+    summary = page.locator("#lg-outage-single").text_content()
+    pattern = r"지난달 ([\d.]+)% → 이번 달 ([\d.]+)%" if monthly else r"시험 ([\d.]+)% → 실제 ([\d.]+)%"
+    if grid_target:  # D-80: C-1·2·4·5 대상별 검사.
+        pattern = r"지난달 ([\d,.]+) MWh/일 → 이번 달 ([\d,.]+) MWh/일" if monthly else r"시험 ([\d,.]+) MWh/일 → 실제 ([\d,.]+) MWh/일"  # D-82
+    quoted = re.search(pattern, summary)
+    checks.ok(quoted is not None and abs(float(quoted[1].replace(",", "")) - rounded_share(before, a)) <= 1e-9 and  # D-80: C-1·2·4·5 대상별 검사.
+              abs(float(quoted[2].replace(",", "")) - rounded_share(after, a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 요약 두 숫자 = 독립 비교값(소수 둘째 자리)")
+    checks.ok(expected_label in text and ("정전 자체는 큼" in text) == high,
+              f"{label} 두 표시값 모두 ≥5.00%일 때만 높은 정전 기록")
+    checks.ok((("바뀐 조건 하나하나는" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
+              ("지금 설비·접속이 수요를 못 따라가는 상태" in summary) == actual_high and
+              ("1주 시험과 자리 판단(접속 여유)에서 다시 봐요" in summary) == actual_high,
+              f"{label} 차이 설명·높은 정전의 설비·접속 부족·재점검 안내")
+    saved_name = "지난달 사본" if monthly else "시험"
+    replay_detail = f"차이의 대부분은 재현 차이(저장된 {saved_name}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요"
+    checks.ok((replay_detail in summary) == replay_dominates, f"{label} 재현 차이가 대부분일 때 원인 분해 한계")
+    checks.ok(("이번 달 변화보다" in summary) == (actual_high and small_difference),
+              f"{label} 0.05%p 미만 차이에만 변화 비교")
+    baseline_name = "지난달" if monthly else "시험"
+    checks.ok((f"{baseline_name}에도 정전이 컸으니" in summary) == high,
+              f"{label} 기준 표시값도 높을 때만 높은 정전 전제")
+    return expected_label
+
+
 def capture(checks, page, label, stage):
+    if page.locator("#lg-missed").count():
+        student_words(checks, page, f"{label} {stage}")
     overflow(checks, page, f"{label} {stage}")
     screenshot(checks, page, f"s7-{label}-{stage}.png")
 
@@ -97,9 +198,18 @@ def plan_and_trial(page, empty=False, renewable=False, change_after=True):
     return trial
 
 
-def expected_operation(page, player, topic="uns"):
-    """분해 함수와 독립: 실운영 엔진을 복제 상태에 실행. 실제 판은 불변."""
-    return page.evaluate("""([id,topic]) => {
+def period_days(result):  # D-80: 대표 일수와 달력상 월 일수를 구별한다.
+    return calendar.monthrange(result["year"], result["month"])[1] if result.get("month") else result["days"]  # D-80: 계약 A.
+
+
+def public_grid_mwh(result, player):  # D-80: UI 계산 함수를 부르지 않고 공개 필드로 월 환산한다.
+    row = result["team"][player]  # D-80: 지도 수입 설비 출력은 포함하지 않는다.
+    return max(0, row["isolated"]["uns"] - row["uns"] - row["imp"] + row["sub"]) * period_days(result) / result["days"]  # D-80: 계약 A.
+
+
+def expected_operation(page, player):  # D-80: 복제 운영 한 번으로 세 주제의 기대값을 함께 얻는다.
+    """분해·판정 함수와 독립: 복제 실운영 결과의 공개 필드를 Python에서 계산한다."""  # D-80: 실제 판은 불변.
+    forecast = page.evaluate("""id => { // D-80: 화면 주제는 약속 창을 연 뒤 읽는다.
       const L=KCP.league.state(), C=KCP.leagueCore, B=KCP.buildGame;
       const before=JSON.stringify(L.S), S=structuredClone(L.S);
       try {
@@ -108,27 +218,72 @@ def expected_operation(page, player, topic="uns"):
           C.computerPlans(S,B,id,save.style || 'balanced',true);
         }
         const result=C.run(S,B,0);
-        const actual=topic==='cash' ? S.econ.cities[id].cash-S.econ.before[id].cash : result.team[id].unsPct;
+        const economy=C.publicView(S,0).econ; // D-80: 내부 S.econBefore는 공개 뷰의 econ.before로 읽는다.
+        const cash=economy.cities[id].cash-economy.before[id].cash; // D-80: 현금은 운영 전 대비.
         if (JSON.stringify(L.S)!==before) throw Error('복제 운영이 원본을 변경함');
-        return actual;
+        return {result,cash}; // D-80: 계통 기대값은 공개 결과로 독립 계산.
       } finally {B.selectPack(C.teamDef(C.regionOf('south'),id).pack,'league');}
-    }""", [player, topic])
+    }""", player)  # D-80: 진행자에서 복제한 결과도 팀 약속에 전달할 수 있다.
+    result = forecast["result"]  # D-80: 정전·계통은 같은 복제 운영에서 읽는다.
+    return {"uns": result["team"][player]["unsPct"], "cash": forecast["cash"],  # D-80: 기존 기대값 유지.
+            "grid": public_grid_mwh(result, player), "days": period_days(result)}  # D-80: 첫 달 시험 환산에도 이번 달 일수 사용.
 
 
-def promise(page, trial, actual, *, hit=False, topic="uns", baseline=None):
-    # 2월부터 지난달과 비교한다. 실제 판정 함수 대신 명세의 정수 반올림 기준 사용.
-    baseline = (0 if topic == "cash" else trial["unsPct"]) if baseline is None else baseline
-    delta = actual - baseline
-    direction = "same" if abs(delta) < .5 else "up" if delta > 0 else "down"
-    prediction = direction if hit else ("down" if direction != "down" else "up")
+def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  # D-80: 운영 전 독립 기대값과 hit 의도를 보존한다.
     page.evaluate(COUNT_SIM)
     close_drawer(page)
     page.locator("#lg-ready").click()
+    pass_issue_check(page)
     page.locator('[data-evidence="grid"]').click()
-    page.locator(f'[data-pred="{topic}"]').select_option(prediction)
+    select = page.locator('#lg-predict [data-pred]')  # D-80: 정전 0인 계획은 grid 선택지만 존재한다.
+    screen_topic = select.get_attribute("data-pred")  # D-80: 호출자의 주제 가정보다 실제 화면 주제를 따른다.
+    assert screen_topic in ("uns", "cash", "grid"), f"알 수 없는 약속 주제: {screen_topic}"  # D-80: 누락·중복도 실패.
+    assert topic != "cash" or screen_topic == "cash", f"현금 약속을 요구했으나 화면 주제는 {screen_topic}"  # D-80: cash 검사를 다른 주제로 우회하지 않는다.
+    topic = screen_topic  # D-80: 확정 때 저장할 주제로 방향을 계산한다.
+    state = page.evaluate(STATE)  # D-80: 지난달 값은 공개 결과에서 읽는다.
+    player = page.evaluate("() => KCP.league.state().team")  # D-80: 멀티에서도 팀 도시를 기준으로 한다.
+    previous = next((r for r in state["results"] if r["round"] == state["round"] - 1), None)  # D-80: 첫 달만 시험 기준.
+    if topic == "grid":  # D-80: 지난달은 지난달 일수, 시험은 이번 달 일수로 환산한다.
+        baseline = public_grid_mwh(previous, player) if previous else trial["gridMWh"] * expected["days"] / trial["days"]  # D-80: 계약 A.
+    else:  # D-80: 정전·현금의 기존 비교 기준을 유지한다.
+        baseline = 0 if topic == "cash" else baseline if baseline is not None else trial["unsPct"]  # D-80: 현금은 운영 전 대비.
+    actual = expected[topic]  # D-80: 주제별 복제 운영 기대값.
+    delta = actual - baseline  # D-80: UI promiseComparison/gridReliance 호출 없이 계산한다.
+    # D-82 결정 1·화면 지시서: S6 표시 차이도 두 기간 각각의 일평균을 사용한다.
+    base_per_day = (public_grid_mwh(previous, player) / period_days(previous) if previous else trial["gridMWh"] / trial["days"]) if topic == "grid" else None  # D-82
+    same = abs(actual / expected["days"] - base_per_day) <= max(.05, .05 * abs(base_per_day)) if topic == "grid" else abs(delta) < .5  # D-82
+    direction_delta = actual / expected["days"] - base_per_day if topic == "grid" else delta  # D-82
+    direction = "same" if same else "up" if direction_delta > 0 else "down"  # D-82: 일평균 부호.
+    prediction = direction if hit else ("down" if direction != "down" else "up")  # D-80: 모든 주제에서 맞히기/틀리기 의도 유지.
+    select.select_option(prediction)  # D-80: 화면에 존재하는 주제만 조작한다.
     page.locator('[data-confidence="fairly"]').click()
     page.locator("#lg-ready-confirm").click()
-    return prediction
+    return {"topic": topic, "prediction": prediction, "direction": direction, "hit": hit,  # D-80: 운영 뒤 검증용 기대값.
+            "baseline": baseline, "actual": actual, "delta": direction_delta,  # D-82 결정 1·화면 지시서: grid는 독립 일평균 Δ, 다른 주제는 기존 값.
+            "basis": "운영 전 대비" if topic == "cash" else "지난달 대비" if previous else "시험 1주 대비"}  # D-80: 기준 문구도 검사한다.
+
+
+def promise_result(checks, page, expected, label):  # D-80: 주제별 S6 판정과 복제 기대값을 실제 운영에 대조한다.
+    topic = expected["topic"]  # D-80: 약속 때 화면에서 읽은 주제는 운영 뒤에도 고정되어야 한다.
+    state = public_state(page)  # D-80: 현금의 econ.before를 포함한 공개 운영값만 읽는다.
+    player = page.evaluate("() => KCP.league.state().team")  # D-80: 혼자·멀티 공통.
+    result = state["results"][-1]  # D-80: 이번 달 공개 운영 결과.
+    actual = (public_grid_mwh(result, player) if topic == "grid" else result["team"][player]["unsPct"] if topic == "uns"  # D-80: 계약 A.
+              else state["econ"]["cities"][player]["cash"] - state["econ"]["before"][player]["cash"])  # D-80: 현금은 운영 전 대비.
+    checks.ok(actual == expected["actual"], f"{label} {topic} 복제 기대값 = 실제 공개 운영값")  # D-80: 기존 복제 일치 검사 유지.
+    compare = page.locator(f'[data-compare="{topic}"]').inner_text()  # D-80: grid·cash도 동일한 판정 의도 검사.
+    note = current_note(page)  # D-80: 저장 주제·예측·판정도 확인한다.
+    checks.ok(note.get("topic") == topic and note.get("pred", {}).get(topic) == expected["prediction"] and  # D-80: 약속 주제 고정.
+              note.get("outcome", {}).get("actual") == expected["direction"] and  # D-80: 독립 방향 기대값.
+              note.get("outcome", {}).get("hit") is expected["hit"], f"{label} {topic} 저장 판정 = 독립 기대 방향·적중")  # D-80: 적중 의도 완화 금지.
+    verdict = "예상과 같음" if expected["hit"] else "예상과 다름"  # D-80: 틀리기/맞히기 양쪽 확인.
+    checks.ok(verdict in compare and expected["basis"] in compare, f"{label} {topic} 화면 판정·비교 기준 일치")  # D-80: B-3.
+    unit = "MWh/일" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-82 결정 1·화면 지시서: 판정과 같은 일평균 단위.
+    match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-82 결정 1·화면 지시서: 첫 MWh/일 차이를 검사, 월 합계와 혼동 금지.
+    step = ".1" if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
+    displayed = Decimal.from_float(expected["delta"]).quantize(Decimal(step), rounding=ROUND_HALF_UP)  # D-80: 이진 실수의 표시 반올림값과 대조, 허용 오차 확대 없음.
+    checks.ok(match is not None and Decimal(match[1].replace("−", "-").replace(",", "")) == displayed,  # D-80: B-3 수치.
+              f"{label} {topic} 표시 차이 = 독립 기대값의 {unit} 반올림")  # D-80: 기존 월간 판정 수치 검사를 세 주제로 확장한다.
 
 
 def current_note(page):
@@ -248,6 +403,178 @@ def hidden_answer(checks, root, label, card=False):
         checks.ok("?" in text and len(clue) >= 8, f"{label} 크기 ? + 실제 단서 문구 [I20]")
 
 
+def bottleneck(checks, page, a, label):
+    """DOM 배선 검사. 전량 연결−실제 고립의 독립 수치 검산은 Node 30·32에서 수행."""
+    grid = a["grid"]
+    show = grid["waitingMW"] > 0 and math.isfinite(grid["value"]) and abs(grid["value"]) >= part_min(a)  # D-80: C-1·2·4·5 대상별 검사.
+    box = page.locator("#lg-outage-grid-bottleneck")
+    checks.ok(box.count() == int(show), f"{label} 대기>0·|반사실|≥0.05%p일 때만 병목 상자")
+    checks.ok(page.locator("#lg-outage-single-grid").count() == 0 and
+              page.locator("#lg-missed [data-out-grid]").count() == int(show),
+              f"{label} 옛 선택자 대체·병목 수치 중복 없음")
+    small = page.locator("#lg-outage-grid-small")
+    show_small = grid["waitingMW"] > 0 and math.isfinite(grid["value"]) and abs(grid["value"]) < part_min(a)  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok(small.count() == int(show_small), f"{label} 작은 대기 줄은 효과 0.05%p 미만")
+    if small.count():
+        waiting_text = page.evaluate("mw => mw.toLocaleString('ko-KR', {maximumFractionDigits:1})", grid["waitingMW"])
+        checks.ok(small.is_visible() and (small.inner_text() == f"접속 대기 {waiting_text} MW(효과 0.05%p 이하)" if a.get("target") != "grid" else f"접속 대기 {waiting_text} MW" in small.inner_text() and "MWh" in small.inner_text() and "%p" not in small.inner_text()),  # D-80: C-1·2·4·5 대상별 검사.
+                  f"{label} 작은 대기 실제 표시·대기량·문턱 문구")
+    checks.ok(page.locator("#lg-outage-grid").count() == int(show) and
+              page.locator("#lg-outage-grid-bottleneck #lg-outage-grid").count() == int(show),
+              f"{label} grid 설명은 병목 상자 안에만")
+    if not show or box.count() != 1:
+        return small.evaluate("el => el.outerHTML") if small.count() else None
+    checks.ok(box.is_visible(), f"{label} 병목 상자 실제 표시(열기 여부와 무관)")
+    raw = float(box.locator("[data-out-grid]").get_attribute("data-out-grid"))
+    text = box.locator("[data-out-grid]").inner_text()
+    checks.ok(abs(raw - grid["value"]) <= 1e-9 and share_pattern(a).fullmatch(text) is not None and  # D-80: C-1·2·4·5 대상별 검사.
+              abs(float(VALUE.fullmatch(text)[1].replace("−", "-").replace(",", "")) - rounded_share(raw, a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 병목 반사실 원시값·숫자 형식")
+    surface = box.evaluate(SURFACE)
+    checks.ok("대기가 없었다면" in surface["text"] and ("계통" if a.get("target") == "grid" else "정전") in surface["text"] and "분해 합계 밖" in surface["text"],  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 실제 조건 반사실·합계 밖 설명")
+    # 병목의 %p 한 개만 허용한다. 카드 몫/최대 답을 CSS·aria·data로 숨겨도 실패.
+    checks.ok(len(share_pattern(a).findall(surface["text"])) == 1 and  # D-80: C-1·2·4·5 대상별 검사.
+              len(re.findall(r"[+−-]?\d[\d,]*(?:\.\d+)?", surface["text"])) == 2 and
+              not any(k in ("data-out-value", "data-missed", "data-out-tag") or
+                      (k != "data-out-grid" and re.search(r"\d", v)) or
+                      "가장 큰" in v for k, v in surface["attrs"]) and
+              "가장 큰" not in surface["text"], f"{label} 병목에는 카드 몫·정답 없음")
+    checks.ok(box.evaluate("el => {const next=document.querySelector('#lg-outage-cards, #lg-outage-single'); "
+                           "return !!next && !!(el.compareDocumentPosition(next)&Node.DOCUMENT_POSITION_FOLLOWING);}"),
+              f"{label} 카드/한 줄 요약 위 별도 병목 상자")
+    return box.evaluate("el => el.outerHTML")
+
+
+def number_format(checks, row, key, label, page):  # D-80: C-1·2·4·5 대상별 검사.
+    text = row.locator("b").inner_text()
+    a = current_attribution(page)  # D-80: C-4, 행이 속한 현재 대상.
+    pattern = S7_MWH if a.get("target") == "grid" else S7_RATE if key in ("trial", "previous", "actual") else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
+    raw = float(row.get_attribute("data-out-value"))
+    valid = pattern.fullmatch(text) is not None if math.isfinite(raw) else text == ("– MWh/일" if a.get("target") == "grid" else "–%" if key in ("trial", "previous", "actual") else "–%p")  # D-82
+    checks.ok(valid, f"{label} {key} 숫자 형식·비유한 숫자는 –")
+
+
+
+def weather_short_from_detail(full):
+    detail = full.split(" · 최대 수요 ", 1)[0]
+    renewable = re.search(r"하루 재생 공급량 ([\d,.]+) → ([\d,.]+) MWh/일", full)
+    entries = []
+    for item in detail.split(" · "):
+        arrow = re.fullmatch(r"(.+?) ([\d,.]+%?|봄|여름|가을|겨울) → ([\d,.]+%?|봄|여름|가을|겨울)(.*)", item)
+        if item.startswith("하루 재생 공급량") or item == "재생 공급 없음":
+            assert renewable is not None
+            same = renewable[1] == renewable[2]
+            flat = "재생 공급 없음" if item == "재생 공급 없음" or item.endswith("−100%") else f"하루 재생 공급량 {renewable[2]} MWh/일"
+        elif arrow:
+            same = arrow[2] == arrow[3]
+            flat = f"{arrow[1]} {arrow[3]}{arrow[4]}"
+        else:
+            raise AssertionError(f"해석할 수 없는 날씨 항목: {item}")
+        entries.append((same, item, flat))
+    changes = [text for same, text, _ in entries if not same]
+    unchanged = [flat for same, _, flat in entries if same]
+    body = " · ".join(changes + (["같음: " + " · ".join(unchanged)] if unchanged else []))
+    with_tail = body + " · 자세한 값은 단서 더 보기"
+    return body if len(with_tail) > 70 else with_tail
+
+
+def clue_and_evidence(checks, page, a, label):
+    """DOM 배선·실제 기기 근거 방향 검사. 날씨 물리량/순서의 독립 모델 검산은 Node 30·32."""
+    short = (a.get("clues") or {}).get("weather")
+    full = (a.get("clueMore") or {}).get("weather")
+    required(checks, isinstance(short, str) and bool(short), f"{label} clues.weather 짧은 날씨 단서 누락")
+    required(checks, isinstance(full, str) and bool(full), f"{label} clueMore.weather 상세 날씨 단서 누락")
+    period = re.search(r"대표 운전 (\d+) → (\d+)일", full)
+    required(checks, period is not None, f"{label} 상세 날씨의 대표 운전 기간 누락")
+    hot_pattern = r"무더위 \d+ → \d+일" if period[1] == period[2] else r"무더위 \d+% → \d+% 날"
+    checks.ok(short == weather_short_from_detail(full) and "육상 기준" not in short,
+              f"{label} 변경 항목→같음 묶음→70자 꼬리말, 상세 물리량과 정확히 일치")
+    checks.ok(re.search(r"평균 수요 [\d,.]+ → [\d,.]+ MW", full) is not None and
+              re.search(hot_pattern, full) is not None, f"{label} 상세 수요·기간별 무더위 원문 유지")
+    checks.ok(("하루 재생 공급량" in short or "재생 공급 없음" in short) and
+              "하루 재생 가능량" not in short, f"{label} 실제 재생 공급량 문구")
+    checks.ok("접속 할당·출력제어를 반영해 실제 공급한 양" in full and
+              "변화의 절댓값으로 정해요(게임 가정)" in full,
+              f"{label} 공급량 정의·부호 없는 단서 순서 안내")
+    weather_card = page.locator('[data-missed="weather"] .lg-out-clue')
+    if weather_card.count():
+        checks.ok(weather_card.inner_text() == short, f"{label} 날씨 카드 = 검산된 짧은 단서 API")
+    more = page.locator("#lg-outage-more")
+    required(checks, more.count() == 1, f"{label} #lg-outage-more 상세 단서 DOM 누락 또는 중복")
+    checks.ok(full in more.text_content(),
+              f"{label} 상세 날씨 DOM 배선")
+    if page.locator("#lg-outage-verdict").count() == 0:
+        return
+    names = MONTHLY_NAMES if a.get("basis") == "monthly" else NAMES
+    # 구현 표와 같음(회귀 고정). 모든 짝이 독립 명세에서 나왔다는 뜻은 아니다.
+    # 지시서의 grid→progress/fuel/풍력 없음/evening→choice는 Node 32에서 개별 단언한다.
+    links = {"evening": {"choice": "stage", "weather": "direct", "event": "direct", "growth": "direct"},
+             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "direct", "progress": "direct"},
+             "fuel": {"event": "indirect", "growth": "indirect"}, "neighbor": {"progress": "indirect", "trade": "direct"}}
+    notes = device_data(page).get("interview", {}).get("months", {})
+    note = current_note(page)
+    evidence = note.get("evidence", {})
+    key = evidence.get("key")
+    if not a.get("hasConnectedWind", False):
+        links["wind"] = {"weather": "indirect", "event": "indirect"}
+    previous = notes.get(str(a["round"] - 1), {})
+    # V8 N1: 시작 메모가 있으면 두 달 시작 값으로 비교하고, 없을 때만 옛 경로.
+    if previous.get("s1EvidenceValues") is not None:
+        old_value = previous["s1EvidenceValues"].get(key)
+    else:
+        old_value = previous.get("evidenceValues", {}).get(key)
+        if old_value is None and previous.get("evidence", {}).get("key") == key:
+            old_value = previous["evidence"].get("value")
+    value = note["s1EvidenceValues"].get(key) if note.get("s1EvidenceValues") is not None else evidence.get("value")
+    if (key == "neighbor" and note.get("s1EvidenceValues") is not None and
+            previous.get("s1EvidenceValues") is not None and
+            (not note.get("s1EvidenceNeighborId") or
+             note["s1EvidenceNeighborId"] != previous.get("s1EvidenceNeighborId"))):
+        old_value = None
+    sign = {"evening": 1, "grid": 0, "wind": -1 if a.get("hasConnectedWind", False) else 0, "neighbor": 1}.get(key, 0)
+    step = {"evening": .01, "grid": .02, "wind": .02, "neighbor": .02}.get(key, .01)
+    evidence_sign = 0
+    if a.get("basis") == "monthly" and isinstance(old_value, (int, float)) and isinstance(value, (int, float)) and math.isfinite(old_value) and math.isfinite(value):
+        change = value - old_value
+        if sign and abs(change) >= max(abs(old_value) * step, .5 if key == "neighbor" else .01):
+            evidence_sign = 1 if change * sign > 0 else -1
+    largest = max(a["parts"], key=lambda p: abs(p["value"]))
+    largest = largest if abs(largest["value"]) >= part_min(a) else None  # D-80: C-1·2·4·5 대상별 검사.
+    expected_links = links.get(key, {})
+    # D-80 접힘(D80-s7-fold.md): '내 예측이 놓친 것'은 #lg-outage-verdict 안의 닫힌 #lg-outage-evidence에 있다.
+    # 학생처럼 펼친 뒤 읽는다. 접힘이 없는 옛 구조면 셋째 줄을 읽는다.
+    page.evaluate("() => { const d = document.getElementById('lg-outage-evidence'); if (d) d.open = true; }")
+    text = page.locator("#lg-outage-evidence p").first.inner_text() if page.locator("#lg-outage-evidence").count() else page.locator("#lg-outage-verdict p").nth(2).inner_text()
+    for kind, prefix in (("direct", "직접 연결 — "), ("stage", "같은 단계와 연결 — "), ("indirect", "간접 연결 — ")):
+        linked = [p for p in a["parts"] if expected_links.get(p["key"]) == kind]
+        checks.ok((prefix in text) == bool(linked), f"{label} {kind} 근거 연결 구분")
+        checks.ok(all(names[p["key"]] in text for p in linked), f"{label} {kind} 연결된 몫 이름")
+    direct = bool(largest and expected_links.get(largest["key"]) == "direct")
+    largest_sign = (1 if largest["value"] > 0 else -1) if largest else 0
+    checks.ok(("고른 근거는 이번 차이의 가장 큰 몫과도 이어져요." in text) ==
+              (direct and bool(evidence_sign) and evidence_sign == largest_sign), f"{label} 칭찬은 직접 연결·방향 일치일 때만")
+    checks.ok(("고른 근거가 가리키는 방향과 가장 큰 몫의 부호는 반대예요." in text) ==
+              (direct and bool(evidence_sign) and evidence_sign != largest_sign), f"{label} 반대 방향 지정 문구")
+    opposite = bool(direct and evidence_sign and evidence_sign != largest_sign)
+    checks.ok(text.endswith("이 근거만으로 이번 차이의 방향을 설명하기는 어려워요.") == opposite,
+              f"{label} 반대 방향 마무리")
+    neutral = bool(direct and not evidence_sign)
+    ending = f"고른 근거가 가장 큰 몫({names[largest['key']]})과 같은 이야기예요." if largest else ""
+    checks.ok(bool(ending and text.endswith(ending)) == neutral, f"{label} 직접 연결·부호 0은 중립 마무리")
+    if neutral or opposite:
+        checks.ok("다음에는" not in text and "살펴봐요" not in text, f"{label} 이미 고른 직접 근거의 재검토 권유 없음")
+
+
+def selectable_cards(checks, page, label):
+    """표시된 모든 카드가 선택·열기 단계에서도 허용되는지 실제 클릭으로 확인."""
+    keys = page.locator("#lg-outage-cards [data-missed]").evaluate_all("nodes => nodes.map(n => n.dataset.missed)")
+    for key in keys:
+        page.locator(f'#lg-outage-cards [data-missed="{key}"]').click()
+        checks.ok(page.locator(f'#lg-outage-cards [data-missed="{key}"]').get_attribute("aria-pressed") == "true" and
+                  not page.locator("#lg-outage-open").is_disabled() and current_note(page).get("missed") == key,
+                  f"{label} 표시 카드 {key} 선택·열기 허용 집합 일치")
+
 def link(checks, page, selector, new_tab, label):
     a = page.locator(selector)
     required(checks, a.count() == 1 and a.is_visible(), f"{label} 연결 표시 [I38]")
@@ -264,19 +591,34 @@ def link(checks, page, selector, new_tab, label):
               any(word in text for word in ("설명", "말", "대응")), f"{label} 연습할 사고 습관 한 줄 [I39]")
 
 
+def track_drawn(checks, page, key, label):
+    """폭포 막대 칸이 보이는 폭으로 그려졌는지 페이지 안에서 조건 대기로 확인한다.
+
+    Playwright bounding_box는 CPU 감속·부하 중 요소가 연결되어 있고 폭이 152px인데도
+    None을 돌려준 적이 있다(2026-10-22, 8배 감속 측정). 그래서 막대 칸을 페이지 안에서 직접 재고,
+    학생에게 의미 있는 공백 기준인 1초 안에 보이는 폭이 되지 않으면 실패로 둔다.
+    """
+    checks.test(label, lambda: page.wait_for_function("""key => {
+      const t = document.querySelector(`#lg-outage-waterfall [data-out-step="${key}"] .lg-out-track`);
+      return !!t && t.checkVisibility() && t.getBoundingClientRect().width > 0;
+    }""", arg=key, timeout=1000))
+
+
 def scene(checks, page, requests, label, width, trial, actual):
     open_panel(page, "result")
+    page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
     required(checks, "다름" in page.locator('#lg-promise-result').inner_text(),
              f"{label} 반대 예측 → 다름 [요청1, 목표4]")
     root = page.locator("#lg-missed")
     required(checks, root.count() == 1 and root.get_attribute("data-single") == "false",
              f"{label} 두 원인이 있는 첫 달 카드 분기(생략으로 통과시키지 않음) [I24]")
+    student_words(checks, page, label + " 첫 달 열기 전")
     cards = page.locator("#lg-outage-cards [data-missed]")
-    required(checks, 1 <= cards.count() <= 3, f"{label} 원인 카드 1~3장 [I20]")
+    required(checks, 2 <= cards.count() <= 3, f"{label} 유의미한 원인 카드 2~3장 [I20]")
     closed_card_keys = [c.get_attribute("data-missed") for c in cards.all()]
     checks.ok(closed_card_keys == [key for key in NAMES if key in closed_card_keys],
               f"{label} 열기 전 카드도 분해 순서의 부분열")
-    checks.ok(cards.count() == 3, f"{label} 이 복수 원인 사례는 세 카드 [I22]")
+    closed_box = bottleneck(checks, page, current_attribution(page), label + " 열기 전")
     checks.ok(root.get_attribute("data-opened") == "false", f"{label} 고르기 전 닫힘")
     checks.ok(root.get_attribute("data-out-value") in (None, "") and
               all(n.get_attribute("data-out-value") == "" for n in root.locator('[data-out-value]').all()),
@@ -286,8 +628,9 @@ def scene(checks, page, requests, label, width, trial, actual):
     for i in range(cards.count()):
         hidden_answer(checks, cards.nth(i), f"{label} 카드{i+1}", card=True)
     hidden_answer(checks, page.locator("#lg-outage-others"), label + " 나머지 후보")
+    hidden_answer(checks, page.locator("#lg-outage-more"), label + " 상세 단서")
     checks.ok(all(c.get_attribute("data-missed") in NAMES for c in cards.all()),
-              f"{label} 카드 후보는 네 원인만(내 선택이 상위 3개 밖이면 허용)")
+              f"{label} 카드 후보는 네 원인만(내 선택이 상위 3개 밖이면 허용)")  # D-80: C-1·2·4·5 대상별 검사.
     no_answer_records(checks, page, label)
     checks.ok(page.locator("#lg-outage-open").is_disabled(), f"{label} 고르기 전에 열 수 없음 [I22]")
     if width == 390:
@@ -300,6 +643,8 @@ def scene(checks, page, requests, label, width, trial, actual):
     cards.first.scroll_into_view_if_needed()
     capture(checks, page, label, "before")
     before_requests = len(requests)
+    selectable_cards(checks, page, label)
+    clue_and_evidence(checks, page, current_attribution(page), label + " 닫힘")
     # 1280 밝음 혼자 하기는 최대가 아닌 유의미한 몫을 반드시 고른다.
     # 계산 API는 사례 선택에만 쓰고, 실제 판정은 열린 막대·꼬리표와 다시 비교한다.
     nonlargest = label == "1280x900-light-solo"
@@ -309,29 +654,32 @@ def scene(checks, page, requests, label, width, trial, actual):
         maximum = max(abs(p["value"]) for p in parts)
         candidates = {c.get_attribute("data-missed") for c in cards.all()}
         choices = [p["key"] for p in parts if p["key"] in candidates and
-                   .05 <= abs(p["value"]) < maximum]
+                   part_min(current_attribution(page)) <= abs(p["value"]) < maximum]  # D-80: C-1·2·4·5 대상별 검사.
         required(checks, bool(choices), f"{label} 최대가 아닌 유의미한 카드 존재")
         picked = choices[0]
     page.locator(f'#lg-outage-cards [data-missed="{picked}"]').click()
     for c in cards.all():
         hidden_answer(checks, c, label + " 고른 뒤 열기 전", card=True)
+    student_words(checks, page, label + " 첫 달 선택 후 열기 전")
     page.locator("#lg-outage-open").click()
+    student_words(checks, page, label + " 첫 달 열기 후")
     checks.ok(page.locator("#lg-outage-verdict").get_attribute("tabindex") == "-1" and
               page.evaluate("document.activeElement?.id") == "lg-outage-verdict",
               f"{label} 열기 뒤 판정 머리로 초점 이동")
     required(checks, root.get_attribute("data-opened") == "true", f"{label} 열기 상태 보존 [I22]")
     for c in cards.all():
-        match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*%p", c.inner_text())
+        match = VALUE.search(c.locator(".lg-out-size").inner_text())  # D-80: C-1·2·4·5 대상별 검사.
         raw = c.get_attribute("data-out-value")
-        checks.ok(match is not None and raw not in (None, "") and
-                  abs(float(match[1].replace("−", "-").replace(",", "")) - float(raw)) <= .0051,
+        checks.ok(match is not None and share_pattern(current_attribution(page)).fullmatch(c.locator('.lg-out-size').inner_text()) is not None and raw not in (None, "") and  # D-80: C-1·2·4·5 대상별 검사.
+                  abs(float(match[1].replace("−", "-").replace(",", "")) - rounded_share(float(raw), current_attribution(page))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} 열린 카드 %p와 속성 크기 일치 [I22]")
     checks.ok(page.locator('[data-out-tag="picked"]').inner_text() == "내가 고름" and
               page.locator(f'[data-missed="{picked}"] [data-out-tag="picked"]').count() == 1,
               f"{label} 고른 카드 꼬리표 [I22]")
     checks.ok(page.locator('[data-out-tag="largest"]').inner_text() == "가장 큼", f"{label} 최대 몫 꼬리표 [I22]")
     order = page.locator("#lg-outage-order").inner_text()
-    checks.ok(all(s in order for s in ("순서", "내 선택", "날씨·운전 기간", "사건·대응", "이웃 거래", "달라", "추정", "겹친 효과", "뒤 단계 몫")),
+    checks.ok("이번 달 계산 순서: " + " → ".join(NAMES.values()) in order and
+              "순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요." in order,
               f"{label} 순서 의존 안내 [I23]")
     rows = page.locator("#lg-outage-waterfall [data-out-step]")
     values, visible = {}, {}
@@ -341,43 +689,45 @@ def scene(checks, page, requests, label, width, trial, actual):
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {key} 화면 수치 한 개")
         visible[key] = float(matches[0].replace("−", "-").replace(",", ""))
-        checks.ok(abs(visible[key] - values[key]) <= .0051, f"{label} {key} 표시 반올림")
+        checks.ok(abs(visible[key] - rounded_share(values[key], current_attribution(page))) <= 1e-9, f"{label} {key} 표시 반올림")  # D-80: C-1·2·4·5 대상별 검사.
+        number_format(checks, row, key, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track is not None and track["width"] > 0, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
+        track_drawn(checks, page, key, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
+    # D-80: C-2, 시험 폭포는 네 원인+출발/도착(+재현)의 6/7행.
     required(checks, set(values) - {"replay"} == {"trial", "actual", *NAMES} and
-             rows.count() == (7 if "replay" in values else 6),
-             f"{label} 시험 + (재현 차이) + 네 원인 + 실제")
+             rows.count() == len(NAMES) + 2 + int("replay" in values),
+             f"{label} 시험 + (재현 차이) + 네 원인 + 실제")  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok(page.locator('[data-out-step="overlap"]').count() == 0, f"{label} 겹침 막대 0개")
     replay = page.evaluate("""() => {
       const L=KCP.league.state(), V=L.snap || L.S;
       return KCP.league.uiMath.outageAttribution(V,V.results.at(-1),L.team).replay;
     }""")
-    checks.ok(("replay" in values) == (abs(replay) >= .005) and
-              page.locator("#lg-outage-replay").count() == int(abs(replay) >= .005),
+    checks.ok(("replay" in values) == (abs(replay) >= .005) and  # D-80: C-1·2·4·5 대상별 검사.
+              page.locator("#lg-outage-replay").count() == int(abs(replay) >= .005),  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 재현 차이·설명은 절댓값 0.005%p 이상일 때만")
     checks.ok(all(n.get_attribute("data-out-other") in NAMES for n in page.locator('[data-out-other]').all()),
-              f"{label} 나머지 후보도 네 원인만")
+              f"{label} 나머지 후보도 네 원인만")  # D-80: C-1·2·4·5 대상별 검사.
     waterfall = page.locator("#lg-outage-waterfall")
     aria = waterfall.get_attribute("aria-label") or ""
     aria_values = [float(v.replace("−", "-").replace(",", "")) for v in VALUE.findall(aria)]
     checks.ok(waterfall.get_attribute("role") == "img" and
               all(name in aria for name in ("시험", *NAMES.values(), "실제")) and
               aria_values == list(visible.values()), f"{label} 폭포 수치 요약 aria-label")
-    checks.ok(abs(values["trial"] - trial["unsPct"]) <= 1e-9 and abs(values["actual"] - actual) <= 1e-9,
+    expected_base, expected_actual = attribution_endpoints(page, current_attribution(page))  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok(abs(values["trial"] - expected_base) <= 1e-9 and abs(values["actual"] - expected_actual) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 폭포 출발·도착 = 실제 저장 시험·운영")
     checks.ok(abs(values["trial"] + replay + sum(values[k] for k in NAMES) - values["actual"]) <= 1e-9,
               f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
-    checks.ok(abs(sum(v for k, v in values.items() if k != "actual") - values["actual"]) <= .0200001,
-              f"{label} 배선 일치: 재현 생략을 고려한 폭포 합계 ±0.02%p")
-    checks.ok(abs(sum(v for k, v in visible.items() if k != "actual") - visible["actual"]) <= .0200001,
-              f"{label} 배선 일치: 화면 합계 ±0.02%p [요청3]")
+    checks.ok(abs(sum(v for k, v in values.items() if k != "actual") + (replay if "replay" not in values else 0) - values["actual"]) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 생략 재현 복원 뒤 폭포 원시 합계 1e-9")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
+    checks.ok(abs(sum(v for k, v in visible.items() if k != "actual") - sum(rounded_share(v, current_attribution(page)) for k,v in values.items() if k != "actual")) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 화면 합계 = 각 원시값의 독립 반올림 합계")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
     largest = max(NAMES, key=lambda k: abs(values[k]))
-    top = sorted(NAMES, key=lambda k: abs(values[k]), reverse=True)[:3]
+    top = sorted((k for k in NAMES if abs(values[k]) >= part_min(current_attribution(page))), key=lambda k: abs(values[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
     checks.ok(set(card_keys) == set(top) and len(card_keys) == len(set(card_keys)),
-              f"{label} 카드는 네 원인 중 절댓값 상위 3개")
+              f"{label} 카드는 |몫|≥0.05%p인 상위 최대 3개(DOM 검산; 독립 계산은 Node30)")
     checks.ok(card_keys == [key for key in NAMES if key in card_keys],
               f"{label} 카드 표시 순서는 분해 순서의 부분열(크기 순위와 무관)")
     checks.ok(card_keys == closed_card_keys, f"{label} 열기 전후 카드 순서 동일")
@@ -386,19 +736,12 @@ def scene(checks, page, requests, label, width, trial, actual):
                   f"{label} 시험 카드 이름 = 순서·폭포 이름")
     checks.ok(page.locator(f'[data-missed="{largest}"] [data-out-tag="largest"]').count() == 1,
               f"{label} 가장 큼은 절댓값 최대 원인")
-    waiting_mw = current_attribution(page)["grid"]["waitingMW"]
-    if waiting_mw > 0:
-        checks.ok(page.locator("[data-out-grid]").count() == 1 and
-                  page.locator("#lg-outage-grid").count() == 1 and
-                  math.isfinite(float(page.locator("[data-out-grid]").get_attribute("data-out-grid"))) and
-                  "합계" in page.locator("#lg-outage-grid").inner_text() and
-                  "따로" in page.locator("#lg-outage-grid").inner_text(), f"{label} 접속 대기 별도 표시 [I15]")
-    else:
-        checks.ok(page.locator("[data-out-grid], #lg-outage-grid").count() == 0 and
-                  "접속 대기" not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략 [I15]")
+    checks.ok(bottleneck(checks, page, current_attribution(page), label + " 열기 뒤") == closed_box,
+              f"{label} 병목은 열기 전후 동일·카드 정답과 무관")
+    clue_and_evidence(checks, page, current_attribution(page), label + " 열림")
     verdict = page.locator("#lg-outage-verdict").inner_text()
     if nonlargest:
-        checks.ok(.05 <= abs(values[picked]) < abs(values[largest]) and picked != largest and
+        checks.ok(part_min(current_attribution(page)) <= abs(values[picked]) < abs(values[largest]) and picked != largest and  # D-80: C-1·2·4·5 대상별 검사.
                   "몫은 있지만 가장 크지 않았어요" in verdict,
                   f"{label} 최대가 아닌 선택의 판정 분기")
     checks.ok(all(s in verdict for s in ("내가 고른 것", "가장 큰 것", "내 예측이 놓친 것")),
@@ -437,14 +780,14 @@ def scene(checks, page, requests, label, width, trial, actual):
 def carry(checks, page, expected, label):
     open_panel(page, "journal")
     c = page.locator("#lg-missed-carry")
-    required(checks, c.count() == 1 and c.is_visible(), f"{label} 다음 달 지난달 놓친 것 표시 [I26]")
+    required(checks, c.count() == 1 and c.is_visible(), f"{label} 다음 달 지난달 내가 고른 원인 표시 [I26]")
     text = c.inner_text()
     if expected["nonlargest"]:
         checks.ok(expected["picked"] != expected["largest"] and
-                  f'지난달 놓친 것: {NAMES[expected["picked"]]}' in text and
+                  f'지난달 내가 고른 원인: {NAMES[expected["picked"]]}' in text and
                   f'가장 큰 몫 {NAMES[expected["largest"]]}' in text,
                   f"{label} 다음 달 줄에 고른 것 ≠ 가장 큰 것 표시")
-    checks.ok(all(s in text for s in ("지난달 놓친 것", NAMES[expected["picked"]],
+    checks.ok(all(s in text for s in ("지난달 내가 고른 원인", NAMES[expected["picked"]],
                                      "가장 큰 몫", NAMES[expected["largest"]])) and
               any(abs(float(v.replace("−", "-").replace(",", "")) - expected["largest_value"]) <= .0051
                   for v in VALUE.findall(text)), f"{label} 선택과 최대 몫·수치 유지")
@@ -459,12 +802,12 @@ def end_record(checks, page, expected, label):
     open_panel(page, "result")
     # 기존 solo.py의 끝 화면 계약. S7 기록이 타임라인과 일지 양쪽에서 사라지면 실패.
     text = page.locator("#lg-timeline").text_content()
-    checks.ok(all(s in text for s in ("놓친 것", NAMES[expected["picked"]], "가장 큰 몫",
+    checks.ok(all(s in text for s in ("내가 고른 원인", NAMES[expected["picked"]], "가장 큰 몫",
                                      NAMES[expected["largest"]])), f"{label} 끝 타임라인 원인 기록 [I26]")
     link(checks, page, "#lg-y2022-end", False, label + " 끝")
     capture(checks, page, label, "end")
     journal = copy_worksheet(page)
-    checks.ok(all(s in journal for s in ("놓친 것", NAMES[expected["picked"]], "가장 큰 몫",
+    checks.ok(all(s in journal for s in ("내가 고른 원인", NAMES[expected["picked"]], "가장 큰 몫",
                                         NAMES[expected["largest"]])), f"{label} 끝 활동지 일지 원인 기록 [I26]")
     checks.ok(page.locator("#lg-timeline svg").get_attribute("viewBox") == "0 0 380 346",
               f"{label} 타임라인 높이 346")
@@ -498,7 +841,7 @@ def snapshot_contract(checks, page, label):
              f"{label} {month}월 기기 사본 최근 2달만(3월에 1월 삭제)")
     snap = snapshots[str(month)]
     checks.ok(all(k in snap for k in ("round", "plan", "seed", "days", "season", "mods",
-                                      "unsPct", "isolatedUnsPct")), f"{label} 운영 사본 필수 입력")
+                                      "unsPct", "isolatedUnsPct", "filledUnsPct", "gridMWh")), f"{label} 운영 사본 필수 입력")  # D-80: C-1·2·4·5 대상별 검사.
     result = state['results'][-1]
     checks.ok(all(snap[k] == result[k] for k in ('seed', 'days', 'season')),
               f"{label} 사본 재사용 조건 = 실제 seed·days·season")
@@ -543,17 +886,20 @@ def monthly_no_answer_records(checks, page, label):
     open_panel(page, "result")
 
 
-def monthly_scene(checks, page, requests, label, width, baseline, actual):
+def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약속 기대값과 S7 분해 대상은 따로 검사한다.
     """C-lastmonth §2–5: 월간 분해·기준 일치·공개 전후·화면 검산."""
     open_panel(page, "result")
-    required(checks, "예상과 다름" in page.locator('[data-compare="uns"]').inner_text(),
-             f"{label} 지난달 대비 정전 오예측")
+    promise_result(checks, page, expected, label)  # D-80: 계통 오예측도 독립 방향·차이·outcome과 대조한다.
+    required(checks, "예상과 다름" in page.locator(f'[data-compare="{expected["topic"]}"]').inner_text(),  # D-80: 약속 당시 주제를 따른다.
+             f"{label} 지난달 대비 {expected['topic']} 오예측")  # D-80: S7 열림 조건의 의도 유지.
     root = page.locator("#lg-missed")
     required(checks, root.get_attribute("data-single") in ("true", "false"),
              f"{label} 사본 있는 달 월간 분해")
+    student_words(checks, page, label + " 월간 열기 전")
     required(checks, page.locator("#lg-outage-baseline").inner_text() ==
              "약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)을 나눠요.", f"{label} 같은 비교 기준 안내")
     checks.ok("시험 1주 대비" not in root.text_content(), f"{label} 시험 대비 분해 안내 폐기")
+    page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
     comparison = page.locator('#lg-trial-compare').inner_text()
     checks.ok('원인 카드는 지난달 실제 → 이번 달 실제의 정전 변화를 나눠요.' in comparison and
               '위 시험 / 실제 차이와는 기준이 달라요.' in comparison,
@@ -561,9 +907,11 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     cards = page.locator('#lg-outage-cards [data-missed]')
     keys = [c.get_attribute('data-missed') for c in cards.all()]
     multi = root.get_attribute("data-single") == "false"
+    closed_box = bottleneck(checks, page, current_attribution(page), label + " 월간 열기 전")
     before_requests = len(requests)
     if multi:
-        required(checks, cards.count() == 3, f"{label} 월간 원인 카드 3장")
+        clue_and_evidence(checks, page, current_attribution(page), label + " 월간 닫힘")
+        required(checks, 2 <= cards.count() <= 3, f"{label} 월간 유의미한 원인 카드 2~3장")
         for card in cards.all():
             checks.ok(card.locator("strong").inner_text() == MONTHLY_NAMES[card.get_attribute("data-missed")],
                       f"{label} 월간 카드 이름 = 순서·폭포 이름")
@@ -573,6 +921,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         for c in cards.all():
             hidden_answer(checks, c, label + ' 월간 닫힌 카드', card=True)
         hidden_answer(checks, page.locator('#lg-outage-others'), label + ' 월간 나머지 후보')
+        hidden_answer(checks, page.locator('#lg-outage-more'), label + ' 월간 상세 단서')
         # 루트는 공개된 총 차이·성능만 갖는다. 원인 크기/최대 속성은 전체 자손 검사.
         attrs = root.evaluate(SURFACE)['attrs']
         checks.ok(not any((k == 'data-out-value' and v.strip()) or
@@ -581,6 +930,7 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
                   f"{label} 전체 DOM aria/data 원인 답 비노출")
         no_answer_records(checks, page, label)
         checks.ok(page.locator('#lg-outage-open').is_disabled(), f"{label} 고르기 전 열기 불가")
+        selectable_cards(checks, page, label + " 월간")
         page.locator(f'[data-missed="{keys[0]}"]').click()
         checks.ok(current_note(page).get('missedBasis') == 'monthly',
                   f"{label} 열기 전 선택 저장도 월간 기준 보존")
@@ -591,30 +941,37 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         checks.ok(page.evaluate('document.activeElement?.id') == 'lg-outage-verdict', f"{label} 판정 초점")
     a = current_attribution(page)
     required(checks, a and a.get('basis') == 'monthly', f"{label} 월간 계산 API")
-    checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")
+    baseline, actual = attribution_endpoints(page, a)  # D-80: C-1, S7 출발/도착 독립값.
+    student_words(checks, page, label + " 월간 열기 후")
+    if all(abs(p['value']) < part_min(a) for p in a['parts']):  # D-80: C-1·2·4·5 대상별 검사.
+        no_cause_summary(checks, page, label, baseline, actual, monthly=True)
+    clue_and_evidence(checks, page, a, label + " 월간 열림")
+    checks.ok(bottleneck(checks, page, a, label + " 월간 열기 뒤") == closed_box,
+              f"{label} 월간 병목은 열기 전후 동일·합계 밖")
+    checks.ok([p['key'] for p in a['parts']] == list(MONTHLY_NAMES), f"{label} ①~⑥ 순서·보정은 후보 밖")  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok(abs(a['trial'] - baseline) <= 1e-9 and abs(a['actual'] - actual) <= 1e-9,
               f"{label} 분해 출발/도착 = 지난달/이번 실제")
-    # 판정 화면과 저장 outcome도 독립 baseline·actual로 계산한 방향/차이에 대조.
-    delta = actual - baseline
-    direction = 'same' if abs(delta) < .5 else 'up' if delta > 0 else 'down'
-    outcome = current_note(page).get('outcome', {})
-    compare = page.locator('[data-compare="uns"]').inner_text()
-    matches = VALUE.findall(compare)
-    checks.ok(outcome.get('actual') == direction and outcome.get('hit') is False and
-              '지난달 대비' in compare and matches and
-              abs(float(matches[0].replace('−','-').replace(',','')) - delta) <= .0051,
-              f"{label} 약속 판정값과 분해 기준 수치 일치")
+    # D-80: S6 주제·방향·표시 차이는 위 promise_result에서 검증한다. 실제 정전 시 S7 대상은 달라질 수 있다.
+    delta = actual - baseline  # D-80: C-2, S7 대상의 월간 합계.
     snapshots = device_s7_data(page)['outageSnapshots']
     old_snap = snapshots[str(a['round'] - 1)]
     current_snap = snapshots[str(a['round'])]
-    trade = next(p['value'] for p in a['parts'] if p['key'] == 'trade')
-    # 지난달 조건 재계산 = 저장 고립값 + 재현 진단. 독립 모델 검산은 32번에서 수행.
-    old_recalculated = old_snap['isolatedUnsPct'] + a['replay']
-    wired_trade = (actual - current_snap['isolatedUnsPct']) - (baseline - old_recalculated)
-    checks.ok(abs(trade - wired_trade) <= 1e-9, f"{label} 배선 일치: 거래 = 두 달 실제−고립 효과의 변화량")
+    state = page.evaluate(STATE)  # D-80: C-2, 계통 포함 사본으로 월간 거래 잔차 검산.
+    previous_result, current_result = state['results'][-2:]  # D-80: C-1·2·4·5 대상별 검사.
+    grid_target = a.get('target') == 'grid'  # D-80: C-1·2·4·5 대상별 검사.
+    def snapshot_value(snap, result):  # D-80: C-1·2·4·5 대상별 검사.
+        if not grid_target:  # D-80: C-1·2·4·5 대상별 검사.
+            return snap['filledUnsPct']  # D-80: C-1·2·4·5 대상별 검사.
+        return snap['gridMWh'] / result['days']  # D-82: 사본 대표기간 일평균, 정전 분기는 보존.
+    old_recalculated = snapshot_value(old_snap, previous_result) + a['replay']  # D-80: C-1·2·4·5 대상별 검사.
+    growth = snapshot_value(current_snap, current_result)  # D-80: C-1·2·4·5 대상별 검사.
+    shares = {p['key']: p['value'] for p in a['parts']}
+    wired_trade = (actual - growth) - (baseline - old_recalculated)  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok(abs(shares['trade'] - wired_trade) <= 1e-9, f"{label} 거래 = 두 달 계통 포함 단계 잔차 변화")  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok('gridImport' not in shares, f"{label} 새 계산에 별도 계통 수입 몫 없음")  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok(a.get('replayOutsideSum') is True and
               abs(sum(p['value'] for p in a['parts']) - delta) <= 1e-9,
-              f"{label} 배선 일치: 재현은 합계 밖·여섯 몫만의 합계 1e-9")
+              f"{label} 배선 일치: 재현은 합계 밖·여섯 몫만의 합계 1e-9")  # D-80: C-1·2·4·5 대상별 검사.
     rows = page.locator('#lg-outage-waterfall [data-out-step]')
     expected = ['previous'] + list(MONTHLY_NAMES) + ['actual']
     required(checks, [r.get_attribute('data-out-step') for r in rows.all()] == expected, f"{label} 폭포 전체 순서")
@@ -627,14 +984,14 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {k} 표시 숫자 1개")
         visible[k] = float(matches[0].replace('−', '-').replace(',', ''))
-        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - raw[k]) <= .0051,
+        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - rounded_share(raw[k], a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} {k} API/DOM 원시값·반올림")
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track and track['width'] > 0, f"{label} {width}px {k} 실제 막대 칸")
+        number_format(checks, row, k, label, page)  # D-80: C-1·2·4·5 대상별 검사.
+        track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
-    checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - visible['actual']) <= .0200001,
-              f"{label} 배선 일치: 화면 합계 ±0.02%p")
+    checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - sum(rounded_share(v, a) for k,v in expected_values.items() if k != 'actual')) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} 화면 합계 = 독립 반올림 합계")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
     waterfall = page.locator('#lg-outage-waterfall')
     aria = waterfall.get_attribute('aria-label') or ''
     aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]
@@ -644,20 +1001,26 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
     candidates = page.locator('#lg-missed [data-missed], #lg-missed [data-out-other]').evaluate_all(
         "nodes => nodes.map(n=>n.dataset.missed || n.dataset.outOther)")
     checks.ok(candidates and all(k in MONTHLY_NAMES for k in candidates), f"{label} 되돌림·재현은 후보 밖")
+    top = sorted((k for k in MONTHLY_NAMES if abs(raw[k]) >= part_min(a)), key=lambda k: abs(raw[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok(multi == (len(top) >= 2) and cards.count() == (len(top) if multi else 0),
+              f"{label} 유의미한 원인 2개 미만이면 카드 없이 한 줄 요약")
     if multi:
         ranked = sorted(a['parts'], key=lambda p: abs(p['value']), reverse=True)
-        top = {p['key'] for p in ranked[:3]}
-        checks.ok(keys == [k for k in MONTHLY_NAMES if k in top], f"{label} 크기 상위3 집합·분해순 배치")
+        checks.ok(keys == [k for k in MONTHLY_NAMES if k in top],
+                  f"{label} |몫|≥0.05%p 상위 최대3 집합·분해순(DOM 검산; 독립 계산은 Node32)")
+        for card in cards.all():
+            checks.ok(share_pattern(a).fullmatch(card.locator('.lg-out-size').inner_text()) is not None,  # D-80: C-1·2·4·5 대상별 검사.
+                      f"{label} 월간 카드 숫자 형식")
         checks.ok([c.get_attribute('data-missed') for c in cards.all()] == keys, f"{label} 연 전후 카드 순서 고정")
         checks.ok(page.locator(f'[data-missed="{ranked[0]["key"]}"] [data-out-tag="largest"]').count() == 1,
-                  f"{label} 공개 최대는 여섯 후보 중 최대")
+                  f"{label} 공개 최대는 여섯 후보 중 최대")  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok('priorTrade' not in a and page.locator('#lg-outage-prior-trade').count() == 0 and
               '지난달 거래 되돌림' not in root.text_content() and
-              page.locator('#lg-outage-replay').count() == int(abs(a['replay']) >= .005),
+              page.locator('#lg-outage-replay').count() == int(abs(a['replay']) >= .005),  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 되돌림 폐기·재현 설명 0.005%p 문턱")
     order = page.locator('#lg-outage-order').inner_text()
-    checks.ok('내 선택 → 날씨·계절·운전 기간 → 사건·대응 → 접속·공사·기술 진행 → 도시 성장·연료 값 → 이웃 거래' in order and
-              '뒤 단계 몫' in order, f"{label} 순서 의존 안내")
+    checks.ok('이번 달 계산 순서: ' + ' → '.join(MONTHLY_NAMES.values()) in order and
+              '순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.' in order, f"{label} 실제 순서·순서 의존 안내")
     if a['grid']['waitingMW'] == 0:
         checks.ok('접속 대기' not in root.text_content(), f"{label} 0 MW 접속 대기 문장 생략")
     simulations = int(root.get_attribute('data-simulations'))
@@ -678,8 +1041,11 @@ def monthly_scene(checks, page, requests, label, width, baseline, actual):
           const doc=new DOMParser().parseFromString(KCP.league.uiMath.trendHTML(V,L.team,true),'text/html');
           return [...doc.querySelectorAll('li,title')].filter(n=>n.textContent.startsWith(prefix)).map(n=>n.textContent).join(' / ');
         }""")
-        checks.ok(f"놓친 것: {MONTHLY_NAMES[saved['missed']]}" in timeline and
-                  f"가장 큰 몫: {MONTHLY_NAMES[ranked[0]['key']]}" in timeline,
+        leaders = [p for p in ranked if abs(rounded_share(p['value'], a)) == abs(rounded_share(ranked[0]['value'], a))]
+        unique_match = len(leaders) == 1 and saved['missed'] == ranked[0]['key']
+        maximum_text = "실제 가장 큰 몫과 같음(" if unique_match else f"가장 큰 몫: {MONTHLY_NAMES[ranked[0]['key']]}"
+        checks.ok(f"내가 고른 원인: {MONTHLY_NAMES[saved['missed']]}" in timeline and
+                  maximum_text in timeline,
                   f"{label} 월간 타임라인 선택·최대 이름 일치")
     checks.ok(len(requests) == before_requests, f"{label} 선택/공개/이어붙이기 HTTP 요청 증가 0")
     capture(checks, page, label, 'monthly-opened')
@@ -695,15 +1061,24 @@ def previous_carry_names(checks, page, label):
     if not saved:
         return
     basis = saved.get('basis') or note.get('outageFrozen', {}).get('basis')
-    names = MONTHLY_NAMES if basis == 'monthly' else NAMES
+    names = LEGACY_MONTHLY_NAMES if basis == 'monthly' else LEGACY_NAMES  # D-80: C-4, carry의 gridImport 이름 보존.
     open_panel(page, 'journal')
     text = page.locator('#lg-missed-carry').inner_text()
     selected = saved.get('missed')
+    if selected in ("차이 원인 없음(정전 자체는 큼)", "뚜렷한 원인 없음"):
+        checks.ok(text == f"지난달 원인 고르기: {selected}", f"{label} 다음 달 원인 없음 기록 문자열 보존")
+        checks.ok(selected in copy_worksheet(page) and "가장 큰 몫" not in text,
+                  f"{label} 다음 달 일지에도 같은 기록·최대 몫 없음")
     if selected in names and not note.get('outageSingleShown'):
-        checks.ok(f"지난달 놓친 것: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
+        checks.ok(f"지난달 내가 고른 원인: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
     largest = saved.get('largest')
     if largest:
-        checks.ok(f"가장 큰 몫 {names[largest['key']]}" in text, f"{label} 지난달 최대 이름은 기록 basis 기준")
+        frozen_parts = note.get('outageFrozen', {}).get('parts', [])
+        leaders = [p for p in frozen_parts if abs(rounded_share(p['value'], note['outageFrozen'])) ==
+                   abs(rounded_share(largest['value'], note['outageFrozen']))]
+        matched = len(leaders) == 1 and selected == largest['key']
+        maximum_text = "실제 가장 큰 몫과 같음(" if matched else f"가장 큰 몫 {names[largest['key']]}"
+        checks.ok(maximum_text in text, f"{label} 지난달 최대 이름·적중 표기는 기록 basis 기준")
     if basis != 'monthly':
         checks.ok('날씨·계절·운전 기간' not in text, f"{label} 시험 기록에 월간 이름 섞이지 않음")
     close_drawer(page)
@@ -714,30 +1089,31 @@ def later_outage(checks, page, requests, label, width, hit=False, host=None):
     previous_carry_names(checks, page, label)
     state = page.evaluate(STATE)
     player = 'pyeongtaek'
-    required(checks, state['econ']['cities'][player]['cash'] >= 0, f"{label} 정전 약속 경로 유지(생략 금지)")
+    required(checks, state['econ']['cities'][player]['cash'] >= 0, f"{label} 정전·계통 약속 경로 유지(생략 금지)")  # D-80: 자동 현금 달로 우회하지 않는다.
     trial = plan_and_trial(page, renewable=True, change_after=False)
     if host:
         host.wait_for_function("() => !KCP.league.state().S.teams.pyeongtaek.plan.policies.includes('save')")
-    actual = expected_operation(host or page, player)
+    forecast = expected_operation(host or page, player)  # D-80: 멀티는 진행자의 입력으로 세 주제 기대값을 미리 얻는다.
     baseline = state['results'][-1]['team'][player]['unsPct']
-    promise(page, trial, actual, baseline=baseline, hit=hit)
+    expected = promise(page, trial, forecast, baseline=baseline, hit=hit)  # D-80: 화면 주제와 독립 기대 방향 보존.
     if host:
         host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.ready")
         host.locator('#lg-next').click()
     page.wait_for_function(SYNC, arg=[state['round'], 'review'])
     open_panel(page, 'result')
     snapshots = snapshot_contract(checks, page, label)
-    required(checks, snapshots[str(state['round']-1)]['unsPct'] == baseline, f"{label} 판정 기준 = 사본 지난달 실제")
+    required(checks, snapshots[str(state['round']-1)]['unsPct'] == baseline, f"{label} 사본 정전율 = 지난달 공개 실제")  # D-80: 계통 약속과 사본 정전율 구별.
     if hit:
-        checks.ok('예상과 같음' in page.locator('[data-compare="uns"]').inner_text(), f"{label} 3월 적중")
+        promise_result(checks, page, expected, label)  # D-80: 3월 grid/uns 적중을 같은 의도로 검사한다.
         checks.ok(page.locator('#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall').count() == 0,
                   f"{label} 월간 적중 달 원인 답 비노출")
         no_answer_records(checks, page, label)
         capture(checks, page, label, 'monthly-hit')
     else:
-        a = monthly_scene(checks, page, requests, label, width, baseline, actual)
-        checks.ok(abs(a['trial'] - snapshots[str(state['round']-1)]['unsPct']) <= 1e-9,
-                  f"{label} 분해 출발 = 저장 지난달 = 판정 기준")
+        a = monthly_scene(checks, page, requests, label, width, expected)  # D-80: 주제별 판정과 월간 S7 열림 검증.
+        checks.ok(abs(a['trial'] - attribution_endpoints(page, a)[0]) <= 1e-9,  # D-80: 대상별 지난달 공개값.
+
+                  f"{label} 분해 출발 = 대상별 지난달 공개값")  # D-80: 실제 정전 시 S6·S7 대상 차이를 허용하되 수치는 엄격히 검사.
 
 
 def missing_snapshot_after_reload(checks, page, base, label):
@@ -747,14 +1123,16 @@ def missing_snapshot_after_reload(checks, page, base, label):
     page.locator('#lg-solo-seed').select_option('fixed'); start_solo(page, months=12)
     page.wait_for_function(SYNC, arg=[1, 'plan'])
     trial = plan_and_trial(page, renewable=True)
-    promise(page, trial, expected_operation(page, 'pyeongtaek'))
+    expected = promise(page, trial, expected_operation(page, 'pyeongtaek'))  # D-80: 사본 누락 검사 전에도 정상 오예측을 검증한다.
     page.wait_for_function(SYNC, arg=[1, 'review']); open_panel(page, 'result')
+    promise_result(checks, page, expected, label + '-jan')  # D-80: grid도 의도한 오예측인지 확인.
     snapshot_contract(checks, page, label + '-jan')
     click_next(page, page.evaluate(STATE)); page.wait_for_function(SYNC, arg=[2, 'plan'])
     state = page.evaluate(STATE)
     trial = plan_and_trial(page, renewable=True, change_after=False)
-    promise(page, trial, expected_operation(page, 'pyeongtaek'), baseline=state['results'][-1]['team']['pyeongtaek']['unsPct'])
+    expected = promise(page, trial, expected_operation(page, 'pyeongtaek'), baseline=state['results'][-1]['team']['pyeongtaek']['unsPct'])  # D-80: grid는 독립 지난달 계통 기준 사용.
     page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
+    promise_result(checks, page, expected, label + '-feb')  # D-80: 사본 삭제 전 월간 판정 의도 확인.
     required(checks, page.locator('#lg-missed').get_attribute('data-single') == 'false',
              f"{label} 사본 삭제 전 미공개 월간 복수 후보(고정 자료로 우회 금지)")
     page.reload(); page.wait_for_function(SYNC, arg=[2, 'review']); open_panel(page, 'result')
@@ -792,16 +1170,22 @@ def isolated_branch(checks, page, base, label, correct):
     page.wait_for_function(SYNC, arg=[1, "plan"])
     trial = plan_and_trial(page, empty=not correct, change_after=False)
     player = read(page)["player"]
-    actual = expected_operation(page, player)
-    promise(page, trial, actual, hit=correct)
+    forecast = expected_operation(page, player)  # D-80: 정전·계통 기대값을 모두 준비한다.
+    actual = forecast["uns"]  # D-80: 정전 전용 요약 검사용 공개 정전율.
+    if not correct:  # D-80: 기존 빈 배치를 재사용해 정전 전용 단언을 유지한다.
+        required(checks, trial["unsPct"] >= .005, f"{label} 빈 배치 시험에 실제 정전 존재(uns 경로 유지)")  # D-80: 정전 fixture를 생략하지 않는다.
+    expected = promise(page, trial, forecast, hit=correct)  # D-80: 정상 계획 적중은 grid, 빈 계획 오예측은 uns.
     page.wait_for_function(SYNC, arg=[1, "review"])
     open_panel(page, "result")
+    promise_result(checks, page, expected, label)  # D-80: 두 분기의 저장·화면 판정과 공개 실제값 확인.
+    if not correct:  # D-80: 정전 카드·높은 정전 요약의 전제 유지.
+        required(checks, expected["topic"] == "uns" and actual >= .005, f"{label} 빈 배치 약속·실제 모두 정전 경로")  # D-80: grid 전환으로 정전 단언 우회 금지.
     attribution = current_attribution(page)
     required(checks, bool(attribution), f"{label} 같은 계획의 실제 시험 경로 분해 가능")
     checks.ok(math.isfinite(attribution["replay"]) and abs(attribution["replay"]) < .01,
               f"{label} 시험 뒤 계획 불변: 실제 UI 시험과 재현 차이 < 0.01%p")
     if correct:
-        checks.ok("예상과 같음" in page.locator('[data-compare="uns"]').inner_text(), f"{label} 정전 예측 적중")
+        checks.ok("예상과 같음" in page.locator(f'[data-compare="{expected["topic"]}"]').inner_text(), f"{label} {expected['topic']} 예측 적중")  # D-80: 적중 달 S7 비노출 유지.
         checks.ok(page.locator("#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall").count() == 0,
                   f"{label} 적중 달 원인 카드·요약 없음")
         no_answer_records(checks, page, label)
@@ -821,35 +1205,37 @@ def isolated_branch(checks, page, base, label, correct):
     required(checks, "예상과 다름" in page.locator('[data-compare="uns"]').inner_text() and
              page.locator("#lg-missed").get_attribute("data-single") == "true" and
              shown(page, "#lg-outage-single"), f"{label} 빈 배치 오예측의 한 줄 요약 실제 표시")
+    student_words(checks, page, label + " 첫 달 한 줄 요약")
     checks.ok(page.locator('#lg-outage-cards [data-missed], #lg-outage-open').count() == 0,
               f"{label} 요약 달 카드 고르기 생략")
     note = current_note(page)
-    no_cause = all(abs(p["value"]) < .05 for p in attribution["parts"])
+    no_cause = all(abs(p["value"]) < part_min(attribution) for p in attribution["parts"])  # D-80: C-1·2·4·5 대상별 검사.
     checks.ok(note.get("outageSingleShown") is True and not note.get("outageOpened") and
               (not note.get("outageLargest") if no_cause else
                note.get("outageLargest", {}).get("key") in NAMES),
               f"{label} 표시 뒤 요약 기록·0.05%p 미만이면 최대 몫 저장 없음")
     if no_cause:
+        expected_label = no_cause_summary(checks, page, label, trial['unsPct'], actual)
         text = page.locator("#lg-missed").inner_text()
-        checks.ok("뚜렷한 원인 없음" in text and "가장 큰 것:" not in text and
+        checks.ok(expected_label in text and "가장 큰 것:" not in text and
                   "가장 큰 몫" not in text and page.locator('[data-out-tag="largest"]').count() == 0,
                   f"{label} 모든 몫 < 0.05%p: 최대 몫 표시 없음")
     page.locator("#lg-outage-carry").click()
     carry_choice = current_note(page).get("missedCarry", {}).get("missed")
-    checks.ok(carry_choice in (("뚜렷한 원인 없음", "고르기 생략") if no_cause else ("고르기 생략",)),
+    checks.ok(carry_choice == (expected_label if no_cause else "고르기 생략"),
               f"{label} 요약 달 다음 달 기록을 학생의 선택으로 꾸미지 않음")
     if no_cause:
         checks.ok(not current_note(page).get("missedCarry", {}).get("largest"),
-                  f"{label} 뚜렷한 원인 없는 달은 다음 달 최대 몫 저장 없음")
+                  f"{label} 차이 원인 없는 달은 다음 달 최대 몫 저장 없음")
         html = page.evaluate("""() => {
           const L=KCP.league.state(); return KCP.league.uiMath.trendHTML(L.snap || L.S,L.team,true);
         }""")
-        checks.ok("뚜렷한 원인 없음" in html and "가장 큰 몫" not in html,
-                  f"{label} 타임라인: 뚜렷한 원인 없음")
+        checks.ok(expected_label in html and "가장 큰 몫" not in html,
+                  f"{label} 타임라인: 정전 크기를 구분한 차이 원인 없음")
         open_panel(page, "journal")
         worksheet = copy_worksheet(page)
-        checks.ok("뚜렷한 원인 없음" in worksheet and "가장 큰 몫" not in worksheet,
-                  f"{label} 일지: 뚜렷한 원인 없음")
+        checks.ok(expected_label in worksheet and "가장 큰 몫" not in worksheet,
+                  f"{label} 일지: 정전 크기를 구분한 차이 원인 없음")
         open_panel(page, "result")
     if label == "1280x900-light-solo-single":
         frozen_after_retrial(checks, page, label)
@@ -860,13 +1246,14 @@ def isolated_branch(checks, page, base, label, correct):
             page.reload()
             page.wait_for_function(SYNC, arg=[2, "plan"])
         open_panel(page, "journal")
-        checks.ok(("뚜렷한 원인 없음" if no_cause else "지난달 놓친 것: 고르기 생략") in
+        checks.ok((expected_label if no_cause else "지난달 원인 고르기: 건너뜀") in
                   page.locator("#lg-missed-carry").inner_text(),
                   f"{label}{suffix} 다음 달 학생이 고른 것처럼 표시하지 않음")
         if no_cause:
             text = page.locator("#lg-missed-carry").inner_text()
-            checks.ok("뚜렷한 원인 없음" in text and "가장 큰 몫" not in text,
-                      f"{label}{suffix} 다음 달 줄: 뚜렷한 원인 없음")
+            checks.ok(text == f"지난달 원인 고르기: {expected_label}" and "가장 큰 몫" not in text,
+                      f"{label}{suffix} 다음 달 줄: 정전 크기를 구분한 차이 원인 없음")
+            checks.ok(expected_label in copy_worksheet(page), f"{label}{suffix} 다음 달 일지 같은 기록")
         capture(checks, page, label + suffix, "single-carry")
 
 
@@ -881,11 +1268,13 @@ def solo(checks, page, requests, base, label, width):
     # 1월에 접속 신청한 태양광이 2월에 연결돼 무사건 날씨 몫도 생긴다.
     trial = plan_and_trial(page, renewable=True)
     player = read(page)["player"]
-    expected = expected_operation(page, player)
-    promise(page, trial, expected)
+    forecast = expected_operation(page, player)  # D-80: 같은 복제 운영에서 정전·계통 기대값을 얻는다.
+    expected = promise(page, trial, forecast)  # D-80: 화면 주제에 맞는 오예측 선택.
     page.wait_for_function(SYNC, arg=[1, "review"])
     actual = read(page)["S"]["results"][-1]["team"][player]["unsPct"]
-    checks.ok(actual == expected, f"{label} 복제 운영 방향과 실제 운영 일치")
+    checks.ok(actual == forecast["uns"], f"{label} 복제 운영 정전율과 실제 운영 일치")  # D-80: 기존 정전율 검사를 보존한다.
+    open_panel(page, "result")  # D-80: S6 DOM과 저장 outcome이 렌더링된 뒤 검사한다.
+    promise_result(checks, page, expected, label + "-jan")  # D-80: 계통 방향·수치·오예측도 독립 검증.
     snapshot_contract(checks, page, label + "-jan")
     picked = scene(checks, page, requests, label, width, trial, actual)
     # 실제 새 탭 이동도 확인하고 원래 판의 달·단계를 보존한다(I40).
@@ -924,10 +1313,11 @@ def solo(checks, page, requests, base, label, width):
         # 자동 현금 주제의 반대 예측을 고른다. 상태·현금·주제는 주입하지 않는다.
         if state["phase"] == "plan" and state["round"] < 12 and not cash_checked and state["econ"]["cities"][player]["cash"] < 0:
             trial = plan_and_trial(page)
-            delta = expected_operation(page, player, "cash")
-            promise(page, trial, delta, topic="cash")
+            forecast = expected_operation(page, player)  # D-80: 운영 전 현금 대비 기대값도 같은 복제 운영에서 얻는다.
+            expected = promise(page, trial, forecast, topic="cash")  # D-80: 화면이 cash가 아니면 실패한다.
             page.wait_for_function(SYNC, arg=[state["round"], "review"])
             open_panel(page, "result")
+            promise_result(checks, page, expected, label + "-cash")  # D-80: 현금 판정·차이·저장 outcome 검증.
             checks.ok("예상과 다름" in page.locator('[data-compare="cash"]').inner_text(),
                       f"{label} 현금 주제 오예측 실제 진행")
             checks.ok(page.locator('#lg-outage-cards, #lg-outage-single, #lg-outage-waterfall, #lg-missed.lg-outage').count() == 0,
@@ -967,7 +1357,7 @@ def private_fields(value):
     if isinstance(value, dict):
         snapshot_shape = {"round", "plan", "seed", "days", "season", "mods", "unsPct", "isolatedUnsPct"}
         return (["운영 사본 객체"] if snapshot_shape <= value.keys() else []) + [
-            k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache|outageSnapshots|outageOperatingIntl", k, re.I)] + [
+            k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache|outageSnapshots|outageOperatingIntl|s1EvidenceValues|s1EvidenceNeighborId|nowValue", k, re.I)] + [
             k for v in value.values() for k in private_fields(v)]
     if isinstance(value, list):
         return [k for v in value for k in private_fields(v)]
@@ -997,14 +1387,21 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     trial = plan_and_trial(team)
     # 진행자가 실제로 받은 계획을 기다려 복제 운영의 입력을 확정한다.
     host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.plan.policies.includes('save')")
-    actual = expected_operation(host, "pyeongtaek")
-    promise(team, trial, actual)
+    forecast = expected_operation(host, "pyeongtaek")  # D-80: 팀에는 비공개 운영 상태가 없어 진행자 복제 결과를 사용한다.
+    expected = promise(team, trial, forecast)  # D-80: 실제 팀 화면의 grid/uns 주제로 오예측한다.
     host.wait_for_function("() => KCP.league.state().S.teams.pyeongtaek.ready")
     host.locator("#lg-next").click()
     team.wait_for_function(SYNC, arg=[1, "review"])
     host.wait_for_function(SYNC, arg=[1, "review"])
     actual = team.evaluate(STATE)["results"][-1]["team"]["pyeongtaek"]["unsPct"]
+    open_panel(team, "result")  # D-80: 실제 진행자 운영을 받은 팀 화면에서 판정한다.
+    promise_result(checks, team, expected, label + "-team-jan")  # D-80: 멀티 grid 오예측과 실제 공개값 대조.
     # 정기 공개 갱신 한 주기(4초)도 지나서 읽는다. now만 제외, 새 필드는 모두 비교.
+    # '전' 값은 팀이 진행자의 최신 공개 상태를 받은 뒤에 찍는다. 운영 직후 진행자가 상태를 한 번 더 바꾸면
+    # (S.rev 증가) 그 전송은 150ms 지연·서명 뒤에 도착하므로, 단계(review)만 맞춰 찍으면 팀 쪽 rev만 '후'에
+    # 오른 것처럼 보인다(2026-10-20 재현: 진행자 diff 0, 팀 diff rev 7→8, 팀 요청 증가 0). 비교 대상은 그대로다.
+    host_rev = host.evaluate("() => KCP.league.state().S.rev")
+    team.wait_for_function("rev => KCP.league.state().snap?.rev === rev", arg=host_rev, timeout=12000)
     before_h, before_t = public_state(host), public_state(team)
     before_dom = json.dumps(host.locator("body").evaluate(SURFACE), ensure_ascii=False)
     snapshot_contract(checks, team, label + "-team-jan")
@@ -1017,7 +1414,7 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     checks.ok(host.evaluate("location.hash") == "#league/host", f"{label} 진행자 경로 확인")
     surface = host.locator("body").evaluate(SURFACE)
     serialized = json.dumps(surface, ensure_ascii=False)
-    checks.ok(not any(s in serialized for s in ("내가 고름", "지난달 놓친 것", "missedCarry", "data-missed")),
+    checks.ok(not any(s in serialized for s in ("내가 고름", "지난달 내가 고른 원인", "지난달 원인 고르기", "nowValue", "missedCarry", "data-missed")),
               f"{label} 진행자 DOM·aria·data에 고른 원인 없음 [I3/D-65]")
     checks.ok(serialized.count(NAMES[chosen["picked"]]) <= before_dom.count(NAMES[chosen["picked"]]),
               f"{label} 진행자 DOM에 고른 범주 문구도 새로 나타나지 않음")

@@ -14,7 +14,8 @@
     royaltyMonths: p(6, "G", "이전 연구의 사용료 최대 지급 달 수"),
     royaltyCap: p(3, "G", "도시별 월 사용료 수입 상한, 억"),
     jointShare: p(0.5, "G", "공동 실증비를 두 도시가 절반씩 부담"),
-    hvdcLoss: p(0.012, "G", "연계선 2%→1.2%; 장거리 HVDC 개선폭을 축소", [evidence + "#3", "https://www.brown.edu/Departments/Engineering/Courses/ENGN1931F/HVDC_Proven_TechnologySiemens.pdf"]),
+    hvdcLoss: p(0.01, "G", "손실 개선 없음: 기본 연계선과 같은 1%로 두는 선택(G) · 수십 km에서는 변환소 손실 때문에 HVDC가 교류보다 손실이 작지 않다(P, [P94]·Tosatto 외 2020 [P114]) · D-79 REF 12.1", ["P94", "P114", "docs/ECON-REFERENCES.md#121-hvdc-연계선-손실hvdclosseffectivetie"]),
+    hvdcCap: p(1.5, "G", "HVDC 용량 배수는 교육용 선택(G), 현실 비교값 없음 · 짧은 선의 손실 개선을 기대하지 않는 근거(P): [P94] Alassi 외 2019·[P114] Tosatto 외 2020 · 국내 북당진–고덕 35km 사례의 목적은 계통 제약 해소·공급 신뢰도(조사 §3) · D-79 REF 12.1", ["P94", "P114", "docs/ECON-REFERENCES.md#121-hvdc-연계선-손실hvdclosseffectivetie", "docs/RESEARCH-2026-10-14.md#3-d2-hvdc-카드-의미"]),
     hvdcCost: p(1.3, "G", "새 HVDC 연계선 건설비; 조사 초안 1.5보다 계약 T1 우선"),
     scableCap: p(1.5, "G", "초전도 용량; 보도 5배 대비 증가폭 배속 0.125"),
     scableLoss: p(0.5, "G", "초전도 연계선 손실 절반; 보도 1/4보다 보수적"),
@@ -25,11 +26,11 @@
     nbatCapacity: p(1.25, "G", "새 배터리 16→20 MWh; 밀도 +40% 발표의 0.625배"),
     nbatCost: p(15, "G", "차세대 배터리 건설비 억"),
     massCost: p(0.92, "G", "도입 뒤 새 태양광·배터리 건설비, 시장 가격 하락의 인과값 아님"),
-    h2Efficiency: p(0.35, "P", "전기→수소→전기 왕복 효율", [evidence, "https://www.sandia.gov/app/uploads/sites/163/2022/03/ESHB_Ch11_Hydrogen_Headley.pdf"]),
+    h2Efficiency: p(0.35, "P", "전기→수소→전기 왕복 효율 · DOE H2IQ 예시 가정 35% 안팎 [I18], Sandia 약 40%(실험실 50%) [I17] · REF 12.4", [evidence, "https://www.sandia.gov/app/uploads/sites/163/2022/03/ESHB_Ch11_Hydrogen_Headley.pdf", "I17", "I18"]),
     h2MWh: p(200, "G", "수소 저장 정격 MWh, 시작 잔량 0"),
     h2MW: p(4, "G", "수소 충전·방전 MW"),
     h2Cost: p(28, "M", "수소 저장 건설비 · Sandia(2022) 수전해 740$/kW·연료전지 500$/kW·저장 35$/kWh [I17][I14] · 계산: 11.96M$→18.6~27.5억 상단 · 배속: 없음 · REF 12.4", ["I17", "I14"]),
-    h2Co2: p(0.88, "M", "수소 30 vol% 혼소의 열량 약 12% 환산"),
+    h2Co2: p(0.88, "M", "수소 30 vol% 혼소의 열량 약 12% 환산 · NIST 메탄 연소열·물 생성열 [S35]로 열량 몫 고위 12.1%·저위 11.4%, 도시가스 순발열량 38.9MJ/N㎥ [L14] · REF 9.12", [source, evidence, "S35", "L14"]),
     ccuCo2: p(0.4, "G", "포집 60%; P 포집률 85–90%를 축소"),
     ccuOutput: p(0.79, "M", "포집 후 석탄 출력 · NETL(2022) 순효율 40.2→31.7% [I19][I07] · 계산: 31.7/40.2≈0.79 · 배속: 없음 · REF 12.5", ["I19", "I07"]),
     smrMW: p(4 * 170 / 230, "M", "i-SMR 발전소 4모듈×170MWe=680MWe(사업단 공개 기본 구성) [X16] · 지도 축척 230(선택 G)으로 나눠 2.956522 게임MW · 결정 v1.0.4 · REF 12.6", ["X16", "https://ismr.or.kr/source/file/i-SMR_leaflet_kr.pdf"]),
@@ -37,7 +38,11 @@
     smrTurns: p(12, "P", "SMR 공사 · NREL ATB(2024) 시나리오 43/55/71개월 [I13] · 계산: 55/4.4=12.5 → 12달은 선택(G), 55개월 근거(P)와 구분 · 배속: 이동과 같은 시간 ×4.4 · 결정 v1.0.3 · REF 12.6", ["I13"]),
     smrMin: p(0.8, "G", "SMR 최소 출력 비율"),
     smrFuel: p(0.002, "M", "SMR 연료비 · EIA 2022–24 원자력/가스터빈 연료비 0.16~0.34 [S33] · 계산: LNG 0.008×비=0.0013~0.0027 · 배속: 없음, smrFuelMul은 별도 G · REF 12.6", ["S33"]),
+    // build.js simulate의 BMS 도입 값(bEff 0.933, 잔량 하한 저장량×0.05)과 같아야 한다. bmsEffectText가 이 값을 먼저 읽는다.
+    bmsFloor: p(0.05, "G", "BMS 잔량 하한 10%→5%"),
+    bmsEfficiency: p(0.933, "G", "BMS 왕복 효율 85→87%의 한 방향 √0.87≈0.933 [I13][I14] · REF 8.6", ["I13", "I14"]),
     drEffect: p(1.5, "G", "VPP 수요반응 감축량 배수; 실측 효과 미확인"),
+    fcstWidth: p(0.7, "P", "사건 예보 폭은 원래 범위의 최대 0.7배(원래 범위 안으로 자름); 예측 NRMSE 30.6% 감소 [P101] · REF 12.7", ["P101"]),
     drCost: p(0.5, "G", "VPP 수요반응 정책비 배수"),
     vppCurtail: p(0.8, "G", "VPP 출력제어 손실 배수"),
     heatDamage: p(0.7, "G", "VPP 폭염 추가 수요 피해 30% 감소 근사(중복 적용 없음)"),
@@ -67,7 +72,7 @@
     { id: "climate", name: "환경·기후기술" }, { id: "nuclear", name: "원자핵 에너지" }
   ];
   const card = (id, branch, field, name, need, demo, req, eff, grade, why) => ({
-    id, branch, field, name, need, demo, req, eff, grade, why,
+    id, branch, field, name, need, demo, req, get eff() { return typeof eff === "function" ? eff() : eff; }, grade, why,
     // 공식 명칭과 게임 카드의 대응, 실제 근거와 게임 효과 크기를 각각 표시한다.
     fieldCategory: id === "re100" ? "concentration" : "research", fieldGrade: "O", mappingGrade: "G",
     evidenceGrade: grade.split("·").filter(g => g !== "G").join("·") || "G",
@@ -77,25 +82,25 @@
   });
   const cards = [
     card("grid", "grid", "스마트 그리드 및 전력시스템", "스마트 송전 운영", 8, 4, [], "현재 지도의 송전 손실을 ⅔로", "M·G", "선로 상태를 살펴 전기를 보낼 때의 손실을 줄여요."),
-    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], "연계선 손실 2→1.2%, 새 선 건설비 ×1.3", "P·G", "짧은 거리에서는 변환소 비용 부담이 커요."),
-    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], "연계선 용량 ×1.5, 손실 ×0.5, 냉각 월 0.5억/선", "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
-    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], "재생 출력 ×1.015", "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
-    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "하한 10→5%, 변환 효율 95→95.5%", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
-    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], "새 탠덤 태양광 출력·건설비 ×1.15", "P·G", "기존 패널은 바뀌지 않아요."),
-    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], "새 배터리 용량 ×1.25, 화재 면역", "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요해요."),
-    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], "새 태양광·배터리 건설비 ×0.92", "G", "시장 전체의 가격 하락을 한 도시의 연구 성과로 보지는 않아요."),
-    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], "200 MWh 장주기 저장, 왕복 35%", "P·G", "많이 저장하지만 손실이 크고 처음에는 비어 있어요."),
-    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], "LNG CO₂ ×0.88", "M", "부피 비율과 열량 비율은 달라요."),
-    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], "석탄 CO₂ ×0.4, 출력 ×0.85", "P·G", "포집에도 전기가 들어요."),
+    card("hvdc", "grid", "스마트 그리드 및 전력시스템", "HVDC 연계선", 12, 4, [], () => `연계선 용량 ×${+params.hvdcCap.v.toFixed(2)}로 송전 용량을 늘리고 계통 제약을 푼다, 새 선 건설비 ×${+params.hvdcCost.v.toFixed(2)}`, "P·G", "짧은 거리에서는 변환소 손실 때문에 손실 개선을 기대하지 않아요."),
+    card("scable", "grid", "스마트 그리드 및 전력시스템", "초전도 케이블", 24, 10, ["hvdc"], () => `연계선 용량 ×${+params.scableCap.v.toFixed(2)}, 손실 ×${+params.scableLoss.v.toFixed(2)}, 냉각 월 ${+params.scableCooling.v.toFixed(2)}억/선`, "P·G", "저항은 작아져도 냉각 전력과 비용이 들어요."),
+    card("sic", "grid", "전력전자 및 반도체", "SiC 전력변환", 9, 3, [], () => `재생 출력 ×${+params.sicOutput.v.toFixed(3)}`, "P·G", "같은 햇빛과 바람에서 변환 손실을 줄여요."),
+    card("bms", "materials", "배터리 소재 및 시스템", "배터리 상태 진단·고효율 변환", 6, 3, [], "", "M·G", "배터리 잔량을 더 정확히 읽어 저장한 전기를 넓게 써요."),
+    card("tandem", "materials", "태양 에너지 응용", "탠덤 태양전지", 12, 5, [], () => `새 탠덤 태양광 출력 ×${+params.tandemOutput.v.toFixed(2)}, 건설비 ×${+params.tandemCost.v.toFixed(2)}`, "P·G", "기존 패널은 바뀌지 않아요."),
+    card("nbat", "materials", "배터리 소재 및 시스템", "차세대 배터리", 24, 10, ["bms"], () => `새 배터리 용량 ×${+params.nbatCapacity.v.toFixed(2)}`, "P·G", "새 배터리는 더 많이 저장하며, 잔량 관리에는 상태 진단 기술이 필요해요."),
+    card("mass", "materials", "나노소재 제조 및 분석", "대량 공정", 18, 8, ["tandem", "nbat"], () => `새 태양광·배터리 건설비 ×${+params.massCost.v.toFixed(2)}`, "G", "시장 전체의 가격 하락을 한 도시의 연구 성과로 보지는 않아요."),
+    card("h2store", "hydrogen", "수소에너지 소재", "수전해·수소 탱크", 18, 8, [], () => `${params.h2MWh.v} MWh 장주기 저장, 왕복 ${+(params.h2Efficiency.v * 100).toFixed(2)}%`, "P·G", "많이 저장하지만 손실이 크고 처음에는 비어 있어요."),
+    card("h2mix", "hydrogen", "수소에너지 공정", "수소 혼소", 12, 6, ["h2store"], () => `연결된 수소가 남아 있을 때 LNG CO₂ 최대 ${+((1 - params.h2Co2.v) * 100).toFixed(2)}% 감소`, "M", "부피 비율과 열량 비율은 달라요."),
+    card("ccu", "climate", "탄소자원화 기술", "CCU 개조", 18, 10, [], () => `석탄 CO₂ ×${+params.ccuCo2.v.toFixed(2)}, 출력 ×${+params.ccuOutput.v.toFixed(2)}`, "P·G", "포집에도 전기가 들어요."),
     card("smr", "nuclear", "원자핵 에너지 시스템", "SMR", 36, 20, [], "", "P·G", "수업 시간에 맞춰 공사 기간을 줄였어요. 실제 인허가 기간과는 달라요."),
-    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], "저녁 피크에 저장을 남기고 사건 예보 범위를 절반으로", "M·G", "예측은 날씨를 바꾸지 않아요."),
-    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], "수요반응 ×1.5·비용 ×0.5, 출력제어 ×0.8", "G", "효과 크기는 수업을 위한 가정이에요."),
-    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "정책 선택 시 산업 매력 재생 항 가중 ×1.5", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아져요.")
+    card("fcst", "ai", "인공지능 알고리즘 및 시스템", "기상·수요 예측", 6, 2, [], () => `저녁 피크에 저장을 남기고 사건 예보 폭 최대 ${+params.fcstWidth.v.toFixed(2)}배(원래 범위 안으로 자름)`, "M·G", "예측은 날씨를 바꾸지 않아요."),
+    card("vpp", "ai", "스마트 그리드 및 전력시스템", "가상발전소", 12, 4, ["fcst"], () => `수요반응 ×${+params.drEffect.v.toFixed(2)}·비용 ×${+params.drCost.v.toFixed(2)}, 출력제어 손실 ×${+params.vppCurtail.v.toFixed(2)}`, "G", "효과 크기는 수업을 위한 가정이에요."),
+    card("re100", "ai", "에너지정책 융합전공", "RE100 산단", 12, 4, [], "", "G", "재생 전기가 부족하면 기업이 이 도시를 고를 매력이 낮아져요.")
   ];
   // 효과 계수는 그대로 둔다. scale은 효과 증가/감소 폭을 현실 비교 폭으로 나눈 표시값(G).
   // tandem 기준은 ECON-TECH와 ECON-DATA의 일반 모듈 22% → 상용 탠덤 26.9%다.
   const comparisons = {
-    hvdc: { v: (1 - params.hvdcLoss.v / .02) / (1 - 3.5 / 6.7), baseline: "손실 개선폭: 교류 6.7% → 직류 3.5%", reference: { from: 6.7, to: 3.5, unit: "%" } },
+    hvdc: { v: null, baseline: "현실 비교값 없음 · 국내 사례의 목적은 계통 제약 해소", reference: null },
     scable: { v: (params.scableCap.v - 1) / (5 - 1), baseline: "송전 용량 증가폭: 기존의 5배", reference: { multiplier: 5 } },
     tandem: { v: (params.tandemOutput.v - 1) / (26.9 / 22 - 1), baseline: "모듈 효율 증가폭: 일반 22% → 탠덤 26.9%", reference: { from: 22, to: 26.9, unit: "%" } },
     nbat: { v: (params.nbatCapacity.v - 1) / .4, baseline: "셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요)", reference: { increase: .4 } },
@@ -106,7 +111,7 @@
   cards.forEach(c => { c.scale = { v: null, baseline: null, reference: null, grade: "G", ...comparisons[c.id] }; });
   // 외부 자료는 기존 조사 기록에서 옮긴다. 연도가 없는 자료는 추정하지 않는다.
   const referenceNotes = {
-    hvdc: ["2019", "직류 송전 비교", "https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
+    hvdc: ["2019·2020", "D-79: [P94]·Tosatto 외 2020 [P114]·국내 북당진–고덕 사례(조사 §3)", "https://strathprints.strath.ac.uk/68378/1/Alassi_etal_RSER_2019_HVDC_transmission_technology_review_market_trends_and_future_outlook.pdf"],
     scable: ["2025", "초전도 케이블 운영 보도", "https://www.hankyung.com/article/202507072966i"],
     sic: ["자료 없음", "전력변환 비교 설계", "https://minds.wisc.edu/items/299cade1-bc94-4a3b-8a19-85a24ae2aea2"],
     tandem: ["2024-06", "상용 모듈 효율 보도", "https://optics.org/news/oxford-pv-debuts-commercial-solar-module-with-record-26.9-efficiency"],
@@ -124,8 +129,7 @@
     c.numbers.need.note = ref ? ref[1] + " · " + ref[2] : "분야 이름 자료 · https://gs.kentech.ac.kr/process/research_field · 효과 크기는 게임 가정(G)";
     c.numbers.need.year = ref ? ref[0] : "2026 모집요강";
   });
-  params.hvdcLoss.year = "2019";
-  params.hvdcLoss.note += " · 현실 비교: 교류 6.7%, 직류 3.5%";
+  params.hvdcCap.year = "2019·2020(국내 사례 연도 미기재)";
   params.h2Efficiency.year = "자료 없음";
   params.sicOutput.year = "자료 없음";
   params.ccuCo2.year = "2024";
@@ -133,6 +137,17 @@
   Object.defineProperty(cards.find(c => c.id === "grid"), "eff", {
     enumerable: true,
     get: () => KCP.buildGame?.gridEffectText?.() || "현재 지도의 송전 손실을 ⅔로"
+  });
+  Object.defineProperty(cards.find(c => c.id === "bms"), "eff", {
+    enumerable: true,
+    get: () => KCP.buildGame?.bmsEffectText?.() || `잔량 하한 ${+(params.bmsFloor.v * 100).toFixed(2)}% · 왕복 효율 약 ${Math.round(params.bmsEfficiency.v ** 2 * 100)}%`
+  });
+  Object.defineProperty(cards.find(c => c.id === "re100"), "eff", {
+    enumerable: true,
+    get: () => {
+      const weight = KCP.ECON_DATA?.params.re100PolicyWeight.v;
+      return `정책 선택 시 산업 매력 재생 항 가중${weight == null ? "을 높여요" : ` ×${weight}`}`;
+    }
   });
   Object.defineProperty(cards.find(c => c.id === "smr"), "eff", {
     enumerable: true,
@@ -147,10 +162,10 @@
     typhoon_coast: { cards: ["scable"], text: "초전도 기술이 있으면 연계선 단절을 막아요" }
   };
   const eureka = {
-    grid: "내부 송전선 운영", hvdc: "연계선 2개 연결", scable: "HVDC 연계선 운영", sic: "재생 발전 운영",
-    bms: "배터리 운영", tandem: "태양광 10기 운영", nbat: "BMS 도입 후 배터리 운영", mass: "탠덤 또는 차세대 배터리 운영",
-    h2store: "출력제어 발생", h2mix: "수소 탱크 운영", ccu: "석탄 발전 운영", smr: "지지율 55 이상",
-    fcst: "폭염 사건 경험", vpp: "수요반응 정책 3달 운영", re100: "재생 비중 30% 이상 운영"
+    grid: "내부 송전선 설치", get hvdc() { return `연계선 ${params.eurekaTies.v}개 연결`; }, scable: "HVDC 연계선 건설 완료", sic: "재생 발전 운영",
+    bms: "배터리 운영", get tandem() { return `태양광 ${params.eurekaSolar.v}기 운영`; }, nbat: "BMS 도입 후 배터리 운영", mass: "탠덤 또는 차세대 배터리 운영",
+    h2store: "출력제어 발생", h2mix: "수소 탱크 운영", ccu: "석탄 발전 운영", get smr() { return `지지율이 시작보다 ${params.eurekaApproval.v}%p 넘게 떨어지지 않음 또는 시위 없음`; },
+    fcst: "폭염 사건 경험", get vpp() { return `수요반응 정책 ${params.eurekaDr.v}달 운영`; }, get re100() { return `재생 비중 ${params.re100Need.v}% 이상 운영`; }
   };
   const titles = branches.map(b => ({ id: b.id, branch: b.id,
     name: ({ grid: "그리드 개척자", materials: "신소재 개척자", hydrogen: "수소 선도 도시", climate: "탄소 순환 도시", nuclear: "원자핵 개척자", ai: "에너지AI 선도 도시" })[b.id],
