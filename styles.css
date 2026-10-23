@@ -398,8 +398,35 @@ svg.hexmap { width: 100%; min-width: 440px; height: auto; display: block; }
 svg.hexmap polygon { stroke: var(--sheet); stroke-width: 1.5; cursor: pointer; }
 svg.hexmap polygon.sel { stroke: var(--ink); stroke-width: 3; }
 svg.hexmap text { font-family: var(--mono); font-size: 10px; pointer-events: none; fill: #102018; font-weight: 600; }
-.t-L { fill: #c8483a; } .t-W { fill: #72cdc4; } .t-M { fill: #7a6152; } .t-D { fill: #e1b870; } .t-F { fill: #3f8a4c; } .t-G { fill: #b9dc5a; }
+.t-L { fill: #c8483a; } .t-W { fill: #72cdc4; } .t-M { fill: #7a6152; } .t-D { fill: #e1b870; } .t-F { fill: #3b8448; } .t-G { fill: #b9dc5a; }
 svg.hexmap .t-L + text, svg.hexmap .t-M + text, svg.hexmap .t-F + text { fill: #fff; }
+#map svg.hexmap .map24-glyph,
+#map svg.hexmap .map24-terrain-only { display: none; }
+#map svg.hexmap polygon.map24-cursor {
+  fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none;
+  transform-box: fill-box; transform-origin: center; transform: scale(0.82);
+}
+.map24-pad,
+.map24-pad-hint { display: none; }
+/* 481px 이상은 패드가 없으므로 마우스 화면을 지금과 같게: 키보드 초점이 지도에 있을 때만 점선 커서. */
+@media (min-width: 481px) {
+  #map svg.hexmap polygon.map24-cursor { display: none; }
+  #map:has([data-hex]:focus-visible) svg.hexmap polygon.map24-cursor { display: block; }
+}
+@media (max-width: 480px) {
+  #map { min-width: 0; }
+  #map svg.hexmap { min-width: 0; }
+  #map svg.hexmap .map24-glyph,
+  #map svg.hexmap .map24-terrain-only { display: inline; }
+  .map24-pad {
+    display: grid; grid-template-columns: repeat(3, 44px) minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(44px, auto)); gap: 6px; margin-top: 8px;
+  }
+  .map24-pad button { min-width: 44px; min-height: 44px; justify-content: center; }
+  .map24-pad button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .map24-pad #pick24 { grid-column: 4; grid-row: 1 / span 2; min-width: 0; text-align: center; overflow-wrap: anywhere; }
+  .map24-pad-hint { display: block; margin-top: 6px; }
+}
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
