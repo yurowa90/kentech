@@ -273,6 +273,9 @@
   const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: KCP.ECON_DATA.params.normalCo2.v }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0, bioCo2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
+  // 현재 팩·입지의 급전 연료비(억/MWh). 국제 지수와 탄소세는 호출 쪽에서 적용한다.
+  const dispFuel = (kind, tile) => kind === "smr" ? KCP.TECH_DATA.params.smrFuel.v
+    : kind === "biomass" ? biomassFuel(tile) : dispOf(kind).fuel;
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
   // 계산에 쓰는 기존 개선 비율(2/3)을 그대로 표시한다. 지도별 손실률을 고정 문구로 덮지 않는다.
@@ -694,7 +697,7 @@
         g.D = D;
         if (g.kind === "smr") tot.by.smr = 0;
         // 국제 연료 가격 지수(경제 모드): MODS.fuelMul = {lng, diesel, coal}
-        g.mc = D.fuel * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
+        g.mc = dispFuel(g.kind, g.tile) * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
       }
     });
     const shed = st.shed === "industry" ? SHED.industry : SHED.home, equal = st.shed === "equal";
@@ -1099,7 +1102,7 @@
   function saveState(doc) { try { window.localStorage.setItem(KEY, JSON.stringify(doc)); } catch (e) { /* 저장 없이도 동작한다 */ } }
 
   selectPack(PACK_IDS[0]);
-  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
+  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, dispFuel, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
   KCP.buildGame.gridFillContext = res => gridFillContexts.get(res);
 
   /* =====================================================================
