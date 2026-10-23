@@ -1175,9 +1175,19 @@
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
   // 지도 효과는 화면 메모리에만 둔다. 시간·reduced를 인자로 받아 Node에서도 검사한다.
   const MAP_FX_MS = 300;
+  // G: 바다의 느린 위상 변화(초당 0.5~1.1 rad)를 12fps 상한으로 이어 보이게 하고 유휴 전체 그리기 비용을 낮춘다.
+  // 타이머 뒤 rAF를 기다리므로 실제 유휴 빈도는 약 10~12fps다.
+  const AMBIENT_FPS = 12;
   const MAP_INK = { cyan: "#71dceb", danger: "#dc7890", dust: "#edf4fc" }; // v2.css 토큰
   const mapMotion = {
     needsFrame: (state, rm, hidden) => (!rm && !hidden) || !!(state.run || state.mapFx.length || state.floaters.length),
+    // '계속 움직일지'는 needsFrame이 정하고(검사가 이 공개 함수를 엿본다), 여기서는 '언제'만 정한다.
+    frameDelay(state, rm, hidden, visible) {
+      if (!mapMotion.needsFrame(state, rm, hidden)) return null;
+      if (state.run || state.mapFx.length || state.floaters.length) return 0;
+      if (!visible) return null;
+      return 1000 / AMBIENT_FPS;
+    },
     active: (items, now, rm, ms = MAP_FX_MS) => rm ? [] : items.filter(f => now - f.t0 < ms),
     register(items, event, now, rm) {
       if (rm) return [];
@@ -1249,6 +1259,7 @@
   };
   function mapEffect(event) {
     S.mapFx = mapMotion.register(S.mapFx, event, performance.now(), reduced());
+    request();
   }
   const dprOf = () => Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   const $ = sel => (S ? S.root.querySelector(sel) : null);
@@ -2369,10 +2380,36 @@
     if (S.floaters.length) paintFloaters(g, now);
     paintMapMood(g, t, reduced());
     placeBanners();
-    const keep = mapMotion.needsFrame(S, reduced(), document.hidden);
-    if (keep) S.raf = requestAnimationFrame(frame);
+    const delay = mapMotion.frameDelay(S, reduced(), document.hidden, S.mapVisible);
+    // 그리는 도중의 조작이 이미 예약한 프레임과 중복하지 않는다.
+    if (S.raf || S.ambientTimer || delay === null) return;
+    if (delay === 0) request();
+    else {
+      const state = S;
+      // 대기 중에는 rAF를 호출하지 않고, 이전 화면의 타이머가 새 화면을 깨우지 않게 한다.
+      state.ambientTimer = setTimeout(() => {
+        state.ambientTimer = 0;
+        if (S === state && state.alive) request();
+      }, delay);
+    }
   }
-  function request() { if (S && S.alive && !S.raf) S.raf = requestAnimationFrame(frame); }
+  // 운영·재생을 시작하면 정적 층(창문 불빛 등)을 그 자리에서 다시 그린다.
+  // 유휴 지연 중 새로 건 rAF는 다른 rAF 콜백보다 늦게 돌 수 있어, 첫 실행 프레임이 옛 정적 층을 읽지 않게 한다.
+  function paintStaticNow() {
+    if (!S?.alive) return;
+    if (S.dirtyLayout) layout();
+    paintStatic();
+    S.dirtyStatic = false;
+  }
+  function clearAmbientFrame() {
+    if (S.ambientTimer) clearTimeout(S.ambientTimer);
+    S.ambientTimer = 0;
+  }
+  function request() {
+    if (!S || !S.alive) return;
+    clearAmbientFrame();
+    if (!S.raf) S.raf = requestAnimationFrame(frame);
+  }
 
   /* =====================================================================
    * 6. 조작
@@ -2406,6 +2443,7 @@
     if (reduced()) return;
     const [x, y] = tileTop(TILES[i]);
     S.floaters.push({ x, y: y - V.S * 0.6, text, col, t0: performance.now() });
+    request();
   }
   function place(type, i) {
     if (toolLocked(type)) { toast(toolLocked(type)); return; }
@@ -2794,6 +2832,7 @@
     S.result = null;
     html.classList.add("bd-running");
     closeDrawer(true);
+    paintStaticNow(); // 서랍을 닫아 바뀐 배치까지 한 번에 맞춘다.
     const panel = $("#bd-run");
     panel.hidden = false;
     $("#bd-replay-note").hidden = true;
@@ -2846,6 +2885,7 @@
     $("#bd-replay-note").hidden = false;
     $("#bd-skip span").textContent = "건너뛰기";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
+    paintStaticNow(); // 재생 표시줄을 연 뒤의 배치로 그린다.
     updateRunPanel(0);
     request();
     return true;
@@ -3810,9 +3850,11 @@
     S.mapFx = []; S.flowView = null;
     S.alive = false;
     if (S.raf) cancelAnimationFrame(S.raf);
+    clearAmbientFrame();
     S.timers.forEach(t => clearTimeout(t));
     S.off.forEach(f => f());
     if (S.ro) S.ro.disconnect();
+    if (S.io) S.io.disconnect();
     if (S.speak) clearInterval(S.speak);
     [S.help, S.jdlg].forEach(d => { if (d) d.close(); });
     html.classList.remove("bd-on", "bd-running", "bd-drawer-open");
@@ -3868,7 +3910,7 @@
     root.classList.toggle("bd-league", !!opts.league);
     S = {
       opts, alive: true, root, doc, st, net: network(st), openGroup: null, seasonOpen: false, canvas: root.querySelector("#bd-canvas"), base: document.createElement("canvas"),
-      g: null, raf: 0, born: performance.now(), off: [], timers: [], ro: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
+      g: null, raf: 0, ambientTimer: 0, mapVisible: true, born: performance.now(), off: [], timers: [], ro: null, io: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
       townAppearance: null, townWindowCounts: { darkWins: 0, totalWins: 0 }, townLights: true,
       lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy",
@@ -3968,6 +4010,19 @@
     });
     on(window, "resize", () => { S.dirtyLayout = true; request(); });
     on(document, "visibilitychange", () => request());
+    if (window.IntersectionObserver) {
+      const state = S;
+      state.io = new IntersectionObserver(entries => {
+        if (S !== state || !state.alive) return;
+        for (const entry of entries) {
+          if (entry.target !== state.canvas || state.mapVisible === entry.isIntersecting) continue;
+          state.mapVisible = entry.isIntersecting;
+          if (state.mapVisible) request();
+          else clearAmbientFrame();
+        }
+      });
+      state.io.observe(state.canvas);
+    }
     if (window.ResizeObserver) { S.ro = new ResizeObserver(() => { if (S) { S.dirtyLayout = true; request(); } }); S.ro.observe(root.querySelector("#bd-hud")); S.ro.observe(root.querySelector("#bd-dock")); S.ro.observe(root.querySelector("#bd-drawer")); }
     renderDrawer();
     refreshHUD();

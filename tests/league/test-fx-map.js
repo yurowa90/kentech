@@ -242,7 +242,7 @@ test("분위기 동기화 예외 뒤에도 프레임을 그리고 정지 상태�
         // setMapMood의 재그리기 요청도 현재 프레임과 중복 예약하지 않는다.
         boundary.request();
       } } },
-      mapMotion: { active: list => list, needsFrame: () => moving }, reduced: () => false, dprOf: () => 1,
+      mapMotion: { active: list => list, needsFrame: () => moving, frameDelay: () => (moving ? 0 : null) }, reduced: () => false, dprOf: () => 1,
       curHour() {}, paintSea() {}, paintDynamic() {}, paintCursor() {}, paintLeagueLayers() {}, paintMapMood() {}, placeBanners() {},
       requestAnimationFrame() { return ++scheduled; } };
     vm.createContext(boundary);
