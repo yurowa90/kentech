@@ -112,5 +112,11 @@ def t_B5_touch_targets(c: Ctx):
     touch_targets(c, "2026 점수 선택 후")
 
 
+def t_T1_tabs_a11y(c: Ctx):
+    # tabs/impl.md 명세 1·2: 홍보자료·기준표 탭 → #bro, 기존 G.tab 저장 계약.
+    from tabs_helpers import tabs_a11y
+    tabs_a11y(c, "2026", "#bro", "tab", "data-tab")
+
+
 if __name__ == "__main__":
     main(globals(), strict_errors=True)

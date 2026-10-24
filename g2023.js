@@ -268,8 +268,10 @@
         </div>`;
 
       const mat = KCP.$("#mat", root);
+      const tabs = KCP.tabs(KCP.$('[role="tablist"]', root), mat);
       const paintMat = () => {
         KCP.$$("[data-tab]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === G.tab)));
+        tabs.sync();
         if (G.tab === "path") {
           const pk = IT[G.peek];
           mat.innerHTML = `<p class="small muted" style="margin-bottom:8px">1A·1B·1C는 선행 항목이 필요 없습니다. 그 밖의 항목은 화살표로 이어진 앞 단계 항목 중 하나를 완료해야 고를 수 있습니다. 테두리가 굵은 항목이 지금 고를 수 있는 항목입니다. 흐릿한 설명은 보고서 자료에서 일부 정보가 유실된 부분입니다.</p>

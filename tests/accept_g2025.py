@@ -23,6 +23,8 @@ def saved_order(c: Ctx):
 
 
 def keyboard_activate(c: Ctx, selector: str, key: str):
+    # tabs/impl.md 명세 1: 이 도우미의 대상은 자료 탭이 아닌 신문 배치 조작이다.
+    # 자료 탭의 Tab 진입·방향키 선택은 t_T1_tabs_a11y에서 따로 검사한다.
     if not tab_to(c, selector):
         return False
     c.page.keyboard.press(key)
@@ -136,6 +138,12 @@ def t_B4_room_header_without_question_examples(c: Ctx):
     c.expect("평가 기준" in header, "B 작업 4: 연습 질문이 기댄 평가 기준 설명")
     c.expect("15분" in header, "B 작업 4: 전체 답변 시간 안내")
     c.check("2025 면접실 머리말")
+
+
+def t_T1_tabs_a11y(c: Ctx):
+    # tabs/impl.md 명세 1·2: 신문 탭 → #paper, 기존 G.tab 저장 계약.
+    from tabs_helpers import tabs_a11y
+    tabs_a11y(c, "2025", "#paper", "tab", "data-tab")
 
 
 if __name__ == "__main__":

@@ -571,6 +571,7 @@
           </div>
         </div>`;
 
+      const tabs = KCP.tabs(KCP.$('[role="tablist"]', root), KCP.$("#work", root));
       const plantsNow = () => (G.mode === "q1" ? Object.entries(G.q1).filter(([, c]) => c).map(([type, cell]) => ({ type, cell })) : G.q2);
       const announce = (message, error = false) => {
         const live = KCP.$("#grid-live", root);
@@ -657,6 +658,7 @@
       const paintWork = () => {
         const w = KCP.$("#work", root);
         KCP.$$("[data-mode]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === G.mode)));
+        tabs.sync();
         if (G.mode === "q1") {
           w.innerHTML = `<p class="small muted" style="margin-bottom:8px">도구를 고르고 지도를 누르면 그 종류의 발전소가 그 좌표로 옮겨집니다. 각 발전소마다 경제·사회·환경 측면의 이유를 적습니다.</p>
             <div class="stack">${Object.entries(PT).map(([k, v]) => `<div class="field"><label for="r1-${k}">${v.n} · <span class="num">${G.q1[k] || "미설치"}</span>${G.q1[k] ? ` · 생산 ${out(k, G.q1[k])}` : ""}</label>
