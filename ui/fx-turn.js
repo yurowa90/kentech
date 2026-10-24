@@ -13,6 +13,11 @@
   const EVENT_MOOD = Object.freeze({ heatwave_peak: "heat", evening_peak_tropical_night: "heat",
     coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
     spring_dust_haze: "haze", finedust_coal_cap: "haze" });
+  const MOOD_ICON = { heat: "☀", cold: "✧", snow: "❄", storm: "🌀", cloud: "☁", haze: "≋" };
+  const EVENT_ICON = Object.freeze({ ...Object.fromEntries(Object.entries(EVENT_MOOD).map(([id, mood]) => [id, MOOD_ICON[mood]])),
+    light_load_curtailment: "◐", line_opposition_delay: "⚑", semiconductor_fab_expansion: "⚙", datacenter_siting: "▤",
+    planned_maintenance: "⚒", coal_phaseout: "⊘", re100_buyer: "♧", regional_tariff: "₩" });
+  const eventIcon = id => Object.hasOwn(EVENT_ICON, id) ? EVENT_ICON[id] : "◆";
   const moodOf = cards => cards.map(c => Object.hasOwn(EVENT_MOOD, c.id) ? EVENT_MOOD[c.id] : null).find(Boolean) || null;
   const forecastMonths = new Set();
   // 예보 카드를 이미 본 달: 새로고침 뒤에도 다시 띄우지 않으려고 이 탭의 sessionStorage에만 적는다(리그 상태·전송 아님, D-65).
@@ -387,7 +392,7 @@
     stripBar = node("div", "fx-turn-strip"); stripBar.setAttribute("role", "status");
     const events = cards.filter(c => c.id), first = events[0] || cards[0];
     const rest = events.length > 1 ? ` 외 ${events.length - 1}장` : "";
-    const icon = node("span", "fx-turn-strip-icon", first.icon || "◆"); icon.setAttribute("aria-hidden", "true");
+    const icon = node("span", "fx-turn-strip-icon", first.id ? eventIcon(first.id) : first.icon || "◆"); icon.setAttribute("aria-hidden", "true");
     stripBar.append(icon, node("span", "fx-turn-strip-title", first.title),
       node("span", "fx-turn-strip-count", rest.trim()));
     const expand = node("button", "fx-turn-expand", "펼치기"); expand.type = "button";
@@ -420,7 +425,13 @@
       article.dataset.active = String(i === 0);
       const face = (data, cls) => {
         const el = node("div", `fx-turn-face ${cls}`);
-        el.append(node("span", "fx-turn-tag", data.tag), node("h3", "", data.title),
+        // 사건 카드에만 사건 기호를 붙인다(결산 카드는 id가 없어 제목만).
+        const heading = node("h3", ""), eventId = data.id || card.id;
+        if (eventId) {
+          const icon = node("span", "bd-event-icon", eventIcon(eventId)); icon.setAttribute("aria-hidden", "true");
+          heading.append(icon, node("span", "", data.title));
+        } else heading.textContent = data.title;
+        el.append(node("span", "fx-turn-tag", data.tag), heading,
           node("p", "", data.body), node("strong", "fx-turn-big", data.big));
         return el;
       };
@@ -696,5 +707,5 @@
     return false;
   }
   KCP.on?.("route:change", clear);
-  KCP.fxTurn = { eventMood: EVENT_MOOD, monthStart, monthEnd, phase, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
+  KCP.fxTurn = { eventMood: EVENT_MOOD, eventIcon, monthStart, monthEnd, phase, syncMapMood, recomputeReplay, clearForMap, state: () => ({ ...status }) };
 })();
