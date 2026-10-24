@@ -1595,6 +1595,13 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
     z-index: 48 !important; /* 안내 묶음(47) 위: 요약 줄 밑에 깔리지 않게 */
   }
   #bd-root.lg-team-map[data-result-drawer="true"]:has(.fx-turn-layer[data-strip="true"]) #lg-map-result { visibility: hidden; }
+  /* 이 자리는 폭이 넉넉하므로 좁은 틈용 칩 모양(기호 단추만)을 풀어 기호·제목·장 수·'펼치기'를 다 보인다. */
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-strip { padding: 0 4px 0 10px; }
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-strip-icon,
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-strip-count { display: inline; }
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-strip-title { display: block; }
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-expand { width: auto; padding: 0 8px; font-size: 12px; }
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"][data-chip="true"] .fx-turn-expand::before { content: none; }
 }
 
 /* F12: 서랍 폭 360에서 2열 SVG를 축소하지 않는다(224 viewBox, 12px 글자). */
