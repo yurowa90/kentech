@@ -242,8 +242,11 @@
       const rd = rounds[turn - 1], publicState = { ...S, events: [] };
       const forecast = p => C.simTeam(bg, R, id, p,
         { ...rd, seed: KCP.econ.hashStr(`${seed}:fuel`) }, Number.MAX_VALUE,
-        C.trialMods({ ...publicState, teams: { ...S.teams, [id]: { ...S.teams[id], plan: p } } }, R, id)).k.fuel;
-      const fuelBefore = S.econ ? forecast(plan) : 0;
+        C.trialMods({ ...publicState, teams: { ...S.teams, [id]: { ...S.teams[id], plan: p } } }, R, id));
+      const before = S.econ ? forecast(plan) : null;
+      const scoreMonths = Math.min(value("aiFuelMonths"), rounds.length - turn + 1);
+      const scoreBefore = S.econ && value("aiScoreValue") > 0 ?
+        KCP.econ.projectEnergyScore(S.econ, id, C.planningEnergy(before), scoreMonths).score : 0;
       const fuelWeeks = rounds.slice(turn - 1, turn - 1 + value("aiFuelMonths"))
         .reduce((sum, r) => sum + (r.mdays || r.days) / rd.days, 0);
       const candidates = [], buildBudget = (safety ? cap : choiceCap) - bg.capex(plan);
@@ -267,10 +270,13 @@
         const capacity = Math.min(need, b.mw);
         const trial = assets(plan); trial.builds.push({ t, i: best.i }); addPath(trial, route.path(best.i));
         if (!C.fundingOf(bg, S, R, id, trial).ok) return;
-        const fuelDelta = S.econ ? (forecast(trial) - fuelBefore) * fuelWeeks : 0;
-        // 입지 선호는 종류 안에서만 사용한다. 종류 간에는 실제 건설비와 예상 연료비 차이를 비교한다.
+        const after = S.econ ? forecast(trial) : null;
+        const fuelDelta = S.econ ? (after.k.fuel - before.k.fuel) * fuelWeeks : 0;
+        const scoreDelta = S.econ && value("aiScoreValue") > 0 ?
+          KCP.econ.projectEnergyScore(S.econ, id, C.planningEnergy(after), scoreMonths).score - scoreBefore : 0;
+        // 입지 선호는 종류 안에서만 사용한다. 종류 간에는 실제 비용과 학생 총점 차이를 비교한다.
         // 절약액이 건설비보다 커도 역전/발산하지 않도록 비용/MW의 음수를 최대화한다.
-        const costScore = -(best.cost + fuelDelta) / capacity;
+        const costScore = -(best.cost + fuelDelta - value("aiScoreValue") * scoreDelta) / capacity;
         const large = 1 + style.risk * value("aiLargeWeight") * b.mw / maxMW;
         // 연료 절약으로 순비용이 음수여도 대형 선호의 방향은 뒤집지 않는다.
         best.score = costScore < 0 ? costScore / large : costScore * large;
@@ -305,10 +311,6 @@
       .filter(t => t.st === "prop" && [t.a, t.b].includes(id) && t.by !== id)
       .map(t => ({ type: "cancel", other: t.by, cap: t.cap, kind: t.kind }));
     const C = KCP.leagueCore, own = supply(bg, S, id, plan), actions = [];
-    const grid = gridFor(bg, S, R, id, plan);
-    const renewNeed = Math.max(0, own.peak *
-      (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - own.renew);
-    const gridTight = grid && grid.headroomMW - (grid.waitingMW - grid.reservedMW) < Math.min(grid.monthlyMW, renewNeed);
     let tieReserved = 0;
     const pending = R.ties.filter(t => t.a === id || t.b === id);
     let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => C.effectiveTie(S, t));
@@ -335,7 +337,8 @@
       const existing = S.ties.find(t => t.a === def.a && t.b === def.b);
       if (existing?.st === "built") continue;
       const incoming = existing?.st === "prop" && existing.by !== id;
-      if (!incoming && (existing || style.risk !== value("aiStyles").bold.risk && !gridTight)) continue;
+      // 성향과 무관하게 미제안 후보를 평가한다. 자기 제안의 중복 예약만 막는다.
+      if (!incoming && existing) continue;
       const kind = incoming ? existing.kind : C.techOf(S, id).includes("hvdc") ? "hvdc" : def.kind;
       const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap, kind }) / 2;
       const theirs = assets(S.teams[other].plan);
@@ -354,7 +357,19 @@
         const worth = key => {
           const net = t => t.earn - t.pay - t.fuelX + t.saveFuel +
             t.del.reduce((sum, mw) => sum + mw, 0) * (value("aiVollMul") * value("normalCost"));
-          return (net(after.out[key]) - net(before.out[key])) * weeks;
+          const cash = (net(after.out[key]) - net(before.out[key])) * weeks;
+          if (!S.econ || value("aiScoreValue") <= 0) return cash;
+          const energy = settled => {
+            const s = sims[key], o = settled.out[key];
+            // 거래 뒤 남은 부족은 설비 평가와 같은 계통 보충·소비 배출로 환산한다.
+            const delivered = o.del.reduce((sum, mw) => sum + mw, 0);
+            return C.planningEnergy({ ...s,
+              uns: Array.from(s.uns, (u, i) => Math.max(0, u - o.del[i])),
+              k: { ...s.k, uns: Math.max(0, s.k.uns - delivered), co2: s.k.co2 - o.saveCo2 + o.co2In } });
+          };
+          const scoreDelta = KCP.econ.projectEnergyScore(S.econ, key, energy(after), horizon.length).score -
+            KCP.econ.projectEnergyScore(S.econ, key, energy(before), horizon.length).score;
+          return cash + value("aiScoreValue") * scoreDelta;
         };
         worthwhile = worth(id) > half && (incoming || worth(other) > half);
       }

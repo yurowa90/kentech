@@ -15,12 +15,20 @@ for (const file of ['tech-data.js', 'econ-data.js']) {
 }
 // VM 배열의 prototype 차이가 가짜 deepEqual 실패를 만들지 않도록 정규화한다.
 const D = structuredClone(context.window.KCP.ECON_DATA);
+// 산업부 2019-03-05·2017-09-01 p.1 표(REF 18.2). 실제 params를 기대값으로 쓰지 않는다.
+const pmFacts = { coalReference: .120, coalNew: .044, lngReference: .015, lngNew: .007 };
+const newPM = { coal: 1 * pmFacts.coalNew / pmFacts.coalReference,
+  lng: .05 * pmFacts.lngNew / pmFacts.lngReference };
 
-// [값, 등급, REF 절, 이 계수에 필요한 출처]. §1의 서지 목록에만 키가
+// [값, 등급, REF 절, params 출처, 대장 전용 출처(선택)]. §1의 서지 목록에만 키가
 // 있는 경우는 대응으로 인정하지 않는다. tech_는 합본 이름 공간일 뿐이다.
 // SPEC §1.1/1.2의 개별 등급이 REF 절 전체의 혼합 등급보다 우선한다.
 // 최신 정정: D-73(탄소), G7(FOAK 비용), G4(공사 기간) 순으로 반영했다.
 const expected = {
+  // REF §18: 출처 ID는 새 대장의 D87-Rxx 표기다. params는 REF 절을 참조한다.
+  thermalMW: [{ lng: 561, coal: 1040 }, 'O*', '18.1', [], ['D87-R04']],
+  thermalCapex: [{ lng: 1275, coal: 1809 }, 'P', '18.1', [], ['D87-R01']],
+  pmNewFuelW: [newPM, 'M', '18.2', [], ['D87-R02', 'D87-R03']],
   aiVollMul: [5, 'M', '5.8', ['L35', 'P37', 'S18', 'P15', 'P38']],
   curtailLossReal: [.018, 'M', '8.14', ['X25']],
   connPerMonthReal: [.00375, 'M', '8.12', ['S22', 'S21']],
@@ -131,6 +139,9 @@ const expected = {
 // 대장에 계산 결과가 그대로 없는 값은 입력 숫자와 정의식을 모두 확인한다.
 // 구현에서 식·입력값을 역산하지 않는다. 단위 정의도 검사를 생략하지 않는다.
 const definitions = {
+  pmNewFuelW: { inputs: Object.values(pmFacts),
+    formula: /pmFuelW\.coal\s*×\s*0\.044\/0\.120[\s\S]*pmFuelW\.lng\s*×\s*0\.007\/0\.015/,
+    value: () => newPM },
   outageHoursPerPercent: { inputs: [8760, 1], formula: /8,760시간\s*×\s*1%/,
     value: () => 8760 * .01 },
   mwhToKwh: { inputs: [1000], formula: /mwhToKwh=1000\(M,\s*정확한 단위 환산\)/,
@@ -158,12 +169,12 @@ function sectionsIn(text) {
   });
   return sections;
 }
-const sourceIds = text => new Set([...text.matchAll(/\[([A-Z]\d+)\]/g)].map(m => m[1]));
+const sourceIds = text => new Set([...text.matchAll(/\[((?:[A-Z]\d+|D87-R\d+))\]/g)].map(m => m[1]));
 const baseKey = key => key.replace(/^tech_/, '');
 const hasKey = (text, key) => new RegExp(`\\b${baseKey(key)}\\b`).test(text);
 function numbersIn(text) {
   const notation = /(?<![A-Za-z0-9_.])[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?(?![A-Za-z0-9_.])/gi;
-  return new Set([...text.replaceAll('−', '-').matchAll(notation)].map(m => Number(m[0].replaceAll(',', ''))));
+  return new Set([...text.replaceAll('−', '-').replace(/(\d)(MW)\b/g, '$1 $2').matchAll(notation)].map(m => Number(m[0].replaceAll(',', ''))));
 }
 function numericLeaves(value, prefix) {
   return typeof value === 'number' ? [[prefix, value]]
@@ -193,12 +204,22 @@ function inspect(data, refText = references, specText = spec) {
   const evidenceKeys = Object.keys(data.params).filter(key => data.params[key].grade !== 'G').sort();
   const result = { assertions: 0, groups: {}, failures: [], evidenceKeys,
     unmapped: evidenceKeys.filter(key => !Object.hasOwn(expected, key)), missingLedger: [] };
+  check(result, '원천 값', 'thermalFacts.pm', () => {
+    for (const [key, value] of Object.entries(pmFacts)) equalValue(data.thermalFacts?.pm?.[key], value, key);
+    assert.equal(data.thermalFacts.pm.unit, 'kg/MWh');
+    assert.equal(data.thermalFacts.pm.grade, 'O');
+    assert.equal(data.thermalFacts.pm.sources.length, 2);
+    for (const source of data.thermalFacts.pm.sources) {
+      assert.ok(sections.get('18.2').includes(source), 'REF 18.2의 산업부 원문 출처');
+    }
+    assert.match(sections.get('18.2'), /2019-03-05[\s\S]*p\.1[\s\S]*2017-09-01[\s\S]*p\.1/);
+  });
   for (const key of result.unmapped) check(result, '대장 대응', key, () => assert.fail('대장 대응 없음'));
   // 알려진 키가 G로 바뀌어 모집단에서 사라져도 값·등급 검사를 유지한다.
   const keys = [...new Set([...evidenceKeys, ...Object.keys(expected)])].sort();
   for (const key of keys) {
     if (!Object.hasOwn(expected, key)) continue;
-    const [value, grade, section, refs] = expected[key];
+    const [value, grade, section, refs, ledgerRefs = refs] = expected[key];
     const ids = section.split(/\s*,\s*/), bodies = ids.map(id => sections.get(id) || '').join('\n');
     const rows = specText.split('\n').filter(line => line.trim().startsWith('|') &&
       line.split('|')[1].trim().replaceAll('`', '') === baseKey(key)).join('\n');
@@ -209,7 +230,7 @@ function inspect(data, refText = references, specText = spec) {
     });
     const inSection = sourceIds(bodies);
     check(result, '대장 출처', key, () => {
-      assert.deepEqual(refs.filter(ref => !inSection.has(ref)), [], `REF ${section}에 기대 출처 없음`);
+      assert.deepEqual(ledgerRefs.filter(ref => !inSection.has(ref)), [], `REF ${section}에 기대 출처 없음`);
     });
     check(result, '대장 값', key, () => {
       const definition = definitions[key];
@@ -242,6 +263,11 @@ function inspect(data, refText = references, specText = spec) {
 }
 
 const snapshot = structuredClone(D), result = inspect(D), mutations = [];
+check(result, '변형 확인', '신규 LNG 옛 직접비 0.007/0.120', () => {
+  const copy = structuredClone(D);
+  copy.params.pmNewFuelW.v.lng = .007 / .120;
+  assert.ok(inspect(copy).failures.some(f => f.key === 'pmNewFuelW' && f.kind === '값'));
+});
 // 대응표 전체의 값·등급·출처를 각각 오염시키고 본 검사를 재실행한다.
 // 기존 실패에 가려지지 않도록 사본의 대상 계약을 정상화한 뒤 변형한다.
 for (const key of Object.keys(expected)) for (const kind of ['값', '등급', '출처']) {
@@ -265,6 +291,11 @@ for (const key of Object.keys(expected)) for (const kind of ['값', '등급', '�
     mutations.push({ key, kind, detected: true });
   });
 }
+for (const key of ['thermalMW', 'thermalCapex', 'pmNewFuelW']) check(result, '변형 확인', `${key}/대장 출처 삭제`, () => {
+  const id = expected[key][4][0];
+  const rerun = inspect(structuredClone(D), references.replaceAll(`[${id}]`, '[REMOVED_SOURCE]'));
+  assert.ok(rerun.failures.some(f => f.key === key && f.kind === '대장 출처'));
+});
 check(result, '변형 확인', '새 근거 계수', () => {
   const copy = structuredClone(D);
   copy.params.syntheticEvidenceParam = { v: 123, grade: 'M', refs: ['P15'] };

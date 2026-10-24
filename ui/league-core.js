@@ -1059,7 +1059,7 @@
         spareMW, H, dem: res.hrDem, uns, gx: res.gx || [], hosp: res.hrHosp, hospDem: res.hrHospDem, hospUns: res.hrHospUns,
         k: {
           dem: res.tot.dem, uns: res.unsTotal, hospH: res.hospH || 0, capex: res.cost.capex, fuel: res.cost.fuel, policy: res.cost.policy,
-          co2: res.co2, bioCo2: res.bioCo2, sat: Math.min(...res.sat), curt: res.tot.curt, ren: res.tot.ren + res.tot.batOut, by: res.tot.by, cp: res.cp.issues
+          co2: res.co2, bioCo2: res.bioCo2, sat: Math.min(...res.sat), curt: res.tot.curt, ren: res.tot.ren + res.tot.batOut, by: res.tot.by, pmBy: res.tot.pmBy, cp: res.cp.issues
         }
       };
       Object.defineProperty(ret, "_res", { value: res, enumerable: false });
@@ -1072,7 +1072,7 @@
   function settle(ties, sims, price, H, days) {
     const out = {}, flow = {};
     Object.keys(sims).forEach(id => {
-      out[id] = { imp: 0, exp: 0, pay: 0, earn: 0, fuelX: 0, co2X: 0, co2In: 0, bioCo2X: 0, saveBioCo2: 0, byX: {}, saveBy: {}, curtX: 0, sub: 0, saveFuel: 0, saveCo2: 0, del: new Float32Array(H), unlinked: [] };
+      out[id] = { imp: 0, exp: 0, pay: 0, earn: 0, fuelX: 0, co2X: 0, co2In: 0, bioCo2X: 0, saveBioCo2: 0, byX: {}, saveBy: {}, pmX: {}, savePM: {}, curtX: 0, sub: 0, saveFuel: 0, saveCo2: 0, del: new Float32Array(H), unlinked: [] };
     });
     const gate = (id, other) => (sims[id] ? sims[id].gx.find(g => g.to.includes(other)) : null);
     const usable = [];
@@ -1115,11 +1115,17 @@
           if (mode === "disp") Object.entries(o.gbuy.byDisp || {}).forEach(([fuel, share]) => {
             bo.saveBy[fuel] = (bo.saveBy[fuel] || 0) + got * share[k];
           });
+          if (mode === "disp") Object.entries(o.gbuy.pmDisp || o.gbuy.byDisp || {}).forEach(([fuel, share]) => {
+            bo.savePM[fuel] = (bo.savePM[fuel] || 0) + got * share[k];
+          });
           so.exp += sent; so.earn += got * o.p; bo.imp += got; bo.pay += got * o.p;
           if (o.kind === 1) { so.fuelX += sent * o.gs.mc; so.co2X += sent * o.gs.co2i; so.bioCo2X += sent * (o.gs.bioCo2i || 0); bo.co2In += sent * o.gs.co2i; }
           else so.curtX += sent;
           if (o.kind === 1) Object.entries(o.gs.byHead || {}).forEach(([fuel, share]) => {
             so.byX[fuel] = (so.byX[fuel] || 0) + sent * share;
+          });
+          if (o.kind === 1) Object.entries(o.gs.pmHead || o.gs.byHead || {}).forEach(([fuel, share]) => {
+            so.pmX[fuel] = (so.pmX[fuel] || 0) + sent * share;
           });
           const F = flow[o.U.T.id];
           if (o.dir > 0) F.ab += got; else F.ba += got;
@@ -1144,6 +1150,14 @@
     o.fuelX += total * P.normalCost.v * P.gridImportMarkup.v;
     o.co2In += total * P.normalCo2.v;
     return total; // imp·pay는 이웃 거래 전용. 계통 공급량은 내부 호출에서만 쓴다.
+  }
+
+  // AI의 거래 없는 공개 대표 주. 운영과 같은 계통 보충으로 소비 CO2/공급량 산출.
+  function planningEnergy(s) {
+    const o = { del: new Float32Array(s.H), fuelX: 0, co2In: 0 };
+    const imported = gridSupply(o, s);
+    return { demMWh: s.k.dem, servedMWh: Math.max(0, s.k.dem - s.k.uns + imported),
+      co2: s.k.co2 + o.co2In, cpList: s.cpList };
   }
 
   // 거래 없는 도시 시험. 자체 생산(tot.co2)은 보존하고 co2는 소비 배출로 표시한다.
@@ -1361,7 +1375,7 @@
       const intensity = dem > 1e-6 ? (normal.co2 + missing * P.normalCo2.v) / dem : P.normalCo2.v;
       // F05: 월 입력과 같은 자산 경로. 시작 보정에는 학생 건설·정책을 포함하지 않는다.
       const initial = { ...S, teams: { ...S.teams, [id]: { ...S.teams[id], plan: { builds: [], policies: [] }, econPol: {} } } };
-      base[id] = econInput(initial, R, id, { by: normal.by, dem, uns: 0, unsPct: 0, hospH: 0,
+      base[id] = econInput(initial, R, id, { by: normal.by, pmBy: normal.pmBy, dem, uns: 0, unsPct: 0, hospH: 0,
         co2Prod: intensity * dem, co2Cons: intensity * dem, renPct: P.normalRen.v,
         exp: 0, imp: 0, pay: 0, earn: 0, cost: { fuel: normal.fuel + missing * P.normalCost.v, policy: 0 } }, wk);
     }));
@@ -1373,7 +1387,7 @@
     const c = r.cost, served = Math.max(0, r.dem - (r.uns == null ? r.dem * r.unsPct / 100 : r.uns)), plan = S.teams[id].plan || { builds: [] }, n = t => (plan.builds || []).filter(b => b.t === t).length;
     return {
       // by는 거래 후 대표 운영 기간의 생산 MWh(시작 보정은 거래 없음). 수입 전기는 제외한다.
-      energy: { genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
+      energy: { ...(r.pmBy ? { pmGenMWh: Object.fromEntries(Object.entries(r.pmBy).map(([f, v]) => [f, v * wk])) } : {}), genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
         tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         // 특별교부세의 미사용분은 세입으로 인정하지 않아 운영 적자·다음 달 현금에 쓰이지 않는다.
         bonus: r2(bonusOf(S, R, id, S.round) - grantAmount(S, R, id) + (grantUsed ?? grantOf(S, R, id).used)), salvage: Math.max(0, -(c.inv || 0)) },
@@ -1404,7 +1418,7 @@
       // 해당 시각만 재정산해 판매에 쓴 여유를 뺀다. 미접속 망의 부족은 섞지 않는다.
       const slice = {};
       ids.forEach(cid => { slice[cid] = { gx: sims[cid].gx.map(g => Object.assign({}, g,
-        { byDisp: Object.fromEntries(Object.entries(g.byDisp || {}).map(([fuel, share]) => [fuel, [share[peak]]])) },
+        { byDisp: Object.fromEntries(Object.entries(g.byDisp || {}).map(([fuel, share]) => [fuel, [share[peak]]])), pmDisp: Object.fromEntries(Object.entries(g.pmDisp || g.byDisp || {}).map(([fuel, share]) => [fuel, [share[peak]]])) },
         Object.fromEntries(["def", "ren", "head", "disp", "dmc", "dco2"].map(key => [key, [g[key] ? g[key][peak] : 0]])))) }; });
       const atPeak = settle(ties, slice, price, 1, 1).out[id];
       // 추가 화력 출력만 인정하고, 재생 판매도 전부 차감하는 보수적 하한이다.
@@ -1414,8 +1428,10 @@
     ids.forEach(id => {
       const o = settled.out[id], by = Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(fuel =>
         [fuel, Math.max(0, (sims[id].k.by[fuel] || 0) + (o.byX[fuel] || 0) - (o.saveBy[fuel] || 0))]));
+      const pmBy = Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr", "coalNew", "lngNew"].map(fuel =>
+        [fuel, Math.max(0, (sims[id].k.pmBy?.[fuel] || 0) + (o.pmX[fuel] || 0) - (o.savePM[fuel] || 0))]));
       // 월 입력에서만 사용한다. 공개 결과·36달 저장에는 연료별 중간값을 싣지 않는다.
-      inputs[id] = econInput(S, R, id, { ...res.team[id], by }, wk, undefined, grants[id]);
+      inputs[id] = econInput(S, R, id, { ...res.team[id], by, pmBy }, wk, undefined, grants[id]);
     });
     // 화면 원인 설명용 직전 값. 학생 자유 서술은 포함하지 않는다.
     S.econPreviousScore = KCP.econ.score(S.econ);
@@ -1479,7 +1495,7 @@
   KCP.leagueCore = {
     replayOf, researchView, researchError, researchReserve, effectiveTie, royaltyLedger, techCards, connectedTie,
     gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, trialMods, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
-    PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
+    PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam, planningEnergy,
     budget, tieCost, tieShare, cleanPlan, capexOf, gridFill,
     SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, grantAmount, grantOf, fundingOf, fixedOf, spendOf, techOf, econInput
   };

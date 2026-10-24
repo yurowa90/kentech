@@ -73,6 +73,9 @@
       // H01: 생산 기준 월 MWh. 누락은 무배출과 구분하며 CO₂로 역산하지 않는다.
       genMWh: e.genMWh && typeof e.genMWh === "object" && !Array.isArray(e.genMWh)
         ? Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, num(e.genMWh[f], 0, BIG, 0)])) : null,
+      // 호스트 내부 PM 장부만 신·구를 구분한다. 구버전 입력은 genMWh의 기존 가중으로 계산한다.
+      pmGenMWh: e.pmGenMWh && typeof e.pmGenMWh === "object" && !Array.isArray(e.pmGenMWh)
+        ? Object.fromEntries(["coal", "lng", "diesel", "biomass", "coalNew", "lngNew"].map(f => [f, num(e.pmGenMWh[f], 0, BIG, 0)])) : null,
       residentDemandShare: num(e.residentDemandShare, 0, 1, 1), priceMul: num(e.priceMul, priceBounds[0], priceBounds[1], 1), bioCo2: num(e.bioCo2, 0, BIG, 0), unsPct: num(e.unsPct, 0, 100, 0), hospH: num(e.hospH, 0, P("inputHospHoursMax"), 0),
       costPerMWh: has(e, "costPerMWh") ? clamp(e.costPerMWh, 0, P("inputCostPerMWhMax")) : null,
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
@@ -87,7 +90,7 @@
       fossilMWh: has(e, "fossilMWh") ? clamp(e.fossilMWh, 0, BIG) : null,
       spareMW: has(e, "spareMW") ? clamp(e.spareMW, 0, BIG) : null,
       exportMWh: num(e.exportMWh, 0, BIG, 0), importMWh: num(e.importMWh, 0, BIG, 0), tieCost: num(e.tieCost, 0, BIG, 0),
-      cpList: (Array.isArray(e.cpList) ? e.cpList : []).filter(c => c && ["noise", "view", "smoke", "forest"].includes(c.kind)).map(c => ({ kind: c.kind, score: num(c.score, 0, BIG, 0), near: c.near, src: c.src }))
+      cpList: (Array.isArray(e.cpList) ? e.cpList : []).filter(c => c && ["noise", "view", "smoke", "forest", "siting"].includes(c.kind)).map(c => ({ kind: c.kind, score: num(c.score, 0, BIG, 0), near: c.near, src: c.src }))
     };
     const old = C.policy, step = (x, d) => Math.round(num(x, policyBounds[0], policyBounds[1], d));
     const policy = { taxRes: step(po.taxRes, old.taxRes), taxInd: step(po.taxInd, old.taxInd), service: step(po.service, old.service), incentive: num(po.incentive, 0, P("inputIncentiveMax"), old.incentive) };
@@ -105,9 +108,9 @@
 
   /* ---------- 지역 맥락 ---------- */
   function pmContext(ids, ins, data) {
-    const weights = pv(data, "pmFuelW"), own = {}, neighbours = {};
+    const weights = { ...pv(data, "pmFuelW"), ...Object.fromEntries(Object.entries(pv(data, "pmNewFuelW") || {}).map(([f, w]) => [f + "New", w])) }, own = {}, neighbours = {};
     ids.forEach(id => {
-      const gen = ins[id].energy.genMWh;
+      const gen = ins[id].energy.pmGenMWh ?? ins[id].energy.genMWh;
       own[id] = gen == null ? null : pv(data, "kPM") * sum(Object.keys(weights).map(f => weights[f] * fin(gen[f], 0)));
       neighbours[id] = new Map();
     });
@@ -568,6 +571,28 @@
     });
     return { tg, parts, contrib };
   }
+  // 실제 월 운영과 AI 예상이 같은 만족 기억·지지율 창을 사용한다.
+  function advanceApproval(c, g, data) {
+    const P = k => pv(data, k);
+    const changes = {}, previous = c.groupContrib || {};
+    Object.keys(c.groups).forEach(k => {
+      const old = previous[k] || { other: c.groups[k].sat }, target = g.contrib[k], next = {};
+      const memory = g.tg[k] < c.groups[k].sat ? 1 : P("approvalMemoryReal") * P("eduMemory");
+      new Set([...Object.keys(old), ...Object.keys(target)]).forEach(key => {
+        const delta = memory * (fin(target[key], 0) - fin(old[key], 0));
+        next[key] = fin(old[key], 0) + delta;
+        changes[key] = fin(changes[key], 0) + c.groups[k].share * delta;
+      });
+      g.contrib[k] = next;
+      c.groups[k].sat = c100(c.groups[k].sat + memory * (g.tg[k] - c.groups[k].sat));
+    });
+    c.groupContrib = g.contrib; c.groupParts = clone(g.parts);
+    c.approval = c100(sum(Object.keys(c.groups).map(k => c.groups[k].share * c.groups[k].sat)));
+    c.approvalHistory.push(c.approval);
+    if (c.approvalHistory.length > P("approvalWindow")) c.approvalHistory.shift();
+    return changes;
+  }
+
   const GW = { rel: "전력 신뢰", price: "전기요금", air: "공기", jobs: "일자리", svc: "공공서비스", tax: "세금", crowd: "집값", A: "산업 여건", out: "생산", taxI: "법인 세금", ren: "재생에너지", co2: "탄소 배출", outage: "정전 감점", hospital: "병원 정전 감점", complaint: "민원", share: "이익공유", save: "절전", unrest: "시위", bounds: "만족도 상한·하한", other: "이전 만족도" };
   function approvalChangeCause(causes, data) {
     const cause = causes[0];
@@ -690,33 +715,17 @@
       const co2 = e.co2 != null ? e.co2 : fin(e.co2Local, 0);
       c.unsS += lam * (e.unsPct - c.unsS);
       c.co2pc += P("lambdaSlow") * (co2 / Math.max(1, c.pop / 1000) - c.co2pc);
-      if (servedOf(e) > 0) c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))) + P("lambdaSlow") * (co2IntOf(e, data) - fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))));
-      else c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef")));
+      advanceCarbon(c, e, data);
       c.renS += P("lambdaSlow") * (e.renPct - c.renS);
     });
     // 7) 집단 만족 → 지지율
     const groups = {}, causes = {};
     ids.forEach(id => {
       const c = C[id], g = groupTargets(c, ins[id], c.out, data, reg);
-      const changes = {}, previous = c.groupContrib || {};
-      Object.keys(c.groups).forEach(k => {
-        const old = previous[k] || { other: c.groups[k].sat }, target = g.contrib[k], next = {};
-        const memory = g.tg[k] < c.groups[k].sat ? 1 : P("approvalMemoryReal") * P("eduMemory");
-        new Set([...Object.keys(old), ...Object.keys(target)]).forEach(key => {
-          const delta = memory * (fin(target[key], 0) - fin(old[key], 0));
-          next[key] = fin(old[key], 0) + delta;
-          changes[key] = fin(changes[key], 0) + c.groups[k].share * delta;
-        });
-        g.contrib[k] = next;
-        c.groups[k].sat = c100(c.groups[k].sat + memory * (g.tg[k] - c.groups[k].sat));
-      });
-      c.groupContrib = g.contrib; c.groupParts = clone(g.parts);
+      const changes = advanceApproval(c, g, data);
       causes[id] = Object.entries(changes).filter(([, delta]) => delta !== 0)
         .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || a[0].localeCompare(b[0]))
         .slice(0, P("causeCount")).map(([key, delta]) => ({ key, label: GW[key] || key, delta }));
-      c.approval = c100(sum(Object.keys(c.groups).map(k => c.groups[k].share * c.groups[k].sat)));
-      c.approvalHistory.push(c.approval);
-      if (c.approvalHistory.length > P("approvalWindow")) c.approvalHistory.shift();
       const sats = {}; Object.keys(c.groups).forEach(k => { sats[k] = r1(c.groups[k].sat, data); });
       const change = approvalChangeCause(causes[id], data);
       groups[id] = { sat: sats, approval: r1(c.approval, data), approvalChangeCause: change,
@@ -789,6 +798,38 @@
     return { E, report };
   }
 
+  function advanceCarbon(c, e, data) {
+    const P = k => pv(data, k);
+    if (servedOf(e) > 0) c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))) + P("lambdaSlow") * (co2IntOf(e, data) - fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef"))));
+    else c.co2Intensity = fin(c.co2Intensity, fin(c.co2Intensity0, P("co2IntDef")));
+  }
+
+  // D-87: 공개 대표 주의 소비 탄소와 민원을 고정해 남은 전망 기간 말 점수를 예상한다.
+  // 인구·재정·신뢰·PM·세율·집단 구성 등은 현재 값 고정. 미래 사건·이주·거래 예측 아님.
+  // 민원 외 집단 항은 현재 만족 기여를 유지하여 탄소/민원만의 한계 차이를 비교한다.
+  function projectEnergyScore(E, id, energy, months, data = DATA()) {
+    const c = clone(E.cities[id]), projected = { ...E, cities: { ...E.cities, [id]: c } };
+    const inp = cleanInput({ energy, policy: c.policy }, c, data.start[id] || {}, data);
+    const original = groupTargets(c, inp, c.out, data);
+    for (let m = 0; m < months; m++) {
+      advanceCarbon(c, inp.energy, data);
+      const g = groupTargets(c, inp, c.out, data);
+      // 다른 경제 항의 시차를 새로 예측하지 않는다. 같은 기준을 후보 전후에 사용한다.
+      Object.keys(c.groups).forEach(k => {
+        const terms = g.contrib[k], fixed = E.cities[id].groupContrib?.[k];
+        if (fixed) {
+          const carbonDelta = (terms.co2 || 0) - (original.contrib[k].co2 || 0);
+          g.contrib[k] = { ...fixed, complaint: terms.complaint, share: terms.share,
+            co2: (fixed.co2 || 0) + carbonDelta, bounds: 0 };
+          const total = sum(Object.values(g.contrib[k]));
+          g.tg[k] = c100(total); g.contrib[k].bounds = g.tg[k] - total;
+        }
+      });
+      advanceApproval(c, g, data);
+    }
+    return score(projected, data).by[id];
+  }
+
   /* ---------- 점수 · 순위 ---------- */
   function finScore(c, data) {
     const P = k => pv(data, k), marks = P("scoreFinDebtMarks");
@@ -819,7 +860,7 @@
   }
 
   KCP.econ = {
-    initCities, calibrate, livability, industryAttract, yearStart, monthStep, demandMul, score,
+    initCities, calibrate, livability, industryAttract, yearStart, monthStep, demandMul, score, projectEnergyScore,
     subsidyNewsPrefix, subsidyPayNote,
     evalOffer, acceptOffer, spendable, debtStage, outIdx, regionCtx, ctxOf, cleanInput,
     seasonOfMonth, monthsInGame, daysOf, weekMul, monthLabel, roundSum, pairFlows, hashStr, rng

@@ -875,9 +875,181 @@ function seeds() {
   const copy = structuredClone(a); copy.salt++; copy.seedKey = "different"; copy.events = [];
   ok(JSON.stringify(trial) === JSON.stringify(C.trialMods(copy, R, ids[0], BG)), "시험 운전에 숨은 사건·판 소금 미사용");
 }
+// 공개 후보·급전·정산·학생 점수로 순이득을 대조하고 실제 plan의 반환 행동을 기록한다.
+function tieObserver(k, emit) {
+  const c=k.leagueCore, value=key=>k.ECON_DATA.params[key].v;
+  const assets=p=>({builds:structuredClone(p?.builds||[]),lines:structuredClone(p?.lines||[])});
+  // AI 본문을 바꾸거나 읽지 않는다. 후보는 공개 지역 자료에서 열거하므로
+  // AI가 양수 후보의 평가 경로를 생략해도 미제안을 검출한다.
+  return (S,R,id,bg,plan,actions)=>{
+    const selected=Object.entries(bg.PACKS).find(([,p])=>p._bL?.tiles===bg.TILES||p._b?.tiles===bg.TILES);
+    const mode=selected?.[1]._bL?.tiles===bg.TILES?'league':undefined, oldBLD=bg.BLD, hadPK=Object.hasOwn(bg,'PK');
+    const onMap=(key,fn)=>{bg.selectPack(R.teams.find(t=>t.id===key).pack,'league');return fn();};
+    try {
+      const connected=(key,other)=>onMap(key,()=>{
+        const net=bg.network(key===id?plan:assets(S.teams[key].plan));
+        return bg.SITES.some(s=>s.kind==='gridpt'&&s.to?.includes(other)&&net.nodes.some(n=>
+          n.tile===s.tile&&n.comp>=0&&net.comps.some(comp=>comp.towns.length&&comp.towns[0].comp===n.comp)));
+      });
+      const rd=c.roundsOf(S)[Math.max(0,S.round-1)];
+      const horizon=c.roundsOf(S).slice(Math.max(0,S.round-1),Math.max(0,S.round-1)+value('aiTieMonths'));
+      const weeks=horizon.reduce((sum,r)=>sum+(r.mdays||r.days)/rd.days,0);
+      const coef=value('aiScoreValue'),prices=Object.fromEntries(Object.entries(S.teams).map(([key,t])=>[key,t.price]));
+      let sims, reserved=0;
+      const accepted=S.ties.filter(t=>t.st==='built').map(t=>c.effectiveTie(S,t));
+      for(const def of R.ties.filter(t=>t.a===id||t.b===id)) {
+        const other=def.a===id?def.b:def.a;
+        if(!S.teams[other]) continue;
+        const existing=S.ties.find(t=>t.a===def.a&&t.b===def.b);
+        if(existing?.st==='built'||existing?.by===id) continue;
+        const incoming=existing?.st==='prop'&&existing.by!==id;
+        const kind=incoming?existing.kind:c.techOf(S,id).includes('hvdc')?'hvdc':def.kind;
+        const cap=existing?.cap||2,half=c.tieCost(R,{...def,cap,kind})/2;
+        const candidate=c.effectiveTie(S,{...def,cap,kind});
+        const eligible=(!S.econ||k.econ.debtStage(S.econ.cities[id])==='ok')&&connected(id,other)&&connected(other,id)&&
+          c.fundingOf(bg,S,R,id,plan,{kind:'tie',extra:reserved+half}).ok&&
+          c.fundingOf(bg,S,R,other,S.teams[other].plan,{kind:'tie',extra:half}).ok;
+        if(!sims) sims=Object.fromEntries(Object.keys(S.teams).map(key=>{
+          const p=key===id?plan:assets(S.teams[key].plan);
+          const draft={...S,teams:{...S.teams,[key]:{...S.teams[key],plan:p}}};
+          const mods=c.trialMods(draft,R,key);
+          return [key,onMap(key,()=>c.simTeam(bg,R,key,p,
+            {...rd,seed:k.econ.hashStr(`${S.seedKey??S.room}:${S.round}:trade`)},
+            Math.max(c.budget(S,key),bg.capex(p)),mods))];
+        }));
+        const before=c.settle(accepted,sims,prices,sims[id].H,rd.days);
+        const after=c.settle([...accepted,candidate],sims,prices,sims[id].H,rd.days);
+        const cash={},scoreDelta={},net={};
+        for(const key of [id,other]) {
+          const cashFlow=o=>o.earn-o.pay-o.fuelX+o.saveFuel+
+            o.del.reduce((sum,mw)=>sum+mw,0)*(value('aiVollMul')*value('normalCost'));
+          cash[key]=(cashFlow(after.out[key])-cashFlow(before.out[key]))*weeks;
+          const energy=settled=>{
+            const s=sims[key],o=settled.out[key];
+            return c.planningEnergy({...s,uns:Array.from(s.uns,(u,i)=>Math.max(0,u-o.del[i])),
+              k:{...s.k,uns:Math.max(0,s.k.uns-o.del.reduce((a,b)=>a+b,0)),co2:s.k.co2-o.saveCo2+o.co2In}});
+          };
+          scoreDelta[key]=S.econ?k.econ.projectEnergyScore(S.econ,key,energy(after),horizon.length).score-
+            k.econ.projectEnergyScore(S.econ,key,energy(before),horizon.length).score:0;
+          net[key]=cash[key]+coef*scoreDelta[key]-half;
+          assert.ok(Number.isFinite(net[key]),'careful 실제 후보 순이득 유한값');
+        }
+        const action=actions.find(t=>t.other===other)?.type||'none';
+        emit({month:S.round,id,other,tie:def.id||def.a+'~'+def.b,cap:candidate.cap,kind:candidate.kind,
+          incoming:!!incoming,eligible,aiScoreValue:coef,months:horizon.length,half,cash,scoreDelta,net,
+          candidateNet:incoming?net[id]:Math.min(net[id],net[other]),action});
+        // 다음 후보는 실제 반환된 행동의 비용 예약·거래를 기준으로 대조한다.
+        if(action==='propose'||action==='accept') {reserved+=half;accepted.push(candidate);}
+      }
+    } finally {
+      if(selected) bg.selectPack(selected[0],mode);
+      bg.BLD=oldBLD;
+      if(!hadPK) delete bg.PK;
+    }
+  };
+}
+function checkCarefulCandidates(rows, planCalls=[]) {
+  ok(rows.length>0,'careful 실제 36달 연계선 후보 관측 존재(빈 목록 통과 금지)');
+  ok(rows.every(r=>r.pass==='plan'||r.pass==='reply'),'careful 후보의 계획·응답 패스 관측 누락 없음');
+  const eligible=rows.filter(r=>r.eligible),positive=eligible.filter(r=>r.candidateNet>0);
+  const fulfilled=r=>r.action===(r.incoming?'accept':'propose')&&r.applied===true;
+  const immediate=positive.filter(r=>r.pass==='plan'||r.incoming);
+  const missed=immediate.filter(r=>!fulfilled(r));
+  // repliesOnly는 들어온 제안에 답하는 패스다. 비-incoming 양수 후보는
+  // 없애지 않고 다음 달 같은 도시·연계선의 계획 패스에서 재판정한다.
+  const deferred=positive.filter(r=>r.pass==='reply'&&!r.incoming),followups=[];
+  for(const row of deferred) {
+    const nextMonth=row.month+1;
+    const detail={month:row.month,nextMonth,id:row.id,other:row.other,tie:row.tie,previousNet:row.candidateNet};
+    if(row.month===36) {followups.push({...detail,status:'game-ended'});continue;}
+    const call=planCalls.find(c=>c.month===nextMonth&&c.id===row.id);
+    const existing=call?.ties.find(t=>[t.a,t.b].includes(row.id)&&[t.a,t.b].includes(row.other));
+    const next=rows.find(r=>r.month===nextMonth&&r.pass==='plan'&&r.id===row.id&&r.other===row.other);
+    if(existing?.st==='built'||existing?.st==='prop'&&existing.by===row.id) {
+      followups.push({...detail,status:existing.st==='built'?'already-built':'already-proposed'});
+    } else if(!next) {
+      followups.push({...detail,status:'missing-next-plan'});
+    } else {
+      followups.push({...detail,nextNet:next.candidateNet,eligible:next.eligible,incoming:next.incoming,
+        action:next.action,applied:next.applied,status:next.candidateNet<=0?'no-longer-positive':
+          !next.eligible?'no-longer-eligible':fulfilled(next)?'fulfilled':'missed-positive'});
+    }
+  }
+  const followupMissed=followups.filter(r=>['missing-next-plan','missed-positive'].includes(r.status));
+  console.log('careful 패스별 계약: 계획 패스 적격 순이득>0이면 제안, incoming은 수락 도시 순이득>0이면 수락. 응답 패스 비-incoming 양수는 당월 제안·반영 의무 없이 다음 달 계획에서 재검사(양수 유지 시 제안·반영, 0·음수 전환은 정보 출력).');
+  console.log('careful 응답 후보 다음 달 계획 재검사',JSON.stringify(followups));
+  console.log('careful 실제 후보 순이득 요약',JSON.stringify({candidates:rows.length,eligible:eligible.length,
+    positive:positive.length,immediate:immediate.length,deferred:deferred.length,missed:missed.length,
+    followupMissed:followupMissed.length,maxNet:Math.max(...eligible.map(r=>r.candidateNet))}));
+  if(eligible.length && positive.length===0) console.log('careful이 짓지 않는 것이 점수상 맞다: 적격 후보 순이득 모두 ≤ 0 (월별 전체 목록 참조)');
+  if(missed.length) console.error('careful 양수 후보 미제안·미수락',JSON.stringify(missed));
+  ok(eligible.length>0,'careful 실제 적격 연계선 후보 존재');
+  if(followupMissed.length) console.error('careful 다음 달 계획 양수 후보 미제안·미수락·관측 누락',JSON.stringify(followupMissed));
+  ok(missed.length===0,'careful 계획 양수 후보는 반드시 제안·수락, 응답 incoming 양수는 반드시 수락·반영(경로 생략도 실패)');
+  ok(followupMissed.length===0,'careful 응답 비-incoming 양수 후보는 다음 달 계획 관측 필수, 적격 양수 유지 시 반드시 제안·수락·반영');
+}
+
+// 점수로도 순이득이 양수인 공개 거래 한 건을 구성한다. 망 연결·접속 조건은
+// 작은 합성 장치로 고정하고, 거래 정산·학생 점수·AI 제안/응답은 실제 함수를 쓴다.
+function carefulTieBenefit() {
+  const vm = require("node:vm");
+  const ctx = vm.createContext({console, document:{documentElement:{}}, KCP:{route(){},on(){}}});ctx.window=ctx;
+  for(const name of ['build-maps','tech-data','build','econ-data','econ','league-data','league-core','league-ai']) {
+    const source=fs.readFileSync(path.resolve(__dirname,'../../ui',name+'.js'),'utf8');
+    vm.runInContext(source,ctx,{filename:name+'.js'});
+  }
+  const k=ctx.KCP,c=k.leagueCore;
+  k.TECH_DATA=null; // 이 장치는 연구 후보 없이 공개 plan의 연계선 행동을 검사한다.
+  const pair=['hwaseong','pyeongtaek'],[a,b]=pair, S=c.newState('careful-benefit','south',0,pair,{turns:12});
+  S.round=1;S.ties=[];
+  const rd={month:1,days:7,mdays:30},H=168,arr=n=>new Array(H).fill(n);
+  const gate=to=>({to:[to],def:arr(0),ren:arr(0),head:arr(0),disp:arr(0),dmc:arr(0),dco2:arr(0),mc:0,co2i:0});
+  const sims={
+    [a]:{H,dem:arr(1000/H),uns:arr(0),k:{dem:1000,uns:0,co2:0},cpList:[],gx:[{...gate(b),ren:arr(2)}]},
+    [b]:{H,dem:arr(1000/H),uns:arr(0),k:{dem:1000,uns:0,co2:820},cpList:[],gx:[{...gate(a),disp:arr(2),dmc:arr(.02),dco2:arr(.82)}]}
+  };
+  S.teams[a].price=.015;S.teams[b].price=.02;
+  const def={id:a+'~'+b,a,b,cap:2,kind:'ac',loss:.1}, region={teams:pair.map(id=>({id,pack:id})),ties:[def]};
+  const bg={PACKS:{},BLD:{},TILES:[],capex:()=>0,selectPack(id){this.id=id;},peakDemand:()=>10,
+    get SITES(){return [{kind:'gridpt',tile:1,to:[this.id===a?b:a]}];},
+    network:()=>({nodes:[{kind:'plant',cap:100,tile:0,comp:0,live:true},{kind:'gridpt',tile:1,comp:0}],comps:[{towns:[{comp:0}]}]})};
+  Object.assign(c,{roundsOf:()=>new Array(12).fill(rd),budget:()=>1000,
+    gridStatus:()=>({peakMW:10,headroomMW:100,waitingMW:0,reservedMW:0,monthlyMW:1}),
+    fundingOf:()=>({ok:true,grant:{awarded:0}}),fixedOf:()=>0,lossOf:()=>0,researchReserve:()=>0,
+    techOf:()=>[],tieCost:()=>100,effectiveTie:(s,t)=>t,
+    modsFor:()=>({}),trialMods:()=>({}),simTeam:(bg,r,id)=>sims[id]});
+  const observations=[],observe=tieObserver(k,row=>observations.push(row));
+  const propose=k.leagueAI.plan(S,region,a,bg,'careful');
+  observe(S,region,a,bg,propose.plan,propose.ties);
+  const {net,cash,half,aiScoreValue:coef}=observations[0];
+  ok(cash[a]-half>0&&cash[b]-half<0,'careful 합성 사례: 구매 도시는 점수 편익이 있어야 순이득 양수');
+  let cases=0;
+  if(pair.every(id=>net[id]>0)) {
+    cases++;
+    ok(propose.ties.some(t=>t.type==='propose'&&t.other===b),'careful: 점수식 순이득>0이면 연계선 제안');
+    S.ties=[{...def,st:'prop',by:a}];
+    const accept=k.leagueAI.plan(S,region,b,bg,'careful');
+    ok(accept.ties.some(t=>t.type==='accept'&&t.other===a),'careful: 점수식 순이득>0이면 연계선 수락');
+  }
+  ok(cases>0,'careful: 점수식 순이득>0인 제안·수락 사례 최소1건(0건 실패)');
+  console.log('careful 연계선 조건부 사례',JSON.stringify({cases,aiScoreValue:coef,half,cash,net}));
+}
+
 async function measure(oldView, style = "bold") {
   const host = await N.createIdentity();
   let maxSnapshot, maxSize = 0;
+  const candidates=[],planCalls=[],observe=style==='careful'?tieObserver(K,row=>candidates.push(row)):null;
+  let pass;
+  const originalAI=K.leagueAI;
+  const observedAI={...originalAI,plan(...args){
+    const [state,region,id,bg]=args;
+    if(pass==='plan') planCalls.push({month:state.round,id,ties:structuredClone(state.ties)});
+    const result=originalAI.plan(...args);
+    const before=JSON.stringify(state);
+    observe(state,region,id,bg,result.plan,result.ties);
+    assert.equal(JSON.stringify(state),before,'careful 관측이 실제 상태를 바꾸지 않음');
+    return result;
+  }};
   const S = state("SIZE36", "room"), stats = { before: {}, after: {}, builds: 0, research: 0, ties: 0 };
   S.sid = N.sessionId();
   const clock = 1700000000000;
@@ -890,7 +1062,22 @@ async function measure(oldView, style = "bold") {
   }
   for (let month = 1; month <= 36; month++) {
     C.host(S, "next", clock + month * 100);
-    C.computerPlans(S, BG, null, style); C.computerPlans(S, BG, null, style, true);
+    const first=candidates.length;
+    try {
+      if(observe) K.leagueAI=observedAI;
+      for(const repliesOnly of [false,true]) {
+        pass=repliesOnly?'reply':'plan';
+        const firstPass=candidates.length;
+        C.computerPlans(S, BG, null, style, repliesOnly);
+        for(const row of candidates.slice(firstPass)) {
+          row.pass=pass;
+          const tie=S.ties.find(t=>[t.a,t.b].includes(row.id)&&[t.a,t.b].includes(row.other));
+          row.applied=row.action==='accept'?tie?.st==='built':row.action==='propose'?
+            !!tie && (tie.st==='built'||tie.st==='prop'&&tie.by===row.id):false;
+        }
+      }
+    } finally { K.leagueAI=originalAI; }
+    if(observe) console.log('careful 실제 연계선 후보 순이득',JSON.stringify({month,rows:candidates.slice(first)}));
     if (oldView) await record(oldView, stats.before, month);
     await record(C.publicView, stats.after, month);
     const res = C.run(S, BG, clock + month * 100 + 1);
@@ -910,7 +1097,9 @@ async function measure(oldView, style = "bold") {
   stats.builds = ids.reduce((sum, id) => sum + S.teams[id].plan.builds.length, 0);
   stats.research = ids.reduce((sum, id) => sum + Object.keys(S.teams[id].research.stage).length, 0);
   stats.ties = S.ties.filter(t => t.st === "built").length;
-  ok(stats.builds > 6 && stats.research > 0 && stats.ties > 0, "건설·연구·연계선을 실제로 사용하는 6팀 조건");
+  ok(stats.builds > 6 && stats.research > 0, "건설·연구를 실제로 사용하는 6팀 조건");
+  if (style === "careful") carefulTieBenefit();
+  else ok(stats.ties > 0, "공격 성향은 연계선을 실제로 사용하는 6팀 조건");
   const sample = [], verifySample = [];
   for (let i = 0; i < 20; i++) {
     const start = performance.now(), wire = await N.signHost(host, "snap", S.room, S.sid, maxSnapshot);
@@ -924,6 +1113,7 @@ async function measure(oldView, style = "bold") {
   }
   const ms = values => ({ mean: +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(3), max: +Math.max(...values).toFixed(3) });
   console.log("36달 최대 크기·비용", JSON.stringify({ style, ...stats, signMs: ms(sample), verifyMs: ms(verifySample) }));
+  if (style === "careful") checkCarefulCandidates(candidates,planCalls);
   return stats;
 }
 async function floor3Network() {
@@ -1125,6 +1315,6 @@ function floor3Restore() {
   }
 }
 
-async function main() { await security(); await floor4Network(); await hostSecurity(); await floor3Network(); floor3Restore(); await transport(); await uiProtocol(); seeds(); if (!process.argv.includes("--quick")) { await measure(); await measure(null, "careful"); } console.log(`checks ${checks} fail 0`); }
+async function main() { if (process.argv.includes("--careful-tie")) { carefulTieBenefit(); return; } await security(); await floor4Network(); await hostSecurity(); await floor3Network(); floor3Restore(); await transport(); await uiProtocol(); seeds(); if (!process.argv.includes("--quick")) { await measure(); await measure(null, "careful"); } console.log(`checks ${checks} fail 0`); }
 module.exports = { measure, C, K };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
