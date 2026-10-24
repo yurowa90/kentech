@@ -17,6 +17,8 @@
 .lg-fx-outage { padding-left: 4px; color: var(--ui-danger); font-size: 12px; font-style: normal; }
 .lg-fx-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .lg-fx-chart { min-width: 0; margin: 0; padding: 6px; border: 1px solid var(--ui-border); border-radius: 14px; }
+/* 다섯째(계통) 그래프가 혼자 남는 줄은 가운데에 같은 폭으로 둔다. 390px 넘김 칸은 아래 규칙이 덮는다. */
+.lg-fx-charts > .lg-fx-chart:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 4px); }
 .lg-fx-end .lg-fx-charts .lg-fx-chart h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin: 0; font-size: 14px; }
 .lg-fx-chart h4 small { color: var(--ui-muted); font-size: 11px; font-weight: 400; }
 .lg-fx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -45,6 +47,7 @@
   .lg-fx-end .lg-fx-charts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 88%; overflow-x: auto;
     overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding-bottom: 6px; }
   .lg-fx-end .lg-fx-charts > .lg-fx-chart { scroll-snap-align: start; }
+  .lg-fx-end .lg-fx-charts > .lg-fx-chart:last-child:nth-child(odd) { grid-column: auto; width: auto; justify-self: stretch; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lg-fx-end, .lg-fx-end .lg-fx-line, .lg-fx-end .lg-fx-reveal, .lg-fx-end circle, #lg-rank .lg-scoreparts meter { transition: none; }

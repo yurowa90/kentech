@@ -3,7 +3,8 @@
 샌드박스 밖 로컬 실행:
   tests/.venv/bin/python tests/league/fx_end.py http://127.0.0.1:9430/index.html
 새 컨텍스트에서 화면 버튼으로만 12달 진행한다. evaluate는 공개 상태·DOM
-조회와 관측기 설치에만 사용한다. 엔진 실행, 저장값 주입, fxEnd.mount 재호출 없음.
+조회와 관측기 설치에 사용하며, 계통 누락 검사만 기기·탭 기록의 grid를 지웠다 복원한다.
+엔진 실행, 계산값 주입, fxEnd.mount 재호출 없음.
 캡처는 tests/results/fx-end-*.png. 마지막 줄: checks N fail M.
 """
 
@@ -125,14 +126,22 @@ PUBLIC_JS = """() => {
       co2Saved[id] = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
     } catch (_) { co2Saved[id] = {}; }
   }
+  let gridSaved = {};
+  if (L.role === 'team') {
+    try {
+      const data = JSON.parse(localStorage.getItem(`kcp-league-data-v1:${L.room}:${L.team}`));
+      gridSaved = {[L.team]: data?.interview?.metrics || {}};
+    } catch (_) { /* 기록이 없으면 공개값·탭 사본만 사용한다. */ }
+  }
   return {V, team:L.team, role:L.role,
-    co2Saved, words:['O','O*','P','M','G'].map(g => KCP.gradeWords(g)), evidence:KCP.gradeWords('M·G')};
+    co2Saved, gridSaved, words:['O','O*','P','M','G'].map(g => KCP.gradeWords(g)), evidence:KCP.gradeWords('M·G')};
 }"""
 NUMBER = r"[+−-]?\d[\d,]*(?:\.\d+)?"
 DATE = r"\d{4}년\s+\d{1,2}월"
 # fx-end.js METRICS: 주민은 원 인구가 아닌 시작 대비 비율이며 소수 1자리다.
 METRICS = {'appr': ('지지', '%', 1), 'pop': ('주민 · 시작 대비 변화', '%', 1),
-           'uns': ('정전', '%', 1), 'co2': ('CO₂', 't', 1)}
+           'uns': ('정전', '%', 1), 'co2': ('CO₂', 't/일', 1),
+           'grid': ('계통이 메운 전기', 'MWh/일', 1)}
 
 
 def number(text, unit):
@@ -154,7 +163,7 @@ def near(a, b, digits_a=1, digits_b=None):
     return abs(a - b) <= tolerance + 1e-7
 
 
-def source_value(state, city, month, key, saved=None):
+def source_value(state, city, month, key, saved=None, saved_grid=None):
     """그래프용 helper를 호출하지 않고 공개 필드에서 독립적으로 읽는다."""
     if key in ('appr', 'pop'):
         city_data = state.get('econ', {}).get('cities', {}).get(city, {})
@@ -169,6 +178,24 @@ def source_value(state, city, month, key, saved=None):
             return (value / start - 1) * 100 if finite(value) and finite(start) and start > 0 else None
         return value
     result = next((r for r in state.get('results', []) if r.get('round') == month), {})
+    if key == 'grid':
+        fields = result.get('team', {}).get(city, {})
+        values = [fields.get('isolated', {}).get('uns'), fields.get('uns'),
+                  fields.get('imp'), fields.get('sub')]
+        representative = result.get('days')
+        if all(finite(v) for v in values) and finite(representative) and representative > 0:
+            isolated, uns, imp, sub = values
+            return max(0, isolated - uns - imp + sub) / representative
+        own = (saved_grid or {}).get(city, {}).get(str(month), {}).get('grid')
+        rounds = state.get('rounds', [])
+        days = (rounds[month - 1].get('mdays') if 0 < month <= len(rounds) else None) or representative
+        if finite(own) and finite(days) and days > 0:
+            return own / days  # 기기 기록은 월 환산 MWh다.
+        cached = (saved or {}).get(city, {}).get(str(month), {})
+        if not isinstance(cached, dict):
+            return None
+        value, representative = cached.get('grid'), cached.get('days')
+        return value / representative if finite(value) and finite(representative) and representative > 0 else None
     value = result.get('team', {}).get(city, {}).get('unsPct' if key == 'uns' else 'co2Prod')
     if key == 'co2':
         # 팀은 현재 공개값을 우선하고 공개값이 빠진 달만 이 탭의 수신 사본을 쓴다.
@@ -180,13 +207,13 @@ def source_value(state, city, month, key, saved=None):
             result = {'days': cached.get('days')}
         if not finite(value):
             return None
-        # resultPeriod 계약: 대표 운전 일수 → 해당 월 일수. 비율(정전)은 환산 안 함.
+        # D-82: 월 환산 ÷ 그 달 일수 = 대표 기간 배출량 ÷ 대표 운전 일수.
         rounds = state.get('rounds', [])
         days = (rounds[month - 1].get('mdays') if 0 < month <= len(rounds) else None) or result.get('days')
         representative = result.get('days')
         if not finite(days) or not finite(representative) or representative <= 0:
             return None
-        value *= days / representative
+        value /= representative
     return value
 
 
@@ -395,26 +422,29 @@ def layout(checks, page, label, mobile):
               label + ' (a) 서랍 스크롤 0 첫 화면에 내 순위 줄 표시')
     if mobile:
         # W6 총괄 결정(2026-10-20, UX 동의): 390px에서는 그래프 한 장을 서랍 폭 가까이(글자 11px 이상) 쓰고
-        # 네 장은 그래프 칸 안에서 옆으로 넘긴다. 세로로 쌓으면 블록만 서랍 약 4화면이라 아래 단추가 멀어진다.
+        # 다섯 장은 그래프 칸 안에서 옆으로 넘긴다.
         boxes = sorted(data['boxes'], key=lambda b: b['x'])
-        row = (len(boxes) == 4 and all(b['w'] >= 250 and b['h'] > 0 for b in boxes) and
+        row = (len(boxes) == 5 and all(b['w'] >= 250 and b['h'] > 0 for b in boxes) and
                all(abs(b['y'] - boxes[0]['y']) < 2 for b in boxes) and
                all(b['x'] >= a['x'] + a['w'] - 1 for a, b in zip(boxes, boxes[1:])))
-        checks.ok(row, f'{label} (b) 그래프 네 장 가로 한 줄·한 장 폭 250px 이상: {boxes}')
+        checks.ok(row, f'{label} (b) 그래프 다섯 장 가로 한 줄·한 장 폭 250px 이상: {boxes}')
         swipe = page.evaluate("""() => {
           const c=document.querySelector('.lg-fx-end .lg-fx-charts'), root=document.documentElement;
           if (!c) return null;
           const page0=Math.max(root.scrollWidth, document.body.scrollWidth);
           const inner=c.scrollWidth > c.clientWidth + 1;
           c.scrollLeft=c.scrollWidth;
-          const last=c.querySelector('.lg-fx-chart:last-child').getBoundingClientRect(), box=c.getBoundingClientRect();
-          const reached=last.left >= box.left - 1 && last.right <= box.right + 1;
+          const cards=c.querySelectorAll('.lg-fx-chart'), fifth=cards[4];
+          if (!fifth) return null;
+          const last=fifth.getBoundingClientRect(), box=c.getBoundingClientRect();
+          const reached=cards.length === 5 && fifth.dataset.fxMetric === 'grid' &&
+            last.left >= box.left - 1 && last.right <= box.right + 1;
           c.scrollLeft=0;
           return {inner, reached, pageSame: Math.max(root.scrollWidth, document.body.scrollWidth) === page0 && page0 <= innerWidth,
             region: c.getAttribute('role') === 'region' && c.tabIndex === 0 && !!c.getAttribute('aria-label')};
         }""")
         checks.ok(bool(swipe) and swipe['inner'] and swipe['reached'] and swipe['pageSame'] and swipe['region'],
-                  f'{label} (b) 그래프 칸 안에서만 옆으로 넘겨 넷째 그래프까지 도달, 페이지 가로 스크롤 0, 넘김 칸에 이름·초점: {swipe}')
+                  f'{label} (b) 그래프 칸 안에서만 옆으로 넘겨 다섯째 계통 그래프까지 도달, 페이지 가로 스크롤 0, 넘김 칸에 이름·초점: {swipe}')
         checks.ok(bool(data['fonts']) and all(finite(size) and size >= 11 for size in data['fonts']),
                   f'{label} (b) 그래프 글자 실제 11px 이상: {min(data["fonts"], default=0):.2f}px')
     strip = page.evaluate("""() => {
@@ -448,8 +478,10 @@ def graphs(checks, page, label, host=False):
     public = page.evaluate(PUBLIC_JS)
     state, team = public['V'], public.get('team')
     root = page.locator('#lg-host-rank .lg-fx-end' if host else '#lg-panel .lg-fx-end')
-    checks.ok(root.locator('[role="img"]').count() == 4 and root.locator('[data-fx-metric]').count() == 4,
-              label + ' (c) 지지·주민·정전·CO₂ 그래프 4개 role=img')
+    checks.ok(root.locator('[role="img"]').count() == 5 and root.locator('[data-fx-metric]').count() == 5,
+              label + ' (c) 지지·주민·정전·CO₂·계통 그래프 5개 role=img')
+    checks.ok(root.locator('.lg-fx-charts').get_attribute('aria-label') ==
+              '지표 그래프 5개 · 좁은 화면에서는 좌우로 넘겨요', label + ' 그래프 칸 aria 5개')
     text = root.text_content()
     naked = re.findall(r'(?<!\w)(?:O\*?|P|M|G)(?!\w)', text)
     # W6 검토 반영: 단일 G 표시에 그치지 않고 gradeWords("M·G")의 두 근거 말을 확인한다.
@@ -471,7 +503,7 @@ def graphs(checks, page, label, host=False):
             segment = aria.split(city_name + ':', 1)[-1].split(';', 1)[0] if host else aria
             values = endpoints(segment, unit)
             saved = public.get('co2Saved', {})
-            first, last = (source_value(state, city, t, key, saved) for t in (1, month))
+            first, last = (source_value(state, city, t, key, saved, public.get('gridSaved')) for t in (1, month))
             rd0, rd1 = state['rounds'][0], state['rounds'][month - 1]
             dates = [f'{rd["year"]}년 {rd["month"]}월' for rd in (rd0, rd1)]
             valid = values is not None and values['dates'] == dates and (not host or city_name + ':' in aria)
@@ -490,7 +522,7 @@ def graphs(checks, page, label, host=False):
         if not host:
             # fxEnd/html/monthPoints 결과를 기대값으로 사용하지 않는다.
             # 주민 이웃 평균은 도시별 pop/pop0×100의 산술평균(인구 합의 비율이 아님)이다.
-            neighbor_values = [source_value(state, other, month, key, public.get('co2Saved'))
+            neighbor_values = [source_value(state, other, month, key, public.get('co2Saved'), public.get('gridSaved'))
                                for other in active if other != team]
             neighbor_values = [v for v in neighbor_values if finite(v)]
             average = sum(neighbor_values) / len(neighbor_values) if neighbor_values else None
@@ -500,6 +532,8 @@ def graphs(checks, page, label, host=False):
             checks.ok(article.locator(f'[data-fx-series="{team}"]').count() == 1 and
                       article.locator('[data-fx-series="neighbors"][stroke-dasharray]').count() == 1,
                       label + f' {name} 내 선·이웃 점선 존재')
+        if key == 'grid':
+            grid_points(checks, article, public, label, host)
         if key == 'co2':
             # W6: 혼자 하기는 L.S.results 전체의 12달이 모두 있어야 한다.
             # 팀은 공개 두 달 + sessionStorage 보충 뒤에도 빠진 달이 있으면 안내해야 한다.
@@ -530,6 +564,62 @@ def graphs(checks, page, label, host=False):
                               if finite(raw) else not matches,
                               f'{label} CO₂ {series_name} {t}달 실제 점 = 공개/탭 수신값')
     return rows
+
+
+def grid_points(checks, article, public, label, host=False):
+    """공개 필드/기기 기록의 독립 계산과 매달 점·선·마지막 표시를 대조한다."""
+    state, team = public['V'], public.get('team')
+    active = state.get('active') or list(state['teams'])
+    month = state['round']
+    monthly = {city: [source_value(state, city, t, 'grid', public.get('co2Saved'),
+                                  public.get('gridSaved')) for t in range(1, month + 1)]
+               for city in active}
+    missing = any(not finite(v) for values in monthly.values() for v in values)
+    notice = article.locator('[data-fx-gap="grid"]')
+    checks.ok(notice.count() == int(missing) and (not missing or notice.is_visible()),
+              label + ' 계통 기록 누락이면 안내 한 줄, 모두 있으면 안내 없음')
+    if public['role'] in ('solo', 'host'):
+        checks.ok(not missing and len(state.get('results', [])) == month,
+                  label + ' 계통 전체 결과 12달 모두 값 존재')
+    series = [(city, state['econ']['cities'][city]['name'], monthly[city]) for city in active] if host else [
+        (team, '내 도시', monthly[team]),
+        ('neighbors', '이웃 평균', [sum(values) / len(values) if (values := [monthly[other][i]
+            for other in active if other != team and finite(monthly[other][i])]) else None
+            for i in range(month)])]
+    titles = article.locator('circle title').all_text_contents()
+    checks.ok(len(titles) == sum(finite(v) for _, _, values in series for v in values),
+              label + ' 계통 유효한 달 수와 실제 점 수 일치')
+    displayed = article.locator('.lg-fx-values p').all_inner_texts()
+    checks.ok(len(displayed) == len(series), label + ' 계통 도시별 마지막 값 표시 수')
+    for index, (city, name, values) in enumerate(series):
+        for t, raw in enumerate(values, 1):
+            rd = state['rounds'][t - 1]
+            prefix = f'{name} {rd["year"]}년 {rd["month"]}월 '
+            matches = [title for title in titles if title.startswith(prefix)]
+            checks.ok((len(matches) == 1 and near(number(matches[0], 'MWh/일'), raw))
+                      if finite(raw) else not matches,
+                      f'{label} 계통 {name} {t}달 실제 점 = 독립 계산값, 없으면 비움')
+        # 각 유효 달은 L, 결측 직후 달은 M이어야 한다. 결측 달을 가로질러 잇지 않는다.
+        path = article.locator(f'[data-fx-series="{city}"]')
+        commands = re.findall(r'[ML]', path.get_attribute('d') or '') if path.count() == 1 else None
+        expected = ['L' if i and finite(values[i - 1]) else 'M'
+                    for i, value in enumerate(values) if finite(value)]
+        checks.ok(commands == expected, f'{label} 계통 {name} 결측 달에서 선 끊기')
+        last = next(((i, v) for i, v in reversed(list(enumerate(values))) if finite(v)), None)
+        text = displayed[index] if index < len(displayed) else ''
+        rd = state['rounds'][last[0]] if last else {}
+        checks.ok((text.startswith(f'{name} {rd["year"]}년 {rd["month"]}월 ') and
+                   near(number(text, 'MWh/일'), last[1])) if last else text == name + ' 자료 없음',
+                  f'{label} 계통 {name} 마지막 값 표시 = 독립 계산값')
+
+
+def grid_drawer(checks, page, last, label):
+    detail = page.locator('#lg-last-month')
+    if not detail.evaluate('el => el.open'):
+        detail.locator(':scope > summary').click()
+    value = page.locator('#lg-last-month [data-grid-fill] dd')
+    checks.ok(value.count() == 1 and near(last, number(value.inner_text(), 'MWh/일'), 1, 1),
+              label + ' 계통 마지막 그래프 = 같은 달 결과 서랍 MWh/일')
 
 
 def crosscheck(checks, page, rows, label):
@@ -563,13 +653,22 @@ def crosscheck(checks, page, rows, label):
         dd_text = div.locator('dd').inner_text()
         if key == 'co2' and re.search(r't/일\s*$', dd_text):
             # D-82 결정 1 후속(총괄 10-21): 계통 주제 달은 CO₂ 칸이 t/일 먼저, 월 합계는 보조
-            # '이번 달 합 N t'로 옮겼다. 같은 월 합계 값을 같은 허용폭으로 비교한다.
+            # '이번 달 합 N t'로 옮겼다. 월 합계를 읽어 그 달 일수로 나눈다.
             total = re.search(r'이번 달 합\s*([\d,.\-−]+)\s*t', div.locator('small').inner_text())
-            shown_value = number(total.group(0), METRICS[key][1]) if total else None
+            shown_value = number(total.group(0), 't') if total else None
         else:
-            shown_value = number(dd_text, METRICS[key][1])
-        checks.ok(near(rows[key]['last'], shown_value, METRICS[key][2], old_precision),
+            shown_value = number(dd_text, 't' if key == 'co2' else METRICS[key][1])
+        if key == 'co2':
+            days = public['V']['rounds'][public['V']['round'] - 1]['mdays']
+            # 월 합계 표시의 반올림 오차도 일수로 나눈다. 그래프는 소수 1자리다.
+            matches = (finite(shown_value) and finite(days) and days > 0 and
+                       finite(rows[key]['last']) and abs(rows[key]['last'] - shown_value / days) <=
+                       0.5 * 10 ** -METRICS[key][2] + 0.5 * 10 ** -old_precision / days + 1e-7)
+        else:
+            matches = near(rows[key]['last'], shown_value, METRICS[key][2], old_precision)
+        checks.ok(matches,
                   label + f' {METRICS[key][0]} 마지막 aria = 같은 화면 월 결과값')
+    grid_drawer(checks, page, rows['grid']['last'], label)
     open_panel(page, 'city')
     for key, heading in (('appr', '지지율'), ('pop', '주민')):
         div = page.locator('#lg-city > .lg-kpi > div').filter(has=page.get_by_text(heading, exact=True))
@@ -626,6 +725,91 @@ def host_mobile_strip(checks, page, label):
               f'{label} 띠 처음·끝의 .lg-sr 12개가 페이지 폭을 넓히지 않음: {samples}')
 
 
+def grid_host_team(checks, host, page, full, city, label):
+    """진행자의 전체 결과를 기준으로 같은 달의 두 화면을 대조한다."""
+    host_chart = host.locator('#lg-host-rank [data-fx-metric="grid"]')
+    team_chart = page.locator('#lg-panel [data-fx-metric="grid"]')
+    host_titles = host_chart.locator('circle title').all_text_contents()
+    team_titles = team_chart.locator('circle title').all_text_contents()
+    name = full['econ']['cities'][city]['name']
+    for month in range(1, 13):
+        raw = source_value(full, city, month, 'grid')
+        rd = full['rounds'][month - 1]
+        date = f'{rd["year"]}년 {rd["month"]}월 '
+        h = [number(t, 'MWh/일') for t in host_titles if t.startswith(name + ' ' + date)]
+        own = [number(t, 'MWh/일') for t in team_titles if t.startswith('내 도시 ' + date)]
+        checks.ok(len(h) == len(own) == 1 and near(h[0], raw) and near(own[0], raw) and
+                  near(h[0], own[0], 1, 1),
+                  f'{label} 계통 {month}달 진행자 전체 결과 = 진행자 점 = 내 도시 점')
+    checks.ok(team_chart.locator('[data-fx-gap="grid"]').count() == 0,
+              label + ' 계통 12달 기록이 모두 있으면 누락 안내 없음')
+
+
+def grid_missing(checks, page, label):
+    """같은 방에서 축약된 중간 달의 기기·탭 기록만 지우고 UI로 다시 그린다."""
+    month = 6  # 최근 두 달 밖이며 양옆 점이 있어 선 끊김까지 검증할 수 있다.
+    public = page.evaluate(PUBLIC_JS)
+    city = public['team']
+    direct = source_value(public['V'], city, month, 'grid')
+    cached = public.get('co2Saved', {}).get(city, {}).get(str(month), {})
+    own = public.get('gridSaved', {}).get(city, {}).get(str(month), {}).get('grid')
+    if not checks.ok(direct is None and finite(own) and finite(cached.get('grid')) and
+                     finite(cached.get('days')) and cached['days'] > 0,
+                     label + ' 계통 누락 검사 전 공개 중간 달 축약·기기/탭 기록 존재'):
+        return
+    backup = page.evaluate("""month => {
+      const L=KCP.league.state(), key=`kcp-league-data-v1:${L.room}:${L.team}`;
+      const sessionKey='kcp-fx-end-co2-v1:' + JSON.stringify([L.room,L.team]);
+      const data=JSON.parse(localStorage.getItem(key)), saved=JSON.parse(sessionStorage.getItem(sessionKey));
+      const own=data.interview.metrics[month].grid, cached=saved[month].grid;
+      delete data.interview.metrics[month].grid;
+      localStorage.setItem(key, JSON.stringify(data));
+      return {key, sessionKey, month, own, cached};
+    }""", month)
+
+    def redraw():
+        close_drawer(page)
+        open_panel(page, 'result')
+        return page.locator('#lg-panel [data-fx-metric="grid"]')
+
+    try:
+        article = redraw()
+        fallback = page.evaluate(PUBLIC_JS)
+        checks.ok(near(source_value(fallback['V'], city, month, 'grid', fallback['co2Saved'],
+                                    fallback['gridSaved']), cached['grid'] / cached['days'], 7),
+                  label + ' 계통 기기 기록을 지운 달은 탭 사본으로 보충')
+        grid_points(checks, article, fallback, label + '-session-only')
+        page.evaluate("""({sessionKey, month}) => {
+          const saved=JSON.parse(sessionStorage.getItem(sessionKey));
+          delete saved[month].grid;
+          sessionStorage.setItem(sessionKey, JSON.stringify(saved));
+        }""", backup)
+        article = redraw()
+        missing = page.evaluate(PUBLIC_JS)
+        checks.ok(source_value(missing['V'], city, month, 'grid', missing['co2Saved'],
+                               missing['gridSaved']) is None,
+                  label + ' 계통 공개값·기기 기록·탭 사본 없는 달은 결측')
+        grid_points(checks, article, missing, label + '-missing')
+        rd = missing['V']['rounds'][month - 1]
+        prefix = f'내 도시 {rd["year"]}년 {rd["month"]}월 '
+        checks.ok(not any(t.startswith(prefix) for t in article.locator('circle title').all_text_contents()) and
+                  article.locator('[data-fx-gap="grid"]').count() == 1 and
+                  article.locator('[data-fx-gap="grid"]').is_visible(),
+                  label + ' 계통 기록 지운 달의 점 없음·누락 안내 표시')
+    finally:
+        # 다른 달·CO₂·일지 기록은 건드리지 않고 지운 두 필드만 원래 값으로 돌린다.
+        page.evaluate("""({key, sessionKey, month, own, cached}) => {
+          const data=JSON.parse(localStorage.getItem(key)), saved=JSON.parse(sessionStorage.getItem(sessionKey));
+          data.interview.metrics[month].grid=own; saved[month].grid=cached;
+          localStorage.setItem(key, JSON.stringify(data));
+          sessionStorage.setItem(sessionKey, JSON.stringify(saved));
+        }""", backup)
+        article = redraw()
+    grid_points(checks, article, page.evaluate(PUBLIC_JS), label + '-restored')
+    checks.ok(article.locator('[data-fx-gap="grid"]').count() == 0,
+              label + ' 계통 기록 복원 후 누락 안내 없음')
+
+
 def host_end(checks, context, base, pages, label, mobile=False):
     host, events = monitored_page(context)
     pages.append((host, events, label))
@@ -637,8 +821,9 @@ def host_end(checks, context, base, pages, label, mobile=False):
     host.locator('#lg-host').click()
     host.wait_for_selector('#lg-roomcode')
     room = host.locator('#lg-roomcode').inner_text()
+    active = host.evaluate('() => KCP.league.state().S.active')
     teams = {}
-    for city in ('pyeongtaek', 'dangjin'):
+    for city in active:
         page, events = monitored_page(context)
         pages.append((page, events, label + '-' + city))
         page.goto(base + '#league')
@@ -648,8 +833,8 @@ def host_end(checks, context, base, pages, label, mobile=False):
         confirm_seat(page, city)
         dismiss_guide(page)
         teams[city] = page
-    host.wait_for_function("""() => ['pyeongtaek','dangjin'].every(id =>
-      !!KCP.league.state().S.teams[id]?.token)""")
+    host.wait_for_function("""ids => ids.every(id =>
+      !!KCP.league.state().S.teams[id]?.token)""", arg=active)
     host.locator('#lg-next').click()
     for month in range(1, 13):
         for city, page in teams.items():
@@ -657,13 +842,16 @@ def host_end(checks, context, base, pages, label, mobile=False):
               return V?.round===month && V.phase==='plan'; }""", arg=month)
             wait_unfolded(page)
             prepare(page)
-        host.wait_for_function("""() => { const S=KCP.league.state().S;
-          return S.phase!=='plan' || ['pyeongtaek','dangjin'].every(id=>S.teams[id].ready); }""")
+        host.wait_for_function("""ids => { const S=KCP.league.state().S;
+          return S.phase!=='plan' || ids.every(id=>S.teams[id].ready); }""", arg=active)
         # 모든 팀 준비 뒤 자동 운영된 경우에도 같은 달을 두 번 운영하지 않는다.
         if host.evaluate("() => KCP.league.state().S.phase") == 'plan':
             host.locator('#lg-next').click()
         host.wait_for_function("""month => { const S=KCP.league.state().S;
           return S.round===month && S.phase==='review'; }""", arg=month)
+        for page in teams.values():
+            page.wait_for_function("""month => { const V=KCP.league.state().snap;
+              return V?.round===month && V.phase==='review'; }""", arg=month)
         overflow(checks, host, f'{label} {month}달 결과')
         host.locator('#lg-next').click()
     host.wait_for_function("() => KCP.league.state().S.phase==='end'")
@@ -684,7 +872,11 @@ def host_end(checks, context, base, pages, label, mobile=False):
         wait_unfolded(page)
         open_panel(page, 'result')
         page.wait_for_selector('#lg-panel .lg-fx-end')
-        graphs(checks, page, label + '-team-' + city)
+        team_label = label + '-team-' + city
+        rows = graphs(checks, page, team_label)
+        grid_host_team(checks, host, page, state, city, team_label)
+        grid_drawer(checks, page, rows['grid']['last'], team_label)
+        grid_missing(checks, page, team_label)
 
 
 class MotionBrowser:
