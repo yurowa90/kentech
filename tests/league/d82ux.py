@@ -8,6 +8,7 @@ evaluate는 공개 상태/시험/계획/DOM 조회만 한다. 운영·저장·�
 기대값은 Python 달력과 원시 공개 값으로 계산한다(uiMath 호출 없음).
 """
 
+from league_flow import finish_trial
 import calendar
 import math
 import re
@@ -161,9 +162,7 @@ def add_diesel(page):
 def trial(checks, page, label):
     close_map_drawers(page)
     page.locator('[data-run="7"]').click()
-    page.wait_for_selector("#bd-skip")
-    page.locator("#bd-skip").click()
-    page.wait_for_selector("#bd-res-title")
+    finish_trial(page)
     tested = page.evaluate("() => KCP.buildGame.lastTrial()")
     require(checks, tested is not None and tested["days"] == 7, label + " 실제 7일 시험")
     chip(checks, page, label)
@@ -229,7 +228,7 @@ def result(checks, page, tested, label, grid=True):
     r = current["team"][player]
     previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
     # 10-21 후속: 생산 CO₂ 칸도 계통 약속만 t/일. 달력으로 월 합계와 각 달의 하루 평균을 따로 검산한다.
-    prod = page.locator("#lg-result-deltas > div").filter(has_text="CO₂(이번 달 운영)")
+    prod = page.locator("#lg-result-deltas > div").filter(has_text="생산 CO₂(이번 달)")
     prod_total = r["co2Prod"] * month_days(current) / current["days"]
     prod_value, prod_change = prod.locator("dd").inner_text(), prod.locator("small").inner_text()
     if grid:
@@ -242,8 +241,14 @@ def result(checks, page, tested, label, grid=True):
                       near(m[2], prod_total, 0) and (value(m[1]) == 0 or m[1].lstrip().startswith(("+", "−", "-"))),
                       label + " S6 생산 CO₂ Δ t/일·월 합계 독립 검산")
         else:
-            m = re.fullmatch(rf"지난달 대비 Δ 비교 없음\(첫 결과\) · 이번 달 합 ({NUMBER}) t", prod_change)
-            checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 첫 달 생산 CO₂ 월 합계 보조·Δ 비교 없음")
+            basis = "시험 1주 대비" if tested["days"] == 7 else f"시험 {tested['days']}일 대비"
+            if "co2Prod" in tested:
+                m = re.fullmatch(rf"{basis} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
+                checks.ok(bool(m) and near(m[1], r["co2Prod"] / current["days"] - tested["co2Prod"] / tested["days"], 1) and
+                          near(m[2], prod_total, 0), label + " S6 첫 달 시험 생산 CO₂ 하루 평균 비교·월 합계")
+            else:
+                m = re.fullmatch(rf"{basis} Δ 비교 없음\(시험 기록 없음\) · 이번 달 합 ({NUMBER}) t", prod_change)
+                checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 옛 시험 생산 CO₂ 비교 없음")
     else:
         m = re.fullmatch(rf"({NUMBER})t", prod_value)
         checks.ok(bool(m) and near(m[1], prod_total, 0) and "t/일" not in prod_change,
@@ -255,6 +260,7 @@ def result(checks, page, tested, label, grid=True):
         return
     require(checks, node.count() == 1 and node.is_visible(), label + " S6 소비 CO₂ 줄 표시")
     # 정전 추가 안내가 있으면 그 줄이 판정 바로 아래(D-80 B-3a, d80b.py), 소비 CO₂는 그다음(독립 검토 major 반영).
+    # F5(나) '비교했어요' 이동은 스크롤 수가 늘어 적용하지 않았다(score1 갈래 보고) — 옛 계약 유지.
     checks.ok(page.locator("#lg-promise-summary").evaluate(
         "el => { const n = el.nextElementSibling; return n?.id==='lg-s6-co2cons' || (n?.id==='lg-promise-also-outage' && n.nextElementSibling?.id==='lg-s6-co2cons'); }"),
         label + " S6 판정 줄 다음(정전 안내가 있으면 그다음) 형제")

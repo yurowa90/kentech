@@ -6,6 +6,7 @@
 evaluate는 DOM 측정·서랍 스크롤 배치·공개 상태 조회에만 사용한다.
 """
 
+from league_flow import finish_trial
 import sys
 
 from playwright.sync_api import sync_playwright
@@ -141,9 +142,7 @@ def scenario(checks, page, base, width, label):
     close_drawer(page)
     # S7과 약속의 비교 기준을 첫 달 시험으로 만든다.
     page.locator('[data-run="7"]').click()
-    page.wait_for_selector('#bd-skip')
-    page.locator('#bd-skip').click()
-    page.wait_for_selector('#bd-res-title')
+    finish_trial(page)
     page.locator('#bd-drawer-x').click()
     prepare(page)
     page.wait_for_function("() => KCP.league.state().S.phase === 'review'")

@@ -348,7 +348,7 @@ test("작은 계통 눈금은 중복 없이 실제 위치 값의 소수 1자리 
 });
 
 test("CO₂ 범위별 눈금은 구별되며 지지·정전·주민 눈금의 기존 형식을 유지한다", async t => {
-  for (const [perDay, expected] of [[0, ["0", "0.6", "1.1"]], [20, ["0", "11", "22"]]]) {
+  for (const [perDay, expected] of [[0, null], [20, ["0", "11", "22"]]]) {
     await t.test(`${perDay} t/일`, () => {
       const K = setup(), V = fixture();
       V.results.forEach(r => Object.values(r.team).forEach(v => { v.co2Prod = perDay * r.days; }));
@@ -358,9 +358,16 @@ test("CO₂ 범위별 눈금은 구별되며 지지·정전·주민 눈금의 �
       });
       const html = K.fxEnd.html(V, null, { allCities: true });
       const ticks = key => [...graph(html, key).matchAll(/<path class="lg-fx-(?:gridline|zero)"[^>]*\/><text[^>]*>([^<]+)<\/text>/g)].map(m => m[1]);
-      // 0 t/일: hi=1.12, 중간=0.56 → 0·0.6·1.1. 20 t/일: hi=22.4, 중간=11.2 → 0·11·22.
+      // 20 t/일: 기존 정상 범위 hi=22.4, 중간=11.2 → 0·11·22.
       const co2Ticks = ticks("co2");
-      assert.deepEqual(co2Ticks, expected);
+      // 지시서 T F12: 0뿐인 축은 특정 상한/중간 눈금 값을 고정하지 않는다.
+      // 눈금 중복 금지가 계약이며, 20 t/일의 기존 수치 검사는 유지한다.
+      if (perDay) assert.deepEqual(co2Ticks, expected);
+      else {
+        assert.equal(Number(co2Ticks[0]), 0);
+        assert.ok(co2Ticks.every(x => Number.isFinite(Number(x))));
+        assert.ok(co2Ticks.every((x, i) => i === 0 || Number(x) > Number(co2Ticks[i - 1])));
+      }
       assert.equal(new Set(co2Ticks).size, 3, "CO₂ 세 눈금의 글자가 모두 다르다");
       for (const key of ["appr", "uns"]) assert.deepEqual(ticks(key), ["0", "50", "100"], key + " 0~100% 눈금");
       // 주민은 매달 시작 인구의 5%씩 늘어 최대 +10%: 양끝 눈금은 ±(10×1.15)=±11.5.

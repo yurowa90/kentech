@@ -16,6 +16,7 @@ econui, solo의 선택자를 재사용한다. 결과/약속/분해값을 주입�
 복제 상태로 예측을 고르며 실제 판은 UI로 진행한다.
 """
 
+from league_flow import finish_trial
 from league_flow import pass_issue_check
 import json
 import calendar  # D-80: 계약 A, 월 일수 독립 계산.
@@ -186,9 +187,7 @@ def plan_and_trial(page, empty=False, renewable=False, change_after=True):
     })""", [empty, renewable]), "계획 단계 배치 적용 실패"
     page.wait_for_timeout(500)
     page.locator('[data-run="7"]').click()
-    page.wait_for_selector("#bd-skip")
-    page.locator("#bd-skip").click()
-    page.wait_for_selector("#bd-res-title")
+    finish_trial(page)
     trial = page.evaluate("() => KCP.buildGame.lastTrial()")
     assert trial and trial["days"] == 7, "1주 시험 저장 없음"
     page.locator("#bd-drawer-x").click()
@@ -260,6 +259,7 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
     page.locator("#lg-ready-confirm").click()
     return {"topic": topic, "prediction": prediction, "direction": direction, "hit": hit,  # D-80: 운영 뒤 검증용 기대값.
             "baseline": baseline, "actual": actual, "delta": direction_delta,  # D-82 결정 1·화면 지시서: grid는 독립 일평균 Δ, 다른 주제는 기존 값.
+            "grid_digits": 2 if topic == "grid" and max(.05, .05 * abs(base_per_day)) < .1 else 1,
             "basis": "운영 전 대비" if topic == "cash" else "지난달 대비" if previous else "시험 1주 대비"}  # D-80: 기준 문구도 검사한다.
 
 
@@ -280,7 +280,7 @@ def promise_result(checks, page, expected, label):  # D-80: 주제별 S6 판정�
     checks.ok(verdict in compare and expected["basis"] in compare, f"{label} {topic} 화면 판정·비교 기준 일치")  # D-80: B-3.
     unit = "MWh/일" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-82 결정 1·화면 지시서: 판정과 같은 일평균 단위.
     match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-82 결정 1·화면 지시서: 첫 MWh/일 차이를 검사, 월 합계와 혼동 금지.
-    step = ".1" if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
+    step = (".01" if expected["grid_digits"] == 2 else ".1") if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
     displayed = Decimal.from_float(expected["delta"]).quantize(Decimal(step), rounding=ROUND_HALF_UP)  # D-80: 이진 실수의 표시 반올림값과 대조, 허용 오차 확대 없음.
     checks.ok(match is not None and Decimal(match[1].replace("−", "-").replace(",", "")) == displayed,  # D-80: B-3 수치.
               f"{label} {topic} 표시 차이 = 독립 기대값의 {unit} 반올림")  # D-80: 기존 월간 판정 수치 검사를 세 주제로 확장한다.
@@ -330,9 +330,7 @@ def frozen_after_retrial(checks, page, label):
     days = 30 if page.evaluate("() => KCP.league.state().role") == "solo" else 7
     close_drawer(page)
     page.locator(f'[data-run="{days}"]').click()
-    page.wait_for_selector("#bd-skip")
-    page.locator("#bd-skip").click()
-    page.wait_for_selector("#bd-res-title")
+    finish_trial(page, days)
     next_trial = page.evaluate("() => KCP.buildGame.lastTrial()")
     required(checks, next_trial["days"] == days and next_trial["month"] == trial["month"],
              f"{label} 결과 단계에서 같은 달 시험 1주 → {'1달' if days == 30 else '1주'} 실제 재실행")

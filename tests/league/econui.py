@@ -5,6 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
+from league_flow import finish_trial
 from league_flow import pass_issue_check, wait_unfolded
 import ast
 import json
@@ -1223,8 +1224,8 @@ def feature_hiding(checks, context, base, label, pages):
     checks.ok(wait_count(team, '[data-tech-card]', 15) == 15,
               f'{label} E G11 리그 연구는 15장 트리 유지')
     team.locator('.lg-px').click()
-    team.locator('[data-run="7"]').click(); team.wait_for_selector('#bd-skip')
-    team.locator('#bd-skip').click(); team.wait_for_selector('#bd-res-title')
+    team.locator('[data-run="7"]').click()
+    finish_trial(team)
     if not checks.ok(wait_shown(team, '#bd-fab2-active'), f'{label} E D03 시험 성적표 증설 적용 안내'):
         print('  진단:', team.evaluate("() => ({fab2: KCP.buildGame.current()?.fab2, "
               "title: document.querySelector('#bd-res-title')?.textContent, "
@@ -1294,7 +1295,7 @@ def feature_hiding(checks, context, base, label, pages):
     # 사람이 하는 순서대로 서랍을 닫고 실행한다.
     if build.locator('#bd-drawer-x').is_visible():
         build.locator('#bd-drawer-x').click()
-    build.locator('[data-run="7"]').click(); build.wait_for_selector('#bd-skip'); build.locator('#bd-skip').click()
+    build.locator('[data-run="7"]').click(); finish_trial(build)
     build.wait_for_selector('#bd-j-dlg[open]')
     checks.ok(wait_shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
     build.locator('#bd-speak').click()

@@ -7,6 +7,7 @@ fixture만 공개 규칙/계획 API로 만들고 U5 이동은 실제 버튼으�
 도시 표지에는 미지정 CSS 선택자 대신 도시 이름과 접근 가능한 버튼을 쓴다.
 """
 
+from league_flow import finish_trial
 import re
 import sys
 import time
@@ -296,7 +297,7 @@ def scenario(checks, context, base, label, mode, pages):
         team.wait_for_function("() => !!document.querySelector('#bd-run-tip')?.textContent")
         tip = team.locator('#bd-run-tip').inner_text()
         checks.ok(all(int(m) == 1 for m in re.findall(r'(\d+)월', tip)), f'{label} U7 1월 시험 TIP의 다른 계절 문구 없음')
-        team.locator('#bd-skip').click()
+        finish_trial(team)
         checks.ok(not shown(team, "#lg-panel") and
                   team.evaluate("document.documentElement.classList.contains('bd-drawer-open')"),
                   f"{label} U2 첫 시험 성적표 유지·리그 일지 닫힘")

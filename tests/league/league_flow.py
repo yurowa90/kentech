@@ -63,3 +63,24 @@ def wait_unfolded(page, timeout=8000):
         page.wait_for_function("() => document.getElementById('lg-panel')?.dataset.folded !== 'true'", timeout=timeout)
     except Exception:
         pass
+
+
+def finish_trial(page, days=7, timeout=30000):
+    """T: lastTrial은 시작 즉시 저장된다. 재생 종료와 정확한 기간을 함께 확인한다.
+
+    호출 직전 data-run/코치 단추로 시험을 시작해야 한다. 예전 30/90일 기록의
+    존재만 기다리거나 고정 시간으로 재생 종료를 추정하지 않는다.
+    """
+    page.wait_for_function("""() =>
+      document.documentElement.classList.contains('bd-running') ||
+      !!document.querySelector('#bd-res-title')""", timeout=timeout)
+    skip = page.locator('#bd-skip')
+    if skip.count() and skip.is_visible():
+        skip.click()
+    page.wait_for_function("""days =>
+      !document.documentElement.classList.contains('bd-running') &&
+      KCP.buildGame.lastTrial()?.days === days""", arg=days, timeout=timeout)
+    expect(page.locator('#bd-res-title')).to_be_visible(timeout=timeout)
+    trial = page.evaluate('() => KCP.buildGame.lastTrial()')
+    assert trial and trial['days'] == days, f'{days}일 시험 기록 필요'
+    return trial

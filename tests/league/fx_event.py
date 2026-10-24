@@ -79,6 +79,18 @@ DOM_JS = r"""(() => {
       return {key:el.id || el.getAttribute('data-issue') || '.' + el.classList[0],
         y: Math.round(y * 8) / 8, width, height};
     });
+  // T F9: 제목 글자는 장식 기호를 빼고 비교한다. 기호 자체는 별도 단언한다.
+  const titleText = h => {
+    if (!h) return null;
+    const copy = h.cloneNode(true);
+    copy.querySelectorAll('.bd-event-icon').forEach(n => n.remove());
+    return copy.textContent.trim();
+  };
+  const headings = el => [...el.querySelectorAll('h3')].map(h => ({
+    icons:[...h.querySelectorAll('span.bd-event-icon')].map(i => ({
+      hidden:i.getAttribute('aria-hidden'), text:i.textContent.trim()})),
+    titleSpans:[...h.children].filter(n => n.tagName === 'SPAN' && !n.classList.contains('bd-event-icon')).length
+  }));
   const cards = () => [...document.querySelectorAll('.fx-turn-cards article')].map(el => {
     const box = rect(el), back = el.querySelector('.fx-turn-back');
     const front = el.querySelector('.fx-turn-front');
@@ -86,14 +98,14 @@ DOM_JS = r"""(() => {
     const blockers = [...document.querySelectorAll(
       '.lg-bar, #lg-panel, #bd-dock, [data-issue], #lg-issue-check, #lg-coach')]
       .filter(visible);
-    return {title:face.querySelector('h3')?.textContent.trim(),
+    return {title:titleText(face.querySelector('h3')), headings:headings(el),
       tag:face.querySelector('.fx-turn-tag')?.textContent.trim(),
       body:face.querySelector('p')?.textContent.trim(),
       big:face.querySelector('.fx-turn-big')?.textContent.trim() || '',
       active:el.getAttribute('data-active'),
       visibility:getComputedStyle(el).visibility,
       layerOver:el.closest('.fx-turn-layer')?.getAttribute('data-over') ?? null,
-      frontTitle:el.querySelector('.fx-turn-front h3')?.textContent.trim() || null,
+      frontTitle:titleText(el.querySelector('.fx-turn-front h3')) || null,
       hasBack:!!back,
       frontVisible:visible(front),
       frontHidden:!!front && (front.hidden || getComputedStyle(front).display === 'none'),
@@ -339,6 +351,22 @@ def inspect_cards(checks, page, names, forecast, label, mobile, reduced,
     cards = [c for c in state['cards'] if c['tag'] == tag]
     checks.ok(sorted(c['title'] for c in cards) == sorted(names),
               f'{label} 자료의 사건 제목과 카드 제목 일치: {names}; 카드 {details}')
+    for card in state['cards']:
+        event = card['tag'] in ('사건 예보', '사건')
+        checks.ok(bool(card['headings']) and all(
+            len(h['icons']) == 1 and h['icons'][0]['hidden'] == 'true' and
+            bool(h['icons'][0]['text']) and h['titleSpans'] == 1 if event
+            else not h['icons'] for h in card['headings']),
+            f"{label} 사건 h3만 기호 span + 제목 span, 기호 aria-hidden=true: {card['title']}")
+        if event:
+            expected_icon = page.evaluate("""title => {
+              const L=KCP.league.state(), V=L.S||L.snap, C=KCP.leagueCore;
+              const e=C.regionOf(V.region).events.find(e=>e.name===title);
+              return e && typeof KCP.fxTurn.eventIcon==='function' ? KCP.fxTurn.eventIcon(e.id) : null;
+            }""", card['title'])
+            checks.ok(bool(expected_icon) and all(
+                h['icons'] and h['icons'][0]['text'] == expected_icon for h in card['headings']),
+                f"{label} 사건 카드 기호=eventIcon(id): {card['title']}")
     if not forecast:
         # W4b 7항: 해당 여부는 결과 구현의 면 유무가 아니라 계획 단계에서
         # 실제 화면에 확인한 예보 제목으로 판정한다. 다른 도시 사건은 단면이다.
@@ -587,12 +615,19 @@ def strip_title(checks, page, label, forecast=False):
       const dom=(""" + DOM_JS + """);
       const events=dom.cards().filter(c=>c.tag===(forecast?'사건 예보':'사건'));
       const strip=document.querySelector('.fx-turn-strip');
+      const L=KCP.league.state(), V=L.S||L.snap, C=KCP.leagueCore;
+      const first=C.regionOf(V.region).events.find(e=>e.name===events[0]?.title);
+      const icon=strip?.querySelector('.fx-turn-strip-icon');
       return {title:strip?.querySelector('.fx-turn-strip-title')?.textContent.trim(),
-        text:strip?.textContent, events:events.map(c=>c.title)};
+        text:strip?.textContent, events:events.map(c=>c.title), icon:icon?.textContent,
+        hidden:icon?.getAttribute('aria-hidden'),
+        expected:first && typeof KCP.fxTurn.eventIcon==='function' ? KCP.fxTurn.eventIcon(first.id) : null};
     }""", forecast)
     checks.ok(bool(data['events']) and bool(data['title']) and data['title'] == data['events'][0] and
               '결산' not in data['title'] and not re.fullmatch(r'\d+월', data['title']),
               f'{label} 띠 제목=첫 사건 제목(결산·월 아님): {data}')
+    checks.ok(bool(data['expected']) and data['icon'] == data['expected'] and data['hidden'] == 'true',
+              f'{label} 사건 띠 기호=첫 사건 eventIcon(id), aria-hidden=true: {data}')
     if len(data['events']) == 1:
         checks.ok('외 0장' not in (data['text'] or ''),
                   f'{label} 남은 사건 0장일 때 외 0장 표기 없음: {data}')

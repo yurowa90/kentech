@@ -5,6 +5,7 @@ evaluate는 상태/저장/DOM 조회만 한다. 엔진 호출·상태 주입·AI
 실행: python3 tests/league/solo.py <로컬 주소> (브라우저 실행은 총괄 담당).
 """
 
+from league_flow import finish_trial
 from league_flow import pass_issue_check
 import json
 import re
@@ -229,16 +230,15 @@ def play(checks, page, base, label):
               f'{label} E G11·G12·D03 혼자 하기에서도 리그 중복 UI 숨김')
     page.locator('#bd-drawer-x').click()
     for days in (30, 90):
-        page.locator(f'[data-run="{days}"]').click(); page.wait_for_selector('#bd-skip')
-        page.locator('#bd-skip').click(); page.wait_for_selector('#bd-res-title')
+        page.locator(f'[data-run="{days}"]').click()
+        finish_trial(page, days)
         checks.ok(page.evaluate('() => KCP.buildGame.lastTrial().days') == days and
                   all(not shown(page, sel) for sel in ('#bd-jopen', '#bd-j-dlg', '#bd-speak')),
                   f'{label} E C10·G12 혼자 하기 {days}일 실제 시험·별도 일지 숨김')
         overflow(checks, page, label + f' E {days}일 시험')
         page.locator('#bd-drawer-x').click()
     page.locator('[data-run="7"]').click()
-    page.wait_for_function('() => !!KCP.buildGame.lastTrial()')
-    trial_uns = page.evaluate('() => KCP.buildGame.lastTrial().unsPct')
+    trial_uns = finish_trial(page)['unsPct']
     page.locator('#lg-ready').click()
     pass_issue_check(page)
     checks.ok(shown(page, '#lg-predict-skip'), f'{label} U8 혼자 자유 실험에서만 건너뛰기')

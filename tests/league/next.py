@@ -6,6 +6,7 @@ Public APIs/storage envelopes from existing harnesses are bootstrap conventions,
 not acceptance criteria. Unspecified UI ids are never used as selectors.
 """
 
+from league_flow import finish_trial
 from league_flow import pass_issue_check, wait_unfolded
 import argparse
 import json
@@ -535,7 +536,7 @@ def record_trial(team, checks, days=7):
     team.wait_for_selector('#bd-res-title')
     checks.ok(f'· {month}월 (날씨는 ' in team.locator('#bd-res-title').inner_text(),
               '#32 시험 성적표의 현재 달과 날씨 기준월')
-    trial = team.evaluate("() => KCP.buildGame.lastTrial()")
+    trial = finish_trial(team, days)
     checks.ok(isinstance(trial, dict) and trial.get('days') == days and
               all(isinstance(trial.get(k), (int, float)) for k in ('unsPct', 'outH', 'co2', 'cost', 'capex', 'opex')),
               f"{duration} UI trial records exact duration and comparison metrics in BG.lastTrial")
