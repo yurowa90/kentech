@@ -50,7 +50,7 @@ const mutations = {
   room_bits: ["league-net.js", 'length: 8', 'length: 6', "F3-8 기존 ALPHA 40비트 고정 벡터"],
   room_alphabet: ["league-net.js", '"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"', '"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"', "F3-8 기존 ALPHA 40비트 고정 벡터"],
   room_input: ["league.js", 'replace(/[-\\s]/g, "")', 'trim()', "F3-8 코드 정규화"],
-  migrate_data: ["league.js", 'if (data) store.set(dataKey(), data);', '', "F3-9 같은 팀 새 방"],
+  migrate_data: ["league.js", 'if (data) teamSet(dataKey(), data);', '', "F3-9 같은 팀 새 방"],
   broken_legacy: ["league.js", 'Object.keys(save.state.teams || {})', 'Object.keys(save.state.teams)', "F3-9 teams 없는 옛 저장 hostView"],
   fallback_sid: ["league.js", 'L.S.sid = NET.sessionId();', 'if (ok) L.S.sid = NET.sessionId();', "F3-9 teams 없는 옛 저장"],
   born_floor: ["league-net.js", 'm.born <= (T.receiptFloor || 0)', 'false', "F3-10 퇴거한 born"],
