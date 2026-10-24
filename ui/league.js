@@ -628,6 +628,10 @@
     const csv = publicCSV(C.publicView(L.S, Date.now())), url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = `league-${L.room}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  function grantMoneyNote(V, id) {
+    const left = V && C.grantOf(V, R(), id, BG).left;
+    return left > 0 ? ` · 이번 달 특별교부세 ${fmt(left, 1)}억(새 설비·선로·재난 대응만)` : "";
+  }
   function cityHTML(V) {
     const E = V.econ, c = E.cities[L.team], rep = E.report, f = rep?.fiscal[L.team], g = rep?.groups[L.team];
     const h = c.hist, prev = E.before?.[L.team], dp = rep?.cities[L.team]?.dPop || 0, di = rep?.cities[L.team]?.dInd || 0;
@@ -635,12 +639,14 @@
     const pol = L.pendingPol || V.teams[L.team].econPol || c.policy || {}, open = V.phase === "plan";
     const every = params("reviewEvery"), remaining = every - E.t % every;
     const grid = c.grid || V.grid?.[L.team];
+    const grantNote = grantMoneyNote(V, L.team), moneyNote = grantNote ? ` (빚 한도 포함)${grantNote}` : "";
+    const moneyDescription = `남은 돈 ${fmt(V.teams[L.team].left, 1)}억${moneyNote}`;
     const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", facility: `지역자원시설세(${gradeWords("O·M·G")})`, tariff: "전기요금 차익", trade: "전력 판매", royalty: "기술 사용료", bonus: "사건 지원금", salvage: "철거 회수" };
     const expenses = { capex: "건설", fuel: "연료", opex: "운영", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
     const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k) && !(k === "facility" && !vals[k])).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시</h3>${sourceHTML(L.team)}${lossHTML(V)}
       ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
-      <div class="lg-info-line"><p class="lg-left">남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b></p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 억 = 게임 단위</p>${infoTip("city-money", "예약·지원금·연계선 정산을 반영해요. 실제 시 예산이 아니에요.", { label: "남은 돈 단위" })}</div><p class="lg-hint">${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤</small>${infoTip("city-approval-rule", `통과: 참가 도시 평균 지지율 변화 대비 −${esc(fmt(params("approvalDrop"), 1))}%p 이내`, { label: "지지율" })}</div></dl>
+      <div class="lg-info-line"><p class="lg-left"${grantNote ? ` title="${esc(moneyDescription)}"` : ""}>남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b>${esc(moneyNote)}</p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 억 = 게임 단위</p>${infoTip("city-money", "예약·지원금·연계선 정산을 반영해요. 실제 시 예산이 아니에요.", { label: "남은 돈 단위" })}</div><p class="lg-hint">${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤</small>${infoTip("city-approval-rule", `통과: 참가 도시 평균 지지율 변화 대비 −${esc(fmt(params("approvalDrop"), 1))}%p 이내`, { label: "지지율" })}</div></dl>
       ${tipBox("city-power-definition", "설비/피크", `<p id="lg-power-def" class="lg-hint">${esc(POWER_CHIP_DEF)}</p>`)}${recalHTML(rep, L.team, true)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team, undefined, true)}<div class="lg-info-line"><p class="lg-hint"><span class="tag-mine">${esc(gradeWords("G"))} · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · ${esc(gradeWords(KCP.ECON_DATA.params.essCap.grade))}(2020.2)</span></p>${infoTip("city-grid-ess", "재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. 충전 상한 출처: 2020.2 안전대책(산업부 2022 보도설명자료)", { label: "접속과 ESS 출처" })}</div></section>
       ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(gradeWords(g.whyGrade))}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(gradeWords(g?.lowestGroupDissatisfaction?.whyGrade))}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
       <div class="lg-info-line lg-air-note"><span class="tag-mine">공기 · ${esc(gradeWords(airNeighbours().some(x => x.grade !== "G") ? "M·G·P" : "M·G"))}</span><p class="lg-hint">전체 대기질이나 관측 농도는 아니에요.</p>${infoTip("city-air", airNoteHTML(), { label: "공기 추정" })}</div>
@@ -3698,7 +3704,8 @@
     const reg = R(), list = (X.events || []).filter(x => x.round === round).map(ev => ({ ev, E: C.eventDef(reg, ev.id) })).filter(x => x.E);
     if (!list.length) return "";
     const myT = me && X.teams && X.teams[me];
-    return `<ul class="lg-evs">${list.map(({ ev, E }) => {
+    const city = me && X.econ?.cities[me], grant = X.phase === "plan" && city && city.cash < -city.debtCap ? C.grantOf(X, reg, me, BG) : null;
+    return `${grant?.awarded ? `<p class="lg-hint">지방채 한도를 넘었지만, 이번 달에는 특별교부세 ${fmt(grant.left, 2)}억 안에서만 새 설비·선로를 지을 수 있어요.</p>` : ""}<ul class="lg-evs">${list.map(({ ev, E }) => {
       const sc = E.scope || "region", who = SCOPE[sc] || (sc.startsWith("team:") ? teamName(sc.slice(5)) : sc);
       const mine = me ? C.hits(reg, E, me) : null, nx = mine && myT && myT.fcx ? myT.fcx[E.id] || null : null;
       const idle = mine ? eventIdleKinds(E, me, X, round) : "";
@@ -3709,7 +3716,7 @@
       const picked = !act && mine && cur !== "none" ? `<small class="lg-evnote">우리 대응: ${esc((co || {}).name || "")}${after ? ` → ${esc(after)}` : ""}</small>`
         : !me && X.teams && opts.length ? (() => { const who = actT(X).map(({ id }) => { const o = opts.find(q => q.id === (X.teams[id].resp || {})[round + ":" + E.id]); return o ? `${teamName(id)} ${o.name}` : ""; }).filter(Boolean); return `<small class="lg-evnote">대응: ${esc(who.join(" · ") || "아직 없음")}</small>`; })() : "";
       return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(turnText(E.text || "", X))}</span>
-        ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}
+        ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}${X.econ && E.grant && (!me || C.grantAmount({ ...X, events: [ev] }, reg, me, round) > 0) ? `<small class="lg-evnote">특별교부세 ${fmt(KCP.ECON_DATA.params[E.grant.param].v, 2)}억: 이번 달 새 설비·선로·재난 대응 비용에만 쓰며, 남은 돈은 사라져요.</small>` : ""}
         ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${techData()?.eventHints?.[E.id] && mine !== false ? `<small class="lg-tech-event-hint">${esc(techData().eventHints[E.id].text)}</small>` : ""}${choose}${picked}
         <small>${esc(who)}${mine === true ? idle ? ` · 우리 도시 해당 · 우리 지도에 ${esc(idle)} 설비가 없어 우리 발전엔 영향 없음(이웃 거래로는 닿을 수 있음)` : " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${gradeClass(E.grade)}" title="사건의 근거: ${esc(gradeWords(E.grade))}. 크기와 대응 효과: ${esc(gradeWords("G"))}">근거 ${esc(gradeWords(E.grade))} · 크기 ${esc(gradeWords("G"))}</abbr></small>${eventSourceHTML(E)}</li>`;
     }).join("")}</ul>`;
@@ -3724,7 +3731,7 @@
     return observed + (E.published === undefined ? "" : ` · 발표 ${dates(E.published)}`);
   }
   function eventSourceHTML(E) {
-    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
+    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p>${E.grant ? `<p>${esc(E.grant.why)}</p><p>출처: ${externalLinks(E.grant.sources)} · ${esc(E.grant.gradeNote)}</p>` : ""}<p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
   }
 
   /* ---------- 팀 카드: 건설 속도(투자 누적)와 축소 지도 ---------- */
@@ -4726,8 +4733,8 @@
       onFx: kind => signal(kind),
       load: () => L.doc,
       save: doc => { if (L.away) return; const z = tdata(); z.docs[t.pack] = { maps: doc.maps, runs: doc.runs, journal: doc.journal }; z.rev = L.rev; putData(z); },
-      // 남은 예산 = 예산 − 철거 손실·사건 대응(fixed) − 이번에 지난 라운드 것을 뜯어 생긴 손실
-      budget: () => { const me = L.snap && L.snap.teams[L.team]; return me ? me.budget - (me.fixed || 0) - C.researchReserve(L.snap, L.team, BG, BG.current()) - C.lossOf(me.base, BG.current()) : 0; },
+      // 후보 계획을 호스트와 같은 자금 함수에 맡긴다. 미사용 교부세로 일반 비용을 감당하지 않는다.
+      budget: plan => L.snap?.teams[L.team] ? C.fundingOf(BG, L.snap, R(), L.team, plan) : 0,
       research: () => { const me = L.snap && L.snap.teams[L.team]; return (me && (me.research || me.rs)) || { prog: {}, stage: {}, adoptR: {} }; },
       salvage: key => { const me = L.snap && L.snap.teams[L.team]; return me && (me.base || []).some(x => x.k === key) ? C.SALV : 1; },
       locked: lockMsg,
@@ -5031,7 +5038,7 @@
     syncTool();
     L.hudObserver?.disconnect();
     const money = root.querySelector('[data-cap="budget"]');
-    if (L.snap?.econ && money && !money.querySelector(".lg-debt-note")) {
+    if (L.snap?.econ && money && !money.querySelector("[data-money-note], .lg-debt-note")) {
       const note = document.createElement("small"); note.className = "lg-debt-note"; note.textContent = "(빚 한도 포함)"; money.querySelector(".v2-cap-txt").append(note);
     }
     const syncMoney = () => {
@@ -5041,7 +5048,16 @@
       if (value && value.textContent !== text) value.textContent = text;
       if (value) value.dataset.money = "left";
       if (money && L.snap?.econ) {
-        const description = `남은 돈 ${text} (빚 한도 포함)`;
+        const grantNote = grantMoneyNote(L.snap, id), noteText = `(빚 한도 포함)${grantNote}`;
+        const note = money.querySelector("[data-money-note], .lg-debt-note");
+        // 기존 빚 주석은 작은 화면에서 숨겨진다. 교부세가 있으면 항상 보이고 줄바꿈되는 전용 클래스를 쓴다.
+        if (note) {
+          if (grantNote) note.dataset.moneyNote = "";
+          else delete note.dataset.moneyNote;
+          note.className = grantNote ? "lg-grant-note" : "lg-debt-note";
+        }
+        if (note && note.textContent !== noteText) note.textContent = noteText;
+        const description = `남은 돈 ${text} ${noteText}`;
         money.title = description; money.setAttribute("aria-label", description);
       }
       syncLastOutage(root, L.snap, id);

@@ -160,7 +160,9 @@
     const unsafe = initial.firm < safetyTarget;
     if (stage === "warn" && !unsafe) return plan;
     if (!unsafe && !scheduled) return plan;
-    const budget = C.budget(S, id), fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
+    const funding = C.fundingOf(bg, S, R, id, plan);
+    // 건설 후보의 상한에는 전용 몫을 포함하되 실제 승인은 후보마다 공동 판정한다.
+    const budget = C.budget(S, id) + funding.grant.awarded, fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan) + (C.researchReserve ? C.researchReserve(S, id, bg, S.teams[id].plan) : 0);
     const committed = S.teams[id].committed ??
       (S.teams[id].base || []).reduce((sum, x) => sum + x.c, 0) + fixed;
     const extra = Math.max(0, budget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
@@ -197,7 +199,7 @@
       // 기존 선과 똑같은 구간을 다시 사지 않는다.
       candidate.lines = candidate.lines.filter((line, i, all) =>
         all.findIndex(l => l.p.join(",") === line.p.join(",")) === i);
-      if (bg.capex(candidate) <= cap - (plan.builds.length ? 0 : reserve)) {
+      if (bg.capex(candidate) <= cap - (plan.builds.length ? 0 : reserve) && C.fundingOf(bg, S, R, id, candidate).ok) {
         plan = candidate; path.forEach(i => roots.add(i));
       }
     }
@@ -264,6 +266,7 @@
         if (!best || bg.capex(plan) + best.cost > (safety ? cap : choiceCap)) return;
         const capacity = Math.min(need, b.mw);
         const trial = assets(plan); trial.builds.push({ t, i: best.i }); addPath(trial, route.path(best.i));
+        if (!C.fundingOf(bg, S, R, id, trial).ok) return;
         const fuelDelta = S.econ ? (forecast(trial) - fuelBefore) * fuelWeeks : 0;
         // 입지 선호는 종류 안에서만 사용한다. 종류 간에는 실제 건설비와 예상 연료비 차이를 비교한다.
         // 절약액이 건설비보다 커도 역전/발산하지 않도록 비용/MW의 음수를 최대화한다.
@@ -306,7 +309,7 @@
     const renewNeed = Math.max(0, own.peak *
       (value("aiRenewFloor") + value("aiRenewTarget") * (1 - style.risk)) - own.renew);
     const gridTight = grid && grid.headroomMW - (grid.waitingMW - grid.reservedMW) < Math.min(grid.monthlyMW, renewNeed);
-    let free = C.budget(S, id) - C.spendOf(bg, S, R, id, plan);
+    let tieReserved = 0;
     const pending = R.ties.filter(t => t.a === id || t.b === id);
     let sims, prices, accepted = S.ties.filter(t => t.st === "built").map(t => C.effectiveTie(S, t));
     // 공개 계획·수요·연료 가격으로 대표 주를 예상한다. 사건의 숨은 실현값은 읽지 않는다.
@@ -337,10 +340,9 @@
       const cap = existing?.cap || TIE_CAP, half = C.tieCost(R, { ...def, cap, kind }) / 2;
       const theirs = assets(S.teams[other].plan);
       const neighbor = withMap(bg, R, other, () => supply(bg, S, other, theirs));
-      const otherFree = withMap(bg, R, other, () => C.budget(S, other) - C.spendOf(bg, S, R, other, theirs));
-      const debtOK = [id, other].every(key => !S.econ?.cities[key] ||
-        S.econ.cities[key].cash >= -S.econ.cities[key].debtCap);
-      const eligible = own.gates.includes(other) && neighbor.gates.includes(id) && debtOK && free >= half && otherFree >= half;
+      const eligible = own.gates.includes(other) && neighbor.gates.includes(id) &&
+        C.fundingOf(bg, S, R, id, plan, { kind: "tie", extra: tieReserved + half }).ok &&
+        C.fundingOf(bg, S, R, other, S.teams[other].plan || theirs, { kind: "tie", extra: half }).ok;
       let worthwhile = false;
       const candidate = C.effectiveTie(S, { ...def, cap, kind });
       if (eligible) {
@@ -358,7 +360,7 @@
       }
       if (incoming) actions.push({ type: worthwhile ? "accept" : "cancel", other, cap, kind });
       else if (worthwhile) actions.push({ type: "propose", other, cap, kind });
-      if (worthwhile) { free -= half; accepted.push(candidate); }
+      if (worthwhile) { tieReserved += half; accepted.push(candidate); }
     }
     return actions;
   }
@@ -384,17 +386,19 @@
     const demoReserve = C.researchReserve(S, id, bg, { ...plan, rq: [card] });
     const fixed = C.fixedOf(S, R, id) + C.lossOf(S.teams[id].base, plan);
     const committed = S.teams[id].committed ?? (S.teams[id].base || []).reduce((a, x) => a + x.c, 0) + fixed;
-    const extra = Math.max(0, C.budget(S, id) - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
-    const researchBudget = C.budget(S, id) - (S.econ?.cities[id].debtCap || 0) * (1 - value("aiResearchDebtShare"));
+    const funding = C.fundingOf(bg, S, R, id, plan), constructionBudget = C.budget(S, id) + funding.grant.awarded;
+    const extra = Math.max(0, constructionBudget - committed) * style.invest * (annual ? 1 : value("aiRepairInvest"));
+    const researchBudget = constructionBudget - (S.econ?.cities[id].debtCap || 0) * (1 - value("aiResearchDebtShare"));
     const limit = Math.min(committed + extra, researchBudget) - fixed - demoReserve - labCost;
     for (const [kind, count] of [["lab", p("aiLabs")], ["uni", p("aiUnis")]]) {
       if (plan.builds.filter(b => b.t === kind).length >= count) continue;
       const tile = bg.TILES.find(t => !plan.builds.some(b => b.i === t.i) && !bg.siteRule(kind, t));
       if (!tile) continue;
       const candidate = { ...plan, builds: [...plan.builds, { t: kind, i: tile.i }] };
-      if (bg.capex(candidate) <= limit) plan = candidate;
+      if (bg.capex(candidate) <= limit && C.fundingOf(bg, S, R, id, { ...candidate, rq: [card] }, { kind: "research" }).ok) plan = candidate;
     }
-    if (plan.builds.some(b => b.t === "lab") && bg.capex(plan) <= limit) plan.rq = [card];
+    if (plan.builds.some(b => b.t === "lab") && bg.capex(plan) <= limit &&
+      C.fundingOf(bg, S, R, id, { ...plan, rq: [card] }, { kind: "research" }).ok) plan.rq = [card];
     if (rs.adopted.includes("vpp")) plan.policies = [...new Set([...(plan.policies || []), "dr"])].slice(0, 2);
     return plan;
   }
@@ -412,7 +416,7 @@
       const result = research(S, R, id, bg, styleName, chosen, constructed);
       // 공급 보강으로 실증 예약금까지 썼다면 연구를 대기한다. 진척은 호스트에 남는다.
       const C = KCP.leagueCore;
-      if (KCP.TECH_DATA && C.spendOf(bg, S, R, id, result) > C.budget(S, id) && C.researchReserve(S, id, bg, result) > 0) result.rq = [];
+      if (KCP.TECH_DATA && !C.fundingOf(bg, S, R, id, result).ok && C.researchReserve(S, id, bg, result) > 0) result.rq = [];
       return { plan: result, econPol: policy(S, id, chosen, Math.max(0, bg.capex(result) - (S.teams[id].committed || 0))), ties: ties(S, R, id, bg, chosen, result) };
     });
   }
