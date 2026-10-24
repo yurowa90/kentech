@@ -1,4 +1,5 @@
 'use strict';
+const weatherShort = require('./v8-weather-contract');
 // V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix2.md 호출 수·옛 frozen 호환 + S7-fix3.md + V3B-s7.md 영상 3차.
 // D-80: §2 C-1·2 우선. 단계마다 계통 반영, 네 몫; gridImport는 옛 frozen에서만 유지.
 // 실행: node tests/league/review/30-s7-attribution.js (브라우저 없음)
@@ -40,7 +41,7 @@ function sameParagraph(topic, days) {
   const baselineLabel = days > 0 && days !== 7 ? `시험 ${days}일 대비` : '시험 1주 대비';
   const baseline = baselineLabel.replace(/ 대비$/, '');
   const particle = (baseline.charCodeAt(baseline.length - 1) - 0xac00) % 28 ? '과' : '와';
-  return `<p id="lg-outage-same">실제로는 ${topic === 'grid' ? '바깥 계통에 기댄 전기가' : '정전이'} ${baseline}${particle} 거의 같았어요(같음).</p>`;
+  return `<p id="lg-outage-same">실제로는 ${topic === 'grid' ? '바깥 계통에 기댄 전기가' : '정전이'} ${baseline}${particle} 거의 같았어요(판정: 같음).</p>`;
 }
 // V3B-fix5: 독립 반올림 산식(백분율의 1/100 단위). UI 함수·상수는 읽지 않는다.
 const shownHigh = value => Number.isFinite(value) && Math.round(value * 100) >= 500;
@@ -250,7 +251,7 @@ function weatherClue(a, before, after, old, current) {
   const season = { spring: '봄', summer: '여름', autumn: '가을', winter: '겨울' };
   const expected = [...physical, `무더위 ${before.hotDays} → ${after.hotDays}일`, ...winds,
     `계절 ${season[old.season]} → ${season[current.season]}`].join(' · ');
-  ok(short === expected, `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
+  ok(short === weatherShort(before, after, old, current), `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
   ok(full.startsWith(expected + ' · ') &&
     full.includes(`최대 수요 ${fmt(before.peakDemand, 2)} → ${fmt(after.peakDemand, 2)} MW`) &&
     full.includes(`하루 재생 공급량 ${fmt(before.renewable, 1)} → ${fmt(after.renewable, 1)} MWh/일`) &&
@@ -273,7 +274,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   equal(!!small, showSmall, `${label}: 작은 대기 줄은 양의 대기·유한 효과·0.05%p 미만`);
   if (small) { // D-80: 계통 단위도 작은 효과 문구에서 검사.
     if (isGrid) ok(small[1].includes('MWh/일') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-82: 작은 반사실도 하루 평균 단위.
-    else equal(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 미만)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
+    else equal(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 이하)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
   } // D-80: 작은 효과.
 
   equal((html.match(/id="lg-outage-grid"/g) || []).length, Number(show), `${label}: grid 설명은 병목 상자 있을 때만`);
@@ -825,7 +826,7 @@ for (const field of ['seed', 'days', 'plan']) {
       equal(summary.includes('로 거의 같아요'), smallDifference, `${label}: 작은 차이만 거의 같음`);
       equal(summary.includes('차이의 대부분은 재현 차이(저장된 시험과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요'),
         !smallDifference, `${label}: 큰 차이의 재현 한계 설명`);
-      equal(summary.includes('바뀐 조건 각각은 정전을 거의 바꾸지 않았어요'), smallDifference,
+      equal(summary.includes('바뀐 조건 하나하나는 정전을 거의 바꾸지 않았어요'), smallDifference,
         `${label}: 큰 재현 차이에 작은 변화 설명 금지`);
       equal(summary.includes('이번 달 변화보다'), smallDifference, `${label}: 0.05%p 미만에만 비교`);
       equal(summary.includes('시험에도 정전이 컸으니'), before >= 5, `${label}: 기준값이 높을 때만 전제`);
@@ -906,8 +907,8 @@ for (const field of ['seed', 'days', 'plan']) {
     ok(/id="lg-outage-carry" disabled/.test(after), `${label}: 붙이기 완료 표시`);
     const next = { ...clone(V), round: res.round + 1 };
     const carry = league.__carryHTML(next), journal = league.__worksheet(next), trend = league.uiMath.trendHTML(next, id, true);
-    ok(carry.includes('지난달 놓친 것: 이웃 거래') && journal.includes('놓친 것: 이웃 거래') &&
-      trend.includes('놓친 것: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
+    ok(carry.includes('지난달 내가 고른 원인: 이웃 거래') && journal.includes('내가 고른 원인: 이웃 거래') &&
+      trend.includes('내가 고른 원인: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
     ok(![carry, journal, trend].some(text => text.includes('고르기 생략')), `${label}: 기록을 고르기 생략으로 덮지 않음`);
     equal(JSON.parse(storage.get(storageKey)).interview.months[res.round], saved, `${label}: 재렌더/기록 읽기로 저장값 불변`);
     equal(JSON.stringify({ S, V }), publicBefore, `${label}: 공개·운영 상태 불변`);

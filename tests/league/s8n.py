@@ -467,7 +467,13 @@ def solo(checks, context, base, width, label, pages):
     if note.get('outageLargest'):
         largest = note['outageLargest']
         name = names.get(largest.get('key'))
-        match = re.search(r'가장 큰 몫:\s*' + re.escape(name) + r'\s*([+−-]?[\d,.]+)\s*%p', text) if name is not None else None
+        # V8 3번 문구: 고른 원인이 크기가 같은 몫 없이 단독 최대이면 '실제 가장 큰 몫과 같음(+x%p…)'만 쓴다.
+        parts = (note.get('outageFrozen') or {}).get('parts') or []
+        tied = [p for p in parts if round(abs(p.get('value', 0)), 2) == round(abs(largest['value']), 2)]
+        unique_match = note.get('missed') == largest.get('key') and len(tied) <= 1
+        pattern = (r'실제 가장 큰 몫과 같음\(\s*([+−-]?[\d,.]+)\s*%p' if unique_match else
+                   r'가장 큰 몫:\s*' + re.escape(name or '') + r'\s*([+−-]?[\d,.]+)\s*%p')
+        match = re.search(pattern, text) if name is not None else None
         checks.ok(bool(match) and abs(float(match[1].replace(',', '').replace('−', '-')) - largest['value']) <= .0051,
                   label + ' 공개한 가장 큰 몫 이름·수치=기기 기록 [12]')
     elif note.get('outageSingleShown'):
@@ -484,7 +490,7 @@ def private_keys(value):
     banned = {'askReason', 'outcome', 'pred', 'compared', 'answer', 'missed',
               'operatingPlan', 'followingPlanChanged', 'resultNumbers', 'outageLargest',
               's1EvidenceValues', 's1EvidenceNeighborId', 'followingPlanBasis',
-              'followingPlanConfirmedChanged'}
+              'followingPlanConfirmedChanged', 'nowValue'}
     if isinstance(value, dict):
         return [key for key in value if key in banned] + [key for v in value.values() for key in private_keys(v)]
     if isinstance(value, list):

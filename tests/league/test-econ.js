@@ -268,6 +268,10 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   const grant = R.events.find(e => e.effect.budgetAdd > 0 && (e.opts || []).some(o => o.cost === 0 && o.grant > 0));
   const id = R.teams.find(t => C.hits(R, grant, t.id)).id;
   const paid = R.events.find(e => C.hits(R, e, id) && (e.opts || []).some(o => o.cost > 0));
+  bg.selectPack(C.teamDef(R, id).pack, "league");
+  // Q8: 지도 밖 i=0은 정규화 때 사라질 수 있어 실제 배치 가능한 8억 설비를 쓴다.
+  const solarTile = bg.TILES.find(t => !bg.siteRule("solar", t)).i;
+  ok(bg.capex({ builds: [{ t: "solar", i: solarTile }], lines: [] }) === 8, "교부세 경계 fixture: 실제 태양광 8억");
   const freeOpt = grant.opts.find(o => o.cost === 0 && o.grant > 0), paidOpt = paid.opts.find(o => o.cost > 0);
   const request = (S, message) => C.reduce(S, Object.assign({ team: id, token: "v1.3-fixture" }, message), 1, bg);
   const fixture = monthly => {
@@ -280,16 +284,21 @@ ok(V1.reports.some(R => R.intl.started.some(s => s.id !== "cbam")), "무작위 �
   const S = fixture(true), city = S.econ.cities[id], key = `${S.round}:${paid.id}`;
   city.cash = -city.debtCap - 100;
   S.teams[id].resp = { [key]: paidOpt.id };
-  ok(C.budget(S, id) < 0, "한도 초과·사건 지원금 포함 예산 음수 fixture");
+  // Q8 갱신 3: 0 바닥값 없이 초과 부채와 일반 사건 지원금만 반영한다. 교부세는 별도다.
+  ok(C.budget(S, id) === -100 + grant.effect.budgetAdd && C.budget(S, id) < 0 && C.grantOf(S, R, id, bg).left === 10 - paidOpt.cost, "한도 초과: 일반 예산 음수 유지·교부세는 대응비만 차감");
   ok(request(S, { type: "respond", ev: paid.id, opt: "none" }).ok && !S.teams[id].resp[key], "한도 초과: 유료 대응 취소 허용");
   ok(request(S, { type: "respond", ev: grant.id, opt: freeOpt.id }).ok, "한도 초과: 비용 0 지원금 선택 허용");
-  const before = JSON.stringify(S.teams[id].resp);
-  ok(!request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok && JSON.stringify(S.teams[id].resp) === before, "한도 초과: 유료 대응 거부·기존 선택 보존");
-  city.cash = -city.debtCap - 1;
-  ok(C.budget(S, id) > paidOpt.cost, "사건 지원금 때문에 유료 대응을 살 수 있는 예산 fixture");
-  ok(!request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "한도 초과: 사건 지원금으로 예산 양수여도 유료 대응 거부");
-  const build = request(S, { type: "plan", rev: 1, plan: { builds: [{ t: "solar", i: 0 }], lines: [] } });
-  ok(!build.ok && build.err === `debt:${id}`, "한도 초과: 새 건설 거부 유지");
+  // Q8: 한도 초과여도 교부세 안의 유료 대응은 허용하는 좁은 예외다.
+  ok(request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok && S.teams[id].resp[key] === paidOpt.id, "한도 초과: 교부세 범위 안 유료 대응 허용·선택 저장");
+  // Q8 갱신 3: 선택한 일반 지원금을 반영한 뒤에도 일반 여력이 정확히 −1억인 fixture다.
+  city.cash = -city.debtCap - grant.effect.budgetAdd * freeOpt.grant - 1;
+  ok(C.budget(S, id) === -1 && C.fundingOf(bg, S, R, id, S.teams[id].plan, { kind: "respond" }).ok, "한도 초과: 일반 예산 −1억이어도 전용 재원으로 대응 가능");
+  ok(request(S, { type: "respond", ev: paid.id, opt: "none" }).ok && request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "한도 초과: 부채 깊이와 무관하게 교부세 범위 대응 허용");
+  // Q8: 8억 태양광 + 이미 고른 4억 대응은 공동 한도 10억 초과라 거절한다.
+  const build = request(S, { type: "plan", rev: 1, plan: { builds: [{ t: "solar", i: solarTile }], lines: [] } });
+  ok(!build.ok && build.err === `debt:${id}`, "한도 초과: 대응과 합쳐 교부세를 넘는 새 건설 거부");
+  ok(request(S, { type: "respond", ev: paid.id, opt: "none" }).ok && request(S, { type: "plan", rev: 1, plan: { builds: [{ t: "solar", i: solarTile }], lines: [] } }).ok, "한도 초과: 대응 취소 뒤 8억 새 건설은 교부세 예외 허용");
+  S.teams[id].plan = { builds: [], lines: [] };
   ok(!request(S, { type: "respond", ev: paid.id, opt: "missing-option" }).ok, "무료 예외에서도 잘못된 선택 거부");
   city.cash = 0;
   ok(request(S, { type: "respond", ev: paid.id, opt: paidOpt.id }).ok, "한도 이내: 예산 내 유료 대응 허용");
