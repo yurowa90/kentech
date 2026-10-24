@@ -18,6 +18,67 @@
   KCP.$ = (sel, root) => (root || document).querySelector(sel);
   KCP.$$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
+  // 선택을 그리는 쪽에서 sync()를 호출한다. 관찰자 없이, 목록이 사라지면 함께 수거된다.
+  const tabLists = new WeakMap();
+  KCP.tabs = function (list, panel, opts = {}) {
+    if (tabLists.has(list)) {
+      const tabs = tabLists.get(list);
+      tabs.sync();
+      return tabs;
+    }
+    const buttons = () => KCP.$$(opts.selector || '[role="tab"]', list);
+    const ensureId = (element, base) => {
+      if (element.id) return;
+      let id = base, suffix = 1;
+      while (document.getElementById(id)) id = `${base}-${suffix++}`;
+      element.id = id;
+    };
+    const syncPanel = () => {
+      // 순차 초점 후보. 음수 tabindex·disabled·hidden·inert·닫힌 details 안은 세지 않는다(독립 검토 minor).
+      const hasFocusable = KCP.$$('a[href], button, input, select, textarea, summary, iframe, audio[controls], video[controls], [tabindex], [contenteditable]:not([contenteditable="false"])', panel)
+        .some((el) => el.tabIndex >= 0 && !el.matches(':disabled, input[type="hidden"]') && !el.closest('[hidden], [inert]')
+          && !(el.closest('details:not([open])') && !el.matches('details > summary')));
+      if (hasFocusable) panel.removeAttribute("tabindex");
+      else panel.setAttribute("tabindex", "0");
+    };
+    const sync = () => {
+      ensureId(panel, "tabs-panel");
+      panel.setAttribute("role", "tabpanel");
+      const all = buttons();
+      const selected = all.find((b) => b.getAttribute("aria-selected") === "true") || all[0];
+      all.forEach((b, i) => {
+        ensureId(b, `tab-${panel.id}-${i + 1}`);
+        b.setAttribute("aria-controls", panel.id);
+        b.setAttribute("tabindex", b === selected ? "0" : "-1");
+      });
+      if (selected) panel.setAttribute("aria-labelledby", selected.id);
+      else panel.removeAttribute("aria-labelledby");
+      syncPanel();
+      // 기존 paint는 sync() 뒤 내용을 바꾸므로, DOM 갱신이 끝난 직후에도 판정한다.
+      queueMicrotask(syncPanel);
+    };
+    list.addEventListener("keydown", (e) => {
+      // Alt·Ctrl·Meta 조합(브라우저 뒤로 가기 등)은 가로채지 않는다.
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const all = buttons(), index = all.indexOf(e.target.closest('[role="tab"]'));
+      if (index === -1) return;
+      let next;
+      if (e.key === "ArrowLeft") next = (index + all.length - 1) % all.length;
+      else if (e.key === "ArrowRight") next = (index + 1) % all.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = all.length - 1;
+      else return;
+      e.preventDefault();
+      all[next].focus();
+      all[next].click();
+      sync();
+    });
+    const tabs = { sync };
+    tabLists.set(list, tabs);
+    sync();
+    return tabs;
+  };
+
   KCP.toast = function (msg) {
     const t = document.createElement("div");
     t.className = "toast";

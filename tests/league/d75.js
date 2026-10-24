@@ -276,7 +276,8 @@ function protocolUI(localStorage = storage(), sessionStorage = storage()) {
       open: false, addEventListener() {}, querySelectorAll: () => [] });
     return nodes.get(selector);
   };
-  const app = { isConnected: true, innerHTML: "", querySelector: node };
+  // 가독성 단계(96ede7e)부터 진행자 화면이 "!" 설명 열림 상태를 querySelectorAll로 보존한다. 대역은 빈 목록.
+  const app = { isConnected: true, innerHTML: "", querySelector: node, querySelectorAll: () => [] };
   const net = { ...N, secure: () => true, open() {
     const handlers = new Map(), sent = [];
     const conn = { sent, handlers, on: (event, fn) => handlers.set(event, fn), onStatus() {}, close() {},

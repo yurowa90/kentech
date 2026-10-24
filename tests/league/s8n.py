@@ -226,7 +226,7 @@ def followup(checks, page, added, mission, reason, label, mismatch=False, neutra
               label + ' 전선·정책 변경 없음 [10]')
     expected = ('아직 바꾸지 않았어요' if neutral else
                 '말과 지금 계획이 달라요 — 유지하겠다고 했어요' if mismatch else
-                '달성' if mission else '미달성 예정 · 지난달 이유에 결과 숫자나 원인이 없어요')
+                '달성' if mission else '미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요')  # 총괄 10-23 아르곤 문구(UX 갈래)
     mission_status(checks, page, expected,
                    label, '#lg-previous-mission', preview=True)
     checks.ok(('말과 지금 계획이 달라요' in text) == mismatch and '말과 실제 변경이 달라요' not in text,
@@ -724,7 +724,7 @@ def verdict_matrix(checks, context, base, width, label, pages):
         ('유지·인용·불변', 'keep', '정전 결과를 확인하여 유지한다', False, True,
          '달성', '달성'),
         ('유지·인용 없음·불변', 'keep', REASON, False, True,
-         '미달성 예정 · 지난달 이유에 결과 숫자나 원인이 없어요', '미달성'),
+         '미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요', '미달성'),  # 총괄 10-23 아르곤 문구(UX 갈래)
         ('유지·변경', 'keep', '정전 결과를 확인하여 유지한다', True, True,
          '말과 지금 계획이 달라요 — 유지하겠다고 했어요', '미달성 · 말과 실제 변경이 달라요'),
         ('수정·불변', 'revise', REASON, False, True,

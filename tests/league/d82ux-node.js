@@ -91,7 +91,7 @@ test('S6 월 합계가 달라도 소비 CO₂ 하루 평균이 같으면 Δ 0·�
 test('S8 확정된 계통 주제는 하루 평균 1.1 MWh/일 칩·현금 칩 유지', () => {
   note();
   const html = api.reasonStartsHTML(S);
-  assert.ok(html.includes('이번 달 계통이 메운 전기 하루 평균 1.1 MWh/일이라서 '));
+  assert.ok(html.includes('이번 달 계통이 메운 전기가 평균 1.1 MWh/일이어서 ')); // 총괄 10-23 아르곤 문구(UX 갈래)
   assert.ok(html.includes('다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 '));
   assert.ok(html.includes('남은 돈 ') && !html.includes('정전'));
 });
@@ -103,13 +103,13 @@ test('S8 계통 값 누락이면 정전 칩 유지', () => {
 test('S8 계통 0도 유효한 값이므로 계통 칩 유지', () => {
   const r = S.results[1].team[id], old = r.isolated;
   r.isolated = { uns: 0 };
-  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기 하루 평균 0.1 MWh/일 미만이라서 ')); }
+  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 0.1 MWh/일 미만이어서 ')); } // 총괄 10-23 아르곤 문구(UX 갈래)
   finally { r.isolated = old; }
 });
 test('S8 계통 하루 평균은 소수 한 자리까지 표시', () => {
   const r = S.results[1].team[id], old = r.isolated;
   r.isolated = { uns: 8.0625 }; // 8.0625/7=1.151… → 1.2 MWh/일
-  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기 하루 평균 1.2 MWh/일이라서 ')); }
+  try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 1.2 MWh/일이어서 ')); } // 총괄 10-23 아르곤 문구(UX 갈래)
   finally { r.isolated = old; }
 });
 test('정전 주제 S6에는 소비 CO₂ 한 줄 없음·S8 정전 칩 유지', () => {
@@ -171,7 +171,7 @@ S.results = [result(1, 140, 70), result(2, 140, 70)];
 test('31→28일 하루 평균 같음: 판정·상세 모두 Δ 0 MWh/일·예상과 같음, 월 Δ 없음', () => {
   const html = api.promiseResultHTML(S, note()); // 70/7=10 MWh/일, 월 합계 310→280 MWh
   for (const text of [html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1], html.match(/data-compare="grid">(.*?)<\/p>/s)[1]]) {
-    assert.match(text, /실제 결과: 지난달 대비 하루 평균 \+?0(?:\.0)? MWh\/일/);
+    assert.match(text, /실제 결과: 지난달 대비 같음\(±0\.5 안, 하루 평균 \+?0(?:\.0)? MWh\/일 변화\)/); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.ok(text.includes('예상과 같음') && text.includes('월 합계 280 MWh'));
     assert.doesNotMatch(text, /[−-]30 MWh/);
   }
@@ -180,8 +180,8 @@ S.round = 3;
 S.results = [result(2, 140, 1053.4 * 7 / 28), result(3, 175, 1002.4 * 7 / 31)];
 test('5차 3월 재현: 월 −51 MWh 대신 하루 평균 −5.3 MWh/일·예상과 다름', () => {
   const n = note(), html = api.promiseResultHTML(S, n);
-  // 판정(예상과 다름)은 판정 단위 Δ 바로 뒤, 월 합계는 그 뒤 괄호 보조(UX 총괄 판단: 판정을 긴 괄호 뒤로 밀지 않음).
-  assert.match(html, /실제 결과: 지난달 대비 하루 평균 −5\.3 MWh\/일 · 예상과 다름\(이번 달 하루 평균 32\.3 MWh\/일 · 월 합계 1,002\.4 MWh · 월 비용 약 [\d,.]+억\)/);
+  // 총괄 10-23 아르곤 문구(UX 갈래): 기준 이름→판정 낱말→괄호 안 Δ, 예상과 다름 뒤 월 합계·비용 보조.
+  assert.match(html, /실제 결과: 지난달 대비 줄어듦\(하루 평균 −5\.3 MWh\/일 변화\) · 예상과 다름\(이번 달 하루 평균 32\.3 MWh\/일 · 월 합계 1,002\.4 MWh · 월 비용 약 [\d,.]+억\)/); // 총괄 10-23 아르곤 문구(UX 갈래)
   assert.doesNotMatch(html, /−51 MWh/);
   assert.match(api.gridFillHTML(S, S.results[1], id), /<dd>32\.3 MWh\/일<\/dd>.*지난달 대비 하루 평균 Δ −5\.3 MWh\/일 · 이번 달 합 1,002\.4 MWh · 비용 약/s);
 });
@@ -205,9 +205,20 @@ test('S6 5% 문턱 양쪽의 표시 Δ가 같아도 반올림 전 값으로 판�
       const html = api.promiseResultHTML(S, note());
       const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1];
       assert.ok(summary.includes("하루 평균 +0.1 MWh/일") && summary.includes(verdict));
+      assert.ok(summary.includes(`지난달 대비 ${verdict === '예상과 같음' ? '같음(±0.1 안, ' : '늘어남('}하루 평균 +0.1 MWh/일 변화)`)); // 총괄 10-23 아르곤 문구(UX 갈래)
     }
   } finally { p.isolated = oldP; r.isolated = oldR; }
 });
+test('S6 기준 1.5의 같음 범위 0.075와 Δ +0.06은 판정 줄에서 두 자리로 표시', () => { // 총괄 10-23 아르곤 문구(UX 갈래)
+  const p = S.results[0].team[id], r = S.results[1].team[id], oldP = p.isolated, oldR = r.isolated; // 총괄 10-23 아르곤 문구(UX 갈래)
+  try { // 총괄 10-23 아르곤 문구(UX 갈래)
+    p.isolated = { uns: 1.5 * 7 }; // 총괄 10-23 아르곤 문구(UX 갈래)
+    r.isolated = { uns: (1.5 + .06) * 7 }; // 총괄 10-23 아르곤 문구(UX 갈래)
+    const html = api.promiseResultHTML(S, note()); // 총괄 10-23 아르곤 문구(UX 갈래)
+    const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1]; // 총괄 10-23 아르곤 문구(UX 갈래)
+    assert.ok(summary.includes('지난달 대비 같음(±0.08 안, 하루 평균 +0.06 MWh/일 변화) · 예상과 같음')); // 총괄 10-23 아르곤 문구(UX 갈래)
+  } finally { p.isolated = oldP; r.isolated = oldR; } // 총괄 10-23 아르곤 문구(UX 갈래)
+}); // 총괄 10-23 아르곤 문구(UX 갈래)
 S.round = 1; S.phase = 'plan'; S.results = [];
 trial = { map: C.teamDef(C.regionOf('south'), id).pack, scope: JSON.stringify([S.room, id]),
   ...S.rounds[0], days: 7, co2: 140, unsPct: 0, gridMWh: 70 };
@@ -235,6 +246,7 @@ test('S6 기준 37.62의 경계: 요약·접힘 제목 −1.9 유지, 상세 −
     const html = api.promiseResultHTML(S, n);
     const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1];
     assert.ok(summary.includes('하루 평균 −1.9 MWh/일') && summary.includes(verdict));
+    assert.ok(summary.includes(`지난달 대비 ${verdict === '예상과 같음' ? '같음(±1.9 안, ' : '줄어듦('}하루 평균 −1.9 MWh/일 변화)`)); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.doesNotMatch(summary, /판정 계산|같음' 범위/);
     assert.ok(api.promiseVerdictShort(api.promiseComparison(S, n), n).includes('하루 평균 Δ −1.9 MWh/일'));
     assert.ok(html.includes(`<p data-compare="grid">${summary}</p><p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${detailed} MWh/일, '같음' 범위 ±1.88 MWh/일(기준 하루 평균 37.62의 5%와 0.05 중 큰 값)</p>`));
@@ -245,7 +257,7 @@ test('S6 2자리로도 같아 보이는 0.005 미만 경계는 정밀도를 늘�
   S.results[1].team[id].isolated.uns = (37.62 - 1.882) * 7; // 문턱 1.881과 차이 0.001.
   const html = api.promiseResultHTML(S, note());
   assert.match(html, /하루 평균 Δ −1\.88 MWh\/일, '같음' 범위 ±1\.88 MWh\/일/);
-  assert.match(html, /하루 평균 −1\.9 MWh\/일 · 예상과 다름/);
+  assert.match(html, /지난달 대비 줄어듦\(하루 평균 −1\.9 MWh\/일 변화\) · 예상과 다름/); // 총괄 10-23 아르곤 문구(UX 갈래)
 });
 test('정전·현금 주제와 계통 비교 기준 없는 달은 상세 계산 줄 없음', () => {
   for (const topic of ['uns', 'cash']) assert.ok(!api.promiseResultHTML(S, note(topic)).includes('lg-promise-grid-calc'));
@@ -263,8 +275,8 @@ for (const [perDay, text] of [[0, '0.1 MWh/일 미만'], [.04, '0.1 MWh/일 미�
     S.phase = 'review';
     const verdict = api.promiseResultHTML(S, n);
     assert.ok(verdict.includes(`이번 달 하루 평균 ${text} · 월 합계`));
-    assert.ok(verdict.includes('시험 1주 대비 하루 평균 0 MWh/일 · 예상과 같음'));
-    assert.ok(api.reasonStartsHTML(S).includes(`이번 달 계통이 메운 전기 하루 평균 ${text}이라서 `));
+    assert.ok(verdict.includes('시험 1주 대비 같음(±0.05 안, 하루 평균 0 MWh/일 변화) · 예상과 같음')); // 총괄 10-23 아르곤 문구(UX 갈래)
+    assert.ok(api.reasonStartsHTML(S).includes(`이번 달 계통이 메운 전기가 평균 ${text}이어서 `)); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.equal(api.gridFillHTML(S, S.results[0], id) === '', perDay < .05);
     S.phase = 'plan';
     assert.ok(api.predictionHTML(S).includes(`시험 1주 대비 · 하루 평균 ${text}(이번 달 31일이면 약`));

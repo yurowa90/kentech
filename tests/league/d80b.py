@@ -34,7 +34,7 @@ SAME_MWH, SAME_SHARE = 1.0, 0.05
 SAME_PER_DAY = .05  # D-82 결정 1·화면 지시서: 판정과 표시 모두 MWh/일, 월 합계는 보조.
 DIRECTIONS = {"up": "늘 것", "down": "줄 것", "same": "같을 것"}
 NUMBER = r"[+−–-]?\s*\d[\d,]*(?:\.\d+)?"
-WHY = "시험에서 정전이 없어서, 이번 달은 부족을 바깥 계통이 얼마나 메웠는지로 약속해요."
+WHY = "시험에서 정전이 없어서, 이번 달은 부족한 전기를 바깥 계통이 얼마나 메웠는지로 약속해요."  # 총괄 10-23 아르곤 문구(UX 갈래)
 
 # 기존 s7.py와 같은 공개 계획 API. 합법적 칸과 연결 경로만 사용한다.
 # 결과/정전/판정 수치, 계통 수입 상한, 단가는 덮어쓰지 않는다.
@@ -218,11 +218,21 @@ def numeric_match(token, value, precision):
 
 
 def delta_pair(checks, text, values, label, summary=False):
-    # D-82 결정 1·화면 지시서: 기준 이름 바로 뒤의 하루 평균 Δ만 판정 근거로 인정한다.
+    # 총괄 10-23 아르곤 문구(UX 갈래): 요약은 기준 이름→기대 판정 낱말→괄호 안 하루 평균 Δ, 결과 칸은 기존 형식 유지.
     segment = text.split(values["label"], 1)[-1]
     pattern = rf"^\s*하루 평균 {'(?:Δ)' if not summary else ''}\s*({NUMBER})\s*MWh/일"
+    precision = 1  # 총괄 10-23 아르곤 문구(UX 갈래)
+    if summary:  # 총괄 10-23 아르곤 문구(UX 갈래)
+        actual_word = {"same": "같음", "up": "늘어남", "down": "줄어듦"}[direction(values)]  # 총괄 10-23 아르곤 문구(UX 갈래)
+        precision = 2 if actual_word == "같음" and values["tolPerDay"] < .1 else 1  # 총괄 10-23 아르곤 문구(UX 갈래)
+        same_range = r"±(?P<tol>\d[\d,]*(?:\.\d+)?) 안, " if actual_word == "같음" else ""  # 총괄 10-23 아르곤 문구(UX 갈래)
+        pattern = rf"^\s*{actual_word}\({same_range}하루 평균\s*(?P<delta>{NUMBER})\s*MWh/일 변화\)"  # 총괄 10-23 아르곤 문구(UX 갈래)
     match = re.search(pattern, segment)
-    valid = bool(match) and numeric_match(match[1], values["deltaPerDay"], 1)
+    valid = bool(match) and numeric_match(match["delta"] if summary else match[1], values["deltaPerDay"], precision)  # 총괄 10-23 아르곤 문구(UX 갈래)
+    if valid and summary and actual_word == "같음":  # 총괄 10-23 아르곤 문구(UX 갈래)
+        raw = match["tol"].replace(",", "")  # 총괄 10-23 아르곤 문구(UX 갈래)
+        decimals = len(raw.rsplit(".", 1)[1]) if "." in raw else 0  # 총괄 10-23 아르곤 문구(UX 갈래)
+        valid = decimals <= precision and abs(float(raw) - values["tolPerDay"]) <= .5 * 10 ** -precision + 1e-8  # 총괄 10-23 아르곤 문구(UX 갈래)
     if summary:
         total = re.search(rf"월 합계 ({NUMBER}) MWh · 월 비용 약 ({NUMBER})억", segment)
     else:
@@ -283,8 +293,8 @@ def result_check(page, checks, tested, prediction, label, zero_required=False, e
             checks.ok(hit == expected_hit, label + " 실제 운영에서 의도한 적중/빗나감 사례 확보")
         verdict = "예상과 같음" if hit else "예상과 다름"
         other = "예상과 다름" if hit else "예상과 같음"
-        # 판정은 판정 단위(하루 평균 Δ MWh/일) 바로 뒤에 오고 월 합계 괄호는 그 뒤 보조(UX 총괄 판단, D-82 결정 1).
-        checks.ok(bool(re.search(r"MWh/일\s*·\s*" + verdict + r"\s*\(", text)) and other not in text,
+        # 총괄 10-23 아르곤 문구(UX 갈래): 하루 평균 Δ의 '변화)' 뒤 적중 문구, 이어지는 괄호는 월 합계 보조.
+        checks.ok(bool(re.search(r"MWh/일 변화\)\s*·\s*" + verdict + r"\s*\(", text)) and other not in text,  # 총괄 10-23 아르곤 문구(UX 갈래)
                   label + f" S6 판정 {verdict} (D-82 |Δ/일|≤max(0.05,|기준/일|×5%)={values['tolPerDay']:.6f}이면 same)")  # D-82
         if not hit:
             # D-80 C-5: 유의미한 원인이 하나뿐이면 S7은 카드 목록 대신 한 줄 요약(#lg-outage-single)을 보인다.

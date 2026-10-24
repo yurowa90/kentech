@@ -3,7 +3,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const KCP = { games: {}, esc: s => String(s) };
+const KCP = { games: {}, esc: s => String(s),
+  // tabs/impl.md 명세 1: renderPrep의 공용 API 계약만 제공한다.
+  // 전선 모형 검사이므로 실제 탭·키보드 동작을 모의하거나 단언을 대체하지 않는다.
+  tabs: () => ({ sync() {} }),
+};
 vm.runInNewContext(fs.readFileSync(new URL('../g2022.js', import.meta.url), 'utf8'), { window: { KCP } });
 const game = KCP.games['2022'];
 const plain = x => JSON.parse(JSON.stringify(x));

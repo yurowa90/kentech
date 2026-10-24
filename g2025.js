@@ -135,7 +135,7 @@
           <div class="stack">
             <section class="panel">
               <h3>KENTESIA TIMES 4부 <span class="chip">순서와 무관하게 배부됨</span></h3>
-              <div class="tabs" role="tablist">${IDS.map(
+              <div class="tabs" role="tablist" aria-label="신문 네 부">${IDS.map(
                 (id, i) => `<button role="tab" data-tab="${id}" aria-selected="${G.tab === id}">자료 ${i + 2} ${tagOf(id)}</button>`
               ).join("")}</div>
               <div class="paper" id="paper"></div>
@@ -160,6 +160,7 @@
 
       let lastLink = null;
       const paper = KCP.$("#paper", root);
+      const tabs = KCP.tabs(KCP.$('[role="tablist"]', root), paper);
       const clues = KCP.$("#clues25", root);
       const paintFacts = () => {
         if (KCP.settings().timeMode === "real") {
@@ -190,6 +191,7 @@
       };
       const paintPaper = () => {
         KCP.$$("[data-tab]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === G.tab)));
+        tabs.sync();
         paper.innerHTML = `<div class="mast"><b>KENTESIA TIMES</b><span class="sym ${P[G.tab].cls}">${P[G.tab].sym}</span></div>${PAPER[G.tab]()}`;
         paintFacts();
       };

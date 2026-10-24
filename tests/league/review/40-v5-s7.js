@@ -667,7 +667,7 @@ for (const row of [
   { name: '접속 여유는 비교 안 함', key: 'grid', start: 3.65, before: { s1EvidenceValues: { grid: 1 } }, click: 7.65, reason: '접속 여유는 이번 달 새 접속을 처리하기 전 값이라 결과와 방향을 비교하지 않아요' },
   { name: '풍력 없음은 비교 안 함', key: 'wind', start: 5, before: { s1EvidenceValues: { wind: 10 } }, click: 20, reason: '우리 도시에 접속된 풍력 설비가 없어 풍속과 결과의 방향을 비교하지 않아요' },
   { name: '풍력 접속 자료 없는 옛 기록', key: 'wind', start: 5, before: { s1EvidenceValues: { wind: 10 } }, click: 20, noWindInfo: true, reason: '이번 달 풍력 접속 자료를 계산하지 못해 풍속과 결과의 방향을 비교하지 않아요' },
-  { name: 'LNG 비용 효과만 유지', key: 'fuel', start: 120, before: { s1EvidenceValues: { fuel: 100 } }, click: 80, reason: 'LNG 지수는 비용으로만 닿아 이번 대상(정전)과 방향을 비교하지 않아요' }
+  { name: 'LNG 비용 효과만 유지', key: 'fuel', start: 120, before: { s1EvidenceValues: { fuel: 100 } }, click: 80, reason: 'LNG 지수는 비용으로만 영향을 주어 이번 대상(정전)과 방향을 비교하지 않아요' } // 아르곤 문구(UX 갈래) 화면 문구를 따름
 ]) check(`V8 N1 S6·S7 ${row.name}`, () => {
   reset();
   const cause = row.key === 'neighbor' ? 'trade' : row.key === 'grid' ? 'progress' : row.key === 'fuel' ? 'growth' : 'weather';
