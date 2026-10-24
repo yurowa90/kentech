@@ -143,7 +143,8 @@ def t_B4_room_header_without_question_examples(c: Ctx):
 def t_T1_tabs_a11y(c: Ctx):
     # tabs/impl.md 명세 1·2: 신문 탭 → #paper, 기존 G.tab 저장 계약.
     from tabs_helpers import tabs_a11y
-    tabs_a11y(c, "2025", "#paper", "tab", "data-tab")
+    # tabs/minor-impl.md §1·2: 확정 이름과 신문 전환 뒤 빈 #paper로 실제 Tab 진입.
+    tabs_a11y(c, "2025", "#paper", "tab", "data-tab", group_label="신문 네 부")
 
 
 if __name__ == "__main__":

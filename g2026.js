@@ -298,7 +298,7 @@
           <div class="stack">
             <section class="panel">
               <h3>후보 기술 홍보자료 <span class="chip">각 2장 · 기술 간 연관성 없음</span></h3>
-              <div class="tabs" role="tablist">
+              <div class="tabs" role="tablist" aria-label="기술 홍보자료와 기준표">
                 ${TECH.map((t, i) => `<button role="tab" data-tab="${t.id}" aria-selected="${G.tab === t.id}">${i + 1}. ${esc(t.name)}</button>`).join("")}
                 <button role="tab" data-tab="crit" aria-selected="${G.tab === "crit"}">평가 기준표</button>
               </div>

@@ -1692,7 +1692,8 @@ def t_T1_tabs_a11y(c: Ctx):
     # tabs/impl.md 명세 1·2: 자료 탭 → #mat, 기존 G.tab 저장 계약.
     # --oracle은 Playwright를 import하지 않는 기존 계약을 보존한다.
     from tabs_helpers import tabs_a11y
-    tabs_a11y(c, "2023", "#mat", "tab", "data-tab")
+    # tabs/minor-impl.md §1·2: 확정 이름과 자료 전환 뒤 빈 #mat 정지점을 재판정.
+    tabs_a11y(c, "2023", "#mat", "tab", "data-tab", group_label="문제지에 딸린 자료")
 
 
 if __name__ == "__main__":

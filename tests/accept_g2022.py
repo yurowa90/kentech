@@ -1469,7 +1469,8 @@ def t_F4_mobile_advice_without_ellipsis_and_full_caption(c: Ctx):
 def t_T1_tabs_a11y(c: Ctx):
     # tabs/impl.md 명세 1·2: 문제 탭 → #work, 기존 G.mode 저장 계약.
     from tabs_helpers import tabs_a11y
-    tabs_a11y(c, "2022", "#work", "mode", "data-mode")
+    # tabs/minor-impl.md §1·2: 확정 이름과 #work 내부 조작 유무에 따른 Tab 진입.
+    tabs_a11y(c, "2022", "#work", "mode", "data-mode", group_label="문제 작업 화면 선택")
 
 
 if __name__ == "__main__":
