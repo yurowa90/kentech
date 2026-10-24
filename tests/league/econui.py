@@ -1295,7 +1295,8 @@ def feature_hiding(checks, context, base, label, pages):
     # 사람이 하는 순서대로 서랍을 닫고 실행한다.
     if build.locator('#bd-drawer-x').is_visible():
         build.locator('#bd-drawer-x').click()
-    build.locator('[data-run="7"]').click(); finish_trial(build)
+    # 단독 #build는 시험 기록(lastTrial)을 남기지 않는다(리그에서만 rememberTrial) — 옛 건너뛰기 흐름 유지.
+    build.locator('[data-run="7"]').click(); build.wait_for_selector('#bd-skip'); build.locator('#bd-skip').click()
     build.wait_for_selector('#bd-j-dlg[open]')
     checks.ok(wait_shown(build, '#bd-speak'), f'{label} E #build 건설 일지 대화상자·말하기 유지')
     build.locator('#bd-speak').click()

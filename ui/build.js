@@ -2210,7 +2210,7 @@
     if (S.run) return;
     const hov = S.hover;
     const rm = reduced();
-    if (S.siteHint) {
+    if (S.siteHint && S.siteHint.i != null) {
       const [x, y] = tileTop(TILES[S.siteHint.i]), pulse = rm ? 1 : 1 + 0.06 * Math.sin(t * 7);
       g.save(); g.beginPath(); g.ellipse(x, y, V.S * 0.9 * pulse, V.S * 0.9 * SQ * pulse, 0, 0, Math.PI * 2);
       g.lineWidth = 5; g.strokeStyle = MAP_INK.dust; g.stroke();
@@ -2501,9 +2501,10 @@
   function markBuildSite(type, i) {
     if (toolLocked(type) || lockedMsg() || !canPlace(type, i).siteRule) return;
     const tile = nearestBuildTile(type, i), state = S;
-    S.siteHint = tile == null ? null : { i: tile };
+    // from: 안내를 띄운 칸(말풍선이 같은 칸일 때만 '표시'라고 쓴다). i가 null이면 표시할 칸 없음.
+    S.siteHint = { i: tile, from: i };
     clearTimeout(S.siteHintTimer);
-    if (S.siteHint) S.timers.push(S.siteHintTimer = setTimeout(() => {
+    S.timers.push(S.siteHintTimer = setTimeout(() => {
       if (S === state && state.alive) { S.siteHint = null; S.siteHintTimer = 0; request(); }
     }, 1600));
     request();
@@ -3442,7 +3443,7 @@
     let verdict = "";
     if (S.tool && S.tool !== "line" && S.tool !== "remove") {
       const c = canPlace(S.tool, i);
-      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}</p>` : `<p class="no">${ico("x")}${esc(placementReason(S.tool, i, c))}</p>`;
+      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}</p>` : `<p class="no">${ico("x")}${esc(S.siteHint?.from === i ? placementReason(S.tool, i, c) : c.why)}</p>`;
     } else if (S.tool === "line") {
       const P = S.pending || S.preview;
       if (S.lineStart == null) verdict = validStart(i) ? `<p class="ok">${ico("line")}여기서 시작</p>` : `<p class="no">${ico("x")}시작: 발전소·마을·선</p>`;

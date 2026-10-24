@@ -454,7 +454,8 @@ def results(host, team, checks, fixture):
             detail.locator(':scope > summary').focus()
             detail.locator(':scope > summary').press('Enter')
             checks.ok(detail.evaluate('el => el.open'), 'U2 result layer opens by keyboard ' + key)
-    for pattern in [r"CO₂\s*\(이번\s*달\s*운영\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
+    # 채점 1회 F3: 결과 서랍 S6 칸 이름이 '생산 CO₂(이번 달)'로 바뀌었다(진행자 카드는 옛 이름).
+    for pattern in [r"생산\s*CO₂\s*\(이번\s*달\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
         checks.ok(text_present(team, pattern), f"team indicator reference name {pattern}")
     checks.ok(team.locator('#lg-map-result').is_visible(), 'U2 public result remains on city map')
     result = state["results"][-1]

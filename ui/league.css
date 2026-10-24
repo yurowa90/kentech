@@ -1554,7 +1554,9 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 .lg-money-info > .lg-info-btn { color: #06202a; font-size: 12px; background: radial-gradient(circle at center, var(--ui-gold) 0 9px, transparent 9.5px); }
 
 /* F2: 결과를 읽은 뒤에는 다음 달 진행이 주 동작이다. */
-#bd-root.lg-team-map[data-lg-phase="review"] #lg-bar #lg-ready:enabled {
+/* 혼자 하기의 '다음 달'·'최종 결과'는 늘 주 동작. 멀티 팀은 누르기 전 '준비'만 금색이고 누른 '준비 ✓'는 기존 청록을 유지한다. */
+#bd-root.lg-team-map[data-lg-phase="review"][data-lg-role="solo"] #lg-bar #lg-ready:enabled,
+#bd-root.lg-team-map[data-lg-phase="review"] #lg-bar #lg-ready:enabled:not([aria-pressed="true"]) {
   background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); box-shadow: none;
 }
 .lg-team-map[data-lg-phase="review"] .bd-go[data-run] {
@@ -1573,22 +1575,26 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* F7: 진행자 표의 단위 small은 유지한다. */
 .lg-host .lg-data-chip { font-size: 14px; }
+/* small 요소 규칙(.lg-ev small·.lg-host-board small 12px)이 .lg-evnote보다 구체적이라 같은 구체성 이상으로 덮는다. */
+.lg-ev small.lg-evnote,
+.lg-host-board small.lg-evnote { font-size: 14px; }
 
 /* F9: 예보 카드 덱이 지도 아래쪽에 떠 있는 동안 알림(예: '2월 계획 시작 · 사건: …')은 지도 위쪽에 띄워 카드의 효과 크기 줄을 덮지 않는다. */
 @media (min-width: 761px) {
   #bd-root.lg-team-map:has(.fx-turn-cards article[data-forecast="true"]) .bd-toast { top: calc(var(--bd-top, 180px) + 8px); bottom: auto; }
 }
 
-/* F11: 자동 사건 띠와 열린 서랍은 44px 띠 + 8px 간격을 공유한다.
-   fx_event.py는 레이어·덱·띠 전체 사각형의 교차를 검사하므로 레이어 자체도 고정한다. */
+/* F11: 390에서 결과 서랍이 열린 채 자동 사건 띠가 뜨면, 띠를 렌즈 줄 바로 아래(지도 결과 요약 줄 자리, 서랍 위쪽)에 둔다.
+   요약 줄은 바로 아래 결과 서랍의 판정과 같은 내용이라 띠가 떠 있는 동안만 가린다. 서랍의 위치·크기는 바꾸지 않는다:
+   서랍 크기가 띠 상태를 따르면 띠 배치 계산(fx-turn)과 되먹임해 서랍 안 단추가 흔들리거나 띠가 누를 자리를 덮었다.
+   fx_event.py는 레이어·덱·띠 전체 사각형과 서랍의 교차를 검사하므로 레이어 자체를 고정한다. */
 @media (max-width: 760px) {
-  #bd-root.lg-team-map[data-result-drawer="true"]:has(.fx-turn-layer[data-strip="true"]) :is(#lg-panel, #bd-drawer) {
-    top: calc(max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)) + 52px) !important;
-  }
   #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"] {
-    top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)) !important;
+    top: calc(var(--bd-top, 178px) + 48px) !important; bottom: auto !important;
     left: 8px !important; width: calc(100vw - 16px) !important; height: 44px !important;
+    z-index: 48 !important; /* 안내 묶음(47) 위: 요약 줄 밑에 깔리지 않게 */
   }
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(.fx-turn-layer[data-strip="true"]) #lg-map-result { visibility: hidden; }
 }
 
 /* F12: 서랍 폭 360에서 2열 SVG를 축소하지 않는다(224 viewBox, 12px 글자). */

@@ -5260,6 +5260,7 @@
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     if (!V) { set("lg-bround", "진행자 연결 대기"); set("lg-bphase", ""); return; }
     document.getElementById("bd-root")?.setAttribute("data-lg-phase", V.phase);
+    document.getElementById("bd-root")?.setAttribute("data-lg-role", L.role || "");
     rememberLocalPlan(V); rememberEvidenceValues(V); updatePlanReminder(V);
     const rd = curRound();
     const RS0 = C.roundsOf(V);
@@ -5355,6 +5356,7 @@
   function syncViewInset() {
     if (!L || typeof BG.setViewInset !== "function") return;
     const root = document.getElementById("bd-root"), panel = root?.querySelector("#lg-panel");
+    if (!root) return;
     const canvas = root?.querySelector("#bd-canvas");
     let right = 0;
     if (!L.away && root.dataset.resultDrawer === "true" && panel && !panel.hidden && panel.dataset.folded !== "true" && canvas && window.matchMedia("(min-width: 761px)").matches) {

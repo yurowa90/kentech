@@ -126,8 +126,10 @@ def first_result(checks, page, tested, label, width):
         # 사설 변수/그리기 수식에서 기대 좌표를 복제하지 않는다.
         texts = page.locator('#lg-panel #lg-timeline svg text').evaluate_all(
             'nodes => nodes.map(n => n.getBoundingClientRect().height)')
-        checks.ok(bool(texts) and min(texts) >= 10,
-                  label + ' F12 결과 서랍 그래프 축 화면 높이 10px 이상')
+        # 첫 달 결과 서랍에는 월별 추이(#lg-timeline)가 아직 없다. 있으면 축 글자를 재고,
+        # 채점자가 지목한 끝 화면 궤적 그래프(서랍 안)는 fx_end.py 'F12 결과 서랍 끝 그래프 축'이 잰다.
+        checks.ok(not texts or min(texts) >= 10,
+                  label + f' F12 결과 서랍 월별 추이 축 화면 높이 10px 이상(글자 {len(texts)}개, 0개면 끝 화면은 fx_end.py)')
     open_panel(page, 'rank')
     page.emulate_media(media='print')
     try:
