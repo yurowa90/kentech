@@ -67,6 +67,8 @@ function dom() {
     handlers: {}, addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); },
     setAttribute(name, value) { this[name] = value; }, removeAttribute(name) { delete this[name]; },
     focus() {}, blur() {},
+    // 가독성 2단계(b17a394)부터 로비가 "!" 설명 안의 details를 다시 찾는다. 판정 대상이 아닌 빈 노드를 돌려준다.
+    querySelector() { return node(); }, querySelectorAll() { return []; },
     click() { for (const fn of this.handlers.click || []) fn({ target: this }); }
   });
   let html = "";
