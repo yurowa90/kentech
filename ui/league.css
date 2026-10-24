@@ -1097,6 +1097,8 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-plan-comparison > * { min-width: 0; margin: 0; }
 .lg-plan-comparison p { margin: 0; }
 .lg-debt-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+/* 특별교부세가 남은 달의 돈 칸 주석: 빚 주석과 같은 글꼴, 좁은 화면에서도 보이고 줄바꿈된다. */
+.lg-grant-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: normal; }
 .lg-trend-scroll { overflow-x: auto; }
 #lg-timeline [data-change] text { font-size: 11px; }
 #lg-decisions li { margin: 8px 0; }

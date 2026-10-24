@@ -1172,7 +1172,23 @@
   const uiVisible = (feature, opts = S?.opts || {}) => !opts.league || !LEAGUE_UI_HIDDEN[feature] ||
     (feature === "longTrial" && opts.solo === true);
   // 다른 화면(멀티플레이 팀)이 빌려 쓸 때의 갈래: opts.save · opts.budget · opts.locked · opts.onChange
-  const budgetOf = () => (S && S.opts.budget ? S.opts.budget() : PK.budget);
+  // 숫자 예산 또는 후보 계획의 공통 자금 판정 객체를 받는다. 용도 제한은 콜백이 판정한다.
+  const budgetValue = plan => (S && S.opts.budget ? S.opts.budget(plan) : PK.budget);
+  const budgetOf = () => {
+    const value = budgetValue(S && S.st);
+    return typeof value === "number" ? value : capex(S.st) + value.left;
+  };
+  const budgetDescription = () => {
+    const value = budgetValue(S && S.st);
+    // 교부세가 없는 달에는 빈 문자열: 돈 칸 title·지도 aria-label이 바꾸기 전 문구를 그대로 쓴다.
+    if (typeof value === "number" || !(value.grant.left > 0)) return "";
+    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응만)` : "";
+    return `남은 돈 ${fmt(value.left, 1)}억 (빚 한도 포함)${grantNote}`;
+  };
+  const withinBudget = plan => {
+    const value = budgetValue(plan);
+    return typeof value === "number" ? capex(plan) <= value + 1e-9 : value.ok;
+  };
   const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
   const lockedMsg = () => (S && S.opts.locked ? S.opts.locked() : "");
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
@@ -2426,7 +2442,8 @@
     const why = siteRule(type, T);
     if (why) return { ok: false, why };
     const cost = buildCost(type, i);
-    if (cost > budgetLeft() + 1e-9) return { ok: false, why: `예산 부족(${fmt(cost)}억)`, cost };
+    const plan = { ...S.st, builds: [...S.st.builds, { t: type, i }] };
+    if (!withinBudget(plan)) return { ok: false, why: `예산 부족(${fmt(cost)}억)`, cost };
     return { ok: true, cost, clear: T.t === "forest" };
   }
   function changed(msg) {
@@ -2553,7 +2570,7 @@
   function confirmLine() {
     const P = S.pending;
     if (!P) return;
-    if (P.cost > budgetLeft() + 1e-9) { toast(`예산 부족(${fmt(P.cost, 1)}억)`); return; }
+    if (!withinBudget({ ...S.st, lines: [...S.st.lines, { p: P.p }] })) { toast(`예산 부족(${fmt(P.cost, 1)}억)`); return; }
     const item = { p: P.p };
     S.st.lines.push(item);
     S.undo.push({ kind: "l", item, st: S.st, turn: undoTurn() });
@@ -3146,6 +3163,8 @@
     };
     const left = budgetLeft();
     set("budget", `${fmt(left, Math.abs(left % 1) > 1e-9 ? 1 : 0)}억`, left < 6 ? "danger" : "");
+    const moneyValue = S.root.querySelector('[data-cap="budget"] [data-v]');
+    if (moneyValue && LG) moneyValue.title = budgetDescription() || moneyValue.textContent;
     const R = S.run, res = S.result;
     if (LG) {
       const power = S.root.querySelector('[data-cap="power"]');
@@ -3392,7 +3411,7 @@
     const el = $("#bd-confirm");
     if (!el) return;
     if (S.pending) {
-      const P = S.pending, ok = P.cost <= budgetLeft() + 1e-9;
+      const P = S.pending, ok = withinBudget({ ...S.st, lines: [...S.st.lines, { p: P.p }] });
       el.innerHTML = `<span class="bd-cf-t">${ico("line")}<b>${P.p.length - 1}칸</b><span class="num">${fmt(P.cost, 1)}억</span>${ok ? "" : '<span class="bd-cf-no">예산 부족</span>'}</span>
         <button type="button" class="bd-cf-ok" id="bd-cf-ok"${ok ? "" : " disabled"}>${ico("check")}<span>연결</span></button>
         <button type="button" class="bd-cf-no-btn" id="bd-cf-x">${ico("x")}<span>취소</span></button>`;
@@ -3430,7 +3449,8 @@
     const counts = {};
     S.st.builds.forEach(b => { counts[b.t] = (counts[b.t] || 0) + 1; });
     const parts = Object.keys(counts).map(k => `${BLD[k].name} ${counts[k]}`);
-    const lbl = `${PK.name} 지도. ${parts.length ? parts.join(", ") : "건물 없음"}, 송전선 ${S.st.lines.length}개. 전기가 닿는 수요지 ${live}/${TOWNS.length}. 예산 잔액 ${fmt(budgetLeft(), 1)}억.` +
+    const moneyDescription = LG && budgetDescription() || `예산 잔액 ${fmt(budgetLeft(), 1)}억`;
+    const lbl = `${PK.name} 지도. ${parts.length ? parts.join(", ") : "건물 없음"}, 송전선 ${S.st.lines.length}개. 전기가 닿는 수요지 ${live}/${TOWNS.length}. ${moneyDescription}.` +
       (S.result ? ` 최근 운영: 정전 ${S.result.outTotal}시간, CO₂ ${fmt(S.result.co2)} t.` : "");
     S.canvas.setAttribute("aria-label", lbl);
   }
@@ -3907,7 +3927,7 @@
     renderTools(); showConfirm(); S.dirtyLayout = true; request();
   }
 
-  // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget() 예산 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
+  // opts(모두 선택): packs 고를 지도 · load()/save(doc) 저장 · budget(plan) 숫자 예산 또는 fundingOf 판정 · locked() 잠금 사유 문자열 · onChange(st) · salvage(이름표) 철거 회수율 · research() 리그 연구 상태
   //   league 리그 모드(외부 연결점) · solo 혼자 하기(긴 시험 유지) · season() 정해진 계절 · leagueRound() HUD에 표시할 현재 턴({year, month, season}) · onMount(root) 화면이 생긴 뒤 · view saveView()의 복원값
   //   leagueMods(st) 사건을 뺀 이번 달 운영 보정값(trialMods 계약) · leagueGrid(st) 계획 기준 접속 상태(gridStatus, entries 포함 시 설비별 대기 계산)
   //   leagueTrialGoals(R) 리그 성적표의 이번 달 목표 줄·사건 안내({rows, notes}). 리그 모드에서는 독립 시안 미션 줄을 대신한다.

@@ -113,13 +113,15 @@
   function tieShare(S, R, id) { return S.ties.filter(T => T.st === "built" && (T.a === id || T.b === id)).reduce((a, T) => a + tieCost(R, T) / 2, 0); }
   function budget(S, id) {
     const R = regionOf(S.region);
-    // 경제 모드(달 턴): 쓸 수 있는 돈 = 이번 달 시작 현금 + 지방채 한도 + 이미 확정된 투자(계획 안에 들어 있는 몫) − 이번 달 새 연계선 몫 + 아직 안 받은 이번 달 사건 지원금
+    // 일반 예산만 반환한다(기존 자산 몫 포함). 재난 교부세는 grantOf로 별도 유도한다.
+    // budget − spendOf만으로 승인 여부를 판단하지 않는다. 용도 제한·초과 예외는 fundingOf가 판정한다.
+    // 경제 모드: 시작 현금 + 지방채 한도 + 확정 투자 − 새 연계선 몫 + 일반 사건 지원금
     if (S.econ && S.econ.cities[id]) {
       const T = S.teams?.[id] || {}, unpaid = ["lobby", "plan", "run"].includes(S.phase) ? bonusOf(S, R, id, S.round) : 0;
       const city = S.econ.cities[id], grant = ["lobby", "plan", "run"].includes(S.phase) ? grantAmount(S, R, id, S.round) : 0;
-      // 기존 초과 부채를 교부세로 메우지 않는다. 예외의 투자 여력만 별도로 연다.
-      const headroom = grant > 0 && city.cash < -city.debtCap ? 0 : city.cash + city.debtCap + unpaid - grant;
-      return r2(headroom + (T.committed || 0) + (T.tieAt || 0) - tieShare(S, R, id) + grant);
+      // 교부세 달에도 초과 부채를 그대로 보존한다. 전용 건설 예외는 fundingOf가 판정한다.
+      const headroom = city.cash + city.debtCap + unpaid - grant;
+      return r2(headroom + (T.committed || 0) + (T.tieAt || 0) - tieShare(S, R, id));
     }
     return r2(baseBudget(R, id) * (1 + GROW * Math.max(0, S.round - 1)) - tieShare(S, R, id) + bonusOf(S, R, id) + (S.teams?.[id]?.royaltyNet || 0));
   }
@@ -142,8 +144,8 @@
   }
   // 사건 대응: T.resp["라운드:사건"] = 고른 대응 id
   const respOpt = (R, S, id, ev) => { const T = S.teams && S.teams[id], o = T && T.resp && T.resp[ev.round + ":" + ev.id], E = eventDef(R, ev.id); return o && E && Array.isArray(E.opts) ? E.opts.find(x => x.id === o) || null : null; };
-  function respCost(S, R, id, round) {
-    return r2((S.events || []).filter(ev => round == null || ev.round === round).reduce((a, ev) => { const E = eventDef(R, ev.id), o = E && eventValid(S, R, E) && hits(R, E, id, S) ? respOpt(R, S, id, ev) : null; return a + (o ? o.cost || 0 : 0); }, 0));
+  function respCost(S, R, id, round, grantOnly = false) {
+    return r2((S.events || []).filter(ev => round == null || ev.round === round).reduce((a, ev) => { const E = eventDef(R, ev.id), o = E && (!grantOnly || E.grant) && eventValid(S, R, E) && hits(R, E, id, S) ? respOpt(R, S, id, ev) : null; return a + (o ? o.cost || 0 : 0); }, 0));
   }
   // 사건 지원금(budgetAdd) — 조건부 유치·보류를 고르면 grant 배수만큼
   function bonusOf(S, R, id, round) {
@@ -162,18 +164,43 @@
       return sum + (E?.grant && eventValid(S, R, E) && scopeHits(R, E, id) ? KCP.ECON_DATA.params[E.grant.param].v : 0);
     }, 0));
   }
-  // 월초 자산과 비교한 새 설비·선로의 총비용 + 이번 달 대응비. 철거 회수·연계선·연구비는 제외.
+  // 월초 자산과 비교한 새 설비·선로의 총비용 + 이번 달 교부 대상 재난 대응비. 철거 회수·연계선·연구비는 제외.
   // 계획을 바꾸거나 요청을 나눠도 같은 자산을 두 번 지원하지 않는다. 상태/전송 필드를 만들지 않는다.
   function grantOf(S, R, id, bg = KCP.buildGame, plan = S.teams[id]?.plan || {}) {
     const awarded = ["lobby", "plan", "run"].includes(S.phase) ? grantAmount(S, R, id) : 0;
     if (!awarded) return { awarded: 0, eligible: 0, used: 0, left: 0 };
     const base = new Set((S.teams[id]?.base || []).map(x => x.k));
     const fresh = bg ? itemCosts(bg, R, id, plan).filter(x => !base.has(x.k)).reduce((sum, x) => sum + x.c, 0) : 0;
-    const eligible = r2(fresh + respCost(S, R, id, S.round)), used = Math.min(awarded, eligible);
+    const eligible = r2(fresh + respCost(S, R, id, S.round, true)), used = Math.min(awarded, eligible);
     return { awarded, eligible, used, left: r2(awarded - used) };
   }
-  // 미사용 교부세는 일반 지출(연계선·연구 등)의 가용 현금으로 셀 수 없다.
-  const fundedSpendOf = (bg, S, R, id, plan) => r2(spendOf(bg, S, R, id, plan) + grantOf(S, R, id, bg, plan).left);
+  // 승인 경로와 AI가 공유하는 자금 판정. plan은 문법·해금 검사를 마친 후보다.
+  // extra는 새 연계선 등 일반 지출. kind=respond는 유료 대응을 적용한 임시 상태에서 호출한다.
+  // 기존 공개 budget/fixed/base/plan/resp/events만으로 재현하며 반환값을 저장·전송하지 않는다.
+  function fundingOf(bg, S, R, id, plan = S.teams[id]?.plan || {}, { kind = "plan", extra = 0 } = {}) {
+    const calculate = () => {
+      const T = S.teams[id], city = S.econ?.cities[id], over = !!city && city.cash < -city.debtCap;
+      const general = T.budget ?? budget(S, id), grant = grantOf(S, R, id, bg, plan);
+      const spent = bg ? spendOf(bg, S, R, id, plan) : T.fixed ?? fixedOf(S, R, id);
+      const generalSpend = r2(spent + extra - grant.used), left = r2(general - generalSpend);
+      const covered = grant.awarded > 0 && grant.eligible <= grant.awarded + 1e-6;
+      let reason = null;
+      if (kind === "tie" && over) reason = "debt";
+      else if (kind === "respond" && over) {
+        // 교부 대상이 아닌 사건의 유료 대응에는 초과 부채 예외를 적용하지 않는다.
+        if (!covered || respCost(S, R, id, S.round) > respCost(S, R, id, S.round, true) + 1e-6) reason = "budget";
+      }
+      else if (kind === "plan" && over) {
+        const existing = keysOf(T.plan), adds = [...keysOf(plan)].some(k => !existing.has(k));
+        if (adds && (!bg || !covered)) reason = "debt";
+        // 한도 초과여도 기존 자산 유지·철거는 허용한다. 연구 예약에는 이 예외가 없다.
+        else if (bg && (capexOf(bg, R, id, plan) > Math.max(capexOf(bg, R, id, T.plan || {}), covered ? capexOf(bg, R, id, plan) : 0) + 1e-6 ||
+          researchReserve(S, id, bg, plan) > 0 && left < -1e-6)) reason = "budget";
+      } else if (left < -1e-6) reason = "budget";
+      return { ok: !reason, reason, general, grant, generalSpend, left, over };
+    };
+    return bg ? preserveMap(bg, calculate) : calculate();
+  }
   // 계획 밖에서 이미 나간 돈: 지난 철거 손실 + 사건 대응비(모든 라운드)
   const fixedOf = (S, R, id) => r2(((S.teams[id] && S.teams[id].sunk) || 0) + ((S.teams[id] && S.teams[id].rfix) || 0) + respCost(S, R, id));
 
@@ -339,7 +366,7 @@
         partners.forEach(who => { if (!states[who].eureka.includes(key)) states[who].eureka.push(key); log(S, `유레카! ${teamDef(R, who).name}: ${c.name} 연구가 빨라졌습니다`, now); });
       }
       progress = Math.min(need, progress + (S.econ && KCP.TECH_DATA ? tp("roundSteps") : bg.RS.roundSteps) * eff);
-      const afford = partners.every(who => budget(S, who) >= fundedSpendOf(bg, S, R, who, S.teams[who].plan));
+      const afford = partners.every(who => fundingOf(bg, S, R, who, S.teams[who].plan, { kind: "research" }).ok);
       partners.forEach(who => {
         const wrs = states[who]; wrs.prog[key] = progress; finished.add(who + ":" + key);
         if (progress >= need && afford) {
@@ -352,7 +379,7 @@
     });
     activeOf(S).forEach(id => saveResearch(S.teams[id], states[id]));
   }
-  function spendOf(bg, S, R, id, plan) { return r2(capexOf(bg, R, id, plan) + fixedOf(S, R, id) + lossOf(S.teams[id].base, plan) + researchReserve(S, id, bg, plan)); }
+  function spendOf(bg, S, R, id, plan) { return r2(capexOf(bg, R, id, plan) + (S.teams[id].fixed ?? fixedOf(S, R, id)) + lossOf(S.teams[id].base, plan) + researchReserve(S, id, bg, plan)); }
 
   // 실증은 대기열에서 빠져도 진행한다. 연구는 실증 없는 턴의 첫 유효 카드만 진행한다.
   function researchTurn(S, id, bg, plan) {
@@ -499,7 +526,7 @@
     Object.keys(S.teams).forEach(id => {
       const T = S.teams[id];
       // D-75: 판정은 진행자의 전체 상태에만 남기고 팀 기기에 공개하지 않는다.
-      const left = KCP.buildGame ? preserveMap(KCP.buildGame, () => r2(budget(S, id) - spendOf(KCP.buildGame, S, regionOf(S.region), id, T.plan || {}))) : null;
+      const left = KCP.buildGame ? fundingOf(KCP.buildGame, S, regionOf(S.region), id).left : null;
       teams[id] = { ...(S.econ ? { trialGrid: S.grid && S.grid[id] ? {
         peakMW: S.grid[id].peakMW, round: S.grid[id].round,
         entries: S.grid[id].entries.map(({ key, allocatedMW }) => ({ key, allocatedMW }))
@@ -592,8 +619,7 @@
       // 모든 실증비를 먼저 예약한다. 승인 실패 때 원 상태로 돌린다.
       const oldResearch = T.research, oldRs = T.rs, oldPlan = T.plan;
       T.plan = { ...(T.plan || {}), rq: queue.slice() }; rs.queue = queue.slice(); saveResearch(T, rs);
-      const free = budget(S, m.team) - fundedSpendOf(bg, S, R, m.team, T.plan);
-      if (free < 0) {
+      if (!fundingOf(bg, S, R, m.team, T.plan, { kind: "research" }).ok) {
         T.plan = oldPlan; if (oldResearch) T.research = oldResearch; else delete T.research;
         if (oldRs) T.rs = oldRs; else delete T.rs;
         return err("budget:" + m.team);
@@ -629,22 +655,10 @@
           return next;
         }) };
       }
-      const city = S.econ && S.econ.cities[m.team];
-      if (city && city.cash < -city.debtCap) {
-        const existing = keysOf(T.plan);
-        const grant = grantOf(S, R, m.team, bg, plan);
-        if ([...keysOf(plan)].some(k => !existing.has(k)) && (!bg || !grant.awarded || grant.eligible > grant.awarded + 1e-6)) return err("debt:" + m.team);
-      }
-      if (bg) {
-        const over = city && city.cash < -city.debtCap;
-        // 초과 상태의 기존 유지·철거는 보존. 새 자산은 월초 이후 누적 적격 비용으로 위에서 제한했다.
-        const grant = grantOf(S, R, m.team, bg, plan);
-        const room = over ? Math.max(capexOf(bg, R, m.team, T.plan || {}), grant.awarded && grant.eligible <= grant.awarded + 1e-6 ? capexOf(bg, R, m.team, plan) : 0) + lossOf(T.base, plan) : budget(S, m.team) - fixedOf(S, R, m.team) - researchReserve(S, m.team, bg, plan) - grant.left;
-        // 먼저 문법만 정리한다. 예산에 맞춰 선·설비를 몰래 삭제해 승인하지 않는다.
-        plan = cleanPlan(bg, R, m.team, plan, Number.MAX_VALUE);
-        if (capexOf(bg, R, m.team, plan) + lossOf(T.base, plan) > room + 1e-6) return err("budget:" + m.team);
-      }
-      if (bg && researchReserve(S, m.team, bg, plan) > 0 && fundedSpendOf(bg, S, R, m.team, plan) > budget(S, m.team)) return err("budget:" + m.team);
+      // 문법만 정리하고 공동 판정으로 승인한다. 예산에 맞춰 자산을 몰래 삭제하지 않는다.
+      if (bg) plan = cleanPlan(bg, R, m.team, plan, Number.MAX_VALUE);
+      const funding = fundingOf(bg, S, R, m.team, plan);
+      if (!funding.ok) return err(funding.reason + ":" + m.team);
       if (S.econ && !S.grid && bg) refreshGrid(S, bg); // 새 계획을 넣기 전에 옛 설비만 이행
       T.plan = plan; T.rev = m.rev; S.rev++;
       if (KCP.TECH_DATA) {
@@ -696,12 +710,9 @@
       T.resp = T.resp || {};
       if (m.opt === "none") delete T.resp[key]; else T.resp[key] = m.opt;
       if (prev === T.resp[key]) return { ok: true, quiet: true };
-      const used = bg && T.plan ? spendOf(bg, S, R, m.team, T.plan) : fixedOf(S, R, m.team);
-      const city = S.econ && S.econ.cities[m.team], over = city && city.cash < -city.debtCap;
       const cost = m.opt === "none" ? 0 : E.opts.find(o => o.id === m.opt).cost || 0;
       // 무료 대응은 유지. 초과 도시의 유료 대응도 건설과 같은 교부세 한도를 함께 쓴다.
-      const grant = grantOf(S, R, m.team, bg);
-      if (cost > 0 && (over ? !grant.awarded || grant.eligible > grant.awarded + 1e-6 : used + grant.left > budget(S, m.team) + 1e-6)) { if (prev) T.resp[key] = prev; else delete T.resp[key]; return err("budget:" + m.team); }
+      if (cost > 0 && !fundingOf(bg, S, R, m.team, T.plan || {}, { kind: "respond" }).ok) { if (prev) T.resp[key] = prev; else delete T.resp[key]; return err("budget:" + m.team); }
       log(S, `${teamDef(R, m.team).name}: ${E.name} — ${m.opt === "none" ? "대응 안 함" : E.opts.find(o => o.id === m.opt).name}`, now);
       S.rev++; return { ok: true };
     }
@@ -724,10 +735,8 @@
         if (!X || X.st !== "prop" || X.by === m.team) return err("noprop");
         const half = tieCost(R, X) / 2;
         for (const id of [X.a, X.b]) {
-          const city = S.econ && S.econ.cities[id];
-          if (city && city.cash < -city.debtCap) return err("debt:" + id);
-          const used = bg && S.teams[id].plan ? spendOf(bg, S, R, id, S.teams[id].plan) : fixedOf(S, R, id);
-          if (budget(S, id) - half < used + grantOf(S, R, id, bg).left - 1e-9) return err("budget:" + id);
+          const funding = fundingOf(bg, S, R, id, S.teams[id].plan || {}, { kind: "tie", extra: half });
+          if (!funding.ok) return err(funding.reason + ":" + id);
         }
         X.st = "built"; X.round = S.round;
         if (S.econ && bg) refreshGrid(S, bg);
@@ -1472,6 +1481,6 @@
     gridStatus, refreshGrid, econView, computerPlans, eventDef, modsFor, trialMods, hits, drawEvents, roundsOf, monthRounds, SEASON_OF_MONTH,
     PHASES, PRICE, TIE_LOSS, regionOf, teamDef, tieDef, tieId, validTeams, activeOf, goalsOf, newState, publicView, reduce, host, run, runRound, settle, simTeam,
     budget, tieCost, tieShare, cleanPlan, capexOf, gridFill,
-    SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, grantAmount, grantOf, fixedOf, spendOf, techOf, econInput
+    SALV, MUL, itemKey, lossOf, itemCosts, respCost, bonusOf, grantAmount, grantOf, fundingOf, fixedOf, spendOf, techOf, econInput
   };
 })();

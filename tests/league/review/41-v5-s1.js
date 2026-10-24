@@ -484,15 +484,37 @@ test('사건 자료 정규화: 다른 details·다른 클래스·블록 밖 바�
   assert.equal(normalized.html, before + '<details class="lg-event-source" data-event-source="event-a">[사건 자료]</details>' + after);
   assert.deepEqual(normalized.blocks.map(b => b.id), ['event-a']);
 });
-test('1 §1·5 대응 사건 달 서랍 HTML = 9c14549', () => {
+// Q8 갱신 2: 크기 줄 뒤 같은 줄에 승인된 small 요소만 붙는다(새 개행 없음).
+// 그 요소만 제거하고 나머지 HTML의 공백·개행까지 바이트 계약을 유지한다.
+const grantNotice = '<small class="lg-evnote">특별교부세 10억: 이번 달 새 설비·선로·재난 대응 비용에만 쓰며, 남은 돈은 사라져요.</small>';
+test('1 §1·5 교부세 달: 안내 한 줄 외 서랍 HTML = 9c14549', () => {
   for (const a of [h, old]) fixture(a, { event: 'response' });
   const current = normalizeEventSources(eventDrawerHTML(h)), baseline = normalizeEventSources(eventDrawerHTML(old));
   assert.ok(baseline.blocks.length >= 1, '기준 서랍에 사건 자료 블록 한 개 이상');
   assert.equal(current.blocks.length, baseline.blocks.length, '사건 자료 블록 개수 동일');
   assert.ok(current.blocks.every(b => b.id), '현재 사건 자료 블록의 사건 id 누락 없음');
   assert.deepEqual(current.blocks.map(b => b.id), baseline.blocks.map(b => b.id), '사건 id 순서 동일');
+  assert.equal(h.L.snap.events[0].id, 'heatwave_peak', '독립 fixture: 10억 폭염 교부세');
+  assert.equal(current.html.split(grantNotice).length - 1, 1, '확정 교부세 안내 정확히 한 줄');
+  assert.ok(!baseline.html.includes(grantNotice), '변경 전에는 안내 없음');
+  assert.deepEqual(Buffer.from(current.html.replace(grantNotice, ''), 'utf8'), Buffer.from(baseline.html, 'utf8'),
+    '사건 자료와 승인된 small 요소만 제외하고 개행·공백 포함 전체 UTF-8 바이트 동일');
+});
+test('1 §1·5 교부세 0 달: 서랍 HTML 바이트 동일성 유지', () => {
+  // Q8 예외는 교부세 달에 한정된다. 0 달까지 안내 정규화로 숨기면 회귀를 놓친다.
+  for (const a of [h, old]) {
+    fixture(a, { event: 'response' });
+    a.L.snap.events = [{ id: 'evening_peak_tropical_night', round: a.L.snap.round }];
+  }
+  const current = normalizeEventSources(eventDrawerHTML(h)), baseline = normalizeEventSources(eventDrawerHTML(old));
+  assert.equal(h.C.grantAmount(h.L.snap, h.R, h.L.team), 0, '열대야는 교부 대상 아님');
+  assert.equal(current.blocks.length, 1, '사건 없는 서랍과 비교하지 않음');
+  assert.ok(!current.html.includes('특별교부세'), '교부세 0 달 안내 없음');
+  const bytes = Buffer.from(current.html, 'utf8'), previous = Buffer.from(baseline.html, 'utf8');
+  let at = 0;
+  while (at < bytes.length && at < previous.length && bytes[at] === previous[at]) at++;
   assert.deepEqual(Buffer.from(current.html, 'utf8'), Buffer.from(baseline.html, 'utf8'),
-    '사건 자료 블록만 정규화한 전체 서랍 UTF-8 바이트 동일');
+    `교부세 0 달은 사건 자료 외 어떤 바이트도 정규화하지 않음; 첫 차이 ${at}바이트, 현재 ${JSON.stringify(bytes.subarray(at, at + 60).toString())}, 과거 ${JSON.stringify(previous.subarray(at, at + 60).toString())}`);
 });
 test('사건 자료 현재 서랍: summary·출처·관측 시점·발표 표시 누락 없음', () => {
   fixture(h, { event: 'response' });
