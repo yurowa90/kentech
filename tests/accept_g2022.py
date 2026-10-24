@@ -1466,5 +1466,11 @@ def t_F4_mobile_advice_without_ellipsis_and_full_caption(c: Ctx):
         c.check(f"F4 390×844 {key} 조언")
 
 
+def t_T1_tabs_a11y(c: Ctx):
+    # tabs/impl.md 명세 1·2: 문제 탭 → #work, 기존 G.mode 저장 계약.
+    from tabs_helpers import tabs_a11y
+    tabs_a11y(c, "2022", "#work", "mode", "data-mode")
+
+
 if __name__ == "__main__":
     main(globals())
