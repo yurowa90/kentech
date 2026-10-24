@@ -17,6 +17,8 @@
 .lg-fx-outage { padding-left: 4px; color: var(--ui-danger); font-size: 12px; font-style: normal; }
 .lg-fx-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .lg-fx-chart { min-width: 0; margin: 0; padding: 6px; border: 1px solid var(--ui-border); border-radius: 14px; }
+/* 다섯째(계통) 그래프가 혼자 남는 줄은 가운데에 같은 폭으로 둔다. 390px 넘김 칸은 아래 규칙이 덮는다. */
+.lg-fx-charts > .lg-fx-chart:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 4px); }
 .lg-fx-end .lg-fx-charts .lg-fx-chart h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin: 0; font-size: 14px; }
 .lg-fx-chart h4 small { color: var(--ui-muted); font-size: 11px; font-weight: 400; }
 .lg-fx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -38,13 +40,14 @@
 /* 기존 순위 meter의 최종 너비·값은 유지하고 보이는 폭만 0에서 펼친다. */
 #lg-rank .lg-scoreparts meter { clip-path: inset(0); transition: clip-path .6s; }
 #lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: inset(0 100% 0 0); }
-/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 네 장은 옆으로 밀어 넘긴다.
+/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 다섯 장은 옆으로 밀어 넘긴다.
    세로로 쌓으면 그래프 블록만 서랍 약 4화면이라 아래 단추(2022 기출·다시 하기)가 너무 멀어진다(2026-10-20 측정).
    페이지 가로 스크롤은 없고 이 칸 안에서만 넘긴다. 다음 그래프의 가장자리를 조금 보여 넘길 수 있음을 알린다. */
 @media (max-width: 480px) {
   .lg-fx-end .lg-fx-charts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 88%; overflow-x: auto;
     overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding-bottom: 6px; }
   .lg-fx-end .lg-fx-charts > .lg-fx-chart { scroll-snap-align: start; }
+  .lg-fx-end .lg-fx-charts > .lg-fx-chart:last-child:nth-child(odd) { grid-column: auto; width: auto; justify-self: stretch; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lg-fx-end, .lg-fx-end .lg-fx-line, .lg-fx-end .lg-fx-reveal, .lg-fx-end circle, #lg-rank .lg-scoreparts meter { transition: none; }
