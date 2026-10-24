@@ -285,7 +285,7 @@ def result(checks, page, tested, label, grid=True):
     grid_per_day = max(0, isolated - r["uns"] - r["imp"] + r["sub"]) / current["days"]
     buttons = page.locator(".lg-reason-starts").first.locator("[data-reason-start]")
     starts = buttons.all_text_contents()
-    m = re.search(rf"이번 달 계통이 메운 전기 하루 평균 ({PER_DAY})이라서", starts[0] if starts else "")
+    m = re.search(rf"이번 달 계통이 메운 전기가 평균 ({PER_DAY})이어서", starts[0] if starts else "")  # 총괄 10-23 아르곤 문구(UX 갈래)
     checks.ok(len(starts) == 3 and bool(m) and per_day_near(m[1], grid_per_day) and
               starts[1] == "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 " and
               starts[2].startswith("남은 돈 ") and not any("정전" in x for x in starts),
