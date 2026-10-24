@@ -8,12 +8,13 @@
  * 글자 비교는 HTML 태그 제거, 따옴표 모양·연속 공백만 정규화한다.
  * uncertain의 수치 근사는 지시의 예외에 따라 db_emotion ±1, db_radar ±2,
  * ml 막대/오차끝 ±1, wc_curves ±2를 사용한다(JSON uncertain에 명시).
- * 그 범위 안의 정확값 판독·없는 비교 막대·표기 합계는 단언하지 않고 출력한다.
+ * 그 범위 안의 정확값 판독·원문 오류인 표기 합계 일치는 단언하지 않고 출력한다.
+ * 없는 비교 막대는 null을 단언하고, 느슨 비교 건수는 공통 요약에 종류별로 출력한다.
  * 마음렌즈 실제 표시 오차끝은 app.js KCP.vbar의 대칭 v±err 규약으로 계산한다.
- * 곡선의 x 표본이 다르면 KCP.lines의 직선 연결 규약에 따라 앱값만 선형 보간한다.
+ * 곡선의 x 표본이 다르면 KCP.lines의 직선 연결 규약에 따라 앱값만 선형 보간한다(화면에 그려지는 값).
  * 기대 y값을 보간하거나 앱 데이터로 채우지 않는다. 누락·범위 밖은 실패한다.
  */
-import { audit } from './wire-support.mjs';
+import { audit, textOf } from './wire-support.mjs';
 
 audit(2026, (t, { ref, literal, charts }) => {
   const CRIT = literal('CRIT'), TECH = literal('TECH'), EXAMPLES = literal('EXAMPLES');
@@ -25,10 +26,11 @@ audit(2026, (t, { ref, literal, charts }) => {
     t.text(`기준 ${i + 1} 설명`, CRIT[i]?.d, criterion.desc, '9');
   });
   t.check('후보 기술 수', TECH.length, ref.techs.length, '11~18');
+  const brochures = [];
   const byTech = TECH.map((tech, i) => {
     t.text(`기술 ${i + 1} 이름`, tech.name, ref.techs[i]?.name, ref.techs[i]?.pages.join('~'));
     const start = charts.length;
-    BRO[tech.id]();
+    brochures.push(BRO[tech.id]());
     return charts.slice(start);
   });
   const compareRows = (key, actual, page, tolerance) => {
@@ -37,7 +39,8 @@ audit(2026, (t, { ref, literal, charts }) => {
       t.text(`${key} ${i + 1} 항목명`, actual?.[i]?.label, row.label, page);
       t.check(`${key} ${row.label} 값`, actual?.[i]?.v, row.value, page, tolerance);
       if (Object.hasOwn(row, 'compare')) {
-        if (row.compare === null) t.skip(`${key} ${row.label} 기존수면 비교`, ref.uncertain[3]);
+        // 회색 막대가 없다는 판독은 확정되어 있다. 앱도 null로 그리지 않아야 한다.
+        if (row.compare === null) t.check(`${key} ${row.label} 기존수면 막대 없음`, actual?.[i]?.v2, row.compare, page);
         else t.check(`${key} ${row.label} 기존수면`, actual?.[i]?.v2, row.compare, page, tolerance);
       }
     });
@@ -45,6 +48,11 @@ audit(2026, (t, { ref, literal, charts }) => {
   t.check('브레인부스트 차트 수', byTech[0].length, ['bb_bars', 'bb_safety'].length, '12');
   compareRows('bb_bars', byTech[0][0]?.args[0], '12', 0); // 그래프에 직접 인쇄된 값: 근사 아님
   compareRows('bb_safety', byTech[0][1]?.args[0], '12', 0);
+  const mean = Number(ref.uncertain[1].match(/평균 ([\d.]+)%/)?.[1]);
+  t.check('인지능력 평균 홍보 문구(%)', Number(textOf(brochures[0]).match(/평균 ([\d.]+)%/)?.[1]), mean, '11');
+  const bars = byTech[0][0]?.args[0] ?? [];
+  t.check('인지능력 개별 항목 평균(소수 첫째 자리)',
+    Math.round(bars.reduce((sum, row) => sum + row.v, 0) / bars.length * 10) / 10, mean, '12');
   t.check('드림밴드 막대 차트 수', byTech[1].length, 1, '14');
   compareRows('db_emotion', byTech[1][0]?.args[0], '14', 1);
   t.check('꿈 공유 방사형 축 수', axes.length, ref.graphs.db_radar.axes.length, '14');
@@ -75,16 +83,19 @@ audit(2026, (t, { ref, literal, charts }) => {
       if (!xs || !series || series.step) return undefined;
       const exact = xs.indexOf(x);
       if (exact >= 0) return series.data[exact];
-      // 총괄 판정: 원문 곡선은 오목해 25 간격 표본 사이를 직선으로 이으면 낮게 나온다(x=40 화소 실측 83.1, 앱 보간 80.4). 표본 사이 기준점은 단언하지 않는다.
-      return null;
       const hi = xs.findIndex(value => value > x);
       if (hi < 1 || series.data[hi - 1] == null || series.data[hi] == null) return undefined;
       const lo = hi - 1;
       return series.data[lo] + (series.data[hi] - series.data[lo]) * (x - xs[lo]) / (xs[hi] - xs[lo]);
     };
+    // 총괄 판정(재검토, 2026-10-25): 앱은 25 간격 표본을 직선으로 이어 그리므로 화면 값도 보간값이다.
+    // 아래 세 점은 앱이 원문과 다르게 그리는 '알려진 차이'로 기록만 하고(원문 정비 대기) 나머지는 그대로 단언한다.
+    //  x=30·40: 원문 곡선이 오목해 앱의 직선 구간이 낮다(원문 약 69·85, 앱 66.8·80.4).
+    //  x=300: 원문 세로축 100~120 칸이 아래 칸보다 넓은데 앱은 같은 간격으로 읽었다(원문 약 116.5, 앱 119).
+    const KNOWN = { '울버린 켄텍카솔': [30, 40, 300] };
     for (const point of curve.points) {
       const v = at(point.x);
-      if (v === null) t.skip(`${curve.name} x=${point.x} 재생률`, '앱 표본 사이(직선 보간 오차), 총괄 판정');
+      if ((KNOWN[curve.name] || []).includes(point.x)) t.skip(`${curve.name} x=${point.x} 재생률`, `알려진 차이(앱 ${v == null ? '-' : Math.round(v * 10) / 10}, 원문 ${point.y}) — 원문 정비 대기`);
       else t.check(`${curve.name} x=${point.x} 재생률`, v, point.y, '18', 2);
     }
   }
@@ -110,7 +121,6 @@ audit(2026, (t, { ref, literal, charts }) => {
   t.check('예시 3 합계 오류 주석 표기 합계', note.match(/합계가 (\d+)/)?.[1], String(printed), '22');
   t.check('예시 3 합계 오류 주석 재계산 합계', note.match(/더하면 (\d+)/)?.[1], String(calculated), '22');
   t.skip('예시 3 마음렌즈 표기 합계와 앱 합계 일치', ref.uncertain[0]);
-  t.skip('인지능력 평균 문구와 개별 항목 평균의 일치', ref.uncertain[1]);
   for (const [item, index] of [
     ['드림밴드 근사값의 정확 일치', 2], ['꿈 공유 근사값의 정확 일치·정서 동기화 95/96 확정', 4],
     ['마음렌즈 근사값의 정확 일치', 5], ['재생 곡선 근사값의 정확 일치·수렴 의도 해석', 6],

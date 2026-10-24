@@ -7,8 +7,9 @@
  * 이 방법은 선언 형식에 의존하며 실제 DOM 조작·브라우저·배치는 검증하지 않는다.
  * 글자 비교: HTML 태그 제거, 따옴표 모양·연속 공백만 정규화. 번호/시간은
  * fixture common의 별도 표기이므로 본문에서 분리한다. 다른 문장 정규화는 없다.
- * uncertain의 쪽별 표기·판독·미공개 사항은 별도 건너뜀. 9쪽으로 확정된 수치는
- * 검사하되 7쪽 20%와의 일치 여부는 단언하지 않는다.
+ * uncertain의 이름 띄어쓰기는 해당 이름만 공백 무시 비교한다.
+ * 효과 21문장은 fixture가 글자 판독을 확신한다고 명시하므로 전체를 비교한다.
+ * 미공개 값과 쪽별 수치 충돌은 별도 건너뜀. 9쪽으로 확정된 수치는 검사한다.
  */
 import { audit, blocks, prepHTML, textOf } from './wire-support.mjs';
 
@@ -34,12 +35,15 @@ audit(2024, (t, { ref, game, literal, inVM }) => {
     t.check(`${name} 채굴가능량`, Object.values(TER).find(v => v.n === name)?.k, terrain.k, '9');
   }
   t.check('아이템 종류 수', ITEMS.length, ref.items.length, '9');
-  // 순서는 카드 전사 순서. 이름을 조회 키로 삼아 이름 오탈자가 다른 검사를 가리지 않게 한다.
+  // 카드 전사 순서로 비교해 이름 오탈자가 다른 검사를 가리지 않게 한다.
   const variableNames = new Set([11, 16, 17, 19, 20]);
   ref.items.forEach((item, i) => {
     const actual = ITEMS[i];
-    if (variableNames.has(i)) t.skip(`아이템 ${i + 1} 이름`, ref.uncertain[i === 11 ? 3 : 2]);
+    if (variableNames.has(i)) t.text(`아이템 ${i + 1} 이름`, actual?.n, item.name, '9', {
+      ignoreWhitespace: true, reason: ref.uncertain[i === 11 ? 3 : 2],
+    });
     else t.text(`아이템 ${i + 1} 이름`, actual?.n, item.name, '9');
+    t.text(`아이템 ${i + 1} 효과 전체 문장`, actual?.d, item.effect, '9');
     if (item.upkeep === null) t.skip(`${item.name} 유지비`, ref.uncertain[0]);
     else t.check(`${item.name} 유지비`, actual?.up, item.upkeep, '9');
     // 앱은 max 생략 시 1종 한 개를 허용한다(validItem·paintItems의 기본값).
@@ -88,9 +92,8 @@ audit(2024, (t, { ref, game, literal, inVM }) => {
     if (i === 4 && !questions[i]?.startsWith('탐험 계획을')) { t.skip('공통 5 머리 문장', 'AUDIT-2024 §3-2 알려진 차이, 원문 정비 대기'); t.text('공통 5 뒤 문장', questions[i], body.replace(/^.*진행하게 됩니다\. /, ''), '11'); return; }
     t.text(`공통 ${value.match(/^\S+/)[0]} 질문 본문`, questions[i], body, '11');
   });
-  t.skip('아이템 효과 전체 문장 판독 확정', ref.uncertain[1]);
   t.skip('엔지니어 여러 명의 10가지 한도 산입 방식', ref.uncertain[4]);
   t.skip('정착지 최대 칸 수', ref.uncertain[5]);
   t.skip('7쪽 20%와 9쪽 30%의 일치 여부', ref.uncertain[6]);
-  t.skip('공통 문항 번호 접두·4번 답변 시간', ref.uncertain[7]);
+  // 번호는 표의 구분 칸이고 4번 시간은 원문에 없으므로 본문 비교에서 분리한다.
 });

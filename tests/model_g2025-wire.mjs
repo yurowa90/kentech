@@ -7,8 +7,10 @@
  * 글자 비교는 HTML 태그 제거, 따옴표 모양·연속 공백(양끝 포함)만 정규화한다.
  * 기사 사진 설명의 UI 접두 '사진: '만 분리하고, 원문 뒤 괄호 보충만 허용한다
  * (사용자 지시 AUDIT-2025 §2). 그 밖의 철자·문장부호 정규화는 하지 않는다.
- * uncertain에 특정 문구가 오른 필드는 통째로 건너뛴다. 단순 따옴표 모양과
- * 연속 공백은 위 정규화 범위만 건너뛴다. 그래프는 지시의 근사값 예외에 따라
+ * uncertain의 띄어쓰기는 그 문단만 공백 무시 비교한다. 글자 판독은 기록된
+ * 낱말 후보만 허용하고, 문단 경계는 명시된 한 곳만 붙여 비교한다.
+ * 사진 설명은 모든 자료에서 원문 접두와 괄호 보충만 허용한다.
+ * 그래프는 지시의 근사값 예외에 따라
  * JSON uncertain의 ±2를 사용한다. 축 없는 자료 2 상대 곡선은 단언하지 않는다.
  */
 import { audit, blocks, textOf } from './wire-support.mjs';
@@ -24,19 +26,24 @@ audit(2025, (t, { ref, game, literal, charts }) => {
     ref.sheet.conditions.length + ref.sheet.principles.length + 1, '9');
   ref.sheet.conditions.forEach((value, i) => t.text(`문제지 조건 ${i + 1}`, items[i], value, '9'));
   ref.sheet.principles.forEach((value, i) => t.text(`문제지 원칙 ${i + 1}`, items[ref.sheet.conditions.length + i], value, '9'));
-  t.skip('문제지 주석·목록 기호', ref.uncertain[13]);
-  t.skip('전체 따옴표 모양의 정확한 판독', ref.uncertain[0]);
-  t.skip('자료 4 기사 1 문단 2 연속 공백 수', ref.uncertain[7]);
+  t.text('문제지 주석 전체', items.at(-1), ref.sheet.footnote, '9', {
+    ignoreWhitespace: true, reason: ref.uncertain[13],
+  });
 
   const P = literal('P'), IDS = literal('IDS'), PAPER = literal('PAPER');
   t.check('신문 수', Object.keys(PAPER).length, ref.papers.length, '10~13');
   // 키는 앱의 자료 2~5 순서, 기대 기사와 기호는 fixture에서만 가져온다.
-  const uncertainParagraphs = new Map([
+  const spacedParagraphs = new Map([
     ['2/1/0', [5]], ['2/1/1', [4]],
     ['3/0/0', [1, 2]], ['3/0/2', [3]], ['3/0/3', [3]],
     ['4/0/1', [6]], ['4/1/0', [8]], ['4/1/1', [8]],
   ]);
   const reason = indices => indices.map(i => ref.uncertain[i]).join(' / ');
+  const quoted = note => [...note.matchAll(/["']([^"']+)["']/g)].map(match => match[1]);
+  // '아늑'은 글자 설명이고, '아늑해진'/'아득해진'만 같은 자리의 낱말 후보다.
+  const words = quoted(ref.uncertain[1]);
+  const wordCandidates = words.filter(word => word.length === words[0].length);
+  const joinBoundary = quoted(ref.uncertain[4]);
   let articleCount = 0;
   ref.papers.forEach((paper, paperIndex) => {
     const id = IDS[paperIndex], page = String(paper.material + 8);
@@ -53,25 +60,37 @@ audit(2025, (t, { ref, game, literal, charts }) => {
       t.text(`${label} 제목`, blocks(actual, 'h4')[0], article.title, page);
       // 차트 근사 안내는 앱 보충문이다. 본문 <p>와 class=hint를 구분한다.
       const paragraphs = blocks(actual, 'p', '(?![^>]*\\bclass="hint")[^>]*');
-      if (paper.material === 2 && ai === 1) t.skip(`${label} 본문 문단 수`, ref.uncertain[4]);
-      else t.check(`${label} 본문 문단 수`, paragraphs.length, article.paragraphs.length, page);
+      // uncertain에 적힌 '만들어 왔다. / 그런데,' 경계 한 곳의 분리만 허용한다.
+      if (paper.material === 2 && ai === 1 && paragraphs.length === article.paragraphs.length + 1 &&
+          textOf(paragraphs[1]).endsWith(joinBoundary[0].replace(/^…/, '')) &&
+          textOf(paragraphs[2]).startsWith(joinBoundary[1])) {
+        paragraphs.splice(1, 2, `${paragraphs[1]} ${paragraphs[2]}`);
+      }
+      t.check(`${label} 본문 문단 수(불확실 경계 붙임 후)`, paragraphs.length, article.paragraphs.length, page);
       article.paragraphs.forEach((value, pi) => {
-        const uncertain = uncertainParagraphs.get(`${paper.material}/${ai}/${pi}`);
-        if (uncertain) t.skip(`${label} 문단 ${pi + 1}`, reason(uncertain));
-        else t.text(`${label} 문단 ${pi + 1}`, paragraphs[pi], value, page);
+        const key = `${paper.material}/${ai}/${pi}`;
+        const uncertain = spacedParagraphs.get(key);
+        t.text(`${label} 문단 ${pi + 1}`, paragraphs[pi], value, page, {
+          ignoreWhitespace: Boolean(uncertain),
+          variants: key === '3/0/0' ? [wordCandidates] : [],
+          reason: uncertain ? reason(uncertain) : ref.uncertain[0],
+        });
       });
-      if (paper.material === 2 && ai === 0) t.skip(`${label} 기자`, ref.uncertain[10]);
-      else t.text(`${label} 기자`, blocks(actual, 'div', '[^>]*class="by"[^>]*')[0], article.byline, page);
+      // uncertain은 전자우편 도메인의 마지막 마침표/쉼표 한 자리만 의심한다.
+      const domainEnd = article.byline.match(/\.[^.)]+\)$/)?.[0];
+      t.text(`${label} 기자`, blocks(actual, 'div', '[^>]*class="by"[^>]*')[0], article.byline, page, {
+        variants: paper.material === 2 && ai === 0 ? [[domainEnd, domainEnd.replace('.', ',')]] : [],
+        reason: ref.uncertain[10],
+      });
       const captions = blocks(actual, 'div', '[^>]*class="cap"[^>]*');
-      if (paper.material === 4) t.skip(`${label} 사진 설명`, ref.uncertain[9]);
-      else if (article.caption === null) t.check(`${label} 사진 설명 없음`, captions.length, 0, page);
+      if (article.caption === null) t.check(`${label} 사진 설명 없음`, captions.length, 0, page);
       else {
+        t.check(`${label} 사진 설명 수`, captions.length, 1, page);
         const caption = textOf(captions[0]).replace(/^사진: /, '');
-        const expected = textOf(article.caption);
-        // 접두 원문 완전 일치 + 부가 내용은 끝의 괄호 한 덩어리만 허용.
-        const suffix = caption.slice(expected.length);
-        const accepted = caption.startsWith(expected) && (!suffix || /^ \([^]*\)$/.test(suffix));
-        t.text(`${label} 사진 설명(괄호 보충 허용)`, accepted ? caption.slice(0, expected.length) : caption, expected, page);
+        t.text(`${label} 사진 설명(괄호 보충 허용)`, caption, article.caption, page, {
+          parentheticalSuffix: true,
+          reason: 'AUDIT-2025 §2: 원문 접두 전체 일치, 뒤의 괄호 보충만 허용. ' + ref.uncertain[9],
+        });
       }
     });
   });
