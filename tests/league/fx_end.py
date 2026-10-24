@@ -274,6 +274,16 @@ def solo_end(checks, page, base, label):
         else:
             if state['phase'] == 'review':
                 reviews.add(state['round'])
+                # T F2: 마지막 달의 '최종 결과'도 같은 결과 단계 주 동작 계약이다.
+                if state['round'] == 12:
+                    styles = page.evaluate("""() => ({
+                      ready:getComputedStyle(document.querySelector('#lg-ready')).backgroundColor,
+                      trials:[...document.querySelectorAll('.bd-go[data-run]')].map(n=>{
+                        const s=getComputedStyle(n);return [s.backgroundImage,s.boxShadow];})
+                    })""")
+                    checks.ok(styles['ready'] == 'rgb(236, 208, 131)' and bool(styles['trials']) and
+                              all(x == ['none', 'none'] for x in styles['trials']),
+                              label + ' F2 최종 결과 금색·시험 단추 보조')
             close_drawer(page)
             # 결과 뒤 혼자 하기의 준비 버튼은 다음 달/최종 결과 진행도 맡는다.
             button = page.locator('#lg-ready')
@@ -500,6 +510,12 @@ def graphs(checks, page, label, host=False):
               label + ' (c) 지지·주민·정전·CO₂·계통 그래프 5개 role=img')
     checks.ok(root.locator('.lg-fx-charts').get_attribute('aria-label') ==
               '지표 그래프 5개 · 좁은 화면에서는 좌우로 넘겨요', label + ' 그래프 칸 aria 5개')
+    if not host and page.viewport_size['width'] == 1280:
+        # T F12: SVG 내부 font-size가 아닌 축소 뒤 화면 글자 높이로 확인한다.
+        heights = root.locator('svg text').evaluate_all(
+            'nodes => nodes.map(n => n.getBoundingClientRect().height)')
+        checks.ok(bool(heights) and min(heights) >= 10,
+                  label + ' F12 결과 서랍 끝 그래프 축 화면 높이 10px 이상')
     text = root.text_content()
     naked = re.findall(r'(?<!\w)(?:O\*?|P|M|G)(?!\w)', text)
     # W6 검토 반영: 단일 G 표시에 그치지 않고 gradeWords("M·G")의 두 근거 말을 확인한다.
@@ -676,7 +692,7 @@ def crosscheck(checks, page, rows, label):
     detail = page.locator('#lg-last-month')
     if not detail.evaluate('el => el.open'):
         detail.locator(':scope > summary').click()
-    for key, heading, old_precision in (('uns', '정전(이번 달)', 2), ('co2', 'CO₂(이번 달 운영)', 0)):
+    for key, heading, old_precision in (('uns', '정전(이번 달)', 2), ('co2', '생산 CO₂(이번 달)', 0)):
         div = page.locator('#lg-result-deltas > div').filter(
             has=page.get_by_text(heading, exact=True))
         dd_text = div.locator('dd').inner_text()

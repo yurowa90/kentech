@@ -7,6 +7,7 @@ tests/.venv/bin/python tests/league/d80b.py http://127.0.0.1:9430/index.html
 작성 단계에서는 py_compile만 실행한다. main() 밖에서는 브라우저를 띄우지 않는다.
 """
 
+from league_flow import finish_trial
 import calendar
 import copy
 import json
@@ -130,9 +131,7 @@ def note(page):
 def trial(page, checks, label):
     close_drawer(page)
     page.locator('[data-run="7"]').click()
-    page.wait_for_selector("#bd-skip")
-    page.locator("#bd-skip").click()
-    page.wait_for_selector("#bd-res-title")
+    finish_trial(page)
     result = page.evaluate("() => KCP.buildGame.lastTrial()")
     require(checks, bool(result) and result["days"] == 7, label + " 실제 1주 시험 저장")
     capture(checks, page, label + "-trial")
@@ -221,10 +220,10 @@ def delta_pair(checks, text, values, label, summary=False):
     # 총괄 10-23 아르곤 문구(UX 갈래): 요약은 기준 이름→기대 판정 낱말→괄호 안 하루 평균 Δ, 결과 칸은 기존 형식 유지.
     segment = text.split(values["label"], 1)[-1]
     pattern = rf"^\s*하루 평균 {'(?:Δ)' if not summary else ''}\s*({NUMBER})\s*MWh/일"
-    precision = 1  # 총괄 10-23 아르곤 문구(UX 갈래)
+    precision = 2 if values["tolPerDay"] < .1 else 1  # T F13: 요약/접힘/계통 칸 같은 눈금.
     if summary:  # 총괄 10-23 아르곤 문구(UX 갈래)
         actual_word = {"same": "같음", "up": "늘어남", "down": "줄어듦"}[direction(values)]  # 총괄 10-23 아르곤 문구(UX 갈래)
-        precision = 2 if actual_word == "같음" and values["tolPerDay"] < .1 else 1  # 총괄 10-23 아르곤 문구(UX 갈래)
+        precision = 2 if values["tolPerDay"] < .1 else 1  # 총괄 10-23 아르곤 문구(UX 갈래)
         same_range = r"±(?P<tol>\d[\d,]*(?:\.\d+)?) 안, " if actual_word == "같음" else ""  # 총괄 10-23 아르곤 문구(UX 갈래)
         pattern = rf"^\s*{actual_word}\({same_range}하루 평균\s*(?P<delta>{NUMBER})\s*MWh/일 변화\)"  # 총괄 10-23 아르곤 문구(UX 갈래)
     match = re.search(pattern, segment)

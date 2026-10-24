@@ -1189,6 +1189,17 @@
     const value = budgetValue(plan);
     return typeof value === "number" ? capex(plan) <= value + 1e-9 : value.ok;
   };
+  function budgetShortfall(plan, cost, item, precision = 0) {
+    const next = budgetValue(plan);
+    if (typeof next !== "number" && next.reason === "debt") return `예산 부족(${fmt(cost, precision)}억)`;
+    const current = budgetValue(S.st);
+    const short = typeof next === "number" ? capex(plan) - next : -next.left;
+    const left = typeof current === "number" ? current - capex(S.st) : current.left;
+    const round = x => Math.round(x * 10) / 10;
+    // 남은 돈이 이미 음수면 괄호 설명이 오히려 헷갈려 부족액만 보인다.
+    const explained = left >= 0 && Math.abs(cost - left - short) < 0.05 && Math.abs(round(cost) - round(left) - round(short)) < 0.05;
+    return `${fmt(short, 1)}억 모자라요` + (explained ? `(${item} ${fmt(cost, 1)}억 · 남은 돈 ${fmt(left, 1)}억)` : "");
+  }
   const persist = () => { if (S.opts.save) S.opts.save(S.doc); else saveState(S.doc); };
   const lockedMsg = () => (S && S.opts.locked ? S.opts.locked() : "");
   const reduced = () => (KCP.v2 && KCP.v2.reduced ? KCP.v2.reduced() : !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches));
@@ -1295,7 +1306,7 @@
     try { return S.opts.leagueGrid(st); }
     finally { if (PK.id !== pack) selectPack(pack, "league"); }
   }
-  function rememberTrial(res, st, round, gridMWh = 0) {
+  function rememberTrial(res, st, round, gridMWh = 0, co2Prod = null) {
     const scope = S?.opts.trialScope || "", key = JSON.stringify([scope, res.map]);
     const trial = {
       map: res.map, scope, year: round?.year || null, month: round?.month || null,
@@ -1308,6 +1319,8 @@
       loss: res.tot.loss, idle: res.tot.idle,
       // D-80: gridFill이 더한 바깥 계통 전기(대표 기간 MWh). 지도의 수입 설비 출력은 섞지 않는다. 옛 기록에는 없다.
       gridMWh,
+      // 계통 보충 전 이 도시 설비가 낸 CO₂(대표 기간 t). 결과의 co2Prod와 같은 생산 기준으로 첫 달 S6을 비교한다. 옛 기록에는 없다.
+      ...(Number.isFinite(co2Prod) ? { co2Prod } : {}),
       plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, rq: st.rq }
     };
     // 수치와 선택만 저장한다. 일지·이유·매시 배열·사건의 실제 크기는 저장하지 않는다.
@@ -1362,6 +1375,15 @@
     V.oy = (a.t + a.b) / 2 - (((v0 + v1) / 2) * SQ - 0.35) * V.S + V.panY;
     if (V.lastRot !== V.rot) { V.lastRot = V.rot; computeOrder(); }
   }
+  function setViewInset({ right = 0 } = {}) {
+    if (!S?.alive) return;
+    const inset = Number.isFinite(right) ? Math.max(0, right) : 0;
+    if ((S.viewInsetRight || 0) === inset) return;
+    S.viewInsetRight = inset;
+    S.dirtyLayout = true;
+    if (reduced()) layout();
+    request();
+  }
 
   /* ---------- 색 ---------- */
   const hex2 = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -1373,6 +1395,9 @@
     earth: hex2("#8b6a45"), sand: hex2("#c7ab74"), rock: hex2("#77756c"),
     urban: hex2("#aeb4b6"), river: hex2("#3f8fc4"), lake: hex2("#3a7fb8"), out: hex2("#6d7a72"), grid: hex2("#9cc27a")
   };
+  const SEASON_TINT = { winter: "rgba(167,187,199,0.36)", spring: "rgba(177,214,115,0.36)",
+    summer: "rgba(43,111,61,0.36)", autumn: "rgba(193,142,68,0.36)" };
+  const currentMapSeason = () => S.opts.leagueRound?.()?.season || S.st.season || "summer";
   function ramp(stops, t) {
     t = clamp(t, 0, 1) * (stops.length - 1);
     const i = Math.min(stops.length - 2, Math.floor(t));
@@ -1847,6 +1872,8 @@
     }
     polyPath(g, top);
     g.fillStyle = rgb(mul(base, jit)); g.fill();
+    // 정적 땅 면만 물들인다. 시설·글자·자료 지도와 물의 색은 덮지 않는다.
+    if (layer === "map" && !T.out && !WATER[vt]) { g.fillStyle = SEASON_TINT[S.staticSeason] || SEASON_TINT.summer; g.fill(); }
     if (T.out) { g.fillStyle = T.vt ? "rgba(70,84,96,0.5)" : "rgba(190,205,215,0.28)"; g.fill(); if (T.vt === "river") drawRiver(g, T, top, true); return; }
     g.strokeStyle = layer === "map" ? "rgba(20,40,30,0.18)" : "rgba(10,20,40,0.35)"; g.lineWidth = 1; g.stroke();
     // 위쪽 변 하이라이트
@@ -1905,6 +1932,7 @@
   // 정적 층: 지형·마을·건물·전선. 바뀔 때만 다시 그린다.
   function paintStatic() {
     const st = S.st, layer = S.layer, dpr = dprOf();
+    S.staticSeason = currentMapSeason();
     const c = S.base;
     const PW = Math.round(V.W * dpr), PH = Math.round(V.H * dpr);
     if (c.width !== PW) c.width = PW;
@@ -1952,9 +1980,13 @@
     if (PK.climate) {
       const fs = Math.round(clamp(V.S * 0.34, 9, 14));
       g.font = `700 ${fs}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-      SITES.forEach(W => {
+      const placed = [], priority = W => W.kind === "plant" || W.kind === "gridpt" ? 3 :
+        ["village", "town_s", "city", "city_m", "city_l"].includes(W.kind) ? 2 : CRIT[W.kind] ? 1 : 0;
+      SITES.slice().sort((a, b) => priority(b) - priority(a) || a.tile - b.tile).forEach(W => {
         const T = TILES[W.tile], [x, y] = tileTop(T), r = Math.max(8, fs * 0.85);
         const bx = x - V.S * 0.5, by = y - V.S * 0.42;
+        if (placed.some(P => Math.hypot(bx - P.x, by - P.y) < r + P.r + 1.5)) return;
+        placed.push({ x: bx, y: by, r });
         g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2);
         g.fillStyle = badgeCol(W.kind); g.fill();
         g.lineWidth = 1.5; g.strokeStyle = "#ffffff"; g.stroke();
@@ -2178,6 +2210,12 @@
     if (S.run) return;
     const hov = S.hover;
     const rm = reduced();
+    if (S.siteHint && S.siteHint.i != null) {
+      const [x, y] = tileTop(TILES[S.siteHint.i]), pulse = rm ? 1 : 1 + 0.06 * Math.sin(t * 7);
+      g.save(); g.beginPath(); g.ellipse(x, y, V.S * 0.9 * pulse, V.S * 0.9 * SQ * pulse, 0, 0, Math.PI * 2);
+      g.lineWidth = 5; g.strokeStyle = MAP_INK.dust; g.stroke();
+      g.lineWidth = 3; g.strokeStyle = MAP_INK.cyan; g.stroke(); g.restore();
+    }
     // 송전선 미리보기
     const pv = S.pending ? S.pending.p : S.preview ? S.preview.p : null;
     if (pv) {
@@ -2440,11 +2478,37 @@
     const T = TILES[i];
     if (S.st.builds.some(b => b.i === i)) return { ok: false, why: "이미 있음" };
     const why = siteRule(type, T);
-    if (why) return { ok: false, why };
+    if (why) return { ok: false, why, siteRule: !!BLD[type] && toolsOf().includes(type) };
     const cost = buildCost(type, i);
     const plan = { ...S.st, builds: [...S.st.builds, { t: type, i }] };
-    if (!withinBudget(plan)) return { ok: false, why: `예산 부족(${fmt(cost)}억)`, cost };
+    if (!withinBudget(plan)) return { ok: false, why: budgetShortfall(plan, cost, "설비"), cost };
     return { ok: true, cost, clear: T.t === "forest" };
+  }
+  function nearestBuildTile(type, from) {
+    const occupied = new Set(S.st.builds.map(b => b.i));
+    let best = null, distance = Infinity;
+    TILES.forEach(T => {
+      if (occupied.has(T.i) || siteRule(type, T) !== "") return;
+      const d = hexDist(from, T.i);
+      if (d < distance || (d === distance && (best == null || T.i < best))) { best = T.i; distance = d; }
+    });
+    return best;
+  }
+  function placementReason(type, i, check) {
+    if (!check.siteRule || toolLocked(type) || lockedMsg()) return check.why;
+    return check.why + " · " + (nearestBuildTile(type, i) == null ? "같은 도구로 지을 칸이 지도에 없어요" : "규칙상 가능한 가장 가까운 칸 표시");
+  }
+  function markBuildSite(type, i) {
+    if (toolLocked(type) || lockedMsg() || !canPlace(type, i).siteRule) return;
+    const tile = nearestBuildTile(type, i), state = S;
+    // from: 안내를 띄운 칸(말풍선이 같은 칸일 때만 '표시'라고 쓴다). i가 null이면 표시할 칸 없음.
+    S.siteHint = { i: tile, from: i };
+    clearTimeout(S.siteHintTimer);
+    S.timers.push(S.siteHintTimer = setTimeout(() => {
+      // 강조가 끝나면 말풍선의 '…칸 표시' 꼬리도 함께 거둔다.
+      if (S === state && state.alive) { S.siteHint = null; S.siteHintTimer = 0; if (S.hover != null && !$("#bd-tip").hidden) showTip(S.hover); request(); }
+    }, 1600));
+    request();
   }
   function changed(msg) {
     persist();
@@ -2468,7 +2532,8 @@
   function place(type, i) {
     if (toolLocked(type)) { toast(toolLocked(type)); return; }
     const chk = canPlace(type, i);
-    if (!chk.ok) { toast(chk.why); return; }
+    if (!chk.ok) { markBuildSite(type, i); toast(placementReason(type, i, chk)); return; }
+    S.siteHint = null;
     const item = { t: type, i };
     S.st.builds.push(item);
     S.undo.push({ kind: "b", item, st: S.st, turn: undoTurn() });
@@ -2570,7 +2635,8 @@
   function confirmLine() {
     const P = S.pending;
     if (!P) return;
-    if (!withinBudget({ ...S.st, lines: [...S.st.lines, { p: P.p }] })) { toast(`예산 부족(${fmt(P.cost, 1)}억)`); return; }
+    const plan = { ...S.st, lines: [...S.st.lines, { p: P.p }] };
+    if (!withinBudget(plan)) { toast(budgetShortfall(plan, P.cost, "송전선", 1)); return; }
     const item = { p: P.p };
     S.st.lines.push(item);
     S.undo.push({ kind: "l", item, st: S.st, turn: undoTurn() });
@@ -2600,6 +2666,7 @@
   function setTool(id) {
     if (toolLocked(id)) { toast(toolLocked(id)); return; }
     S.tool = S.tool === id ? null : id;
+    S.siteHint = null;
     if (S.opts.league && BLD[S.tool] && !S.lensChosen) {
       S.lenses.complaints = true; S.lenses.grid = true; rememberLenses(); syncLensButtons();
     }
@@ -2618,6 +2685,7 @@
     if (S.lineStart != null || S.pending) { cancelLine(); announce("송전선 취소"); return true; }
     if (!S.tool) return false;
     S.tool = null;
+    S.siteHint = null;
     cancelLine();
     S.sel = null;
     closePops();
@@ -2711,6 +2779,7 @@
     selectPack(id);
     S.st = S.doc.maps[id];
     S.mapFx = []; S.flowView = null;
+    S.siteHint = null;
     S.tool = null; S.hover = null; S.sel = null; S.lineStart = null; S.pending = null; S.preview = null; S.result = null;
     S.openGroup = null; S.seasonOpen = false;
     S.root.dataset.mode = "";
@@ -2778,6 +2847,7 @@
       if (d.type === "touch" && S.tool && S.tool !== "line" && S.sel !== i) {
         // 손가락: 첫 탭은 미리보기, 같은 타일을 한 번 더 누르면 설치
         S.sel = i;
+        if (BLD[S.tool]) markBuildSite(S.tool, i);
         if (S.hover === i && !S.kbd) showTip(i);
         else setHover(i, false);
         return;
@@ -2841,7 +2911,7 @@
     const raw = simulate(S.st, days, S.opts.league ? { league: true, mods } : undefined);
     // D-74 계통 수입은 경제 모드(달이 있는 월 리그)의 실제 운영에만 있으므로 시험도 그때만 보정한다. 계절 4라운드는 그대로.
     const res = S.opts.league && leagueMonth() ? KCP.leagueCore.gridFill(raw) : raw;
-    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.(), res === raw ? 0 : Math.max(0, res.tot.by.import - raw.tot.by.import));
+    if (S.opts.league) rememberTrial(res, S.st, S.opts.leagueRound?.(), res === raw ? 0 : Math.max(0, res.tot.by.import - raw.tot.by.import), raw.co2);
     // 화면용: 디젤 건물 번호 → 비트 위치
     const dk = {};
     let n = 0;
@@ -3070,11 +3140,12 @@
     root.id = "bd-root";
     root.innerHTML = `
       <div class="bd-stage">
-        <canvas class="bd-canvas" id="bd-canvas" tabindex="0" role="application" aria-roledescription="섬 지도" aria-describedby="bd-keys"></canvas>
+        <canvas class="bd-canvas" id="bd-canvas" tabindex="0" role="application" aria-roledescription="섬 지도" aria-describedby="bd-keys" aria-details="bd-sites"></canvas>
         <div class="bd-banners" id="bd-banners" aria-hidden="true"></div>
         <div class="bd-tip" id="bd-tip" hidden></div>
       </div>
       <p id="bd-keys" class="bd-sr">화살표로 타일 이동, Enter로 설치, Esc로 취소.</p>
+      <ul id="bd-sites" class="bd-sr"></ul>
       <p id="bd-town-look-sr" class="bd-sr"></p>
       <header class="bd-hud" id="bd-hud">
         <a class="bd-back" href="#home" aria-label="연습실 홈으로">${ico("back")}</a>
@@ -3218,6 +3289,8 @@
   const MAJOR = { city: 1, city_l: 1, city_m: 1, town_s: 1, village: 1, port: 1, factory_big: 1, plant: 1, gridpt: 1, hospital: 1 };
   function buildBanners() {
     const box = $("#bd-banners");
+    const sites = $("#bd-sites");
+    if (sites) sites.innerHTML = SITES.map(W => `<li>${esc(W.code || W.id)} ${esc(W.name)}</li>`).join("");
     const list = SITES.map((W, si) => ({ W, si })).filter(({ W }) => !PK.climate || MAJOR[W.kind] && !(W.kind === "hospital" && PK.climate));
     box.innerHTML = list.map(({ W, si }) => `<div class="bd-banner" data-si="${si}" data-kind="${W.kind}"><span class="bd-bn-code">${esc(W.code || W.id)}</span><span class="bd-bn-name">${esc(W.name)}</span>${W.note ? `<span class="bd-bn-note">${esc(W.note)}</span>` : ""}<span class="bd-bn-val num" data-bv></span></div>`).join("");
     S.banners = Array.from(box.children);
@@ -3371,7 +3444,7 @@
     let verdict = "";
     if (S.tool && S.tool !== "line" && S.tool !== "remove") {
       const c = canPlace(S.tool, i);
-      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}</p>` : `<p class="no">${ico("x")}${esc(c.why)}</p>`;
+      verdict = c.ok ? `<p class="ok">${ico("check")}${BLD[S.tool].name} ${fmt(c.cost)}억${c.clear ? " · 숲 정리" : ""}</p>` : `<p class="no">${ico("x")}${esc(S.siteHint?.from === i ? placementReason(S.tool, i, c) : c.why)}</p>`;
     } else if (S.tool === "line") {
       const P = S.pending || S.preview;
       if (S.lineStart == null) verdict = validStart(i) ? `<p class="ok">${ico("line")}여기서 시작</p>` : `<p class="no">${ico("x")}시작: 발전소·마을·선</p>`;
@@ -3838,6 +3911,8 @@
       const drawer = S.root.querySelector("#lg-panel");
       if (drawer && !drawer.hidden) r = drawer.getBoundingClientRect().left - 8;
     }
+    const insetRight = W - 8 - (S.viewInsetRight || 0);
+    if (W - (S.viewInsetRight || 0) >= W * 0.45) r = Math.min(r, insetRight);
     let b = (dock.height ? dock.top : H) - 6;
     if (S.opts.league) {
       const stripTop = Math.max(top, $("#bd-mapbar").getBoundingClientRect().bottom) + 8;
@@ -3954,7 +4029,7 @@
       g: null, raf: 0, ambientTimer: 0, mapVisible: true, born: performance.now(), off: [], timers: [], ro: null, io: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
       townAppearance: null, townWindowCounts: { darkWins: 0, totalWins: 0 }, townLights: true,
-      lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy",
+      lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy", viewInsetRight: 0, siteHint: null, siteHintTimer: 0,
       floaters: [], mapFx: [], flowView: null, rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
@@ -4081,11 +4156,11 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset,
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues, townLook,
-    refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
-    setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; refreshHUD(); renderSeasons(); request(); } },
+    refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false || S.staticSeason !== currentMapSeason()) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
+    setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; S.dirtyStatic = true; refreshHUD(); renderSeasons(); request(); } },
     toast: (msg, opts) => { if (S) toast(msg, opts); }
   });
 })();

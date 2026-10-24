@@ -23,6 +23,7 @@
   사용하며 양수인지 별도로 확인한다. Canvas 캡처는 사람이 볼 증거로 남긴다.
 """
 
+from league_flow import finish_trial
 import math
 import sys
 
@@ -187,7 +188,7 @@ def trial(checks, page, label):
     screenshot(checks, page, f'fx-town-{label}-trial.png')
     overflow(checks, page, label + ' 시험 중')
     # 시험 운전은 화면의 결과 보기로 끝내고, 지난달 공개값 불빛으로 돌아와야 한다.
-    page.locator('#bd-skip').click()
+    finish_trial(page)
     page.wait_for_function("() => !document.documentElement.classList.contains('bd-running')")
     settle(page)
     samples(checks, page, 'trial', label)

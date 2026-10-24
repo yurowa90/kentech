@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+from econui import OVERFLOW_JS
 
 sys.path.insert(0, str(Path(__file__).parent))
 from ux_task import CFG, TILE_XY_JS  # noqa: E402
@@ -85,11 +86,35 @@ def main():
         reached, skipped, err = 0, 0, None
         try:
             for _ in range(60):
-                step = page.evaluate(STEP_JS)
+                # 같은 갱신 틱의 단계/문구를 함께 읽어 자동 전진과 Python 왕복이 경합하지 않게 한다.
+                frame = page.evaluate("""() => {
+                  const c=document.querySelector('#lg-coach');
+                  return {step:c ? Number(c.dataset.step) : 0,
+                    task:c?.querySelector('#lg-coach-task')?.textContent || ''};
+                }""")
+                step = frame['step']
                 if not step:
                     break
                 reached = max(reached, step)
-                log.append({"step": step, "task": page.locator("#lg-coach-task").inner_text()})
+                log.append(frame)
+                # 지시서 T F4: 학생에게 보이는 장면 이름은 고정 계약이다.
+                scenes = ('근거 하나', '자리 판단', '자리 판단', '시험 1주', '약속',
+                          '예측 대 실제', '원인 하나', '다음 달')
+                assert log[-1]['task'].startswith(f'{scenes[step-1]} · {step}/8 '), log[-1]
+                assert page.evaluate(OVERFLOW_JS) <= 0, '코치 장면 가로 스크롤 0'
+                if step == 3:
+                    issues = page.evaluate("""() => {
+                      const B=KCP.buildGame, p=B.planIssues();
+                      return {names:p.unlinked.map(b=>B.BLD[b.t]?.name || B.SITES.find(s=>s.tile===b.i)?.name),
+                        waiting:p.waiting.length};
+                    }""")
+                    names = issues['names']
+                    assert all(names), '미연결 설비 이름은 자료에 있어야 함'
+                    count = len(names)
+                    listed = ('(' + '·'.join(names[:2]) + (f' 외 {count-2}기' if count > 2 else '') + ')'
+                              if count else ' 0기')
+                    assert log[-1]['task'] == (f'자리 판단 · 3/8 마을까지 이어요 · 미연결{listed}'
+                                              f' · 대기 {issues["waiting"]}기'), log[-1]
                 if step == 2:
                     press("#lg-coach-action", step)
                     tool = page.locator('[data-tool="diesel"]')
@@ -172,6 +197,9 @@ def main():
         if "stuck" in item or "issueCheck" in item:
             print(" ", item)
     print(" console:", problems[:5])
+    # T 검사 규칙: 수집한 단언/페이지 예외·console error/warning을 성공 종료로 숨기지 않는다.
+    if err or problems:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

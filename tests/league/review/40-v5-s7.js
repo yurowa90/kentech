@@ -430,6 +430,23 @@ for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달
     assert.equal(html.includes('data-out-step="replay"'), basis === 'trial' && shown, '시험만 재현 폭포 줄, 월간은 합계 밖'); // D-82: 재현의 합계 위치 보존.
   }); // D-82: 계통 재현 경계 검사 끝.
 } // D-82: 추가 계약 순회 끝.
+// V8 N2: 원자료·params로 문턱과 표시값을 별도로 계산한다.
+const param = k => D.params[k].v;
+const ceilText = (threshold, target) => {
+  const scale = target === 'grid' ? 10 : 100;
+  // 십진 지수 이동으로 0.07×100의 부동소수 오차를 피한다. 허용 오차는 두지 않는다.
+  const [coefficient, exponent = '0'] = String(threshold).split('e');
+  const shown = Math.ceil(Number(`${coefficient}e${Number(exponent) + (target === 'grid' ? 1 : 2)}`)) / scale;
+  return shown.toFixed(target === 'grid' ? 1 : 2) + (target === 'grid' ? ' MWh/일' : '%p');
+};
+function thresholdBasis(a) {
+  const delta = a.total ?? a.actual - (a.trial ?? a.base);
+  const limit = ceilText(cardMin(a), a.target);
+  const magnitude = valueText(Math.abs(delta), a.target).replace(/^\+/, '');
+  return Number.isFinite(delta) && param('outageCardShareMin') * Math.abs(delta) > minPart(a)
+    ? `차이 ${magnitude}의 5%(${limit})` : `카드 최소 크기(${limit})`;
+}
+
 // V7 A: 분해 입력은 저장 경계에서 합성하고, 기대 후보·문장은 계약에서 직접 정한다.
 const cardKeys = html => [...html.matchAll(/data-missed="([^"]+)"/g)].map(m => m[1]);
 const tags = html => [...html.matchAll(/<button\b[^>]*data-missed="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)]
@@ -469,7 +486,7 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
     const a = record({ choice: 96, weather: 4 }), html = render(a);
     assert.deepEqual(cardKeys(html), [], '4%는 선택 후보가 아님');
     assert.ok(html.includes('data-single="true"') && firstVerdict(html) === '내가 고른 것: 고르기 생략');
-    assert.ok(textOf(html).includes('나머지 몫은 모두 ' + (target === 'grid' ? '5.0 MWh/일' : '5.00%p') + ' 이하라 원인 고르기를 건너뛰어요'));
+    assert.ok(textOf(html).includes(`나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요`));
     assert.equal(session.outShownPending.largest.key, 'choice');
     for (const [route, raw] of Object.entries(records(f, a))) {
       const text = textOf(raw);
@@ -704,15 +721,6 @@ for (const stage of ['s6', 's7']) for (const row of [
   if (row.expected) assert.equal(textOf(lines[0][1]), `계획 시작(S1) 3.65 → 약속 때 ${row.expected} MW(계획 변경·${stage === 's6' ? '달마다 시작 값끼리 비교' : '원인 연결은 시작 값 기준'})`);
 });
 
-// V8 N2: 원자료·params로 문턱과 표시값을 별도로 계산한다.
-const param = k => D.params[k].v;
-const ceilText = (threshold, target) => {
-  const scale = target === 'grid' ? 10 : 100;
-  // 십진 지수 이동으로 0.07×100의 부동소수 오차를 피한다. 허용 오차는 두지 않는다.
-  const [coefficient, exponent = '0'] = String(threshold).split('e');
-  const shown = Math.ceil(Number(`${coefficient}e${Number(exponent) + (target === 'grid' ? 1 : 2)}`)) / scale;
-  return shown.toFixed(target === 'grid' ? 1 : 2) + (target === 'grid' ? ' MWh/일' : '%p');
-};
 let randomSeed = 0x813bd;
 const random = () => ((randomSeed = (Math.imul(randomSeed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
 for (const target of ['grid', 'uns']) {
@@ -720,7 +728,8 @@ for (const target of ['grid', 'uns']) {
   for (const mode of ['원인 없음', '고르기 건너뜀', '접속 대기']) check(`V8 N2 ${target}/${mode} 무작위·경계 124개`, () => {
     const thresholds = [.1237, .16, .1, .07, ...Array.from({ length: 120 }, () => .05 + random() * 4)];
     for (const threshold of thresholds) {
-      const base = target === 'grid' ? threshold * param('outageMinPartDivisor') / param('gridSameSharePerDay') : 0;
+      // T: 비율 문구와 접속 최소 몫 검사를 분리해 우연한 실수 동률을 만들지 않는다.
+      const base = target === 'grid' && mode === '접속 대기' ? threshold * param('outageMinPartDivisor') / param('gridSameSharePerDay') : 0;
       const a = partRecord(f, 'trial', target, base, zero);
       // cardMin은 total의 5%, 접속 대기는 minPart. 정전 minPart는 고정 상수이다.
       const limit = mode === '접속 대기' ? (target === 'grid' ? threshold : param('outageMinUnsPart')) : threshold;
@@ -731,14 +740,14 @@ for (const target of ['grid', 'uns']) {
       const html = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
       const text = textOf(html), expected = ceilText(limit, target);
       assert.ok(text.includes(mode === '접속 대기' ? `접속 대기 12 MW(효과 ${expected} 이하)` :
-        mode === '원인 없음' ? `네 원인의 몫이 모두 ${expected} 이하라, 바뀐 조건 하나하나는` :
-          `네 원인 중 나머지 몫은 모두 ${expected} 이하라 원인 고르기를 건너뛰어요`), `${mode}/${threshold}: ${text}`);
+        mode === '원인 없음' ? `네 원인의 몫이 모두 이번 ${thresholdBasis(a)} 이하라, 바뀐 조건 하나하나는` :
+          `네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요`), `${mode}/${threshold}: ${text}`);
       const weatherRow = html.match(/<div\b[^>]*data-out-step="weather"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
       const displayedPart = textOf(weatherRow.match(/<b>([^<]*)<\/b>/)?.[1] || '');
       assert.equal(displayedPart, valueText(below, target), '문턱 미만인 날씨 몫의 실제 화면 반올림');
       const limitId = mode === '접속 대기' ? 'lg-outage-grid-small' : 'lg-outage-single';
       const paragraph = textOf(html.match(new RegExp(`<p[^>]*id="${limitId}"[^>]*>([\\s\\S]*?)<\\/p>`))?.[1] || '');
-      const displayedLimit = paragraph.match(/([\d,.]+)(?: MWh\/일|%p) 이하/)?.[1];
+      const displayedLimit = paragraph.match(/([\d,.]+)(?: MWh\/일|%p)\)? 이하/)?.[1];
       assert.ok(displayedLimit, '해당 화면 문장의 문턱 숫자를 직접 읽음');
       const shown = Math.abs(parseFloat(displayedPart.replace('−', '-').replaceAll(',', '')));
       assert.ok(shown <= Number(displayedLimit.replaceAll(',', '')), `화면 반올림 몫 ${shown} ≤ 화면 올림 문턱 ${displayedLimit}`);
@@ -759,15 +768,16 @@ check('V8 N2 예시 0.1237·0.1207·0.16', () => {
   const f = fixture('trial', 'grid');
   const a = partRecord(f, 'trial', 'grid', 24.74, { choice: .16, weather: .1207, event: 0, trade: 0 });
   const text = textOf(M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a }));
-  assert.ok(text.includes('나머지 몫은 모두 0.2 MWh/일 이하라') && text.includes('+0.1 MWh/일') && text.includes('+0.2 MWh/일'), text);
+  assert.ok(text.includes('나머지 몫은 모두 카드 최소 크기(0.2 MWh/일) 이하라') && text.includes('+0.1 MWh/일') && text.includes('+0.2 MWh/일'), text);
 });
 
-// 문구 13: 원인 이름으로 조사 결정. 괄호 마지막 '일'로 판단하지 않는다.
+// T F3: 생략 문구의 서술어는 원인 이름의 받침을 따른다(옛 withParticle 규칙 유지, 독립 검토 minor 3·총괄 갈래 결정):
+// '사건·대응'(받침 있음) → 이에요, '이웃 거래'(받침 없음) → 예요.
 for (const [cause, ending] of [['event', '이에요'], ['trade', '예요']]) check(`V8 문구 13 ${cause}/${ending}`, () => {
   const f = fixture('trial', 'grid'), zeros = Object.fromEntries(trialKeys.map(k => [k, 0]));
   const a = partRecord(f, 'trial', 'grid', 0, { ...zeros, [cause]: 12.34 });
   const cost = Number((12.34 * param('normalCost') * param('gridImportMarkup')).toFixed(2)).toFixed(2);
-  const expected = `이번 차이의 가장 큰 몫은 ${names('trial')[cause]}(+12.3 MWh/일, 비용 +${cost}억/일)${ending}. 네 원인 중 나머지 몫은 모두 ${ceilText(cardMin(a), 'grid')} 이하라 원인 고르기를 건너뛰어요.`;
+  const expected = `이번 차이의 가장 큰 몫은 ${names('trial')[cause]}(+12.3 MWh/일, 비용 +${cost}억/일)${ending}. 네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요.`;
   const html = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
   assert.ok(textOf(html).includes(expected), textOf(html));
 });
@@ -829,9 +839,29 @@ for (const basis of ['trial', 'monthly']) check(`V8 문구 12 ${basis} 원인 �
   const a = partRecord(f, basis, 'grid', 10, Object.fromEntries(keys.map(k => [k, 0])));
   const html = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
   const sentence = textOf(html.match(/<p id="lg-outage-single">([\s\S]*?)<\/p>/)?.[1] || '');
-  const expected = `${basis === 'monthly' ? '지난달' : '시험'} 10.0 MWh/일 → ${basis === 'monthly' ? '이번 달' : '실제'} 10.0 MWh/일로 거의 같아요. ${keys.length === 6 ? '여섯' : '네'} 원인의 몫이 모두 ${ceilText(cardMin(a), 'grid')} 이하라, 바뀐 조건 하나하나는 바깥 계통에 기댄 전기를 거의 바꾸지 않았어요.`;
+  const expected = `${basis === 'monthly' ? '지난달' : '시험'} 10.0 MWh/일 → ${basis === 'monthly' ? '이번 달' : '실제'} 10.0 MWh/일로 거의 같아요. ${keys.length === 6 ? '여섯' : '네'} 원인의 몫이 모두 ${thresholdBasis(a)} 이하라, 바뀐 조건 하나하나는 바깥 계통에 기댄 전기를 거의 바꾸지 않았어요.`;
   assert.equal(sentence, expected);
 });
 
+// T F3: 차이의 부호·네/여섯 원인·최소 몫 동률/누락을 명세로 고정한다.
+for (const basis of ['trial', 'monthly']) for (const target of ['grid', 'uns']) {
+  for (const edge of ['negative', 'equal', 'minimum', 'unknown']) for (const noCause of [false,true]) check(`T S7 부호·기준 문구 ${basis}/${target}/${edge}/noCause=${noCause}`, () => {
+    const f = fixture(basis,target), keys = basis === 'trial' ? trialKeys : monthlyKeys;
+    const values = Object.fromEntries(keys.map(k => [k, 0]));
+    const total = edge === 'negative' ? -100 : edge === 'equal' ? 1 : .2;
+    const a = partRecord(f,basis,target,0,{...values,choice:total});
+    if (noCause) a.parts.forEach(p => { p.value = 0; });
+    if (edge === 'unknown') { delete a.total; delete a.actual; delete a.trial; delete a.base; }
+    const html = M.outageCardsHTML(f.V,f.res,id,{outageOpened:true,outageFrozen:a});
+    const count = basis === 'trial' ? '네' : '여섯';
+    const limit = target === 'grid' ? (edge === 'negative' ? '5.0 MWh/일' : '0.1 MWh/일') : (edge === 'negative' ? '5.00%p' : '0.05%p');
+    const magnitude = target === 'grid' ? '100.0 MWh/일' : '100.00%p';
+    const reason = edge === 'negative' ? `차이 ${magnitude}의 5%(${limit})` : `카드 최소 크기(${limit})`;
+    const sentence = noCause ? `${count} 원인의 몫이 모두 ${edge === 'negative' ? '이번 ' : ''}${reason} 이하라, 바뀐 조건 하나하나는 ${target === 'grid' ? '바깥 계통에 기댄 전기를' : '정전을'} 거의 바꾸지 않았어요` :
+      `${count} 원인 중 나머지 몫은 모두 ${reason} 이하라 고르기를 건너뛰어요`;
+    assert.ok(textOf(html).includes(sentence), textOf(html));
+    assert.ok(!textOf(html).includes('차이 −'), '차이는 부호 없는 절댓값');
+  });
+}
 console.log(`V5 S7: ${checks} checks, ${failures.length} failures`);
 process.exitCode = failures.length ? 1 : 0;

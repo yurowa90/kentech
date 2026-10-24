@@ -47,7 +47,7 @@ function note(topic = 'grid') {
 }
 function result(round, co2Cons, rawGrid = 7) {
   return { ...S.rounds[round - 1], round, days: 7,
-    team: { [id]: { co2Cons, co2Prod: co2Cons - 10, unsPct: 0, isolated: { uns: rawGrid }, uns: 0, imp: 0, sub: 0 } } };
+    team: { [id]: { co2Cons, co2Prod: co2Cons - 10, unsPct: 0, isolated: { uns: rawGrid }, uns: 0, imp: 0, sub: 0, cost: { fuel:0, capex:0, total:0 } } } };
 }
 S.round = 12; S.phase = 'end';
 for (let t = 1; t <= 12; t++) months[t] = t <= 6 ? { evidence: { text: '가상 근거 ' + t } } : {};
@@ -293,21 +293,21 @@ trial = null; S.phase = 'review'; S.round = 2;
 S.results = [result(1, 140), result(2, 140)];
 S.results.forEach(res => { res.team[id].co2Prod = 140; });
 function co2Cell(res = S.results.at(-1)) {
-  return api.resultHTML(S, res).match(/<div><dt>CO₂\(이번 달 운영\)<\/dt>(.*?)<\/div>/s)[1];
+  return api.resultHTML(S, res).match(/<div><dt>생산 CO₂\(이번 달\)<\/dt>(.*?)<\/div>/s)[1];
 }
 test('S6 계통 주제 CO₂: 31→28일 하루 평균 같으면 Δ 0, 월 합계 620→560은 보조', () => {
   months[1] = { topic: 'grid', confirmed: true }; note();
   const before = JSON.stringify([S, [...storage]]);
-  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>지난달 대비 Δ 비교 없음(첫 결과) · 이번 달 합 620 t</small>');
+  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음) · 이번 달 합 620 t</small>');
   assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>');
   // co2Prod=140/7=20 t/일, 총량은 140×31/7과 140×28/7.
   assert.equal(JSON.stringify([S, [...storage]]), before);
 });
 test('S6 CO₂ 단위는 현재 달 대신 해당 결과 달의 약속 주제를 따름', () => {
   note('uns');
-  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>지난달 대비 Δ 비교 없음(첫 결과) · 이번 달 합 620 t</small>');
+  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음) · 이번 달 합 620 t</small>');
   months[1] = { topic: 'uns', confirmed: true }; note();
-  assert.equal(co2Cell(S.results[0]), '<dd>620t</dd><small>지난달 대비 Δ 비교 없음(첫 결과)</small>');
+  assert.equal(co2Cell(S.results[0]), '<dd>620t</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음)</small>');
 });
 test('다음 달 계획 단계에서 약속 없는 지난 결과의 CO₂ 칸은 현재 달 주제로 다시 고르지 않음', () => {
   // 독립 검토 minor 2: plan 단계 promiseTopic은 현재 달 조건으로 다시 계산하므로 지난 결과에는 저장 주제만 쓴다.
@@ -337,5 +337,41 @@ test('S6 정전·현금 주제와 약속 없는 달 CO₂는 기존 월 합계 t
     assert.equal(co2Cell(), '<dd>557t</dd><small>지난달 대비 Δ −63t</small>');
   }
 });
+
+// T F13: summary·folded title·grid cell share one precision; calculation is always two decimals.
+for (const [base, delta, visible, calc] of [[1.5, .064, '+0.06', '+0.06'], [1.5, .106, '+0.11', '+0.11'], [1.5, -.064, '−0.06', '−0.06'], [2, .064, '+0.1', '+0.06'], [37.62, -1.886, '−1.9', '−1.89']]) {
+  test(`T F13 grid precision base=${base}, delta=${delta}`, () => {
+    S.phase = 'review'; S.round = 2; trial = null;
+    S.results = [result(1, 140, base * 7), result(2, 140, (base + delta) * 7)];
+    const n = note(), html = api.promiseResultHTML(S, n);
+    const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1];
+    const detail = html.match(/data-compare="grid">(.*?)<\/p>/s)[1];
+    for (const text of [summary, detail, api.promiseVerdictShort(api.promiseComparison(S, n), n), api.gridFillHTML(S, S.results[1], id)]) {
+      assert.ok(text.includes(`${visible} MWh/일`), text);
+    }
+    assert.match(html, new RegExp(`id="lg-promise-grid-calc"[^>]*>판정 계산: 하루 평균 Δ ${calc.replace('+', '\\+').replace('.', '\\.')} MWh/일`));
+  });
+}
+// T F3: 첫 결과의 단위/대표기간을 따로 계산한다. 옛 trial.co2(소비)는 생산 기준으로 재사용 금지.
+for (const days of [7, 30]) for (const topic of ['uns', 'grid']) for (const legacy of [false, true]) {
+  test(`T F3 first result ${days}days/${topic}/legacy=${legacy}`, () => {
+    S.round = 1; S.phase = 'review'; S.results = [result(1, 175)];
+    const r = S.results[0].team[id]; r.co2Prod = 70; r.outH = 2;
+    trial = { map:C.teamDef(C.regionOf('south'), id).pack, scope:JSON.stringify([S.room, id]),
+      ...S.rounds[0], days, unsPct:3, gridMWh:7, outH:days / 7, co2:9999,
+      ...(!legacy ? { co2Prod:days * 8 } : {}) };
+    const n = note(topic); n.trial = { ...trial };
+    const html = api.resultHTML(S, S.results[0]), basis = days === 7 ? '시험 1주 대비' : `시험 ${days}일 대비`;
+    const cells = [...html.matchAll(/<div><dt>(정전\(이번 달\)|정전 시간\(이번 달\)|생산 CO₂\(이번 달\))<\/dt>(.*?)<\/div>/gs)];
+    assert.equal(cells.length, 3);
+    cells.forEach(m => assert.ok(m[2].includes(basis), `${m[1]}: ${m[2]}`));
+    // 2/7×31 − (days/7)/days×31 = 31/7 → 4.4시간.
+    assert.ok(cells.find(m => m[1].startsWith('정전 시간'))[2].includes('Δ +4.4시간'));
+    const co2 = cells.find(m => m[1].startsWith('생산'))[2];
+    assert.ok(co2.includes(legacy ? '비교 없음(시험 기록 없음)' : topic === 'grid' ? 'Δ +2 t/일' : 'Δ +62t'), co2);
+    assert.ok(!co2.includes('9999'), '시험 소비 배출을 생산 기준에 섞지 않음');
+  });
+}
+
 console.log(`checks ${checks} fail ${failures}`);
 process.exitCode = failures ? 1 : 0;

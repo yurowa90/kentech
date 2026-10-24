@@ -32,6 +32,7 @@ viewKey 비용은 미세 측정(VIEWKEY_JS)을 주 근거로 쓴다. 한 브라�
 실제 태블릿·네트워크가 아니다. save의 chars는 문자 수(UTF-8 바이트 아님)다.
 """
 
+from league_flow import finish_trial
 import argparse
 import json
 import math
@@ -391,9 +392,7 @@ def trial_week(page):
     if close.count():
         close.first.click(timeout=WAIT)
     page.locator('[data-run="7"]').click(timeout=WAIT)
-    page.wait_for_selector("#bd-skip", timeout=WAIT)
-    page.locator("#bd-skip").click(timeout=WAIT)
-    page.wait_for_selector("#bd-res-title", timeout=WAIT)
+    finish_trial(page, timeout=WAIT)
     page.locator("#bd-drawer-x").click(timeout=WAIT)
 
 

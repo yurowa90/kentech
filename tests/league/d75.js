@@ -116,7 +116,7 @@ function storage() {
 async function teamReports() {
   const localStorage = storage(), sessionStorage = storage(), notices = [];
   const uiK = { ...K, buildGame: { ...BG, toast: text => notices.push(text) } };
-  const context = { window: { KCP: uiK, localStorage, sessionStorage, addEventListener() {} },
+  const context = { window: { KCP: uiK, localStorage, sessionStorage, removeEventListener() {}, addEventListener() {} },
     document: { addEventListener() {} }, location: { hash: "#league/team" },
     structuredClone, TextEncoder, console, btoa, atob };
   // 내부 함수 노출만 메모리에서 추가한다. 판정·전송·응답 함수는 실제 코드 그대로 실행.
@@ -287,7 +287,7 @@ function protocolUI(localStorage = storage(), sessionStorage = storage()) {
   } };
   const uiK = { ...K, leagueNet: net, buildGame: { ...BG, toast: text => notices.push(text) } };
   const schedule = fn => { timers.set(++timerId, fn); return timerId; };
-  const context = { window: { KCP: uiK, localStorage, sessionStorage, addEventListener() {} },
+  const context = { window: { KCP: uiK, localStorage, sessionStorage, removeEventListener() {}, addEventListener() {} },
     document: { addEventListener() {}, getElementById: id => nodes.get("#" + id) || null,
       documentElement: { classList: { add() {}, remove() {} } } },
     location: { hash: "#league/team" }, setTimeout: schedule, setInterval: schedule,

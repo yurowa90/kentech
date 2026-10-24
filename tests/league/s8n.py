@@ -7,6 +7,7 @@
 AUTO 문자열을 평가하지 않는다. 계획 변경은 공개 검사 API를 사용한다.
 """
 
+from league_flow import finish_trial
 from league_flow import pass_issue_check
 import re
 import sys
@@ -93,9 +94,7 @@ def next_phase(page, month, phase):
 def trial(page):
     close_drawer(page)
     page.locator('[data-run="7"]').click()
-    page.wait_for_selector('#bd-skip')
-    page.locator('#bd-skip').click()
-    page.wait_for_selector('#bd-res-title')
+    finish_trial(page)
     page.locator('#bd-drawer-x').click()
 
 
@@ -226,7 +225,7 @@ def followup(checks, page, added, mission, reason, label, mismatch=False, neutra
               label + ' 전선·정책 변경 없음 [10]')
     expected = ('아직 바꾸지 않았어요' if neutral else
                 '말과 지금 계획이 달라요 — 유지하겠다고 했어요' if mismatch else
-                '달성' if mission else '미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요')  # 총괄 10-23 아르곤 문구(UX 갈래)
+                '달성' if mission else '미달성 예정 · 지난달 유지 이유에 결과 숫자나 원인이 없었어요(다음엔 넣어요)')  # 총괄 10-23 아르곤 문구(UX 갈래)
     mission_status(checks, page, expected,
                    label, '#lg-previous-mission', preview=True)
     checks.ok(('말과 지금 계획이 달라요' in text) == mismatch and '말과 실제 변경이 달라요' not in text,
@@ -724,7 +723,7 @@ def verdict_matrix(checks, context, base, width, label, pages):
         ('유지·인용·불변', 'keep', '정전 결과를 확인하여 유지한다', False, True,
          '달성', '달성'),
         ('유지·인용 없음·불변', 'keep', REASON, False, True,
-         '미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요', '미달성'),  # 총괄 10-23 아르곤 문구(UX 갈래)
+         '미달성 예정 · 지난달 유지 이유에 결과 숫자나 원인이 없었어요(다음엔 넣어요)', '미달성'),  # 총괄 10-23 아르곤 문구(UX 갈래)
         ('유지·변경', 'keep', '정전 결과를 확인하여 유지한다', True, True,
          '말과 지금 계획이 달라요 — 유지하겠다고 했어요', '미달성 · 말과 실제 변경이 달라요'),
         ('수정·불변', 'revise', REASON, False, True,

@@ -32,7 +32,8 @@ function replaceOne(text, from, to) {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function load({ core = source['league-core'], build = source.build, league = source.league, grant = 10, noMetadata = false } = {}) {
   const L = { team: ID, role: 'team' };
-  const ctx = vm.createContext({ console, performance, structuredClone, session: L, addEventListener() {},
+  // T F1: 기존 칩 주석 계약은 760px 초과 화면이다. 390 정보창/높이는 score1.py에서 검사한다.
+  const ctx = vm.createContext({ console, performance, structuredClone, session: L, addEventListener() {}, matchMedia: () => ({ matches: false }),
     document: { documentElement: {}, addEventListener() {} },
     KCP: { route() {}, on() {}, esc, gradeWords: String, leagueNet: {} } });
   ctx.window = ctx;
@@ -40,7 +41,7 @@ function load({ core = source['league-core'], build = source.build, league = sou
   for (const name of names) {
     let text = name === 'league-core' ? core : name === 'build' ? build : name === 'league' ? league : source[name];
     if (name === 'build') text = replaceOne(text, '  let S = null;',
-      '  let S = null; globalThis.editor = { set: s => S = s, canPlace, withinBudget: p => withinBudget(p), showConfirm, refreshHUD, updateAria };');
+      '  let S = null; globalThis.editor = { set: s => S = s, canPlace, withinBudget: p => withinBudget(p), showConfirm, refreshHUD, updateAria, budgetShortfall: typeof budgetShortfall === "function" ? budgetShortfall : null, fmt };');
     if (name === 'league') {
       const start = text.indexOf('  function mountCity(');
       const callback = text.slice(text.indexOf('      budget:', start)).split('\n')[0].trim().slice(8).replace(/,$/, '');
@@ -376,9 +377,14 @@ try {
       const start = source.build.indexOf('  function confirmLine()'), end = source.build.indexOf('  function cancelLine()', start);
       let toast = '';
       vm.runInNewContext(source.build.slice(start, end) + ';confirmLine();', { S: state, withinBudget: h.editor.withinBudget,
-        fmt: String, toast: msg => { toast = msg; }, undoTurn: () => null, mapEffect() {}, floater() {}, showConfirm() {}, changed() {} });
+        budgetShortfall: h.editor.budgetShortfall, fmt: h.editor.fmt, toast: msg => { toast = msg; }, undoTurn: () => null, mapEffect() {}, floater() {}, showConfirm() {}, changed() {} });
       a.equal(state.st.lines.length, want ? 1 : 0, '실제 선로 확정 결과');
       a.equal(Boolean(toast), !want, '거절 안내');
+      if (!want) {
+        // T F6 예외: 이 fixture는 setup(over=true)로 이미 빚 한도 100억 초과다.
+        // debt 거절은 종전 문구 유지. 일반 부족액 문구는 score1-node.js에서 별도 검증한다.
+        a.equal(toast, '예산 부족(6.0억)', '빚 한도 초과 선로 거절 문구 유지');
+      }
     });
   h.D.params.disasterGrant.v = 10;
   let randomCandidates = 0, withinCandidates = 0, overCandidates = 0;
@@ -469,7 +475,7 @@ try {
       selector === '.v2-cap-txt' ? { append: el => { note = el; } } :
       note && ((selector.includes('[data-money-note]') && Object.hasOwn(note.dataset, 'moneyNote')) ||
         (selector.includes('.lg-debt-note') && note.className === 'lg-debt-note')) ? note : null,
-      setAttribute(k, v) { this[k] = v; } };
+      getAttribute(k) { return this[k] ?? null; }, setAttribute(k, v) { this[k] = v; } };
     const syncStart = harness.league.indexOf('    const syncMoney = () => {');
     const start = harness.league.lastIndexOf('    const money = root.querySelector', syncStart);
     const end = harness.league.indexOf("    root.querySelectorAll('[data-cap]')", syncStart);
@@ -477,7 +483,7 @@ try {
     harness.ctx.hudMoney = money;
     // 갱신 3: 주석 생성부터 실행해 0 달에 data-money-note를 붙이는 회귀도 잡는다.
     // DOM 쓰기만 대역 처리한다. 생성·자금·문구 계산은 실제 함수 그대로다.
-    vm.runInContext(`{ const L = session, id = L.team, root = { querySelector: () => hudMoney },
+    vm.runInContext(`{ const L = session, id = L.team, root = { querySelector: s => s === '[data-cap="budget"]' ? hudMoney : null },
       document = { createElement: tag => ({ tagName: tag, textContent: '', dataset: {}, className: '' }) },
       fmt = KCP.league.uiMath.fmt, grantMoneyNote = view.note, syncLastOutage = () => {};
       ${harness.league.slice(start, end).replace('const syncMoney', 'globalThis.syncMoney')} }`, harness.ctx);
