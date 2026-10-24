@@ -83,7 +83,9 @@
       const data = lines.map(s => ({ ...s, values: months.map(t => s.id === "neighbors" ? average(t, key) : read(s.id, t, key)) }));
       const values = data.flatMap(s => s.values).filter(valid);
       const signed = unit === "%p";
-      const hi = signed ? Math.max(1, ...values.map(Math.abs)) * 1.15 : unit === "%" ? Math.max(100, ...values) : Math.max(1, ...values) * 1.12;
+      // 전부 0인 CO₂도 0·0.5·1의 서로 다른 눈금을 쓴다. 그래프 크기·진행자 배치는 유지한다.
+      const hi = key === "co2" && values.length && values.every(v => v === 0) ? 1 :
+        signed ? Math.max(1, ...values.map(Math.abs)) * 1.15 : unit === "%" ? Math.max(100, ...values) : Math.max(1, ...values) * 1.12;
       const lo = signed ? -hi : 0;
       const x = i => 40 + i / Math.max(1, end - 1) * 158, y = v => 106 - (v - lo) / (hi - lo) * 72;
       const last = s => { const i = s.values.findLastIndex(valid); return i < 0 ? "자료 없음" : `${month(i + 1)} ${value(s.values[i], unit)}`; };

@@ -197,6 +197,8 @@
     flushHost();
     L.resultReplayWait?.();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
+    L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
+    BG.setViewInset?.({ right: 0 });
     clearInterval(L.guidanceTimer); L.guidanceTimer = null;
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
@@ -443,7 +445,8 @@
   }
   function planIssueCounts() {
     const issues = BG.planIssues();
-    return { unlinked: issues.unlinked.length, waiting: issues.waiting.length, supplyMW: issues.supplyMW };
+    return { unlinked: issues.unlinked.length, waiting: issues.waiting.length, supplyMW: issues.supplyMW,
+      unlinkedNames: issues.unlinked.map(b => b.name) };
   }
   // D-74 뒤에는 돌 설비가 없어도 계통이 일부를 메워 정전이 100%가 되지 않는다(빈 계획 첫 달 약 50%).
   function noSupplyCause(unsPct, issues) {
@@ -537,7 +540,7 @@
     return [
       ["이번 달 사건을 열어 봐요", "사건 보기", '#lg-bar [data-panel="deal"]'],
       [build, "화력", '[data-group="fire"]'],
-      [`마을까지 이어요 · 미연결 ${issues.unlinked}기 · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
+      [`마을까지 이어요 · 미연결${issues.unlinked ? `(${issues.unlinkedNames.slice(0, 2).join("·")}${issues.unlinked > 2 ? ` 외 ${issues.unlinked - 2}기` : ""})` : " 0기"} · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
       ["준비 → 근거·방향·확신 고르고 약속해요", "준비", L.awaitReady ? "#lg-ready-confirm" : "#lg-ready"],
       ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
@@ -558,7 +561,8 @@
     if (advance && state.step < 7 && done[state.step]) state.step++;
     const [task, action, selector] = coachSteps(issues, n)[state.step];
     el.dataset.step = String(state.step + 1);
-    const taskEl = el.querySelector("#lg-coach-task"), text = `${state.step + 1}/8 ${task}`;
+    const scenes = ["근거 하나", "자리 판단", "자리 판단", "시험 1주", "약속", "예측 대 실제", "원인 하나", "다음 달"];
+    const taskEl = el.querySelector("#lg-coach-task"), text = `${scenes[state.step]} · ${state.step + 1}/8 ${task}`;
     if (taskEl.textContent !== text) taskEl.textContent = text;
     el.querySelector("#lg-coach-action").textContent = action;
     document.querySelectorAll(".lg-coach-target").forEach(item => item.classList.remove("lg-coach-target"));
@@ -1115,7 +1119,7 @@
     if (verdict === "achieved") return "달성";
     if (currentPlan) {
       if (verdict === "mismatch") return n.answer === "revise" ? "아직 바꾸지 않았어요" : "말과 지금 계획이 달라요 — 유지하겠다고 했어요";
-      if (verdict === "uncited") return "미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요";
+      if (verdict === "uncited") return "미달성 예정 · 지난달 유지 이유에 결과 숫자나 원인이 없었어요(다음엔 넣어요)";
       if (verdict === "unanswered") return "미달성 예정 · 지난달 유지·수정 답을 고르지 않았어요";
       return "미달성 예정 · 지난달 근거·예측·비교·이유 기록이 부족해요";
     }
@@ -1466,17 +1470,19 @@
     const hit = actual == null ? null : n.pred[topic] === actual;
     return { result, r, topic, comparison, grid, delta, actual, hit };
   }
+  // 같은 계통 Δ를 보이는 요약·접힘 제목·결과 칸은 같은 자릿수로 맞춘다. '판정 계산' 줄만 계산 설명이라 늘 2자리(D-82).
+  const gridDeltaDigits = grid => grid?.tolPerDay < .1 ? 2 : 1;
   function promiseVerdictText({ r, topic, comparison, grid, delta, actual, hit }, n) {
     // 같음 범위가 0.1 MWh/일 미만이면 범위와 Δ를 함께 소수 2자리로 보여 "±0.05 안, +0.1"처럼 Δ가 범위를 넘어 보이지 않게 한다.
-    const sameDigits = grid?.tolPerDay < .1 ? 2 : 1;
-    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} ${ACTUAL_NAMES[actual]}(${actual === "same" ? `±${fmt(grid.tolPerDay, sameDigits)} 안, ` : ""}하루 평균 ${signed(grid.deltaPerDay, actual === "same" ? sameDigits : 1)} MWh/일 변화) · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
+    const sameDigits = gridDeltaDigits(grid);
+    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} ${ACTUAL_NAMES[actual]}(${actual === "same" ? `±${fmt(grid.tolPerDay, sameDigits)} 안, ` : ""}하루 평균 ${signed(grid.deltaPerDay, sameDigits)} MWh/일 변화) · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
       : `${topic === "cash" ? "현금" : "정전"} 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : comparison.label} ${signed(delta, 2)}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
   }
   // '이번 달 자세히' 접힘 제목용 짧은 판정. 숫자와 월 합계는 판정 줄·상세에 이미 있다(390 첫 화면 줄 수를 줄인다).
   function promiseVerdictShort(c, n) {
     if (c.topic !== "grid") return promiseVerdictText(c, n);
     const dir = DIRECTION_NAMES[n.pred?.grid] || "미선택";
-    return c.grid.deltaPerDay == null ? `계통 예측 ${dir} · 비교 기준 없음` : `계통 예측 ${dir} → ${c.hit ? "예상과 같음" : "예상과 다름"} · 하루 평균 Δ ${signed(c.grid.deltaPerDay, 1)} MWh/일`;
+    return c.grid.deltaPerDay == null ? `계통 예측 ${dir} · 비교 기준 없음` : `계통 예측 ${dir} → ${c.hit ? "예상과 같음" : "예상과 다름"} · 하루 평균 Δ ${signed(c.grid.deltaPerDay, gridDeltaDigits(c.grid))} MWh/일`;
   }
   function reportPromiseVerdict(V) {
     if (L.role !== "team" || !L.claimAccepted || L.away || !V.econ || V.phase !== "review" ||
@@ -3577,12 +3583,14 @@
     // 월간 합계 밖 재현 진단은 실제 차이를 설명하는 몫으로 읽지 않는다.
     const replayDominates = !a.replayOutsideSum && !smallDifference && Math.sign(a.replay) === Math.sign(difference) &&
       Math.abs(a.replay) > Math.abs(difference) / 2 && Math.abs(partsSum) < Math.abs(difference) / 2;
+    const shareThreshold = Number.isFinite(difference) && params("outageCardShareMin") * Math.abs(difference) > outageMinPart(a);
+    const thresholdText = shareThreshold ? `이번 차이 ${outageValue(Math.abs(difference), unit)}의 ${fmt(params("outageCardShareMin") * 100)}%(${minText})` : `카드 최소 크기(${minText})`;
     const noCauseDetail = replayDominates ?
       `차이의 대부분은 재현 차이(저장된 ${monthly ? "지난달 사본" : "시험"}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요` :
-      `${causeCount} 원인의 몫이 모두 ${minText} 이하라, 바뀐 조건 하나하나는 ${subject}${a.target === "grid" ? "를" : "을"} 거의 바꾸지 않았어요`;
+      `${causeCount} 원인의 몫이 모두 ${thresholdText} 이하라, 바뀐 조건 하나하나는 ${subject}${a.target === "grid" ? "를" : "을"} 거의 바꾸지 않았어요`;
     const highOutageHint = a.target !== "grid" && outageHigh(a.actual) ? `. 정전 자체는 커요: ${outageHigh(a.trial) ? `${monthly ? "지난달" : "시험"}에도 정전이 컸으니 ` : ""}${smallDifference ? "이번 달 변화보다 " : ""}지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요` : "";
     const noCauseSummary = `${monthly ? "지난달" : "시험"} ${a.trial == null ? "기록에 계통 값이 없어 시험 대비 차이는 표시하지 않아요. 실제" : esc(level(a.trial))}${a.trial == null ? "" : ` → ${monthly ? "이번 달" : "실제"}`} ${esc(level(a.actual))}${a.trial == null ? "예요" : smallDifference ? "로 거의 같아요" : "의 차이를 나눠 보는 카드예요"}. ${noCauseDetail}${highOutageHint}`;
-    const singleText = !largest ? noCauseSummary : `이번 차이의 가장 큰 몫은 ${esc(names[largest.key])}(${esc(part(largest.value) + outageCost(largest.value, a, true))})${withParticle(names[largest.key], "이에요").slice(names[largest.key].length)}. ${causeCount} 원인 중 나머지 몫은 모두 ${minText} 이하라 원인 고르기를 건너뛰어요`;
+    const singleText = !largest ? noCauseSummary : `이번 차이의 가장 큰 몫은 ${esc(names[largest.key])}(${esc(part(largest.value) + outageCost(largest.value, a, true))})${withParticle(names[largest.key], "이에요").slice(names[largest.key].length)}. ${causeCount} 원인 중 나머지 몫은 모두 ${shareThreshold ? `차이 ${outageValue(Math.abs(difference), unit)}의 ${fmt(params("outageCardShareMin") * 100)}%(${minText})` : `카드 최소 크기(${minText})`} 이하라 고르기를 건너뛰어요`;
     // 합계 밖의 지속 병목: 카드 정답과 무관하므로 열기 전에도 같은 위치에 표시한다.
     const gridBox = gridSize ? `<aside id="lg-outage-grid-bottleneck" aria-label="접속 대기 병목"><strong>접속 대기 ${esc(fmt(a.grid.waitingMW, 1))} MW: 대기가 없었다면 ${subject} <b data-out-grid="${a.grid.value}">${esc(part(a.grid.value))}</b></strong><p>이번 차이와 별개로 계속 있는 몫이에요(분해 합계 밖).</p>${infoTip("outage-grid-method", `<p id="lg-outage-grid">${a.target ? "이번 실제 조건에서 계통 보충을 반영하고" : "이번 실제 조건의 고립 운전에서"} 대기 설비를 모두 연결해 비교했어요.</p>`, { label: "접속 대기" })}</aside>` :
       a.grid?.waitingMW > 0 && Number.isFinite(a.grid.value) ? `<p id="lg-outage-grid-small" class="lg-hint">접속 대기 ${esc(fmt(a.grid.waitingMW, 1))} MW(효과 ${outageLimitText(outageMinPart(a), unit)} 이하)</p>` : "";
@@ -3631,7 +3639,7 @@
   function gridFillHTML(V, res, id) {
     const grid = promiseGridReliance(V, res, id, id === L.team ? tdata().interview?.months?.[res.round] : null), perDay = grid.perDay;
     if (!(perDay >= GRID_DISPLAY_MIN_PER_DAY)) return "";
-    return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(perDay, 1))} MWh/일</dd><dd class="lg-result-note"><small>${esc(grid.base.label)}${grid.deltaPerDay == null ? "" : ` 하루 평균 Δ ${esc(signed(grid.deltaPerDay, 1))} MWh/일`} · 이번 달 합 ${esc(fmt(grid.mwh, 1))} MWh · 비용 약 ${esc(fmt(grid.cost, 2))}억</small>${infoTip("result-grid-assumption", `상한·할증은 ${esc(gradeWords("G"))}`, { label: "계통이 메운 전기" })}</dd></div>`;
+    return `<div data-grid-fill><dt>계통이 메운 전기</dt><dd>${esc(fmt(perDay, 1))} MWh/일</dd><dd class="lg-result-note"><small>${esc(grid.base.label)}${grid.deltaPerDay == null ? "" : ` 하루 평균 Δ ${esc(signed(grid.deltaPerDay, gridDeltaDigits(grid)))} MWh/일`} · 이번 달 합 ${esc(fmt(grid.mwh, 1))} MWh · 비용 약 ${esc(fmt(grid.cost, 2))}억</small>${infoTip("result-grid-assumption", `상한·할증은 ${esc(gradeWords("G"))}`, { label: "계통이 메운 전기" })}</dd></div>`;
   }
   // 결과 서랍의 월 환산 지표와 계통 기준 대비 변화를 함께 표시한다.
   function resultHTML(V, res) {
@@ -3642,11 +3650,20 @@
     // 지난 결과는 그 달에 저장한 약속 주제를 따른다(plan 단계의 promiseTopic은 현재 달 조건으로 다시 계산하므로).
     const gridTopic = (res.round === V.round ? promiseTopic(V, n) : n.topic) === "grid";
     const comparison = outageBaseline(V, res, n);
+    // 정전 줄(outageBaseline)은 약속 때 저장한 시험 사본을 먼저 쓴다. 같은 시험(일수·정전 %)일 때만 정전 시간·생산 CO₂도 그 시험과 비교한다.
+    const lastTrialOfMonth = !p ? matchingTrial(V, res, id) : null, savedTrial = n.trial?.unsPct != null ? n.trial : null;
+    const trial = lastTrialOfMonth && (!savedTrial || savedTrial.days === lastTrialOfMonth.days && Math.abs(savedTrial.unsPct - lastTrialOfMonth.unsPct) < 1e-9) ? lastTrialOfMonth : null;
+    const tm = trial ? days / trial.days : 0;
+    const firstBasis = p ? "지난달 대비" : comparison.label;
+    // build.rememberTrial의 co2는 gridFill(raw).co2(계통 수입을 더한 소비 배출)라 생산 Δ에 쓰지 않는다.
+    // 대신 계통 보충 전 raw.co2(이 도시 설비의 생산 배출)를 co2Prod로 따로 저장한 새 시험 기록만 생산 기준으로 비교한다.
+    // core.run의 co2Prod는 자체 생산 + 판매 추가 발전 - 절감 배출이고, 시험에는 거래가 없어 자체 생산과 같은 기준이다. 옛 기록은 '비교 없음'.
+    const trialProd = Number.isFinite(trial?.co2Prod) ? trial.co2Prod : undefined;
     // 계통 주제는 소비 CO₂ 줄과 같은 하루 평균 정밀도로 읽고, 월 길이에 따른 합계는 보조로 둔다.
     const deltas = [["정전(이번 달)", r.unsPct, comparison.value, "%", "%p", comparison.label, 2],
-      ["정전 시간(이번 달)", r.outH * mul, p ? p.outH * pm : undefined, "시간", "시간", "지난달 대비", 1],
-      gridTopic ? ["CO₂(이번 달 운영)", r.co2Prod * mul / days, p ? p.co2Prod * pm / resultPeriod(V, previous).days : undefined, " t/일", " t/일", "지난달 대비", 1, `이번 달 합 ${fmt(r.co2Prod * mul)} t`]
-        : ["CO₂(이번 달 운영)", r.co2Prod * mul, p ? p.co2Prod * pm : undefined, "t", "t", "지난달 대비", 0]];
+      ["정전 시간(이번 달)", r.outH * mul, p ? p.outH * pm : trial?.outH * tm, "시간", "시간", firstBasis, 1],
+      gridTopic ? ["생산 CO₂(이번 달)", r.co2Prod * mul / days, p ? p.co2Prod * pm / resultPeriod(V, previous).days : trialProd != null ? trialProd / trial.days : undefined, " t/일", " t/일", firstBasis, 1, `이번 달 합 ${fmt(r.co2Prod * mul)} t`]
+        : ["생산 CO₂(이번 달)", r.co2Prod * mul, p ? p.co2Prod * pm : trialProd != null ? trialProd * tm : undefined, "t", "t", firstBasis, 0]];
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><div class="lg-info-line"><p class="lg-hint">운영 기간·정전 시간</p>${infoTip("result-period", `<p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>`, { label: "운영 기간·정전 시간" })}</div>
@@ -4830,6 +4847,8 @@
     // build.mount는 append 방식이다. 팀이 다시 mount할 때 숨긴 이전 루트도 제거한다.
     // 돌아갈 입력 서랍은 leaveTeamCity가 L.home.panel로 따로 보존한다.
     L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.syncMoney = null;
+    L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
+    L.viewInset = null; BG.setViewInset?.({ right: 0 });
     app.querySelectorAll("#bd-root, #lg-region").forEach(el => el.remove());
   }
   function mountTeamPeek(id) {
@@ -5019,6 +5038,7 @@
   }
   function setupTeamMap(root, id = L.team) {
     root.classList.add("lg-team-map");
+    root.dataset.lgPhase = L.snap?.phase || "";
     // 자료 지도만 접는다. 녹화·검사에서 쓰는 세 렌즈는 항상 펼침 밖에 둔다.
     const layers = root.querySelector(".bd-layers");
     if (layers && !layers.querySelector(".lg-map-views")) {
@@ -5052,16 +5072,36 @@
       if (value) value.dataset.money = "left";
       if (money && L.snap?.econ) {
         const grantNote = grantMoneyNote(L.snap, id), noteText = `(빚 한도 포함)${grantNote}`;
+        const narrow = window.matchMedia("(max-width: 760px)").matches;
         const note = money.querySelector("[data-money-note], .lg-debt-note");
-        // 기존 빚 주석은 작은 화면에서 숨겨진다. 교부세가 있으면 항상 보이고 줄바꿈되는 전용 클래스를 쓴다.
+        // 좁은 HUD는 교부세 유무와 관계없이 같은 주석·높이를 유지한다.
         if (note) {
-          if (grantNote) note.dataset.moneyNote = "";
+          if (grantNote && !narrow) note.dataset.moneyNote = "";
           else delete note.dataset.moneyNote;
-          note.className = grantNote ? "lg-grant-note" : "lg-debt-note";
+          note.className = grantNote && !narrow ? "lg-grant-note" : "lg-debt-note";
         }
-        if (note && note.textContent !== noteText) note.textContent = noteText;
+        const visibleNote = narrow ? "(빚 한도 포함)" : noteText;
+        if (note && note.textContent !== visibleNote) note.textContent = visibleNote;
+        let tip = root.querySelector(".lg-money-info");
+        if (!tip && grantNote && narrow && !L.away) {
+          // HUD의 backdrop-filter가 fixed 설명의 기준 좌표를 바꾸지 않도록 루트에 둔다.
+          root.insertAdjacentHTML("beforeend", infoTip("money-grant", "", { label: "남은 돈" }));
+          tip = root.lastElementChild; tip.classList.add("lg-money-info");
+          bindInfoTips(root);
+        }
+        if (tip) {
+          tip.hidden = !grantNote || !narrow || !!L.away;
+          if (tip.hidden) tip.open = false;
+          const pop = tip.querySelector(".lg-info-pop"), text = grantNote.replace(/^ · /, "");
+          if (pop.textContent !== text) pop.textContent = text;
+          const rect = money.getBoundingClientRect();
+          // 44px 누름 영역의 가운데를 칩 오른쪽 위 모서리에 둔다: 금액 글자(칩 아래쪽)와 겹치지 않는다.
+          tip.style.left = `${rect.right - 26}px`;
+          tip.style.top = `${rect.top - 22}px`;
+        }
         const description = `남은 돈 ${text} ${noteText}`;
-        money.title = description; money.setAttribute("aria-label", description);
+        if (money.title !== description) money.title = description;
+        if (money.getAttribute("aria-label") !== description) money.setAttribute("aria-label", description);
       }
       syncLastOutage(root, L.snap, id);
     };
@@ -5091,6 +5131,19 @@
     if (cp) L.hudObserver.observe(cp, { childList: true, characterData: true, subtree: true });
     if (drawer) L.hudObserver.observe(drawer, { childList: true, characterData: true, subtree: true });
     L.syncMoney = () => { syncMoney(); syncComplaints(); syncPolicy(); }; L.syncMoney();
+    window.removeEventListener("resize", L.mapResize);
+    L.mapResize = () => {
+      if (!root.isConnected) return;
+      syncMoney();
+      requestAnimationFrame(syncViewInset);
+    };
+    window.addEventListener("resize", L.mapResize);
+    L.panelObserver?.disconnect();
+    L.panelObserver = new ResizeObserver(syncViewInset);
+    const panel = root.querySelector("#lg-panel"), canvas = root.querySelector("#bd-canvas");
+    if (panel) L.panelObserver.observe(panel);
+    if (canvas) L.panelObserver.observe(canvas);
+    syncViewInset();
     root.querySelectorAll('[data-cap="co2"] .v2-cap-k').forEach(el => { el.textContent = "CO₂ 시험·소비"; el.title = "CO₂ 시험 운전 · 소비 기준(계통에서 받은 전기 포함)"; el.setAttribute("aria-label", el.title); });
     root.querySelectorAll('[data-cap="cp"] .v2-cap-k').forEach(el => { el.textContent = "민원 지금"; el.title = "민원(지금 지도 기준)"; el.setAttribute("aria-label", el.title); });
   }
@@ -5206,6 +5259,7 @@
     const V = L.snap, reg = R();
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     if (!V) { set("lg-bround", "진행자 연결 대기"); set("lg-bphase", ""); return; }
+    document.getElementById("bd-root")?.setAttribute("data-lg-phase", V.phase);
     rememberLocalPlan(V); rememberEvidenceValues(V); updatePlanReminder(V);
     const rd = curRound();
     const RS0 = C.roundsOf(V);
@@ -5296,6 +5350,22 @@
     root.dataset.leagueDrawer = String(!!p && !p.hidden);
     root.dataset.promiseOpen = String(!!p && !p.hidden && !L.panelFolded && L.panel === "journal" && !!p.querySelector("#lg-ready-confirm"));
     if (before !== root.dataset.resultDrawer || drawerBefore !== root.dataset.leagueDrawer) window.dispatchEvent(new Event("resize"));
+    syncViewInset();
+  }
+  function syncViewInset() {
+    if (!L || typeof BG.setViewInset !== "function") return;
+    const root = document.getElementById("bd-root"), panel = root?.querySelector("#lg-panel");
+    const canvas = root?.querySelector("#bd-canvas");
+    let right = 0;
+    if (!L.away && root.dataset.resultDrawer === "true" && panel && !panel.hidden && panel.dataset.folded !== "true" && canvas && window.matchMedia("(min-width: 761px)").matches) {
+      const map = canvas.getBoundingClientRect(), box = panel.getBoundingClientRect();
+      // 오른쪽에 떠 있고 지도와 세로로도 겹치는 서랍만 카메라 여백에 반영한다.
+      if (box.left > map.left + map.width / 3 && box.right >= map.right - 24 && box.top < map.bottom && box.bottom > map.top)
+        right = Math.max(0, Math.ceil(Math.min(map.right, box.right) - Math.max(map.left, box.left)));
+    }
+    if (L.viewInset === right) return;
+    L.viewInset = right;
+    BG.setViewInset?.({ right });
   }
   function closePanel(restore = false) {
     L.resultReplayWait?.();

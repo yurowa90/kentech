@@ -291,7 +291,7 @@
 .lg-mapnav a:hover, .lg-mapnav a:focus-visible { background: var(--c); color: #fff; }
 .lg-evsize { font-size: 13px; font-weight: 700; color: var(--ink); }
 .lg-evsize i { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 4px; border-radius: 999px; background: var(--ui-gold); color: var(--ui-panel); }
-.lg-evnote { font-size: 12px; color: var(--ink-2); }
+.lg-evnote { font-size: 14px; color: var(--ink-2); }
 .lg-ev abbr { text-decoration: none; border-bottom: 1px dotted currentColor; cursor: help; }
 .lg-evopts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .lg-evopt { min-height: 44px; padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--line, #b9b9b9); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
@@ -603,7 +603,7 @@ section#lg-missed.lg-outage { display: block; }
   html.v2-league-host #lg-host-summary-table td[data-ready="true"] { color: var(--ui-mint); }
   .lg-ledger-value { white-space: nowrap; }
   .lg-ledger-value small { font: 500 11px var(--body); color: var(--ui-muted); margin-left: 2px; }
-  .lg-warning-symbol { font: 700 11px var(--body); color: var(--ui-danger); }
+  .lg-warning-symbol { font: 700 14px var(--body); color: var(--ui-danger); }
   .lg-grid-symbol { font: 700 11px var(--body); color: var(--ui-gold); }
   .lg-ledger-note { border-top: 1px solid var(--ui-border); padding-top: 10px; margin: 10px 0 0; font: 400 12px/1.6 var(--body); color: var(--ui-muted); }
   html.v2-league-host .lg-host-details { border-radius: var(--ui-radius); background: var(--ui-panel); }
@@ -1545,3 +1545,61 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 /* 재생 설명은 글을 밀어내지 않도록 다음 행에서 펼친다. */
 .lg-team-map .bd-run-tip:has(> .lg-info[open]) { display: block; }
 .lg-result-deltas .lg-result-note { font-size: 12px; font-weight: 400; }
+
+/* F1: 교부세 설명은 HUD 높이에 참여하지 않는다. 빈 달에도 같은 글자 폭을 확보한다. */
+.lg-money-info { position: fixed; z-index: 60; width: 44px; height: 44px; }
+.lg-money-info[open] { display: block; width: 44px; }
+.lg-money-info .lg-info-pop { position: fixed; top: var(--bd-hudb, 120px); left: 8px; width: min(360px, calc(100vw - 16px)); box-shadow: var(--ui-shadow); }
+/* 보이는 원은 작게(지름 18px), 누름 영역은 44px. 배지는 칩 오른쪽 위 모서리에 걸쳐 금액을 가리지 않는다. */
+.lg-money-info > .lg-info-btn { color: #06202a; font-size: 12px; background: radial-gradient(circle at center, var(--ui-gold) 0 9px, transparent 9.5px); }
+
+/* F2: 결과를 읽은 뒤에는 다음 달 진행이 주 동작이다. */
+#bd-root.lg-team-map[data-lg-phase="review"] #lg-bar #lg-ready:enabled {
+  background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); box-shadow: none;
+}
+.lg-team-map[data-lg-phase="review"] .bd-go[data-run] {
+  min-height: 44px; background: var(--ui-panel); border: 1px solid var(--ui-border); color: var(--ui-text); box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  #lg-coach-task { white-space: normal; overflow: visible; line-height: 1.35; }
+}
+
+/* F5: 1024 결과 직후 재생 패널 머리와 지도 결과 요약 줄이 겹치지 않게 한다. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  /* 재생 패널은 제자리(도구줄 위)에 두고, 재생이 끝나면 다시 보일 지도 결과 요약 줄만 재생 동안 숨긴다(자리는 유지). */
+  .lg-team-map.bd-replaying #lg-map-result { visibility: hidden; }
+}
+
+/* F7: 진행자 표의 단위 small은 유지한다. */
+.lg-host .lg-data-chip { font-size: 14px; }
+
+/* F9: 예보 카드 덱이 지도 아래쪽에 떠 있는 동안 알림(예: '2월 계획 시작 · 사건: …')은 지도 위쪽에 띄워 카드의 효과 크기 줄을 덮지 않는다. */
+@media (min-width: 761px) {
+  #bd-root.lg-team-map:has(.fx-turn-cards article[data-forecast="true"]) .bd-toast { top: calc(var(--bd-top, 180px) + 8px); bottom: auto; }
+}
+
+/* F11: 자동 사건 띠와 열린 서랍은 44px 띠 + 8px 간격을 공유한다.
+   fx_event.py는 레이어·덱·띠 전체 사각형의 교차를 검사하므로 레이어 자체도 고정한다. */
+@media (max-width: 760px) {
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(.fx-turn-layer[data-strip="true"]) :is(#lg-panel, #bd-drawer) {
+    top: calc(max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)) + 52px) !important;
+  }
+  #bd-root.lg-team-map[data-result-drawer="true"] .fx-turn-layer[data-strip="true"] {
+    top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)) !important;
+    left: 8px !important; width: calc(100vw - 16px) !important; height: 44px !important;
+  }
+}
+
+/* F12: 서랍 폭 360에서 2열 SVG를 축소하지 않는다(224 viewBox, 12px 글자). */
+@media (min-width: 481px) {
+  .lg-team-map #lg-panel .lg-fx-charts { grid-template-columns: minmax(0, 1fr); }
+  .lg-team-map #lg-panel .lg-fx-charts > .lg-fx-chart:last-child:nth-child(odd) { grid-column: auto; width: auto; justify-self: stretch; }
+}
+@media print {
+  #lg-rank,
+  #lg-rank .lg-rankrow,
+  #lg-rank .lg-rankrow * { background: #fff !important; color: #000 !important; border-color: #ccc !important; box-shadow: none !important; }
+  #lg-rank .lg-rankrow { break-inside: avoid; }
+  #lg-rank .lg-rankrow[data-me="true"] { border: 2px solid #000 !important; }
+}
