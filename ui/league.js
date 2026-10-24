@@ -538,10 +538,10 @@
       ["이번 달 사건을 열어 봐요", "사건 보기", '#lg-bar [data-panel="deal"]'],
       [build, "화력", '[data-group="fire"]'],
       [`마을까지 이어요 · 미연결 ${issues.unlinked}기 · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
-      ["시험 1주를 돌려 정전을 확인해요", "시험 1주", '[data-run="7"]'],
+      ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
       ["준비 → 근거·방향·확신 고르고 약속해요", "준비", L.awaitReady ? "#lg-ready-confirm" : "#lg-ready"],
       ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
-      ["정전 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
+      ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
       [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
     ];
   }
@@ -906,6 +906,7 @@
   // 계통 주제는 문턱이 기준 크기에 따라 달라 상수에서 문장을 만든다.
   const predictionRule = topic => topic === "grid" ? `같을 것: 계통에 기댄 전기의 하루 평균 변화가 ${GRID_SAME_MWH_PER_DAY} MWh/일과 기준 하루 평균의 ${GRID_SAME_SHARE_PER_DAY * 100}% 중 큰 값 이하(게임 비교 기준). 판정은 표시 반올림 전 값으로 해요.` : PREDICTION_RULE;
   const DIRECTION_NAMES = { up: "늘 것", down: "줄 것", same: "같을 것" };
+  const ACTUAL_NAMES = { up: "늘어남", down: "줄어듦", same: "같음" };
   function windForecast() {
     const climate = BG.PACKS[C.teamDef(R(), L.team).pack]?.climate;
     const month = BG.SEASONS.find(s => s.id === curRound().season)?.m;
@@ -1114,7 +1115,7 @@
     if (verdict === "achieved") return "달성";
     if (currentPlan) {
       if (verdict === "mismatch") return n.answer === "revise" ? "아직 바꾸지 않았어요" : "말과 지금 계획이 달라요 — 유지하겠다고 했어요";
-      if (verdict === "uncited") return "미달성 예정 · 지난달 이유에 결과 숫자나 원인이 없어요";
+      if (verdict === "uncited") return "미달성 예정 · 유지 이유엔 결과 숫자나 원인을 넣어야 해요";
       if (verdict === "unanswered") return "미달성 예정 · 지난달 유지·수정 답을 고르지 않았어요";
       return "미달성 예정 · 지난달 근거·예측·비교·이유 기록이 부족해요";
     }
@@ -1448,7 +1449,7 @@
       return extra ? `<div>${button}${extra}</div>` : button;
     }).join("")}</div>
       <p id="lg-promise-baseline" class="lg-hint${topic === "grid" ? " lg-promise-grid-baseline" : ""}" title="${esc(baseline)}">${esc(baseline)}</p>
-      ${topic === "grid" ? `<p class="lg-hint">${matchingTrial(V, { ...curRound(), round: V.round }, L.team) ? "시험에서" : "지난달에"} 정전이 없어서, 이번 달은 부족을 바깥 계통이 얼마나 메웠는지로 약속해요.</p>` : ""}
+      ${topic === "grid" ? `<p class="lg-hint">${matchingTrial(V, { ...curRound(), round: V.round }, L.team) ? "시험에서" : "지난달에"} 정전이 없어서, 이번 달은 부족한 전기를 바깥 계통이 얼마나 메웠는지로 약속해요.</p>` : ""}
       <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
       ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section>${tipBox("promise-rules", "약속 비교 기준 자세히", `<p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">${EVIDENCE_GRID_BASIS}</p><p class="lg-hint">${predictionRule(topic)}</p>`).replace("<details ", '<details id="lg-promise-rules" ')}${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
@@ -1465,8 +1466,10 @@
     const hit = actual == null ? null : n.pred[topic] === actual;
     return { result, r, topic, comparison, grid, delta, actual, hit };
   }
-  function promiseVerdictText({ r, topic, comparison, grid, delta, hit }, n) {
-    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} 하루 평균 ${signed(grid.deltaPerDay, 1)} MWh/일 · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
+  function promiseVerdictText({ r, topic, comparison, grid, delta, actual, hit }, n) {
+    // 같음 범위가 0.1 MWh/일 미만이면 범위와 Δ를 함께 소수 2자리로 보여 "±0.05 안, +0.1"처럼 Δ가 범위를 넘어 보이지 않게 한다.
+    const sameDigits = grid?.tolPerDay < .1 ? 2 : 1;
+    return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} ${ACTUAL_NAMES[actual]}(${actual === "same" ? `±${fmt(grid.tolPerDay, sameDigits)} 안, ` : ""}하루 평균 ${signed(grid.deltaPerDay, actual === "same" ? sameDigits : 1)} MWh/일 변화) · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
       : `${topic === "cash" ? "현금" : "정전"} 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : comparison.label} ${signed(delta, 2)}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
   }
   // '이번 달 자세히' 접힘 제목용 짧은 판정. 숫자와 월 합계는 판정 줄·상세에 이미 있다(390 첫 화면 줄 수를 줄인다).
@@ -1511,7 +1514,7 @@
       if (key === "wind") return hasConnectedWind ? { sign: -1, reason: "" }
         : hasConnectedWind == null ? { sign: 0, reason: "이번 달 풍력 접속 자료를 계산하지 못해 풍속과 결과의 방향을 비교하지 않아요" }
         : { sign: 0, reason: "우리 도시에 접속된 풍력 설비가 없어 풍속과 결과의 방향을 비교하지 않아요" };
-      if (key === "fuel") return { sign: 0, reason: `LNG 지수는 비용으로만 닿아 이번 대상(${topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"})과 방향을 비교하지 않아요` };
+      if (key === "fuel") return { sign: 0, reason: `LNG 지수는 비용으로만 영향을 주어 이번 대상(${topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"})과 방향을 비교하지 않아요` };
     } else if (key === "fuel") return { sign: -1, reason: "" };
     return { sign: 0, reason: "이 근거는 이번 대상과 방향을 비교하지 않아요" };
   }
@@ -1623,7 +1626,7 @@
     const result = V.results.at(-1), r = result?.team[L.team], left = V.teams[L.team]?.left;
     if (!r) return "";
     const n = tdata().interview?.months?.[V.round] || {}, grid = promiseTopic(V, n) === "grid" ? gridReliance(V, result, L.team) : null;
-    const starts = [...(Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기 하루 평균 ${perDayText(grid.perDay)}이라서 `, "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
+    const starts = [...(Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기가 평균 ${perDayText(grid.perDay)}이어서 `, "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
       : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), `남은 돈 ${fmt(left, 1)}억이라 `];
     return `<div class="lg-acts lg-reason-starts" aria-label="이유 문장 시작">${starts.map(text => `<button class="v2-btn" type="button" data-reason-start="${esc(text)}">${esc(text)}</button>`).join("")}</div>`;
   }

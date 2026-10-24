@@ -62,7 +62,7 @@ for (const topic of ['uns', 'grid']) {
     assert.ok(direction(note(topic)).endsWith('접속 여유는 이번 달 새 접속을 처리하기 전 값이라 결과와 방향을 비교하지 않아요'));
   });
   test(`S6 ${topic} LNG +53%도 변화 크기 대신 비용 연결 이유`, () => {
-    assert.ok(direction(note(topic, 'fuel')).endsWith(`LNG 지수는 비용으로만 닿아 이번 대상(${topic === 'uns' ? '정전' : '바깥 계통에 기댄 전기'})과 방향을 비교하지 않아요`));
+    assert.ok(direction(note(topic, 'fuel')).endsWith(`LNG 지수는 비용으로만 영향을 주어 이번 대상(${topic === 'uns' ? '정전' : '바깥 계통에 기댄 전기'})과 방향을 비교하지 않아요`)); // 총괄 10-23 아르곤 문구(UX 갈래)
   });
   test(`S6 ${topic} 접속 풍력 없음`, () => {
     assert.ok(direction(note(topic, 'wind', 20, false)).endsWith('우리 도시에 접속된 풍력 설비가 없어 풍속과 결과의 방향을 비교하지 않아요'));
@@ -112,14 +112,14 @@ test('S8 화면의 계통·소비 CO₂ 하루 평균 1자리만 기존 resultNu
   api.rememberLocalPlan(S);
   assert.ok(n.resultNumbers.includes('3.4') && n.resultNumbers.includes('12.3'));
   assert.ok(!n.resultNumbers.includes('3.37') && !n.resultNumbers.includes('12.33'));
-  assert.ok(api.reasonStartsHTML(S).includes('하루 평균 3.4 MWh/일이라서'));
+  assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 3.4 MWh/일이어서 ')); // 총괄 10-23 아르곤 문구(UX 갈래)
 });
 test('S8 0.1 미만 표시값은 결과 숫자로 추가하지 않음', () => {
   const r = S.results[1].team[id], old = r.isolated; r.isolated = { uns: .02 * 7 };
   try {
     const n = mission(''); months[2] = n; api.rememberLocalPlan(S);
     assert.ok(!n.resultNumbers.includes('0.1'));
-    assert.ok(api.reasonStartsHTML(S).includes('0.1 MWh/일 미만이라서'));
+    assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 0.1 MWh/일 미만이어서 ')); // 총괄 10-23 아르곤 문구(UX 갈래)
   } finally { r.isolated = old; }
 });
 test('S8 반올림 경계도 Intl 화면 숫자와 같은 값으로 인용', () => {
@@ -127,7 +127,7 @@ test('S8 반올림 경계도 Intl 화면 숫자와 같은 값으로 인용', () 
   r.isolated = { uns: .15 * 7 }; r.co2Cons = 86.45;
   try {
     const n = mission(''); months[2] = n; api.rememberLocalPlan(S);
-    assert.ok(api.reasonStartsHTML(S).includes('하루 평균 0.2 MWh/일이라서'));
+    assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 0.2 MWh/일이어서 ')); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.ok(api.promiseResultHTML(S, n).includes('하루 평균 12.4 t/일'));
     assert.ok(n.resultNumbers.includes('0.2') && n.resultNumbers.includes('12.4'));
   } finally { Object.assign(r, old); }
@@ -168,7 +168,7 @@ for (const days of [7, 9, 30, 90]) test(`S4/S6 ${days}일 기준 이름은 읽�
     assert.equal(api.promiseGridReliance(S, S.results[0], id, n).base.label, label);
     assert.equal(api.outageBaseline(S, S.results[0], n).label, label);
     const html = api.promiseResultHTML(S, n);
-    assert.ok(html.includes(`${label} 하루 평균`) && html.includes(`${label} Δ`));
+    assert.ok(html.includes(`${label} 줄어듦(하루 평균`) && html.includes(`${label} Δ`)); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.ok(api.promiseResultHTML(S, { ...n, topic: 'uns', pred: { uns: 'same' } }).includes(label));
   } finally { S.phase = 'plan'; S.results = []; }
 });
