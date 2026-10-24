@@ -26,6 +26,9 @@ def reload_at(c: Ctx, selector: str, phase: str):
 
 def tab_to(c: Ctx, selector: str):
     """초점을 강제로 지정하지 않고 실제 Tab만으로 도달한다."""
+    # tabs/impl.md 명세 1: 자료 탭 묶음은 선택된 탭만 Tab 정지점이다.
+    # 여기서는 정지점 수·고정 Tab 횟수를 가정하지 않는다. 비선택 자료 탭은
+    # 이 함수로 찾지 않고 선택 탭에 진입한 뒤 방향키로 이동한다(t_T1_tabs_a11y).
     for _ in range(240):
         c.page.keyboard.press("Tab")
         if c.page.evaluate("s => !!document.activeElement?.matches(s)", selector):

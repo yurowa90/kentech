@@ -335,8 +335,10 @@
         </div>`;
 
       const bro = KCP.$("#bro", root);
+      const tabs = KCP.tabs(KCP.$('[role="tablist"]', root), bro);
       const paintBro = () => {
         KCP.$$("[data-tab]", root).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === G.tab)));
+        tabs.sync();
         if (G.tab === "crit") {
           bro.innerHTML = `<p class="small">네 가지 최종 후보 기술을 아래의 다섯 가지 항목에 따라 1~5점으로 평가하시오.</p>
             <table class="spec"><thead><tr><th>번호</th><th>평가 항목</th><th>의미·설명</th></tr></thead><tbody>

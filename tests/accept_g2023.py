@@ -1688,6 +1688,13 @@ def t_23_Y3_fold_beforematch(c: Ctx):
     c.check("Y3 모든 본문 펼침·안내 제거")
 
 
+def t_T1_tabs_a11y(c: Ctx):
+    # tabs/impl.md 명세 1·2: 자료 탭 → #mat, 기존 G.tab 저장 계약.
+    # --oracle은 Playwright를 import하지 않는 기존 계약을 보존한다.
+    from tabs_helpers import tabs_a11y
+    tabs_a11y(c, "2023", "#mat", "tab", "data-tab")
+
+
 if __name__ == "__main__":
     if "--oracle" in sys.argv:
         oracle_self_check()
