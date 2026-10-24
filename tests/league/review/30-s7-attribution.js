@@ -1,4 +1,5 @@
 'use strict';
+const weatherShort = require('./v8-weather-contract');
 // V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix2.md 호출 수·옛 frozen 호환 + S7-fix3.md + V3B-s7.md 영상 3차.
 // D-80: §2 C-1·2 우선. 단계마다 계통 반영, 네 몫; gridImport는 옛 frozen에서만 유지.
 // 실행: node tests/league/review/30-s7-attribution.js (브라우저 없음)
@@ -35,6 +36,13 @@ let checks = 0;
 function ok(value, label) { assert.ok(value, label); checks++; }
 function near(a, b, label) { ok(Number.isFinite(a) && Math.abs(a - b) <= 1e-9, `${label}: ${a} / ${b}`); }
 function equal(a, b, label) { assert.deepEqual(clone(a), clone(b), label); checks++; }
+function sameParagraph(topic, days) {
+  // 계약에서만 기대값을 계산한다. 이름·조사를 정하는 구현 함수는 읽거나 호출하지 않는다.
+  const baselineLabel = days > 0 && days !== 7 ? `시험 ${days}일 대비` : '시험 1주 대비';
+  const baseline = baselineLabel.replace(/ 대비$/, '');
+  const particle = (baseline.charCodeAt(baseline.length - 1) - 0xac00) % 28 ? '과' : '와';
+  return `<p id="lg-outage-same">실제로는 ${topic === 'grid' ? '바깥 계통에 기댄 전기가' : '정전이'} ${baseline}${particle} 거의 같았어요(판정: 같음).</p>`;
+}
 // V3B-fix5: 독립 반올림 산식(백분율의 1/100 단위). UI 함수·상수는 읽지 않는다.
 const shownHigh = value => Number.isFinite(value) && Math.round(value * 100) >= 500;
 const noCauseLabel = (before, after, target = 'uns') => target !== 'grid' && shownHigh(before) && shownHigh(after) ? // D-80: MWh를 높은 정전으로 해석하지 않음.
@@ -243,7 +251,7 @@ function weatherClue(a, before, after, old, current) {
   const season = { spring: '봄', summer: '여름', autumn: '가을', winter: '겨울' };
   const expected = [...physical, `무더위 ${before.hotDays} → ${after.hotDays}일`, ...winds,
     `계절 ${season[old.season]} → ${season[current.season]}`].join(' · ');
-  ok(short === expected, `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
+  ok(short === weatherShort(before, after, old, current), `날씨 짧은 단서 = 독립 수요·재생·기온·접속 풍력·순서: ${short} / ${expected}`);
   ok(full.startsWith(expected + ' · ') &&
     full.includes(`최대 수요 ${fmt(before.peakDemand, 2)} → ${fmt(after.peakDemand, 2)} MW`) &&
     full.includes(`하루 재생 공급량 ${fmt(before.renewable, 1)} → ${fmt(after.renewable, 1)} MWh/일`) &&
@@ -266,7 +274,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   equal(!!small, showSmall, `${label}: 작은 대기 줄은 양의 대기·유한 효과·0.05%p 미만`);
   if (small) { // D-80: 계통 단위도 작은 효과 문구에서 검사.
     if (isGrid) ok(small[1].includes('MWh/일') && !small[1].includes('%p') && small[1].includes('접속 대기'), label + ': 작은 계통 효과 단위'); // D-82: 작은 반사실도 하루 평균 단위.
-    else equal(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 미만)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
+    else equal(small[1], `접속 대기 ${grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} MW(효과 0.05%p 이하)`, label + ': 작은 정전 효과 원문'); // D-80: 기존 정전 문구 유지.
   } // D-80: 작은 효과.
 
   equal((html.match(/id="lg-outage-grid"/g) || []).length, Number(show), `${label}: grid 설명은 병목 상자 있을 때만`);
@@ -608,11 +616,34 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
     equal(calls.length, 0, '옛 작은 선택 재렌더링 추가 계산 0');
   }
 }
-// 약속 예측 판정 쪽은 공개 S7 API가 아니므로 해당 함수 범위의 기존 부호 계약을 보존한다.
-const promiseSource = source.slice(source.indexOf('  function promiseResultHTML('), source.indexOf('  function newBuildCost('));
-// D-80 B-2: 계통 주제도 정전 주제와 같은 근거 부호 표를 쓴다.
-ok(/const sign = topic === "uns" \|\| topic === "grid" \? \{ evening: 1, grid: -1, wind: -1, neighbor: 1 \}/.test(promiseSource),
-  '약속 예측 쪽 grid −1 유지(S7 전용 grid 0과 분리)');
+// 총괄 10-22 녹화 전 점검: S6·S7 근거 부호 통일(옛 D-80 B-2 grid −1 분리 계약 대체).
+// S6(promiseResultHTML)은 공개 API가 아니므로 공용 도우미 evidenceEffect를 소스에서 꺼내 VM으로 동작을 확인하고,
+// 두 화면이 그 도우미 하나만 부르는지 소스 범위로 확인한다.
+{
+  const slice = (from, to) => { const a = source.indexOf(from), b = source.indexOf(to, a + 1);
+    ok(a >= 0 && b > a, `소스 범위 찾기: ${from.trim()}`); return source.slice(a, b); };
+  const promiseSource = slice('  function promiseResultHTML(', '  function newBuildCost(');
+  const s7Source = slice('  function outageEvidenceText(', '  function outageTargetClues(');
+  const effectSource = slice('  function evidenceEffect(', '  function promiseResultHTML(');
+  ok(!promiseSource.includes('{ evening: 1, grid: -1, wind: -1, neighbor: 1 }'), 'S6: 옛 부호표(grid −1) 제거');
+  ok(!s7Source.includes('{ evening: 1, grid: 0,'), 'S7: 따로 둔 부호표 제거');
+  ok(/evidenceEffect\(n\.evidence\.key,/.test(promiseSource) && /effectSign = evidenceEffect\(key,/.test(s7Source),
+    'S6·S7이 같은 도우미 evidenceEffect로 부호를 정함');
+  ok(/고른 근거도 같은 쪽으로 움직였나요: \$\{esc\(evidenceText\)\}/.test(promiseSource) &&
+    /const evidenceText = !effect\.sign \? effect\.reason/.test(promiseSource),
+    'S6: 부호 0이면 같은/다른 방향 대신 비교하지 않는 이유를 보임');
+  const effect = vm.runInNewContext(`${effectSource}; evidenceEffect`, {});
+  for (const topic of ['uns', 'grid']) {
+    const sign = (key, hasConnectedWind = false) => effect(key, { topic, hasConnectedWind }).sign;
+    equal([sign('evening'), sign('neighbor'), sign('grid'), sign('grid', true), sign('wind', true), sign('wind', false), sign('fuel')],
+      [1, 1, 0, 0, -1, 0, 0], `${topic}: 저녁 +1·이웃 +1·접속 여유 0·풍속(접속 풍력 있음 −1/없음 0)·LNG 0`);
+    for (const key of ['grid', 'fuel', 'wind']) {
+      const e = effect(key, { topic, hasConnectedWind: false });
+      ok(e.sign === 0 && typeof e.reason === 'string' && e.reason.includes('비교하지 않아요') &&
+        !/같은 방향|다른 방향/.test(e.reason), `${topic}/${key}: 부호 0이면 비교하지 않는 이유`);
+    }
+  }
+}
 
 // 수정 1의 재현: 재생 0·풍력 없음인데 무더위 수요로 정전이 늘어나는 두 씨앗.
 {
@@ -795,7 +826,7 @@ for (const field of ['seed', 'days', 'plan']) {
       equal(summary.includes('로 거의 같아요'), smallDifference, `${label}: 작은 차이만 거의 같음`);
       equal(summary.includes('차이의 대부분은 재현 차이(저장된 시험과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요'),
         !smallDifference, `${label}: 큰 차이의 재현 한계 설명`);
-      equal(summary.includes('바뀐 조건 각각은 정전을 거의 바꾸지 않았어요'), smallDifference,
+      equal(summary.includes('바뀐 조건 하나하나는 정전을 거의 바꾸지 않았어요'), smallDifference,
         `${label}: 큰 재현 차이에 작은 변화 설명 금지`);
       equal(summary.includes('이번 달 변화보다'), smallDifference, `${label}: 0.05%p 미만에만 비교`);
       equal(summary.includes('시험에도 정전이 컸으니'), before >= 5, `${label}: 기준값이 높을 때만 전제`);
@@ -876,8 +907,8 @@ for (const field of ['seed', 'days', 'plan']) {
     ok(/id="lg-outage-carry" disabled/.test(after), `${label}: 붙이기 완료 표시`);
     const next = { ...clone(V), round: res.round + 1 };
     const carry = league.__carryHTML(next), journal = league.__worksheet(next), trend = league.uiMath.trendHTML(next, id, true);
-    ok(carry.includes('지난달 놓친 것: 이웃 거래') && journal.includes('놓친 것: 이웃 거래') &&
-      trend.includes('놓친 것: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
+    ok(carry.includes('지난달 내가 고른 원인: 이웃 거래') && journal.includes('내가 고른 원인: 이웃 거래') &&
+      trend.includes('내가 고른 원인: 이웃 거래'), `${label}: 화면·S4·일지·타임라인 선택 일치`);
     ok(![carry, journal, trend].some(text => text.includes('고르기 생략')), `${label}: 기록을 고르기 생략으로 덮지 않음`);
     equal(JSON.parse(storage.get(storageKey)).interview.months[res.round], saved, `${label}: 재렌더/기록 읽기로 저장값 불변`);
     equal(JSON.stringify({ S, V }), publicBefore, `${label}: 공개·운영 상태 불변`);
@@ -895,6 +926,8 @@ for (const single of [false, true]) {
   const note = { evidence: { text: '가상 근거' }, pred: { uns: 'down' } };
   if (!single) Object.assign(note, { outageOpened: true, missed: ranked[1].key });
   const beforeHTML = league.uiMath.outageCardsHTML(V, res, id, note);
+  const beforeSame = beforeHTML.match(/<p id="lg-outage-same">[^<]*<\/p>/)?.[0];
+  equal(beforeSame, sameParagraph(note.topic, trial.days), '재시험 전 7일 기준은 시험 1주와');
   const pending = session.outShownPending;
   ok(pending?.frozen, `${single ? '요약' : '열기'}: 표시 시점 분해 저장 대기 자료 존재`);
   note.outageFrozen = clone(pending.frozen);
@@ -905,7 +938,8 @@ for (const single of [false, true]) {
   session.interview = { interview: { months: { [res.round]: note } } };
   const saved = clone(note);
   const bucket = JSON.parse(storage.get('kcp-build-trial-v1'));
-  bucket[Object.keys(bucket)[0]] = { ...trial, days: 30, seed: trial.seed + 1 };
+  const retrial = { ...trial, days: 30, seed: trial.seed + 1 };
+  bucket[Object.keys(bucket)[0]] = retrial;
   storage.set('kcp-build-trial-v1', JSON.stringify(bucket));
   session.outCache = {};
   calls = [];
@@ -914,9 +948,12 @@ for (const single of [false, true]) {
   if (a.target === 'grid') for (const field of ['clues', 'clueMore']) expectedFrozen[field].event = a[field].event.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는'); // D-82: 계통 사건 단서의 새 표시 문구, 정전 고정본은 그대로.
   equal(after, expectedFrozen, '공개 뒤 저장 시험·캐시가 바뀌어도 연 시점 분해 유지'); // D-82: 표시 시 고정한 문구를 포함해 모든 필드 엄격 비교.
   const afterHTML = league.uiMath.outageCardsHTML(V, res, id, note);
-  // 붙이기 버튼의 저장 여부만 달라지고, 카드 꼬리표·폭포·판정은 같아야 한다.
+  const afterSame = afterHTML.match(/<p id="lg-outage-same">[^<]*<\/p>/)?.[0];
+  equal(afterSame, sameParagraph(note.topic, retrial.days), '재시험 뒤 30일 기준은 시험 30일과');
+  // 같음 기준 이름은 현재 저장 시험을 따르고, 카드 꼬리표·폭포·판정은 같아야 한다.
   const display = html => html.split('<button type="button" class="v2-btn" id="lg-outage-carry"')[0];
-  equal(display(afterHTML), display(beforeHTML), '재시험 뒤 꼬리표·막대·판정 표시 불변');
+  equal(display(afterHTML), display(beforeHTML).replace(beforeSame, sameParagraph(note.topic, retrial.days)),
+    '재시험 뒤 기준 이름·조사 변경 외 꼬리표·막대·판정 표시 불변');
   equal(note, saved, '재시험 뒤 기기 메모의 최대 몫·다음 달 기록 불변');
   equal(calls.length, 0, '이미 공개한 달의 재시험 뒤 분해 재시뮬레이션 0');
   if (single) {

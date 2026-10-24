@@ -32,6 +32,22 @@
   const plain = (v) => v && typeof v === "object" && !Array.isArray(v);
   const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const pending = new Map();
+  // 저장에 실패한 키와 그 값. 다시 그려도 화면의 답변이 옛 저장값으로 돌아가지 않게 read가 먼저 읽는다.
+  // 실패하면 경고를 한 번만 띄우고, 실패한 키가 모두 다시 저장되면 경고를 내린다(다음 실패 때 다시 알림).
+  const unsaved = new Map();
+  function saveWarn() {
+    if (document.getElementById("kcp-save-warn") || !document.body) return;
+    const t = document.createElement("div");
+    t.id = "kcp-save-warn";
+    t.className = "kcp-save-warn";
+    t.setAttribute("role", "alert");
+    t.textContent = "쓴 내용을 이 브라우저에 저장하지 못했어요. 창을 닫기 전에 쓴 내용을 복사해 따로 옮겨 두세요. 다시 저장되면 이 알림은 사라져요.";
+    document.body.appendChild(t);
+  }
+  function saveSettle(key) {
+    unsaved.delete(key);
+    if (!unsaved.size) document.getElementById("kcp-save-warn")?.remove();
+  }
   function cancel(key) {
     const entry = pending.get(key);
     if (entry) clearTimeout(entry.timer);
@@ -43,7 +59,19 @@
     cancel(key);
     try {
       localStorage.setItem(key, JSON.stringify(entry.value));
-    } catch (e) {}
+      saveSettle(key);
+      // 저장이 되살아났으면, 드물게 저장되는 다른 실패 키(목표·설정 등)도 한 번 더 써 본다.
+      unsaved.forEach((value, other) => {
+        if (pending.has(other)) return;
+        try {
+          localStorage.setItem(other, JSON.stringify(value));
+          saveSettle(other);
+        } catch (e) {}
+      });
+    } catch (e) {
+      unsaved.set(key, entry.value);
+      saveWarn();
+    }
   }
   function schedule(key, value) {
     cancel(key);
@@ -52,6 +80,10 @@
   function read(key, def) {
     try {
       if (pending.has(key)) return clone(pending.get(key).value);
+      if (unsaved.has(key)) {
+        // 직렬화가 안 되는 값이면 아래의 마지막 저장값으로 넘어간다.
+        try { return clone(unsaved.get(key)); } catch (e) {}
+      }
       const value = localStorage.getItem(key);
       if (value !== null) return JSON.parse(value);
     } catch (e) {}
@@ -59,6 +91,7 @@
   }
   function remove(key) {
     cancel(key);
+    saveSettle(key);
     try {
       localStorage.removeItem(key);
     } catch (e) {}
@@ -90,6 +123,7 @@
     Timer.stop();
     KCP.speakStop();
     Array.from(pending.keys()).forEach(cancel);
+    Array.from(unsaved.keys()).forEach(saveSettle);
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);

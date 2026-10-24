@@ -111,7 +111,8 @@ test('첫 달 시험 없음: 키·산식·순수성·null', () => {
 });
 test('이번 달 시험 기준: trial.days로 이번 달 환산', () => {
   const { V, res } = fixture(), trial = trialFor(V, res, { days: 9 }); putTrial(V, trial);
-  inspect(V, res, expectation(58 * 31 / 5, 'trial', '시험 1주 대비', 19 * 31 / 9));
+  // 총괄 10-22 녹화 전 점검: 기준 이름은 실제로 읽은 시험 기록의 9일을 따른다.
+  inspect(V, res, expectation(58 * 31 / 5, 'trial', '시험 9일 대비', 19 * 31 / 9));
 });
 test('옛 시험 gridMWh 누락: lastTrial 호환과 비교 불가', () => {
   const { V, res } = fixture(), trial = trialFor(V, res); delete trial.gridMWh; putTrial(V, trial);

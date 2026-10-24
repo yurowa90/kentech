@@ -3,11 +3,13 @@
 실행: tests/.venv/bin/python tests/league/v3a.py http://127.0.0.1:9430/index.html
 이 파일은 S1 후보·S2 말풍선, s8n.py는 미션 시점·띠·끝 화면·D-65를 담당한다.
 기대값은 명세에서 정한다. 후보/말풍선/손실/판정 UI 함수는 호출하지 않는다.
-S1 저장 fixture는 과거 계획 시작 입력만 바꾼다. 후보나 판정 결과는 넣지 않는다.
+S1 저장 fixture는 계획 시작 입력·설비·현금·지난달 S7 원기록을 바꾼다. 후보 결과는 넣지 않는다.
 S2 거리는 Python BFS로 타일 이웃을 세며, 손실은 자료의 lossPerHex × 거리다.
 """
 
 from collections import defaultdict, deque
+import json
+from math import isfinite
 import re
 import sys
 
@@ -121,16 +123,51 @@ def s1(checks, page, label):
     group = focus.get_by_role('group', name='근거 후보', exact=True)  # D-82-3: 접근성 묶음으로 한정.
     cards = group.get_by_role('button', include_hidden=True)  # D-82-3: 접힌 세 번째 카드도 수·순서 검사.
     hud = page.locator('#lg-watch [data-evidence-focus="true"]')  # D-82-3: 선택 전후 같은 머리 배지.
-    old_note = page.evaluate(NOTES)['1']  # D-82-3: 후보 결과 대신 지난달 S7 원기록만 사용.
     linked = {'weather': 'evening', 'progress': 'grid', 'choice': 'grid',  # D-82-3: 부록의 event 제외.
               'trade': 'neighbor', 'growth': 'fuel'}  # D-82-3: 규칙 2의 명세상 연결표.
+    params = page.evaluate("""() => Object.fromEntries([
+      'outageMinUnsPart', 'gridSameMwhPerDay', 'gridSameSharePerDay',
+      'outageMinPartDivisor', 'outageMinGridPartPerDay'
+    ].map(k=>[k,KCP.ECON_DATA.params[k].v]))""")  # 원 상수만 읽고 S7 판정 함수는 호출하지 않는다.
+    wind_tile = page.evaluate("""() => KCP.buildGame.TILES.find(t=>
+      !t.out && t.site<0 && t.land && !KCP.buildGame.siteRule('wind',t))?.i""")
+    require(checks, isinstance(wind_tile, int), label + ' S1 풍력 fixture 합법적 설비 칸')
+    city_pack = 'pyeongtaek'  # start()에서 고정한 도시의 지도 id(league-data 원자료).
+    original_saved = saved
+
+    def fixture(*, wind=False, memo=False, cash=100, s7=None, current=None):
+        data = json.loads(original_saved)
+        months = data['interview']['interview']['months']
+        old, now = months['1'], months['2']
+        for key in ('outageFrozen', 'outageLargest', 'outageNoCause',
+                    'outageSingleShown', 'missedCarry'):
+            old.pop(key, None)
+        old.update(s7 if s7 is not None else {'outageNoCause': True})
+        if memo is None:
+            now.pop('s1HasWind', None)
+        else:
+            now['s1HasWind'] = memo
+        if current is not None:
+            now['s1EvidenceValues'] = current
+        builds = [{'t': 'wind', 'i': wind_tile}] if wind else []
+        data['state']['teams'][data['team']]['plan']['builds'] = builds
+        # 재개 화면은 공개 계획보다 이 기기의 지도 문서를 먼저 읽는다.
+        doc = data['interview']['docs'].get(city_pack)
+        if doc and city_pack in doc.get('maps', {}):
+            doc['maps'][city_pack]['builds'] = builds
+        data['state']['econ']['cities'][data['team']]['cash'] = cash
+        return json.dumps(data)
+
+    saved = fixture()  # 기존 case도 우연한 S7·현금·풍력 상태에 의존하지 않는다.
+    wind_saved = fixture(wind=True, memo=True)
 
     def card(key):  # D-82-3: 첫 b나 영역 전체 버튼 대신 이름이 같은 카드 하나.
         found = cards.filter(has_text=SHORT_NAMES[key])  # D-82-3: 약속 단추는 묶음 밖이므로 제외.
         expect(found).to_have_count(1)  # D-82-3: 중복 후보를 첫 항목 선택으로 숨기지 않음.
         return found  # D-82-3: 숨겨진 마지막 카드에도 같은 조회 적용.
 
-    def case(values, neighbor_id=neighbor, missing=False, source=saved):  # D-82-3: 사건 없는 달도 같은 검사.
+    def case(values, neighbor_id=neighbor, missing=False, source=saved,
+             name='', wanted=None):  # 사건 없는 달도 같은 검사. wanted는 손으로 계산한 별도 대조값.
         restore(page, source, {'values': values, 'neighbor': neighbor_id,  # D-82-3: 원자료 fixture만 변경.
                               'missing': missing, 's4': {k: 99999 for k in KEYS}})  # D-82-3: S4 대체 방지 유지.
         open_panel(page, 'deal')
@@ -138,19 +175,90 @@ def s1(checks, page, label):
                   label + ' S1 우리 도시에 대응 선택 없음')  # D-82-3: 무사건·규제 달 공통 조건.
         expect(group).to_be_visible()  # D-82-3: role=group·접근성 이름까지 요구.
         require(checks, cards.count() in (2, 3), label + ' S1 근거 카드 2~3개')  # D-82-3: 단일 후보 금지.
-        comparable = [] if missing else [k for k in KEYS  # D-82-3: 지난달 값 없으면 규칙 1만 건너뜀.
-                                         if k != 'neighbor' or neighbor_id == neighbor]  # D-82-3: 같은 이웃만 비교.
-        largest = max(comparable, key=lambda k: (abs((baseline[k] - values[k]) / abs(values[k]))  # D-82-3: 독립 변화율.
-                      if values[k] else float('inf') if baseline[k] else 0), default=None)  # D-82-3: 0·동률 순서 유지.
-        cause = (old_note.get('outageLargest') or (old_note.get('missedCarry') or {}).get('largest') or {}).get('key')  # D-82-3: S7 원기록.
-        picked = []  # D-82-3: 선발 순위와 화면의 고정 순서를 분리해 검산.
-        for k in (largest, linked.get(cause), 'wind', 'fuel', *KEYS):  # D-82-3: 부록대로 세 개까지 채움.
-            if k in KEYS and k not in picked and len(picked) < 3:  # D-82-3: fixture의 다섯 값은 모두 숫자.
-                picked.append(k)  # D-82-3: 중복을 제외한 후보 집합.
+        inputs = page.evaluate("""() => ({
+          saved:JSON.parse(localStorage.getItem('kcp-league-solo-v1')),
+          plan:KCP.buildGame.current()
+        })""")
+        data = inputs['saved']
+        months = data['interview']['interview']['months']
+        old_note, now = months['1'], months['2']
+        current = now['s1EvidenceValues']
+        previous = old_note.get('s1EvidenceValues') or {}
+        memo = now.get('s1HasWind')
+        has_wind = memo if isinstance(memo, bool) else any(
+            b['t'] in ('wind', 'offshore') for b in inputs['plan']['builds'])
+        numeric = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and isfinite(x)
+        available = [k for k in KEYS if numeric(current.get(k)) and (k != 'wind' or has_wind)]
+        comparable = [k for k in available if numeric(previous.get(k)) and
+                      (k != 'neighbor' or now.get('s1EvidenceNeighborId') and
+                       now['s1EvidenceNeighborId'] == old_note.get('s1EvidenceNeighborId'))]
+        sizes, visible = {}, {}
+        for key in comparable:
+            before, delta = previous[key], current[key] - previous[key]
+            sizes[key] = abs(delta / before) if before else float('inf') if delta else 0
+            shown_delta = delta if key == 'neighbor' else delta / abs(before) * 100 if before else current[key]
+            visible[key] = round(shown_delta, 2) != 0
+        ranked = sorted(comparable, key=lambda k: sizes[k], reverse=True)  # 동률은 KEYS 순서.
+
+        frozen, carry = old_note.get('outageFrozen'), old_note.get('missedCarry') or {}
+
+        def minimum(record, card=False):
+            record = record or {}
+            base = record.get('trial')
+            if base is None:
+                base = record.get('base')
+            floor = params['outageMinUnsPart']
+            if record.get('target') == 'grid':
+                same = max(params['gridSameMwhPerDay'],
+                           params['gridSameSharePerDay'] * abs(base) if numeric(base) else 0)
+                floor = max(same / params['outageMinPartDivisor'], params['outageMinGridPartPerDay'])
+            if card:
+                total = record.get('total')
+                actual = record.get('actual')
+                if not numeric(total) and numeric(base) and numeric(actual):
+                    total = actual - base
+                if numeric(total):
+                    floor = max(floor, .05 * abs(total))
+            return floor
+
+        largest = old_note.get('outageLargest') or carry.get('largest') or {}
+        no_cause = (old_note.get('outageNoCause') or
+                    frozen is not None and all(abs(p['value']) < minimum(frozen, card=True)
+                                               for p in frozen.get('parts', [])) or
+                    old_note.get('outageSingleShown') and largest and
+                    abs(largest['value']) < minimum(frozen or carry, card=True))
+        if frozen is not None:
+            s7_cards = sorted((p for p in frozen.get('parts', [])
+                               if abs(p['value']) >= minimum(frozen, card=True)),
+                              key=lambda p: abs(p['value']), reverse=True)[:3]
+            growth = any(p['key'] == 'growth' for p in s7_cards)
+        else:
+            growth = (carry.get('largest', {}).get('key') == 'growth' and
+                      abs(carry['largest']['value']) >= minimum(carry))
+        fuel_allowed = growth or data['state']['econ']['cities'][data['team']]['cash'] < 0
+
+        # 계약 1~4의 우선순위를 만든 뒤, 5의 보충과 마지막 화면 순서를 별도로 검산한다.
+        priority = ranked[:1] + [None if no_cause else linked.get(largest.get('key')),
+                                 'wind', 'fuel' if fuel_allowed else None]
+        picked = []
+        for key in priority:
+            if key in available and key not in picked and len(picked) < 3:
+                picked.append(key)
+        remaining = [k for k in ranked + [k for k in available if k not in comparable]
+                     if k not in picked and (k != 'fuel' or fuel_allowed)]
+        for key in remaining:  # N6: 지난달 값이 없는 근거는 채움에서 뺀다.
+            if len(picked) < 3 and key in comparable and visible.get(key, True):
+                picked.append(key)
+        for key in remaining:  # 표시상 변화 0 → 지난달 값 없음 순서로, 필요한 경우에만 2장까지 보충.
+            if len(picked) < 2 and key not in picked:
+                picked.append(key)
+        expected = [k for k in KEYS if k in picked]
+        if wanted is not None:
+            require(checks, expected == list(wanted), label + ' S1 손계산 기대값 ' + name)
         actual = [next((k for k in KEYS if SHORT_NAMES[k] in (cards.nth(i).text_content() or '')), None)  # D-82-3: DOM 이름 관찰.
                   for i in range(cards.count())]  # D-82-3: 접힌 카드도 포함한 실제 순서.
-        checks.ok(actual == [k for k in KEYS if k in picked],  # D-82-3: 포함 여부만으로 변화율 검사를 완화하지 않음.
-                  label + ' S1 규칙 1~4 후보·중복 없음·고정 순서')  # D-82-3: 후보 집합을 정확히 대조.
+        checks.ok(actual == expected,  # 포함 여부만으로 변화율 검사를 완화하지 않음.
+                  label + f' S1 규칙 1~6 후보·중복 없음·고정 순서 {name}: {actual} == {expected}')
         checks.ok(all(cards.nth(i).get_attribute('aria-pressed') == 'false' for i in range(cards.count())),  # D-82-3: 전부 미선택.
                   label + ' S1 처음에는 고른 카드 없음')  # D-82-3: 자동 정답 선택 금지.
         expect(focus.get_by_role('button', name='근거를 하나 고르면 약속으로 이어져요', exact=True)).to_be_disabled()  # D-82-3: 약속 구별.
@@ -193,7 +301,7 @@ def s1(checks, page, label):
     for key in KEYS:
         previous = dict(baseline)
         previous[key] = baseline[key] / 2 if baseline[key] else 10
-        case(previous)
+        case(previous, source=wind_saved if key == 'wind' else saved)
         text = card(key).text_content()  # D-82-3: 변화 근거 카드 하나의 이름·값·차이만 검사.
         name = SHORT_NAMES[key] if key == 'wind' else chips[key].split(':', 1)[0]  # D-82-3: 풍속은 짧은 카드 이름.
         checks.ok(name in text and '이번 달 볼 것' in focus.inner_text(),  # D-82-3: 약속 칩과 같은 근거 이름 유지.
@@ -229,7 +337,64 @@ def s1(checks, page, label):
     checks.ok(all('지난달 값 없음' in (cards.nth(i).text_content() or '') for i in range(cards.count())),  # D-82-3: 예보·보충 카드 유지.
               label + ' 계획 시작 이력 없음 → 비교값 없음, S4로 대체 안 함 [A6]')  # D-82-3: 가짜 S4 이력을 쓰면 실패.
 
-    no_events = page.evaluate("saved => {const d=JSON.parse(saved);d.state.events=d.state.events.filter(e=>e.round!==2);return JSON.stringify(d);}", saved)  # D-82-3: 사건 0개 fixture.
+    # 아래 값은 관측 원자료 fixture다. 기대 후보는 손계산 목록과도 정확히 대조한다.
+    fixed = {'evening': 100, 'wind': 5, 'grid': 20, 'fuel': 100, 'neighbor': 12.5}
+    source = fixture(current=fixed)
+    case({**fixed, 'evening': 50, 'wind': 0, 'grid': 10, 'neighbor': 6.25},
+         source=source, name='풍력 없음·풍속 0 출발 제외', wanted=('evening', 'grid', 'neighbor'))
+    # 전부 같은 값: 규칙 1은 evening, 풍력이 있으면 규칙 3의 wind로 2장.
+    for name, wind, memo, wanted in (
+            ('풍력 계획·시작 메모 true', True, True, ('evening', 'wind')),
+            ('풍력 계획·옛 메모 없음', True, None, ('evening', 'wind')),
+            ('풍력 계획보다 시작 메모 false 우선', True, False, ('evening', 'grid')),
+            ('지금 풍력 없어도 시작 메모 true 우선', False, True, ('evening', 'wind'))):
+        case(fixed, source=fixture(current=fixed, wind=wind, memo=memo), name=name, wanted=wanted)
+        builds = page.evaluate('() => KCP.buildGame.current().builds')
+        require(checks, any(b['t'] in ('wind', 'offshore') for b in builds) == wind and
+                page.evaluate(NOTES)['2'].get('s1HasWind') is memo,
+                label + ' S1 풍력 계획·시작 메모 전제 ' + name)
+        if 'wind' in wanted:
+            expect(card('wind').locator('.lg-s1-tag')).to_have_text('계절 대표값')
+        else:
+            expect(cards.filter(has_text=SHORT_NAMES['wind'])).to_have_count(0)
+    case(fixed, source=fixture(current=fixed, cash=-1), name='음수 현금', wanted=('evening', 'fuel'))
+    choose('fuel')  # 음수 현금 입력에서도 기존 약속·배지·aria 흐름을 유지한다.
+    case({**fixed, 'evening': 50, 'neighbor': 6.25}, source=source,
+         name='변화 0 건너뛰어 2장 유지', wanted=('evening', 'neighbor'))
+    # grid +0.004%, neighbor +0.0001%p는 모두 표시상 0. 규칙 1의 evening만
+    # 남으므로 변화율이 더 큰 grid를 되넣어 정확히 2장(세 번째 neighbor는 제외).
+    case({**fixed, 'evening': 50, 'grid': 20 / 1.00004, 'neighbor': 12.4999}, source=source,
+         name='반올림 변화 0 중 큰 순서로 2장 보충', wanted=('evening', 'grid'))
+
+    # 정전율 대상의 minPart는 원 상수 outageMinUnsPart(현재 .05).
+    # Δ=10이면 cardMin=.5: growth 1은 후보, .49는 제외. 네 번째 몫도 제외한다.
+    for name, parts, total, wanted in (
+            ('S7 고정본 growth 세 후보 안', [('event', 6), ('trade', 3), ('growth', 1)], 10,
+             ('evening', 'fuel')),
+            ('S7 고정본 growth 네 번째', [('event', 6), ('weather', 3), ('trade', 2), ('growth', 1)], 12,
+             ('evening', 'grid')),
+            ('S7 고정본 growth cardMin 미만', [('event', 9.51), ('growth', .49)], 10,
+             ('evening', 'grid'))):
+        record = {'outageLargest': {'key': 'event', 'value': parts[0][1]},
+                  'outageFrozen': {'target': 'uns', 'total': total,
+                                   'parts': [{'key': k, 'value': v} for k, v in parts]}}
+        case(fixed, source=fixture(current=fixed, s7=record), name=name, wanted=wanted)
+    for value, wanted in ((.05, ('evening', 'fuel')), (.049, ('evening', 'grid'))):
+        largest = {'key': 'growth', 'value': value}
+        record = {'outageSingleShown': True, 'outageLargest': largest,
+                  'missedCarry': {'target': 'uns', 'largest': largest}}
+        case(fixed, source=fixture(current=fixed, s7=record),
+             name=f'S7 축약 growth minPart 경계 {value}', wanted=wanted)
+    # 규칙 2의 LNG는 규칙 4 문턱으로 막지 않고, 명시적 원인 없음은 연결을 막는다.
+    for name, record, wanted in (
+            ('S7 trade 연결', {'outageLargest': {'key': 'trade', 'value': 1}}, ('evening', 'neighbor')),
+            ('S7 growth 연결은 작은 몫도 유지', {'outageLargest': {'key': 'growth', 'value': .01}},
+             ('evening', 'fuel')),
+            ('S7 원인 없음은 옛 growth 연결 제외',
+             {'outageNoCause': True, 'outageLargest': {'key': 'growth', 'value': 1}}, ('evening', 'grid'))):
+        case(fixed, source=fixture(current=fixed, s7=record), name=name, wanted=wanted)
+
+    no_events = page.evaluate("saved => {const d=JSON.parse(saved);d.state.events=d.state.events.filter(e=>e.round!==2);return JSON.stringify(d);}", wind_saved)  # 사건 0개·풍력 있음 fixture.
     case(dict(baseline), source=no_events)  # D-82-3: 무사건 달도 후보 수·순서·미선택·배지·disabled 동일 검사.
     require(checks, not [e for e in page.evaluate(STATE)['events'] if e['round'] == 2], label + ' S1 사건 0개 확인')  # D-82-3: 전제 검증.
     checks.ok('이번 달 조건 · ' not in focus.inner_text(), label + ' S1 사건 없는 달 조건 요약 없음')  # D-82-3: 규제와 구별.

@@ -143,7 +143,7 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
               f"{label} 요약 두 숫자 = 독립 비교값(소수 둘째 자리)")
     checks.ok(expected_label in text and ("정전 자체는 큼" in text) == high,
               f"{label} 두 표시값 모두 ≥5.00%일 때만 높은 정전 기록")
-    checks.ok((("바뀐 조건 각각은" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
+    checks.ok((("바뀐 조건 하나하나는" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
               ("지금 설비·접속이 수요를 못 따라가는 상태" in summary) == actual_high and
               ("1주 시험과 자리 판단(접속 여유)에서 다시 봐요" in summary) == actual_high,
               f"{label} 차이 설명·높은 정전의 설비·접속 부족·재점검 안내")
@@ -417,7 +417,7 @@ def bottleneck(checks, page, a, label):
     checks.ok(small.count() == int(show_small), f"{label} 작은 대기 줄은 효과 0.05%p 미만")
     if small.count():
         waiting_text = page.evaluate("mw => mw.toLocaleString('ko-KR', {maximumFractionDigits:1})", grid["waitingMW"])
-        checks.ok(small.is_visible() and (small.inner_text() == f"접속 대기 {waiting_text} MW(효과 0.05%p 미만)" if a.get("target") != "grid" else f"접속 대기 {waiting_text} MW" in small.inner_text() and "MWh" in small.inner_text() and "%p" not in small.inner_text()),  # D-80: C-1·2·4·5 대상별 검사.
+        checks.ok(small.is_visible() and (small.inner_text() == f"접속 대기 {waiting_text} MW(효과 0.05%p 이하)" if a.get("target") != "grid" else f"접속 대기 {waiting_text} MW" in small.inner_text() and "MWh" in small.inner_text() and "%p" not in small.inner_text()),  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} 작은 대기 실제 표시·대기량·문턱 문구")
     checks.ok(page.locator("#lg-outage-grid").count() == int(show) and
               page.locator("#lg-outage-grid-bottleneck #lg-outage-grid").count() == int(show),
@@ -456,6 +456,29 @@ def number_format(checks, row, key, label, page):  # D-80: C-1·2·4·5 대상�
 
 
 
+def weather_short_from_detail(full):
+    detail = full.split(" · 최대 수요 ", 1)[0]
+    renewable = re.search(r"하루 재생 공급량 ([\d,.]+) → ([\d,.]+) MWh/일", full)
+    entries = []
+    for item in detail.split(" · "):
+        arrow = re.fullmatch(r"(.+?) ([\d,.]+%?|봄|여름|가을|겨울) → ([\d,.]+%?|봄|여름|가을|겨울)(.*)", item)
+        if item.startswith("하루 재생 공급량") or item == "재생 공급 없음":
+            assert renewable is not None
+            same = renewable[1] == renewable[2]
+            flat = "재생 공급 없음" if item == "재생 공급 없음" or item.endswith("−100%") else f"하루 재생 공급량 {renewable[2]} MWh/일"
+        elif arrow:
+            same = arrow[2] == arrow[3]
+            flat = f"{arrow[1]} {arrow[3]}{arrow[4]}"
+        else:
+            raise AssertionError(f"해석할 수 없는 날씨 항목: {item}")
+        entries.append((same, item, flat))
+    changes = [text for same, text, _ in entries if not same]
+    unchanged = [flat for same, _, flat in entries if same]
+    body = " · ".join(changes + (["같음: " + " · ".join(unchanged)] if unchanged else []))
+    with_tail = body + " · 자세한 값은 단서 더 보기"
+    return body if len(with_tail) > 70 else with_tail
+
+
 def clue_and_evidence(checks, page, a, label):
     """DOM 배선·실제 기기 근거 방향 검사. 날씨 물리량/순서의 독립 모델 검산은 Node 30·32."""
     short = (a.get("clues") or {}).get("weather")
@@ -465,9 +488,10 @@ def clue_and_evidence(checks, page, a, label):
     period = re.search(r"대표 운전 (\d+) → (\d+)일", full)
     required(checks, period is not None, f"{label} 상세 날씨의 대표 운전 기간 누락")
     hot_pattern = r"무더위 \d+ → \d+일" if period[1] == period[2] else r"무더위 \d+% → \d+% 날"
-    checks.ok(re.search(r"평균 수요 [\d,.]+ → [\d,.]+ MW", short) is not None and
-              re.search(hot_pattern, short) is not None and "육상 기준" not in short,
-              f"{label} 수요·기간별 무더위 단서와 새 풍속 기준 문구")
+    checks.ok(short == weather_short_from_detail(full) and "육상 기준" not in short,
+              f"{label} 변경 항목→같음 묶음→70자 꼬리말, 상세 물리량과 정확히 일치")
+    checks.ok(re.search(r"평균 수요 [\d,.]+ → [\d,.]+ MW", full) is not None and
+              re.search(hot_pattern, full) is not None, f"{label} 상세 수요·기간별 무더위 원문 유지")
     checks.ok(("하루 재생 공급량" in short or "재생 공급 없음" in short) and
               "하루 재생 가능량" not in short, f"{label} 실제 재생 공급량 문구")
     checks.ok("접속 할당·출력제어를 반영해 실제 공급한 양" in full and
@@ -495,10 +519,19 @@ def clue_and_evidence(checks, page, a, label):
     if not a.get("hasConnectedWind", False):
         links["wind"] = {"weather": "indirect", "event": "indirect"}
     previous = notes.get(str(a["round"] - 1), {})
-    old_value = previous.get("evidenceValues", {}).get(key)
-    if old_value is None and previous.get("evidence", {}).get("key") == key:
-        old_value = previous["evidence"].get("value")
-    value = evidence.get("value")
+    # V8 N1: 시작 메모가 있으면 두 달 시작 값으로 비교하고, 없을 때만 옛 경로.
+    if previous.get("s1EvidenceValues") is not None:
+        old_value = previous["s1EvidenceValues"].get(key)
+    else:
+        old_value = previous.get("evidenceValues", {}).get(key)
+        if old_value is None and previous.get("evidence", {}).get("key") == key:
+            old_value = previous["evidence"].get("value")
+    value = note["s1EvidenceValues"].get(key) if note.get("s1EvidenceValues") is not None else evidence.get("value")
+    if (key == "neighbor" and note.get("s1EvidenceValues") is not None and
+            previous.get("s1EvidenceValues") is not None and
+            (not note.get("s1EvidenceNeighborId") or
+             note["s1EvidenceNeighborId"] != previous.get("s1EvidenceNeighborId"))):
+        old_value = None
     sign = {"evening": 1, "grid": 0, "wind": -1 if a.get("hasConnectedWind", False) else 0, "neighbor": 1}.get(key, 0)
     step = {"evening": .01, "grid": .02, "wind": .02, "neighbor": .02}.get(key, .01)
     evidence_sign = 0
@@ -556,6 +589,19 @@ def link(checks, page, selector, new_tab, label):
     text = a.evaluate("el => el.parentElement.textContent")
     checks.ok(all(word in text for word in ("근거", "반문")) and
               any(word in text for word in ("설명", "말", "대응")), f"{label} 연습할 사고 습관 한 줄 [I39]")
+
+
+def track_drawn(checks, page, key, label):
+    """폭포 막대 칸이 보이는 폭으로 그려졌는지 페이지 안에서 조건 대기로 확인한다.
+
+    Playwright bounding_box는 CPU 감속·부하 중 요소가 연결되어 있고 폭이 152px인데도
+    None을 돌려준 적이 있다(2026-10-22, 8배 감속 측정). 그래서 막대 칸을 페이지 안에서 직접 재고,
+    학생에게 의미 있는 공백 기준인 1초 안에 보이는 폭이 되지 않으면 실패로 둔다.
+    """
+    checks.test(label, lambda: page.wait_for_function("""key => {
+      const t = document.querySelector(`#lg-outage-waterfall [data-out-step="${key}"] .lg-out-track`);
+      return !!t && t.checkVisibility() && t.getBoundingClientRect().width > 0;
+    }""", arg=key, timeout=1000))
 
 
 def scene(checks, page, requests, label, width, trial, actual):
@@ -647,8 +693,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         number_format(checks, row, key, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track is not None and track["width"] > 0, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
+        track_drawn(checks, page, key, f"{label} {key} 실제 막대 칸 폭 > 0 ({width}px)")
     # D-80: C-2, 시험 폭포는 네 원인+출발/도착(+재현)의 6/7행.
     required(checks, set(values) - {"replay"} == {"trial", "actual", *NAMES} and
              rows.count() == len(NAMES) + 2 + int("replay" in values),
@@ -735,14 +780,14 @@ def scene(checks, page, requests, label, width, trial, actual):
 def carry(checks, page, expected, label):
     open_panel(page, "journal")
     c = page.locator("#lg-missed-carry")
-    required(checks, c.count() == 1 and c.is_visible(), f"{label} 다음 달 지난달 놓친 것 표시 [I26]")
+    required(checks, c.count() == 1 and c.is_visible(), f"{label} 다음 달 지난달 내가 고른 원인 표시 [I26]")
     text = c.inner_text()
     if expected["nonlargest"]:
         checks.ok(expected["picked"] != expected["largest"] and
-                  f'지난달 놓친 것: {NAMES[expected["picked"]]}' in text and
+                  f'지난달 내가 고른 원인: {NAMES[expected["picked"]]}' in text and
                   f'가장 큰 몫 {NAMES[expected["largest"]]}' in text,
                   f"{label} 다음 달 줄에 고른 것 ≠ 가장 큰 것 표시")
-    checks.ok(all(s in text for s in ("지난달 놓친 것", NAMES[expected["picked"]],
+    checks.ok(all(s in text for s in ("지난달 내가 고른 원인", NAMES[expected["picked"]],
                                      "가장 큰 몫", NAMES[expected["largest"]])) and
               any(abs(float(v.replace("−", "-").replace(",", "")) - expected["largest_value"]) <= .0051
                   for v in VALUE.findall(text)), f"{label} 선택과 최대 몫·수치 유지")
@@ -757,12 +802,12 @@ def end_record(checks, page, expected, label):
     open_panel(page, "result")
     # 기존 solo.py의 끝 화면 계약. S7 기록이 타임라인과 일지 양쪽에서 사라지면 실패.
     text = page.locator("#lg-timeline").text_content()
-    checks.ok(all(s in text for s in ("놓친 것", NAMES[expected["picked"]], "가장 큰 몫",
+    checks.ok(all(s in text for s in ("내가 고른 원인", NAMES[expected["picked"]], "가장 큰 몫",
                                      NAMES[expected["largest"]])), f"{label} 끝 타임라인 원인 기록 [I26]")
     link(checks, page, "#lg-y2022-end", False, label + " 끝")
     capture(checks, page, label, "end")
     journal = copy_worksheet(page)
-    checks.ok(all(s in journal for s in ("놓친 것", NAMES[expected["picked"]], "가장 큰 몫",
+    checks.ok(all(s in journal for s in ("내가 고른 원인", NAMES[expected["picked"]], "가장 큰 몫",
                                         NAMES[expected["largest"]])), f"{label} 끝 활동지 일지 원인 기록 [I26]")
     checks.ok(page.locator("#lg-timeline svg").get_attribute("viewBox") == "0 0 380 346",
               f"{label} 타임라인 높이 346")
@@ -942,8 +987,7 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - rounded_share(raw[k], a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} {k} API/DOM 원시값·반올림")
         number_format(checks, row, k, label, page)  # D-80: C-1·2·4·5 대상별 검사.
-        track = row.locator('.lg-out-track').bounding_box()
-        checks.ok(track and track['width'] > 0, f"{label} {width}px {k} 실제 막대 칸")
+        track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
     checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - sum(rounded_share(v, a) for k,v in expected_values.items() if k != 'actual')) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
@@ -997,8 +1041,11 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
           const doc=new DOMParser().parseFromString(KCP.league.uiMath.trendHTML(V,L.team,true),'text/html');
           return [...doc.querySelectorAll('li,title')].filter(n=>n.textContent.startsWith(prefix)).map(n=>n.textContent).join(' / ');
         }""")
-        checks.ok(f"놓친 것: {MONTHLY_NAMES[saved['missed']]}" in timeline and
-                  f"가장 큰 몫: {MONTHLY_NAMES[ranked[0]['key']]}" in timeline,
+        leaders = [p for p in ranked if abs(rounded_share(p['value'], a)) == abs(rounded_share(ranked[0]['value'], a))]
+        unique_match = len(leaders) == 1 and saved['missed'] == ranked[0]['key']
+        maximum_text = "실제 가장 큰 몫과 같음(" if unique_match else f"가장 큰 몫: {MONTHLY_NAMES[ranked[0]['key']]}"
+        checks.ok(f"내가 고른 원인: {MONTHLY_NAMES[saved['missed']]}" in timeline and
+                  maximum_text in timeline,
                   f"{label} 월간 타임라인 선택·최대 이름 일치")
     checks.ok(len(requests) == before_requests, f"{label} 선택/공개/이어붙이기 HTTP 요청 증가 0")
     capture(checks, page, label, 'monthly-opened')
@@ -1019,14 +1066,19 @@ def previous_carry_names(checks, page, label):
     text = page.locator('#lg-missed-carry').inner_text()
     selected = saved.get('missed')
     if selected in ("차이 원인 없음(정전 자체는 큼)", "뚜렷한 원인 없음"):
-        checks.ok(text == f"지난달 놓친 것: {selected}", f"{label} 다음 달 원인 없음 기록 문자열 보존")
+        checks.ok(text == f"지난달 원인 고르기: {selected}", f"{label} 다음 달 원인 없음 기록 문자열 보존")
         checks.ok(selected in copy_worksheet(page) and "가장 큰 몫" not in text,
                   f"{label} 다음 달 일지에도 같은 기록·최대 몫 없음")
     if selected in names and not note.get('outageSingleShown'):
-        checks.ok(f"지난달 놓친 것: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
+        checks.ok(f"지난달 내가 고른 원인: {names[selected]}" in text, f"{label} 지난달 선택 이름은 기록 basis 기준")
     largest = saved.get('largest')
     if largest:
-        checks.ok(f"가장 큰 몫 {names[largest['key']]}" in text, f"{label} 지난달 최대 이름은 기록 basis 기준")
+        frozen_parts = note.get('outageFrozen', {}).get('parts', [])
+        leaders = [p for p in frozen_parts if abs(rounded_share(p['value'], note['outageFrozen'])) ==
+                   abs(rounded_share(largest['value'], note['outageFrozen']))]
+        matched = len(leaders) == 1 and selected == largest['key']
+        maximum_text = "실제 가장 큰 몫과 같음(" if matched else f"가장 큰 몫 {names[largest['key']]}"
+        checks.ok(maximum_text in text, f"{label} 지난달 최대 이름·적중 표기는 기록 basis 기준")
     if basis != 'monthly':
         checks.ok('날씨·계절·운전 기간' not in text, f"{label} 시험 기록에 월간 이름 섞이지 않음")
     close_drawer(page)
@@ -1194,12 +1246,12 @@ def isolated_branch(checks, page, base, label, correct):
             page.reload()
             page.wait_for_function(SYNC, arg=[2, "plan"])
         open_panel(page, "journal")
-        checks.ok((expected_label if no_cause else "지난달 놓친 것: 고르기 생략") in
+        checks.ok((expected_label if no_cause else "지난달 원인 고르기: 건너뜀") in
                   page.locator("#lg-missed-carry").inner_text(),
                   f"{label}{suffix} 다음 달 학생이 고른 것처럼 표시하지 않음")
         if no_cause:
             text = page.locator("#lg-missed-carry").inner_text()
-            checks.ok(text == f"지난달 놓친 것: {expected_label}" and "가장 큰 몫" not in text,
+            checks.ok(text == f"지난달 원인 고르기: {expected_label}" and "가장 큰 몫" not in text,
                       f"{label}{suffix} 다음 달 줄: 정전 크기를 구분한 차이 원인 없음")
             checks.ok(expected_label in copy_worksheet(page), f"{label}{suffix} 다음 달 일지 같은 기록")
         capture(checks, page, label + suffix, "single-carry")
@@ -1305,7 +1357,7 @@ def private_fields(value):
     if isinstance(value, dict):
         snapshot_shape = {"round", "plan", "seed", "days", "season", "mods", "unsPct", "isolatedUnsPct"}
         return (["운영 사본 객체"] if snapshot_shape <= value.keys() else []) + [
-            k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache|outageSnapshots|outageOperatingIntl", k, re.I)] + [
+            k for k in value if re.search(r"missed|outageOpened|outageSingleShown|outageLargest|outageFrozen|outageNoCause|outCache|outageSnapshots|outageOperatingIntl|s1EvidenceValues|s1EvidenceNeighborId|nowValue", k, re.I)] + [
             k for v in value.values() for k in private_fields(v)]
     if isinstance(value, list):
         return [k for v in value for k in private_fields(v)]
@@ -1362,7 +1414,7 @@ def multiplayer(checks, context, base, label, width, pages, requests):
     checks.ok(host.evaluate("location.hash") == "#league/host", f"{label} 진행자 경로 확인")
     surface = host.locator("body").evaluate(SURFACE)
     serialized = json.dumps(surface, ensure_ascii=False)
-    checks.ok(not any(s in serialized for s in ("내가 고름", "지난달 놓친 것", "missedCarry", "data-missed")),
+    checks.ok(not any(s in serialized for s in ("내가 고름", "지난달 내가 고른 원인", "지난달 원인 고르기", "nowValue", "missedCarry", "data-missed")),
               f"{label} 진행자 DOM·aria·data에 고른 원인 없음 [I3/D-65]")
     checks.ok(serialized.count(NAMES[chosen["picked"]]) <= before_dom.count(NAMES[chosen["picked"]]),
               f"{label} 진행자 DOM에 고른 범주 문구도 새로 나타나지 않음")

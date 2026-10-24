@@ -261,6 +261,21 @@ details.reveal[open] summary { margin-bottom: 8px; }
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: var(--radius); font-size: 13.5px; z-index: 50;
 }
+/* 저장 실패 경고: 짧은 알림과 TIP 띠(z 60) 위에 머물고 390px에서도 화면 안에 들어오게. 계속 떠 있으므로 아래 조작을 막지 않는다 */
+.kcp-save-warn {
+  position: fixed; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: var(--radius); font-size: 13.5px; z-index: 70;
+  width: max-content; max-width: calc(100vw - 32px); text-align: center; pointer-events: none;
+}
+/* 섬 장면(지도 화면, 면접실·성찰의 문서 화면 제외): 입력하는 시트·구간 막대·도구 막대를 가리지 않게 지도 위(상태 막대와 TIP 띠 아래)에 둔다.
+   넓은 화면에서는 오른쪽 패널(right 96px, 폭 440px)에 닿지 않게 폭을 줄인다 */
+html.v2-scene:not(.v2-doc) .kcp-save-warn {
+  bottom: auto; top: calc(var(--v2-top, 140px) + 72px); left: 16px; transform: none;
+  max-width: min(520px, calc(100vw - 576px)); text-align: left;
+}
+@media (max-width: 760px), (max-width: 1100px) and (orientation: portrait) {
+  html.v2-scene:not(.v2-doc) .kcp-save-warn { max-width: calc(100vw - 32px); }
+}
 .copybox { width: 100%; min-height: 160px; font-family: var(--mono); font-size: 12px; }
 
 /* Charts */
@@ -383,8 +398,35 @@ svg.hexmap { width: 100%; min-width: 440px; height: auto; display: block; }
 svg.hexmap polygon { stroke: var(--sheet); stroke-width: 1.5; cursor: pointer; }
 svg.hexmap polygon.sel { stroke: var(--ink); stroke-width: 3; }
 svg.hexmap text { font-family: var(--mono); font-size: 10px; pointer-events: none; fill: #102018; font-weight: 600; }
-.t-L { fill: #c8483a; } .t-W { fill: #72cdc4; } .t-M { fill: #7a6152; } .t-D { fill: #e1b870; } .t-F { fill: #3f8a4c; } .t-G { fill: #b9dc5a; }
+.t-L { fill: #c8483a; } .t-W { fill: #72cdc4; } .t-M { fill: #7a6152; } .t-D { fill: #e1b870; } .t-F { fill: #3b8448; } .t-G { fill: #b9dc5a; }
 svg.hexmap .t-L + text, svg.hexmap .t-M + text, svg.hexmap .t-F + text { fill: #fff; }
+#map svg.hexmap .map24-glyph,
+#map svg.hexmap .map24-terrain-only { display: none; }
+#map svg.hexmap polygon.map24-cursor {
+  fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none;
+  transform-box: fill-box; transform-origin: center; transform: scale(0.82);
+}
+.map24-pad,
+.map24-pad-hint { display: none; }
+/* 481px 이상은 패드가 없으므로 마우스 화면을 지금과 같게: 키보드 초점이 지도에 있을 때만 점선 커서. */
+@media (min-width: 481px) {
+  #map svg.hexmap polygon.map24-cursor { display: none; }
+  #map:has([data-hex]:focus-visible) svg.hexmap polygon.map24-cursor { display: block; }
+}
+@media (max-width: 480px) {
+  #map { min-width: 0; }
+  #map svg.hexmap { min-width: 0; }
+  #map svg.hexmap .map24-glyph,
+  #map svg.hexmap .map24-terrain-only { display: inline; }
+  .map24-pad {
+    display: grid; grid-template-columns: repeat(3, 44px) minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(44px, auto)); gap: 6px; margin-top: 8px;
+  }
+  .map24-pad button { min-width: 44px; min-height: 44px; justify-content: center; }
+  .map24-pad button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .map24-pad #pick24 { grid-column: 4; grid-row: 1 / span 2; min-width: 0; text-align: center; overflow-wrap: anywhere; }
+  .map24-pad-hint { display: block; margin-top: 6px; }
+}
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
