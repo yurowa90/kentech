@@ -40,7 +40,7 @@
 /* 기존 순위 meter의 최종 너비·값은 유지하고 보이는 폭만 0에서 펼친다. */
 #lg-rank .lg-scoreparts meter { clip-path: inset(0); transition: clip-path .6s; }
 #lg-rank .lg-scoreparts meter.lg-fx-rank-enter { clip-path: inset(0 100% 0 0); }
-/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 네 장은 옆으로 밀어 넘긴다.
+/* 390px 서랍: SVG 글자가 줄지 않게 그래프 한 장을 서랍 폭 그대로 쓰고, 다섯 장은 옆으로 밀어 넘긴다.
    세로로 쌓으면 그래프 블록만 서랍 약 4화면이라 아래 단추(2022 기출·다시 하기)가 너무 멀어진다(2026-10-20 측정).
    페이지 가로 스크롤은 없고 이 칸 안에서만 넘긴다. 다음 그래프의 가장자리를 조금 보여 넘길 수 있음을 알린다. */
 @media (max-width: 480px) {

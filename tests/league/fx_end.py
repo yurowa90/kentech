@@ -804,6 +804,8 @@ def grid_missing(checks, page, label):
     try:
         article = redraw()
         fallback = page.evaluate(PUBLIC_JS)
+        checks.ok(fallback.get('gridSaved', {}).get(city, {}).get(str(month), {}).get('grid') is None,
+                  label + ' 계통 해당 달의 기기 기록 grid 삭제 확인')
         checks.ok(near(source_value(fallback['V'], city, month, 'grid', fallback['co2Saved'],
                                     fallback['gridSaved']), cached['grid'] / cached['days'], 7),
                   label + ' 계통 기기 기록을 지운 달은 탭 사본으로 보충')
