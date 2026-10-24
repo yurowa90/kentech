@@ -273,6 +273,9 @@
   const dispOf = kind => (kind === "lng" ? { cap: 9.5, min: 0, fuel: 0.008, co2: 0.37 } : kind === "coal" ? { cap: 20, min: 6, fuel: 0.0045, co2: 0.82 } : kind === "import" ? { cap: LG ? 0 : (PK.gridCap || 4) / Math.max(1, SITES.filter(s => s.kind === "gridpt").length), min: 0, fuel: 0.012, co2: KCP.ECON_DATA.params.normalCo2.v }
     : kind === "diesel" ? { cap: 3, min: 1, fuel: (PK.fuel && PK.fuel.diesel) || 0.01, co2: 0.75 } : { cap: 2, min: 0.5, fuel: 0.02, co2: 0, bioCo2: 0.1 });
   const biomassFuel = tile => TILES[tile].livestock ? 0.012 : dispOf("biomass").fuel;
+  // 현재 팩·입지의 급전 연료비(억/MWh). 국제 지수와 탄소세는 호출 쪽에서 적용한다.
+  const dispFuel = (kind, tile) => kind === "smr" ? KCP.TECH_DATA.params.smrFuel.v
+    : kind === "biomass" ? biomassFuel(tile) : dispOf(kind).fuel;
   const CLEAR_COST = 2;
   const lineUnit = () => PK.lineCost || 0.5;
   // 계산에 쓰는 기존 개선 비율(2/3)을 그대로 표시한다. 지도별 손실률을 고정 문구로 덮지 않는다.
@@ -694,7 +697,7 @@
         g.D = D;
         if (g.kind === "smr") tot.by.smr = 0;
         // 국제 연료 가격 지수(경제 모드): MODS.fuelMul = {lng, diesel, coal}
-        g.mc = D.fuel * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
+        g.mc = dispFuel(g.kind, g.tile) * ((MODS && MODS.fuelMul && MODS.fuelMul[g.kind]) || 1) + (pol.tax ? D.co2 * M.taxPerT : 0);
       }
     });
     const shed = st.shed === "industry" ? SHED.industry : SHED.home, equal = st.shed === "equal";
@@ -1099,7 +1102,7 @@
   function saveState(doc) { try { window.localStorage.setItem(KEY, JSON.stringify(doc)); } catch (e) { /* 저장 없이도 동작한다 */ } }
 
   selectPack(PACK_IDS[0]);
-  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
+  KCP.buildGame = { simulate, sanitize, sanitizeDoc, network, complaints, weather, demand, routePath, capex, siteRule, selectPack, peakDemand, dispFuel, gridEffectText, bmsEffectText, TILES, TOWNS, SITES, M, BLD, PACKS, SEASONS, tips, TECHS, RS, researchRun };
   KCP.buildGame.gridFillContext = res => gridFillContexts.get(res);
 
   /* =====================================================================
@@ -2881,7 +2884,11 @@
     S.root.classList.add("bd-replaying");
     $("#bd-run").hidden = false;
     $("#bd-run-len").textContent = opts.label || "실제 운영 · 재생";
-    $("#bd-replay-note").textContent = (opts.note ? `${opts.note} · ` : "") + "선 위 점은 전기가 통하는 길(양 아님)";
+    const replayNote = (opts.note ? `${opts.note} · ` : "") + "선 위 점은 전기가 통하는 길(양 아님)";
+    if (S.opts.league && KCP.league?.infoTip) {
+      $("#bd-replay-note").innerHTML = "재생 " + KCP.league.infoTip("replay-note", esc(replayNote), { label: "재생" });
+      KCP.league.bindInfoTips($("#bd-replay-note"));
+    } else $("#bd-replay-note").textContent = replayNote;
     $("#bd-replay-note").hidden = false;
     $("#bd-skip span").textContent = "건너뛰기";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
@@ -3105,7 +3112,7 @@
           <p class="bd-spark-key"><span class="k-dem">수요</span><span class="k-sup">공급</span><span class="k-uns">부족</span></p>
         </div>
         <p class="bd-run-tip"><span class="bd-tip-b">TIP</span><span id="bd-run-tip"></span></p>
-        <p class="bd-run-tip" id="bd-replay-note" hidden></p>
+        <div class="bd-run-tip" id="bd-replay-note" hidden></div>
       </section>
       <nav class="bd-dock" id="bd-dock" aria-label="건설 도구">
         <div class="bd-subtools" id="bd-subtools" role="group" hidden></div>
@@ -3451,6 +3458,9 @@
   function renderDrawer() {
     const body = $("#bd-drawer-body");
     if (!body) return;
+    const foldState = [...body.querySelectorAll("details[data-fold]")].map(el => [el.dataset.fold, el.open, el.dataset.pinned]);
+    const infoFocus = document.activeElement?.closest?.("summary[data-info-key]");
+    const focusKey = infoFocus && body.contains(infoFocus) ? infoFocus.dataset.infoKey : null;
     if (!uiVisible(S.drawerTab)) S.drawerTab = "policy";
     S.root.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.drawerTab)));
     S.root.querySelector('[data-count="policy"]').textContent = `${S.st.policies.length}/2`;
@@ -3486,10 +3496,16 @@
             <span class="bd-card-txt"><b>${m.name}</b><span>${m.goal()}</span></span>
             <span class="bd-card-mark" aria-hidden="true">${onM ? ico("check") : ""}</span></button>`;
         }).join("")}</div>
-        <p class="bd-note">${S.opts.league ? "시험 운전은 미션 없이도 가능하다. 최대 2개를 골라 비교할 수 있다." : "고른 2개만 성공·실패를 따진다. 나머지는 '대신 잃은 것'으로 본다."}</p>`;
+        ${S.opts.league && KCP.league?.infoTip ? KCP.league.infoTip("trial-missions", "시험 운전은 미션 없이도 가능하다. 최대 2개를 골라 비교할 수 있다.", { label: "이번 운영 미션" }) : `<p class="bd-note">${S.opts.league ? "시험 운전은 미션 없이도 가능하다. 최대 2개를 골라 비교할 수 있다." : "고른 2개만 성공·실패를 따진다. 나머지는 '대신 잃은 것'으로 본다."}</p>`}`;
     } else if (tab === "research") body.innerHTML = renderResearch();
     else if (tab === "journal") body.innerHTML = renderTimeline();
     else body.innerHTML = renderResult();
+    foldState.forEach(([key, open, pinned]) => {
+      const el = [...body.querySelectorAll("details[data-fold]")].find(el => el.dataset.fold === key);
+      if (el) { el.open = open; if (pinned) el.dataset.pinned = pinned; }
+    });
+    if (S.opts.league) KCP.league?.bindInfoTips?.(body);
+    if (focusKey) [...body.querySelectorAll("summary[data-info-key]")].find(el => el.dataset.infoKey === focusKey)?.focus({ preventScroll: true });
     if (tab === "result" && S.result) {
       const q = body.querySelector("#bd-jopen"), again = body.querySelector("#bd-again"), rr = body.querySelector("#bd-reroll");
       if (q) q.onclick = () => openJournal(S.result.entry, q);
@@ -3524,8 +3540,13 @@
     try { info = typeof S.opts.leagueTrialGoals === "function" ? S.opts.leagueTrialGoals(R) : null; } catch (_) { info = null; }
     if (!info) return "";
     const rows = (info.rows || []).map(m => `<p class="bd-mis-row" data-ok="${!!m.ok}"><span class="bd-mis-mark" aria-label="${m.ok ? "목표 안" : "목표 넘음"}">${ico(m.ok ? "check" : "x")}</span><b>${esc(m.name)}</b><span class="num">${esc(m.val)}</span></p>`).join("");
-    const notes = (info.notes || []).map(t => `<p class="bd-trade">${esc(t)}</p>`).join("");
-    const cause = info.cause ? `<p id="bd-no-supply-cause" class="bd-trade">${esc(info.cause)}</p>` : "";
+    const notes = (info.notes || []).map((t, i) => {
+      const fold = info.noteDetails?.[i];
+      return fold && KCP.league?.infoTip ? `<div class="lg-info-line"><p class="bd-trade">${esc(fold.visible)}</p>${KCP.league.infoTip(`trial-note-${fold.key}`, esc(fold.detail), { label: fold.label })}</div>` : `<p class="bd-trade">${esc(t)}</p>`;
+    }).join("");
+    const cause = info.cause ? info.causeNote && KCP.league?.infoTip && info.cause.endsWith(info.causeNote)
+      ? `<div id="bd-no-supply-cause" class="bd-trade">${esc(info.cause.slice(0, -info.causeNote.length))}${KCP.league.infoTip("trial-no-supply", esc(info.causeNote), { label: "바깥 계통" })}</div>`
+      : `<p id="bd-no-supply-cause" class="bd-trade">${esc(info.cause)}</p>` : "";
     return rows || notes || cause ? `<div class="bd-mis" id="bd-league-goals">${rows}${cause}${notes}</div>` : "";
   }
   function renderResult() {
@@ -3926,10 +3947,13 @@
       lenses.append(legend);
       // 마을 모양 범례는 렌즈 도움말(마우스·초점 때만 보임)이 아니라 지도 왼쪽 아래에 늘 보이게 둔다(사건 카드 배치의 장애물 아님).
       const townKey = document.createElement("p"); townKey.id = "bd-town-look-key"; townKey.className = "lg-town-key"; townKey.hidden = true;
-      townKey.textContent = TOWN_LOOK_KEY; root.querySelector(".bd-stage").append(townKey);
+      townKey.textContent = TOWN_LOOK_KEY;
       lenses.addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lenses[b.dataset.lens] = !S.lenses[b.dataset.lens]; rememberLenses(); syncLensButtons(); placeBannerValues(); request(); });
       const summary = document.createElement("p"); summary.id = "lg-map-result"; summary.className = "lg-map-result"; summary.hidden = true; root.querySelector(".bd-stage").append(summary);
-      const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true; root.querySelector("#bd-mapbar").append(grid);
+      const grid = document.createElement("p"); grid.id = "lg-lens-grid"; grid.className = "lg-lens-grid"; grid.hidden = true;
+      // 두 안내의 실제 높이·줄바꿈을 세로 흐름에 맡겨 390·1280 모두 서로 덮지 않는다.
+      const mapKeys = document.createElement("div"); mapKeys.className = "lg-map-keys";
+      mapKeys.append(townKey, grid); root.querySelector(".bd-stage").append(mapKeys);
       root.querySelector('[data-tab="mission"]').hidden = true;
       root.querySelectorAll('[data-tab="research"], [data-tab="journal"]').forEach(b => { b.hidden = !uiVisible(b.dataset.tab); });
       root.querySelectorAll("[data-run]").forEach(b => { b.textContent = `시험 ${b.textContent}`; });
