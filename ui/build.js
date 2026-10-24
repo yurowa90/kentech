@@ -2505,7 +2505,8 @@
     S.siteHint = { i: tile, from: i };
     clearTimeout(S.siteHintTimer);
     S.timers.push(S.siteHintTimer = setTimeout(() => {
-      if (S === state && state.alive) { S.siteHint = null; S.siteHintTimer = 0; request(); }
+      // 강조가 끝나면 말풍선의 '…칸 표시' 꼬리도 함께 거둔다.
+      if (S === state && state.alive) { S.siteHint = null; S.siteHintTimer = 0; if (S.hover != null && !$("#bd-tip").hidden) showTip(S.hover); request(); }
     }, 1600));
     request();
   }
