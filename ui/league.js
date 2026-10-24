@@ -3690,7 +3690,8 @@
     const reg = R(), list = (X.events || []).filter(x => x.round === round).map(ev => ({ ev, E: C.eventDef(reg, ev.id) })).filter(x => x.E);
     if (!list.length) return "";
     const myT = me && X.teams && X.teams[me];
-    return `<ul class="lg-evs">${list.map(({ ev, E }) => {
+    const city = me && X.econ?.cities[me], grant = X.phase === "plan" && city && city.cash < -city.debtCap ? C.grantOf(X, reg, me, BG) : null;
+    return `${grant?.awarded ? `<p class="lg-hint">지방채 한도를 넘었지만, 이번 달에는 특별교부세 ${fmt(grant.left, 2)}억 안에서만 새 설비·선로를 지을 수 있어요.</p>` : ""}<ul class="lg-evs">${list.map(({ ev, E }) => {
       const sc = E.scope || "region", who = SCOPE[sc] || (sc.startsWith("team:") ? teamName(sc.slice(5)) : sc);
       const mine = me ? C.hits(reg, E, me) : null, nx = mine && myT && myT.fcx ? myT.fcx[E.id] || null : null;
       const idle = mine ? eventIdleKinds(E, me, X, round) : "";
@@ -3702,6 +3703,7 @@
         : !me && X.teams && opts.length ? (() => { const who = actT(X).map(({ id }) => { const o = opts.find(q => q.id === (X.teams[id].resp || {})[round + ":" + E.id]); return o ? `${teamName(id)} ${o.name}` : ""; }).filter(Boolean); return `<small class="lg-evnote">대응: ${esc(who.join(" · ") || "아직 없음")}</small>`; })() : "";
       return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(turnText(E.text || "", X))}</span>
         ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}
+        ${X.econ && E.grant && (!me || C.grantAmount({ ...X, events: [ev] }, reg, me, round) > 0) ? `<small class="lg-evnote">특별교부세 ${fmt(KCP.ECON_DATA.params[E.grant.param].v, 2)}억: 이번 달 새 설비·선로·재난 대응 비용에만 쓰며, 남은 돈은 사라져요.</small>` : ""}
         ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${techData()?.eventHints?.[E.id] && mine !== false ? `<small class="lg-tech-event-hint">${esc(techData().eventHints[E.id].text)}</small>` : ""}${choose}${picked}
         <small>${esc(who)}${mine === true ? idle ? ` · 우리 도시 해당 · 우리 지도에 ${esc(idle)} 설비가 없어 우리 발전엔 영향 없음(이웃 거래로는 닿을 수 있음)` : " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${gradeClass(E.grade)}" title="사건의 근거: ${esc(gradeWords(E.grade))}. 크기와 대응 효과: ${esc(gradeWords("G"))}">근거 ${esc(gradeWords(E.grade))} · 크기 ${esc(gradeWords("G"))}</abbr></small>${eventSourceHTML(E)}</li>`;
     }).join("")}</ul>`;
@@ -3716,7 +3718,7 @@
     return observed + (E.published === undefined ? "" : ` · 발표 ${dates(E.published)}`);
   }
   function eventSourceHTML(E) {
-    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p><p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
+    return `<details class="lg-event-source" data-event-source="${esc(E.id)}"><summary>사건 자료·출처</summary><p>${esc(E.why || "실측값 자료 없음 · 게임 가정(G)")}</p><p>출처: ${externalLinks(E.sources || []) || "외부 출처 자료 없음"} · ${esc(eventSourceTimeText(E))} · 근거 ${esc(E.grade || "G")} · 크기 G</p>${E.grant ? `<p>${esc(E.grant.why)}</p><p>출처: ${externalLinks(E.grant.sources)} · ${esc(E.grant.gradeNote)}</p>` : ""}<p class="lg-hint">실측값의 단위는 위 설명 기준이에요. 사건 크기·대응 효과는 게임 가정(G)입니다.</p></details>`;
   }
 
   /* ---------- 팀 카드: 건설 속도(투자 누적)와 축소 지도 ---------- */
