@@ -231,7 +231,7 @@
       root.innerHTML = `
         <div class="stack">
           <section class="panel">
-            <div class="tabs" role="tablist">
+            <div class="tabs" role="tablist" aria-label="문제지에 딸린 자료">
               <button role="tab" data-tab="path">자료 2 · 실행 항목 경로</button>
               <button role="tab" data-tab="wheel">자료 3 · 지수별 연관 요소</button>
               <button role="tab" data-tab="nb">자료 4 · 이웃 국가 계획</button>

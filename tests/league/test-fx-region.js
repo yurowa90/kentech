@@ -52,12 +52,12 @@ test("건설 기호는 공개 계획의 새 설비만 세고 전선·기존 설�
   assert.equal(fx.newBuildCount({ ...team, base: [{ k: "b:solar:1" }, { k: "b:wind:2" }] }, 2, "review"), 0, "이전 공개 기록 없으면 추측하지 않는다");
 });
 
-function drawingFixture(width, reduced = false) {
+function drawingFixture(width, reduced = false, clock = performance) {
   const KCP = { route() {}, on() {}, gradeWords: String, esc: String, buildGame: {}, leagueNet: {} };
   const window = { KCP, addEventListener() {}, devicePixelRatio: 2, matchMedia: () => ({ matches: reduced }) };
   const document = { documentElement: {}, addEventListener() {} };
   const ctx = vm.createContext({ window, document,
-    getComputedStyle: () => ({ getPropertyValue: () => "sans-serif" }), performance });
+    getComputedStyle: () => ({ getPropertyValue: () => "sans-serif" }), performance: clock });
   for (const name of ["build-maps.js", "build.js", "econ-data.js", "league-data.js", "league-core.js", "fx-region.js", "league.js"]) {
     let js = fs.readFileSync(path.join(root, name), "utf8");
     if (name === "build.js") js = js.replace(/\}\)\(\);\s*$/, "window.cityPalette = PAL; })();");
@@ -76,7 +76,7 @@ function drawingFixture(width, reduced = false) {
   const reg = KCP.LEAGUE_REGIONS.south;
   const V = { active: reg.teams.map(t => t.id), round: 1, phase: "plan", ties: [], teams: Object.fromEntries(reg.teams.map(t => [t.id, { seated: true, plan: { builds: [], lines: [] } }])) };
   const result = { team: Object.fromEntries(reg.teams.map((t, i) => [t.id, { unsPct: i ? 0 : 10 }])), flow: {} };
-  return { KCP, window, document, cv, V, result, commands, reg };
+  return { KCP, window, document, cv, V, result, commands, reg, ctx };
 }
 
 test("광역 육지·강·호수 대응표는 실제 도시 PAL의 같은 지형색을 사용한다", () => {
@@ -155,16 +155,165 @@ test("물 이름표는 빈 곳이 없을 때도 카드를 숨기는 장애물이
   assert.equal(p.length, 1);
 });
 
-test("되돌아가기 시간 예산이 끝나면 탐색을 중단한다", () => {
-  let ticks = 0;
-  const c = vm.createContext({ window: { KCP: {} }, performance: { now: () => ++ticks } });
-  vm.runInContext(fs.readFileSync(source, "utf8"), c);
-  const cards = Array.from({ length: 6 }, (_, i) => ({ id: String(i), x: 180, y: 130, width: 114, height: 82 }));
-  c.window.KCP.fxRegion.placeCards(cards, [], { width: 390, height: 337 });
-  assert.ok(ticks > 0 && ticks <= 15, `12ms 예산을 넘어서 계속 탐색함: ${ticks}`);
-  const previous = ticks;
-  c.window.KCP.fxRegion.placeCards(cards, [], { width: 390, height: 337 });
-  assert.equal(ticks, previous, "같은 입력의 실패 결과도 기억한다");
+function countedClock(read) {
+  let calls = 0;
+  return { now: () => read(calls++), get calls() { return calls; } };
+}
+
+function placementFixture(clock) {
+  const ctx = vm.createContext({ window: { KCP: {} }, performance: clock });
+  vm.runInContext(fs.readFileSync(source, "utf8"), ctx);
+  return { ctx };
+}
+
+function placeWithinLimit(e, { cards, labels, bounds }) {
+  e.ctx.placementInput = [cards, labels, bounds];
+  try {
+    // node:test의 제한 시간만으로는 동기 무한 루프를 끊을 수 없다.
+    // 모의 시계와 독립적인 VM의 2초 제한으로 멈춘 시계의 종료도 검증한다.
+    return vm.runInContext("window.KCP.fxRegion.placeCards(...placementInput)", e.ctx, { timeout: 2000 });
+  } finally {
+    delete e.ctx.placementInput;
+  }
+}
+
+// 구현의 비공개 상수 PLACE_WORK_BUDGET=500000, SAFETY_CHECK=16384에 따른 상한:
+// 시작 1회 + floor(500000 / 16384) = 31회. 5ms 시계도 최대 경과 150ms로
+// SAFETY_MS=200에 닿지 않는다. 예산만 해제한 임시 사본에서 아래 입력은
+// 1,230,878회 판정·76회 시계 읽기로 실패해, 자연 종료로는 이 상한을 지키지 못했다.
+const maxClockReads = 1 + Math.floor(500000 / 16384);
+function expensivePlacementInput() {
+  // 패딩을 뺀 382×329에서 카드 중심의 허용 범위는 242×189다. 이를 이등분한
+  // 네 구역은 각각 121×94.5여서 같은 구역의 140×140 카드 둘은 반드시 겹친다.
+  // 따라서 최대 네 장뿐이며 여섯 장은 불가능하다. 가장자리 장애물 40개는
+  // 변 주변 후보를 늘려 50만 판정 예산을 소진하게 한다.
+  return {
+    cards: Array.from({ length: 6 }, (_, i) => ({ id: String(i), x: 195, y: 168, width: 140, height: 140 })),
+    labels: Array.from({ length: 40 }, (_, i) => i % 2
+      ? { x: i % 4 === 1 ? 0 : 382, y: 10 + i * 307 / 40, width: 8, height: 8 }
+      : { x: 10 + i * 360 / 40, y: i % 4 === 0 ? 0 : 329, width: 8, height: 8 }),
+    bounds: { width: 390, height: 337 }
+  };
+}
+
+test("되돌아가기 탐색은 유한한 예산 안에 멈추고 같은 실패 결과를 재사용한다", () => {
+  const clock = countedClock(n => n), e = placementFixture(clock), input = expensivePlacementInput();
+  const placed = placeWithinLimit(e, input);
+  assert.equal(JSON.stringify(placed), "[]", "부분 배치를 반환하지 않는다");
+  assert.ok(Object.isFrozen(placed), "실패 결과도 동결한다");
+  assert.ok(clock.calls > 0 && clock.calls <= maxClockReads, `시계 읽기가 과도하다: ${clock.calls}`);
+  const previous = clock.calls;
+  assert.strictEqual(placeWithinLimit(e, structuredClone(input)), placed, "같은 입력의 실패 객체도 기억한다");
+  assert.equal(clock.calls, previous, "캐시된 실패는 시계를 읽지 않는다");
+});
+
+test("탐색 중 첫 안전 확인에서 중단한 실패는 정상 반환·동결되고 시계 읽기 없이 재사용된다", () => {
+  const clock = countedClock(n => n === 0 ? 0 : 1e6), e = placementFixture(clock);
+  const input = expensivePlacementInput();
+  let placed;
+  assert.doesNotThrow(() => { placed = placeWithinLimit(e, input); }, "안전 상한의 중단 신호가 밖으로 새지 않는다");
+  assert.equal(JSON.stringify(placed), "[]", "부분 배치를 반환하지 않는다");
+  assert.ok(Object.isFrozen(placed), "안전 상한으로 중단한 실패도 동결한다");
+  assert.equal(clock.calls, 2, "시작과 16384번째 판정의 첫 안전 확인에서만 시계를 읽는다");
+  assert.strictEqual(placeWithinLimit(e, structuredClone(input)), placed, "같은 입력은 같은 실패 객체를 반환한다");
+  assert.equal(clock.calls, 2, "캐시된 실패는 시계를 더 읽지 않는다");
+});
+
+function centerPlacementInput(width) {
+  const k = width / (Math.sqrt(3) * (board.cols + .5));
+  const cards = Object.entries(centers).map(([id, [x, y, n]], i) => ({ id, x: x / n * k, y: y / n * k,
+    width: width < 400 ? 106 + i % 2 * 8 : 142, height: width < 400 ? 68 : 76 }));
+  return { cards, labels: cards.map(c => ({ x: c.x - 25, y: c.y - 18, width: 50, height: 34 })),
+    bounds: { width, height: (1.5 * (board.rows.length - 1) + 2) * k } };
+}
+
+function renderedPlacementInput(e, traffic) {
+  const width = e.cv.clientWidth;
+  if (traffic) {
+    const D = e.reg.ties[0];
+    e.V.ties = [{ ...D, st: "built", cap: 2 }];
+    e.result.flow[D.a + "~" + D.b] = { ab: 100, ba: 0 };
+    e.V.econ = { report: { flows: { pop: [{ from: D.a, to: D.b, n: 10 }] } } };
+  } else {
+    e.V.teams[e.reg.teams[0].id].plan.builds.push({ t: "solar", i: 1 });
+  }
+  const labels = e.window.regionDrawing.renderBoard(e.cv, e.V, e.result, false);
+  if (traffic) for (const [kind, count] of [["flow-text", 1], ["flow-arrow", 2], ["migration-mid", 1]]) {
+    assert.equal(labels.filter(b => b.kind === kind && !b.soft).length, count, kind);
+  }
+  const G = e.window.regionDrawing.boardInfo(), k = +e.cv.dataset.k;
+  const cards = e.reg.teams.map(t => ({ id: t.id, x: G.cen[t.id][0] * k, y: G.cen[t.id][1] * k,
+    width: traffic ? 140 : width === 390 ? 114 : 142, height: traffic ? 60 : width === 390 ? 68 : 76 }));
+  return { cards, labels, bounds: { width, height: e.cv.clientHeight } };
+}
+
+function assertSixCards(placed, input) {
+  assert.equal(placed.length, 6, "여섯 도시를 모두 배치한다");
+  assert.equal(new Set(placed.map(c => c.id)).size, 6, "도시가 중복되지 않는다");
+  assert.deepEqual(Array.from(placed, c => c.id), Array.from(input.cards, c => c.id), "카드 순서를 유지한다");
+  assert.ok(Object.isFrozen(placed) && placed.every(Object.isFrozen), "배열과 각 배치를 동결한다");
+}
+
+// 시계마다 구현·그리기를 별도 VM에 실어 캐시를 공유하지 않고 같은 입력을 만든다.
+for (const [name, width, makeInput] of [
+  ...[390, 1280].map(width => [`${width}px 실제 여섯 도시 중심`, width, () => centerPlacementInput(width)]),
+  ...[390, 600, 1280].map(width => [`${width}px 실제 그리기 영역`, width, e => renderedPlacementInput(e, false)]),
+  ["694px 거래량·화살촉·이주 중점", 694, e => renderedPlacementInput(e, true)]
+]) test(`${name}: 느린 시계·멈춘 시계에서도 실제 시계와 같은 6/6 배치`, () => {
+  let expected, expectedInput;
+  for (const [clockName, clock] of [["실제 시계", performance], ["5ms 시계", countedClock(n => n * 5)], ["멈춘 시계", countedClock(() => 0)]]) {
+    const e = drawingFixture(width, false, clock), input = makeInput(e), before = JSON.stringify(input);
+    const placed = placeWithinLimit(e, input);
+    assertSixCards(placed, input);
+    if (expected === undefined) { expected = JSON.stringify(placed); expectedInput = before; }
+    assert.equal(before, expectedInput, `${clockName}: 입력이 같다`);
+    assert.equal(JSON.stringify(placed), expected, `${clockName}: 좌표까지 같다`);
+    assert.equal(JSON.stringify(input), before, "입력을 변경하지 않는다");
+  }
+});
+
+test("390px 실제 그리기 영역의 되돌아가기 성공은 실제·5ms·멈춘 시계에서 좌표까지 같은 6/6 배치다", () => {
+  // 연계선·이주·새 건설 없는 기본 계획을 renderBoard로 그린 390×337 장면이다.
+  // 임시 사본의 계측에서 탐욕 실패 뒤 되돌아가기로 258,517회 판정에 성공했다.
+  // 상수만 바꾼 사본도 258,516에서는 [], 258,517에서는 6/6이었다. 즉 예산이
+  // 약 25.85만 미만이면 이 입력은 []가 되어, 25만으로 낮추는 회귀를 잡는다.
+  let expected, expectedInput;
+  for (const [name, clock] of [["실제 시계", countedClock(() => performance.now())], ["5ms 시계", countedClock(n => n * 5)], ["멈춘 시계", countedClock(() => 0)]]) {
+    const e = drawingFixture(390, false, clock);
+    const labels = e.window.regionDrawing.renderBoard(e.cv, e.V, e.result, false);
+    const G = e.window.regionDrawing.boardInfo(), k = +e.cv.dataset.k;
+    const cards = e.reg.teams.map(t => ({ id: t.id, x: G.cen[t.id][0] * k, y: G.cen[t.id][1] * k, width: 114, height: 74 }));
+    const input = { cards, labels, bounds: { width: 390, height: e.cv.clientHeight } }, before = JSON.stringify(input);
+    const placed = placeWithinLimit(e, input);
+    assertSixCards(placed, input);
+    assert.ok(clock.calls >= 2 && clock.calls <= maxClockReads, `${name}: 탐색 중 안전 확인을 실제로 거친다: ${clock.calls}`);
+    if (expected === undefined) { expected = JSON.stringify(placed); expectedInput = before; }
+    assert.equal(before, expectedInput, `${name}: 입력이 같다`);
+    assert.equal(JSON.stringify(placed), expected, `${name}: 카드 순서와 좌표까지 같다`);
+    assert.equal(JSON.stringify(input), before, "입력을 변경하지 않는다");
+  }
+});
+
+test("작업 예산은 실제 시계·느린 시계·멈춘 시계의 비싼 실패 탐색을 유한하게 끊는다", () => {
+  let expected;
+  for (const [name, clock] of [["실제 시계", countedClock(() => performance.now())], ["5ms 시계", countedClock(n => n * 5)], ["멈춘 시계", countedClock(() => 0)]]) {
+    const e = placementFixture(clock), placed = placeWithinLimit(e, expensivePlacementInput());
+    assert.equal(JSON.stringify(placed), "[]", `${name}: 완전한 배치가 없으면 빈 배열`);
+    if (expected === undefined) expected = JSON.stringify(placed);
+    assert.equal(JSON.stringify(placed), expected, `${name}: 같은 결과`);
+    assert.ok(clock.calls > 1 && clock.calls <= maxClockReads, `${name}: 탐색 중에도 시계를 드물게 읽는다: ${clock.calls}`);
+  }
+});
+
+test("탐욕 단계에서 찾은 여섯 도시 배치는 첫 시각 뒤 크게 뛰는 시계에서도 버리지 않는다", () => {
+  // 894회 판정으로 끝나 탐색 중 시계를 다시 읽지 않는다. 옛 12ms 구현은
+  // 탐욕 단계에서도 시계를 확인해, 첫 읽기 뒤 크게 뛰면 이 입력을 []로 버린다.
+  const input = centerPlacementInput(1280), expected = placeWithinLimit(placementFixture(performance), input);
+  const clock = countedClock(n => n === 0 ? 0 : 1e6);
+  const placed = placeWithinLimit(placementFixture(clock), structuredClone(input));
+  assertSixCards(placed, input);
+  assert.equal(JSON.stringify(placed), JSON.stringify(expected));
+  assert.equal(clock.calls, 1, "탐욕 성공까지 첫 시각만 읽는다");
 });
 
 for (const [pct, count] of [[0, 0], [.001, 0], [.0499, 0], [.05, 1], [.051, 1]]) test(`정전 ${pct}%의 번개 개수는 ${count}`, () => {

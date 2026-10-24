@@ -33,6 +33,14 @@
       while (document.getElementById(id)) id = `${base}-${suffix++}`;
       element.id = id;
     };
+    const syncPanel = () => {
+      // 순차 초점 후보. 음수 tabindex·disabled·hidden·inert·닫힌 details 안은 세지 않는다(독립 검토 minor).
+      const hasFocusable = KCP.$$('a[href], button, input, select, textarea, summary, iframe, audio[controls], video[controls], [tabindex], [contenteditable]:not([contenteditable="false"])', panel)
+        .some((el) => el.tabIndex >= 0 && !el.matches(':disabled, input[type="hidden"]') && !el.closest('[hidden], [inert]')
+          && !(el.closest('details:not([open])') && !el.matches('details > summary')));
+      if (hasFocusable) panel.removeAttribute("tabindex");
+      else panel.setAttribute("tabindex", "0");
+    };
     const sync = () => {
       ensureId(panel, "tabs-panel");
       panel.setAttribute("role", "tabpanel");
@@ -45,6 +53,9 @@
       });
       if (selected) panel.setAttribute("aria-labelledby", selected.id);
       else panel.removeAttribute("aria-labelledby");
+      syncPanel();
+      // 기존 paint는 sync() 뒤 내용을 바꾸므로, DOM 갱신이 끝난 직후에도 판정한다.
+      queueMicrotask(syncPanel);
     };
     list.addEventListener("keydown", (e) => {
       // Alt·Ctrl·Meta 조합(브라우저 뒤로 가기 등)은 가로채지 않는다.

@@ -558,7 +558,7 @@
           </div>
           <div class="stack">
             <section class="panel">
-              <div class="tabs" role="tablist">
+              <div class="tabs" role="tablist" aria-label="문제 작업 화면 선택">
                 <button role="tab" data-mode="q1" aria-selected="${G.mode === "q1"}">1번 문제 · 4종 1개씩</button>
                 <button role="tab" data-mode="q2" aria-selected="${G.mode === "q2"}">2번 문제 · 세 마을 공급</button>
               </div>
