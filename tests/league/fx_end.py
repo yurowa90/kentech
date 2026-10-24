@@ -381,6 +381,23 @@ def reset_scroll(page):
     }""")
 
 
+def fifth_chart_layout(checks, page, label, selector):
+    data = page.evaluate("""selector => {
+      const charts=document.querySelector(selector), cards=charts?.querySelectorAll('.lg-fx-chart');
+      if (!charts || cards.length !== 5) return {width:innerWidth};
+      const first=cards[0].getBoundingClientRect(), fifth=cards[4].getBoundingClientRect(), box=charts.getBoundingClientRect();
+      return {width:innerWidth, first:first.width, fifth:fifth.width,
+        center:(fifth.left+fifth.right)/2, containerCenter:(box.left+box.right)/2};
+    }""", selector)
+    if data['width'] != 1280:
+        return
+    checks.ok(data.get('first', 0) > 0 and data.get('fifth', 0) > 0 and
+              abs(data['fifth'] - data['first']) <= 1,
+              f'{label} 1280폭 다섯째 그래프 폭 = 첫째 폭 ±1px: {data}')
+    checks.ok('center' in data and abs(data['center'] - data['containerCenter']) <= 1,
+              f'{label} 1280폭 다섯째 그래프 가운데 = 그래프 칸 가운데 ±1px: {data}')
+
+
 def layout(checks, page, label, mobile):
     reset_scroll(page)
     data = page.evaluate("""() => {
@@ -409,6 +426,7 @@ def layout(checks, page, label, mobile):
     if not checks.ok(not data['missing'],
                      f'{label} (a) 끝 화면 필수 요소 존재, 못 찾은 선택자: {data["missing"]}'):
         return
+    fifth_chart_layout(checks, page, label, '#lg-panel .lg-fx-charts')
     state = page.evaluate(PUBLIC_JS)
     # 누락 점수는 순위 관측의 실패로 남긴다. 원래 KeyError가 다른 단언까지 막지 않도록 한다.
     score = (state['V'].get('econ', {}).get('score') or {}).get('by', {})
@@ -574,18 +592,19 @@ def grid_points(checks, article, public, label, host=False):
     monthly = {city: [source_value(state, city, t, 'grid', public.get('co2Saved'),
                                   public.get('gridSaved')) for t in range(1, month + 1)]
                for city in active}
-    missing = any(not finite(v) for values in monthly.values() for v in values)
-    notice = article.locator('[data-fx-gap="grid"]')
-    checks.ok(notice.count() == int(missing) and (not missing or notice.is_visible()),
-              label + ' 계통 기록 누락이면 안내 한 줄, 모두 있으면 안내 없음')
-    if public['role'] in ('solo', 'host'):
-        checks.ok(not missing and len(state.get('results', [])) == month,
-                  label + ' 계통 전체 결과 12달 모두 값 존재')
     series = [(city, state['econ']['cities'][city]['name'], monthly[city]) for city in active] if host else [
         (team, '내 도시', monthly[team]),
         ('neighbors', '이웃 평균', [sum(values) / len(values) if (values := [monthly[other][i]
             for other in active if other != team and finite(monthly[other][i])]) else None
             for i in range(month)])]
+    # 진행자는 도시별 선, 팀은 내 도시·값 있는 이웃의 평균선에서만 결측을 판정한다.
+    missing = any(not finite(v) for _, _, values in series for v in values)
+    notice = article.locator('[data-fx-gap="grid"]')
+    checks.ok(notice.count() == int(missing) and (not missing or notice.is_visible()),
+              label + ' 계통 그린 선에 결측이면 안내 한 줄, 선이 이어지면 안내 없음')
+    if public['role'] in ('solo', 'host'):
+        checks.ok(not missing and len(state.get('results', [])) == month,
+                  label + ' 계통 전체 결과 12달 모두 값 존재')
     titles = article.locator('circle title').all_text_contents()
     checks.ok(len(titles) == sum(finite(v) for _, _, values in series for v in values),
               label + ' 계통 유효한 달 수와 실제 점 수 일치')
@@ -617,9 +636,19 @@ def grid_drawer(checks, page, last, label):
     detail = page.locator('#lg-last-month')
     if not detail.evaluate('el => el.open'):
         detail.locator(':scope > summary').click()
-    value = page.locator('#lg-last-month [data-grid-fill] dd')
-    checks.ok(value.count() == 1 and near(last, number(value.inner_text(), 'MWh/일'), 1, 1),
-              label + ' 계통 마지막 그래프 = 같은 달 결과 서랍 MWh/일')
+    row = page.locator('#lg-last-month [data-grid-fill]')
+    value = row.locator(':scope > dd:not(.lg-result-note)')
+    public = page.evaluate(PUBLIC_JS)
+    state = public['V']
+    raw = source_value(state, public['team'], state['round'], 'grid',
+                       public.get('co2Saved'), public.get('gridSaved'))
+    if finite(raw) and 0 <= raw < 0.05:
+        checks.ok(row.count() == 0 and finite(last) and 0 <= last < 0.05,
+                  label + ' 계통 0.05 MWh/일 미만은 서랍 줄 없음 + 그래프 값 < 0.05')
+    else:
+        checks.ok(finite(raw) and raw >= 0.05 and value.count() == 1 and
+                  near(last, number(value.inner_text(), 'MWh/일'), 1, 1),
+                  label + ' 계통 마지막 그래프 = 같은 달 결과 서랍 MWh/일')
 
 
 def crosscheck(checks, page, rows, label):
@@ -859,8 +888,11 @@ def host_end(checks, context, base, pages, label, mobile=False):
     checks.ok(state['round'] == 12 and len(state['results']) == 12 and len(state['active']) == 2,
               label + ' 2팀 화면 조작으로 12달 완주')
     host.wait_for_selector('#lg-host-rank .lg-fx-end')
+    checks.ok('CO₂(t/월)' in host.locator('#lg-host-summary-table thead th').all_inner_texts(), label + ' 진행자 장부 머리 CO₂(t/월)')
+    checks.ok('목표·평가선 벗어남(위험)' in host.locator('.lg-ledger-note').inner_text(), label + ' 진행자 장부 각주 목표·평가선 벗어남(위험)')
     checks.test(label + ' 움직임·순위 막대 관측 실행', lambda: motion(checks, host, label, False) is None)
     graphs(checks, host, label, host=True)
+    fifth_chart_layout(checks, host, label, '#lg-host-rank .lg-fx-charts')
     if mobile:
         host_mobile_strip(checks, host, label)
     overflow(checks, host, label + ' 끝')
@@ -874,6 +906,7 @@ def host_end(checks, context, base, pages, label, mobile=False):
         page.wait_for_selector('#lg-panel .lg-fx-end')
         team_label = label + '-team-' + city
         rows = graphs(checks, page, team_label)
+        fifth_chart_layout(checks, page, team_label, '#lg-panel .lg-fx-charts')
         grid_host_team(checks, host, page, state, city, team_label)
         grid_drawer(checks, page, rows['grid']['last'], team_label)
         grid_missing(checks, page, team_label)

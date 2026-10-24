@@ -37,13 +37,15 @@ function fixture(n = 3) {
       inactive: { unsPct: 100, co2Prod: 999999, outH: 7 } } })) };
 }
 const graph = (html, key) => html.match(new RegExp(`<article[^>]*data-fx-metric="${key}"[\\s\\S]*?</article>`))[0];
-test("4개 그래프에 첫·마지막 값과 활성 이웃 평균, 월 환산 단위가 나온다", () => {
+test("5개 그래프에 첫·마지막 값과 활성 이웃 평균, 하루 평균 단위가 나온다", () => {
   const K = setup(), V = fixture(), before = JSON.stringify(V), html = K.fxEnd.html(V, "a");
-  assert.equal((html.match(/role="img"/g) || []).length, 4);
+  assert.equal((html.match(/role="img"/g) || []).length, 5);
+  assert.match(html, /aria-label="지표 그래프 5개 ·/);
   assert.match(graph(html, "uns"), /aria-label="정전, 2026년 1월 77.7% → 2026년 3월 0%, 이웃 평균 12%/);
   assert.match(graph(html, "appr"), /1월 40% → 2026년 3월 42%, 이웃 평균 72%/);
   assert.match(graph(html, "pop"), /주민 · 시작 대비 변화, 2026년 1월 0% → 2026년 3월 \+20%, 이웃 평균 \+7.5%/);
-  assert.match(graph(html, "co2"), /1월 40 t → 2026년 3월 48 t, 이웃 평균 120 t/);
+  // 대표 7일: 내 도시 10/7 → 12/7, 이웃 (20+40)/2/7 t/일(소수 1자리).
+  assert.match(graph(html, "co2"), /1월 1.4 t\/일 → 2026년 3월 1.7 t\/일, 이웃 평균 4.3 t\/일/);
   assert.match(html, /모형 계산 · 게임 가정/);
   assert.doesNotMatch(html, />\s*[OPMG](?:\*|\s)*<|\([OPMG]\)/);
   assert.equal(JSON.stringify(V), before, "화면 생성은 공개 상태를 변경하지 않는다");
@@ -72,7 +74,7 @@ test("36달 띠는 달마다 비조작 칸 하나와 사건·정전 대안을 �
 });
 test("진행자 모드는 모든 활성 도시 궤적과 도시 이름을 제공한다", () => {
   const K = setup(), html = K.fxEnd.html(fixture(), null, { allCities: true });
-  assert.equal((html.match(/data-fx-series="[abc]"/g) || []).length, 12);
+  assert.equal((html.match(/data-fx-series="[abc]"/g) || []).length, 15);
   assert.doesNotMatch(html, /data-fx-series="inactive"/);
   assert.match(html, /이웃 하나/); assert.match(html, /이웃 둘/);
 });
@@ -81,7 +83,7 @@ test("생략된 과거 CO₂와 이웃 결측은 0으로 바꾸거나 평균 분
   delete V.results[0].team.a.co2Prod;
   V.results[2].team.b.unsPct = null;
   const html = K.fxEnd.html(V, "a");
-  assert.match(graph(html, "co2"), /1월 자료 없음 → 2026년 3월 48 t/);
+  assert.match(graph(html, "co2"), /1월 자료 없음 → 2026년 3월 1.7 t\/일/); // 12/7
   assert.match(graph(html, "uns"), /이웃 평균 14%/);
 });
 const settle = frames => (frames.timers || []).splice(0).forEach(fn => fn());
@@ -134,7 +136,7 @@ test("월별 수신값은 탭 저장으로 모든 도시 CO₂를 복원하며 �
   const reloaded = setup([], false, storage), V = publicFixture(full), snapshot = JSON.stringify(V);
   const co2 = graph(reloaded.fxEnd.html(V, "a"), "co2");
   assert.equal((co2.match(/<circle/g) || []).length, 24, "다른 도시도 보충되어 이웃 평균이 이어진다");
-  assert.match(co2, /1월 40 t → 2026년 12월 84 t, 이웃 평균 120 t/);
+  assert.match(co2, /1월 1.4 t\/일 → 2026년 12월 3 t\/일, 이웃 평균 4.3 t\/일/); // 10/7, 21/7, 30/7
   assert.doesNotMatch(co2, /공개 상태에는 최근 두 달/);
   assert.equal(JSON.stringify(V), snapshot);
   const all = graph(reloaded.fxEnd.html(V, null, { allCities: true }), "co2");
@@ -146,8 +148,8 @@ test("월별 수신값은 탭 저장으로 모든 도시 CO₂를 복원하며 �
   partial.results.slice(0, -2).forEach(r => K.fxEnd.remember(partial, { round: r.round, days: 14, team: { b: r.team.b } }));
   const missing = graph(reloaded.fxEnd.html(publicFixture(partial), "a"), "co2");
   assert.match(missing, /1월 자료 없음/);
-  assert.match(missing, /이웃 평균 120 t/); // 마지막 달 공개 값의 평균(20+40)/2 ×4
-  assert.match(missing, /이웃 평균 2026년 1월 40 t<\/title>/, "저장된 대표 14일을 28일로 환산");
+  assert.match(missing, /이웃 평균 4.3 t\/일/); // 마지막 달 공개 값 (20+40)/2/7
+  assert.match(missing, /이웃 평균 2026년 1월 1.4 t\/일<\/title>/, "저장된 대표 14일의 20/14 t/일");
   assert.match(missing, /공개 상태에는 최근 두 달/);
 });
 test("CO₂ 저장 실패·깨진 사본은 화면을 막거나 빈 달을 0으로 만들지 않는다", () => {
@@ -209,6 +211,138 @@ test("탭 CO₂ 사본의 0은 보존하고 현재 공개값을 사본보다 우
   const V = publicFixture(full);
   V.results.at(-1).team.a.co2Prod = 100;
   const co2 = graph(K.fxEnd.html(V, "a"), "co2");
-  assert.match(co2, /1월 0 t → 2026년 12월 400 t/);
+  assert.match(co2, /1월 0 t\/일 → 2026년 12월 14.3 t\/일/); // 공개값 100/7, 사본 21/7보다 우선
   assert.doesNotMatch(co2, /공개 상태에는 최근 두 달/);
+});
+
+function gridFixture() {
+  const V = fixture();
+  V.rounds = [31, 29, 31].map((mdays, i) => ({ year: 2028, month: i + 1, mdays }));
+  V.results.forEach((r, i) => {
+    r.days = [7, 14, 5][i];
+    Object.assign(r.team.a, { isolated: { uns: 25 }, uns: 4, imp: 3, sub: 2 }); // 20 MWh
+    Object.assign(r.team.b, { isolated: { uns: 39 }, uns: 3, imp: 5, sub: 4 }); // 35 MWh
+    Object.assign(r.team.c, { isolated: { uns: 60 }, uns: 4, imp: 2, sub: 2 }); // 56 MWh
+  });
+  return V;
+}
+function omitGrid(r) {
+  for (const key of ["isolated", "uns", "imp", "sub"]) delete r[key];
+}
+const pointTitles = article => [...article.matchAll(/<circle\b[^>]*><title>([^<]*)<\/title>/g)].map(m => m[1]);
+function dailyPoints(article, name) {
+  return pointTitles(article).filter(s => s.startsWith(name + " ")).map(s => {
+    const match = s.match(/ ([\d.]+) MWh\/일$/);
+    assert.ok(match, "계통 점의 하루 평균 단위");
+    return Number(match[1]);
+  });
+}
+const linePath = (article, id) => article.match(new RegExp(`data-fx-series="${id}"[^>]* d="([^"]*)"`))[1];
+const oneDecimal = n => Number(n.toFixed(1));
+
+test("공개 계통 결과는 구매·대체분을 반영하고 윤년 2월도 대표 기간의 하루 평균이다", () => {
+  const K = setup(), V = gridFixture();
+  V.results[2].team.a.isolated.uns = 1; // 1-4-3+2 < 0: 음수는 0
+  const grid = graph(K.fxEnd.html(V, "a"), "grid");
+  // 1월 20×(31/7)/31, 윤년 2월 20×(29/14)/29, 3월 max(0,-4)/5.
+  assert.deepEqual(dailyPoints(grid, "내 도시"), [oneDecimal(20 / 7), oneDecimal(20 / 14), 0]);
+  assert.deepEqual(dailyPoints(grid, "이웃 평균"), [7, 14, 5].map(days => oneDecimal((35 + 56) / 2 / days)));
+  assert.match(grid, /2028년 2월 1.4 MWh\/일/);
+  assert.doesNotMatch(grid, /data-fx-gap="grid"/);
+});
+
+test("팀 savedGrid는 월 환산 MWh를 윤년 일수로 나누고 내 도시만 보충한다", () => {
+  const K = setup(), V = gridFixture(), savedGrid = { 1: { grid: 62 }, 2: { grid: 87 }, 3: { grid: 124 } };
+  V.results.forEach(r => Object.values(r.team).forEach(omitGrid));
+  // 이웃 하나만 2월 값을 공개한다. 1·3월 이웃은 내 기기의 값으로 채워지면 안 된다.
+  Object.assign(V.results[1].team.b, { isolated: { uns: 28 }, uns: 0, imp: 0, sub: 0 });
+  const grid = graph(K.fxEnd.html(V, "a", { savedGrid }), "grid");
+  assert.deepEqual(dailyPoints(grid, "내 도시"), [62 / 31, 87 / 29, 124 / 31]);
+  assert.deepEqual(dailyPoints(grid, "이웃 평균"), [28 / 14], "값 있는 이웃 하나만 평균 분모에 포함");
+  assert.match(grid, /이웃 평균 2028년 2월 2 MWh\/일/);
+  assert.equal((linePath(grid, "neighbors").match(/M/g) || []).length, 1);
+  assert.match(grid, /data-fx-gap="grid"/);
+  // 모든 이웃 값이 없으면 평균선 전체가 비어야 한다.
+  omitGrid(V.results[1].team.b);
+  const empty = graph(K.fxEnd.html(V, "a", { savedGrid }), "grid");
+  assert.deepEqual(dailyPoints(empty, "이웃 평균"), []);
+  assert.equal(linePath(empty, "neighbors"), "");
+});
+
+test("remember 계통 사본은 대표 기간 MWh·days로 복원하고 공개값·기기 기록을 우선한다", () => {
+  const storage = memoryStorage(), K = setup([], false, storage), V = gridFixture();
+  V.results.forEach(r => K.fxEnd.remember(V, r));
+  V.results.forEach(r => {
+    Object.values(r.team).forEach(omitGrid);
+    r.days = 1; // 복원은 이 축약 사본의 days 대신 remember가 보관한 7·14·5일을 사용해야 한다.
+  });
+  const reloaded = setup([], false, storage);
+  const all = graph(reloaded.fxEnd.html(V, null, { allCities: true }), "grid");
+  assert.deepEqual(dailyPoints(all, "내 도시"), [7, 14, 5].map(days => oneDecimal(20 / days)));
+  assert.deepEqual(dailyPoints(all, "이웃 하나"), [7, 14, 5].map(days => oneDecimal(35 / days)));
+  assert.deepEqual(dailyPoints(all, "이웃 둘"), [7, 14, 5].map(days => oneDecimal(56 / days)));
+  assert.doesNotMatch(all, /data-fx-gap="grid"/);
+  const opts = { savedGrid: { 1: { grid: 93 }, 2: { grid: 116 } } };
+  Object.assign(V.results[0].team.a, { isolated: { uns: 6 }, uns: 1, imp: 2, sub: 1 });
+  const grid = graph(reloaded.fxEnd.html(V, "a", opts), "grid");
+  assert.deepEqual(dailyPoints(grid, "내 도시"), [4, 116 / 29, oneDecimal(20 / 5)]);
+  assert.deepEqual(dailyPoints(grid, "이웃 평균"), [7, 14, 5].map(days => oneDecimal((35 + 56) / 2 / days)));
+  V.room = "OTHERROOM";
+  assert.deepEqual(dailyPoints(graph(reloaded.fxEnd.html(V, "a"), "grid"), "내 도시"), [4], "다른 방의 계통 사본 제외");
+});
+
+test("계통 빈 달 안내는 그린 선의 결측만 보고 CO₂는 도시 하나의 결측도 알린다", () => {
+  const K = setup();
+  for (const [kind, missing, segments] of [["one-neighbor", false, 1], ["own", true, 2], ["neighbors", true, 2], ["zero", false, 1]]) {
+    const V = gridFixture();
+    if (kind === "one-neighbor" || kind === "neighbors") omitGrid(V.results[1].team.b);
+    if (kind === "neighbors") omitGrid(V.results[1].team.c);
+    if (kind === "own") omitGrid(V.results[1].team.a);
+    if (kind === "zero") Object.values(V.results[1].team).forEach(r => Object.assign(r, { isolated: { uns: 0 }, uns: 0, imp: 0, sub: 0 }));
+    delete V.results[1].team.b.co2Prod;
+    const html = K.fxEnd.html(V, "a"), grid = graph(html, "grid");
+    assert.equal(grid.includes('data-fx-gap="grid"'), missing, kind);
+    const id = kind === "own" || kind === "zero" ? "a" : "neighbors";
+    assert.equal((linePath(grid, id).match(/M/g) || []).length, segments, kind + " 선분 수");
+    assert.equal(dailyPoints(grid, "내 도시").length, kind === "own" ? 2 : 3);
+    assert.equal(dailyPoints(grid, "이웃 평균").length, kind === "neighbors" ? 2 : 3);
+    if (kind === "one-neighbor") assert.equal(dailyPoints(grid, "이웃 평균")[1], 56 / 14);
+    if (kind === "zero") {
+      assert.match(grid, /<circle cx="119" cy="106"[^>]*><title>내 도시 2028년 2월 0 MWh\/일/);
+      assert.equal(dailyPoints(grid, "이웃 평균")[1], 0);
+    }
+    assert.match(graph(html, "co2"), /공개 상태에는 최근 두 달의 CO₂만 있어 빈 달이 있어요/, kind);
+    const host = graph(K.fxEnd.html(V, null, { allCities: true }), "grid");
+    assert.equal(host.includes('data-fx-gap="grid"'), kind !== "zero", "진행자는 도시별 결측을 안내: " + kind);
+  }
+});
+
+test("remember는 CO₂ 없는 계통 결과를 복원해도 그 달 CO₂를 0으로 그리지 않는다", () => {
+  const storage = memoryStorage(), K = setup([], false, storage), V = gridFixture();
+  delete V.results[1].team.a.co2Prod;
+  V.results.forEach(r => K.fxEnd.remember(V, r));
+  V.results.forEach(r => Object.values(r.team).forEach(omitGrid));
+  const html = setup([], false, storage).fxEnd.html(V, "a");
+  assert.deepEqual(dailyPoints(graph(html, "grid"), "내 도시"), [7, 14, 5].map(days => oneDecimal(20 / days)));
+  const co2 = graph(html, "co2"), ownTitles = pointTitles(co2).filter(s => s.startsWith("내 도시 "));
+  assert.equal(ownTitles.length, 2);
+  assert.ok(ownTitles.every(s => !s.includes("2028년 2월")));
+  assert.equal((linePath(co2, "a").match(/M/g) || []).length, 2);
+  assert.match(co2, /공개 상태에는 최근 두 달의 CO₂만 있어 빈 달이 있어요/);
+});
+
+test("작은 계통 눈금은 중복 없이 실제 위치 값의 소수 1자리 반올림과 일치한다", async t => {
+  for (const perDay of [0.3, 2.3]) await t.test(`${perDay} MWh/일`, () => {
+    const K = setup(), V = gridFixture();
+    V.results.forEach(r => Object.values(r.team).forEach(v => Object.assign(v, { isolated: { uns: perDay * r.days }, uns: 0, imp: 0, sub: 0 })));
+    const grid = graph(K.fxEnd.html(V, null, { allCities: true }), "grid");
+    const ticks = [...grid.matchAll(/<path class="lg-fx-gridline" d="M40,([\d.]+) H198"\/><text[^>]*>([^<]+)<\/text>/g)];
+    assert.equal(ticks.length, 3);
+    // 0선(y=106)에서 입력값의 점까지 거리로 눈금의 실제 값을 독립적으로 복원한다.
+    const pointY = Number(grid.match(/<circle[^>]* cy="([^"]+)"/)[1]);
+    const valuesAtTicks = ticks.map(m => perDay * (106 - Number(m[1])) / (106 - pointY));
+    ticks.forEach((m, i) => assert.ok(Math.abs(Number(m[2]) - valuesAtTicks[i]) <= 0.05 + 1e-9,
+      `${perDay}: 눈금 ${m[2]}, 위치의 실제 값 ${valuesAtTicks[i]}`));
+    assert.equal(new Set(ticks.map(m => m[2])).size, 3, "서로 다른 눈금에 같은 글자 없음");
+  });
 });
