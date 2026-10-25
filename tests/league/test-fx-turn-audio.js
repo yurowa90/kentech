@@ -153,7 +153,7 @@ test("사건 id에 맞는 분위기를 지도에 보내고 사건 없는 달에�
   let shown;
   e.KCP.buildGame.setMapMood = mood => { shown = mood; };
   const cases = [["heatwave_peak", "heat"], ["evening_peak_tropical_night", "heat"], ["coldwave_heating", "cold"],
-    ["heavy_snow_solar", "snow"], ["typhoon_coast", "storm"], ["monsoon_cloud", "cloud"],
+    ["heavy_snow_solar", "snow"], ["typhoon_coast", "storm"], ["monsoon_cloud", "cloud"], ["heavy_rain", "rain"],
     ["spring_dust_haze", "haze"], ["finedust_coal_cap", "haze"], ["unknown", null]];
   cases.forEach(([id, mood], i) => {
     e.fx.monthStart({ ...e.options, round: i + 1, cards: [forecast(id)] });

@@ -4,13 +4,13 @@
   tests/.venv/bin/python tests/league/fx_event.py http://127.0.0.1:9430/index.html
 서버는 tests/srv.py를 쓴다. 작성 세션에서는 py_compile만 실행한다.
 
-1280×900/390×844 밝음 × 일반/reduce마다 두 고정 방 코드로 12달 진행한다.
+1280×900/390×844 밝음 × 일반/reduce마다 세 고정 방 코드로 12달 진행한다.
 fx_event_seeds.js가 D-64 room 규칙으로 만든 lobby 시작 저장본만 기존
 혼자 하기 복원 경로로 넣는다(s8n.py restore_solo와 같은 저장 형식).
 사건·계획·라운드를 주입하지 않는다. Esc1 보조 판과 보류→예보 재로딩에서 monthStart의 실제
 호출을 잠시 붙잡아 화면 조건을 만든 뒤 원래 인자로 풀고, 검사 후 함수를 복원한다.
 분위기 표는 w4-event-cards.md 3절의 독립 기대값이다. 여러 사건은 자료
-순서의 첫 유효 분위기를 비교한다. 8항목 모두 계획·실제 예보·결과/재생
+순서의 첫 유효 분위기를 비교한다. 9항목 모두 계획·실제 예보·결과/재생
 검사를 수행해야 하며, 고정 판의 사건이 달라지거나 항목이 빠지면 실패한다.
 명세 1절은 새로고침·재마운트를 포함해 같은 방·달의 재표시를 금지한다.
 첫 해당 사건에서 Esc→서랍 왕복→새로고침을 확인하고 결과로 이어 간다.
@@ -118,7 +118,7 @@ class ForecastProbeChecks(BaseChecks):
                         print(f'INFO {name} 관측: {detail[len(name):].lstrip()}', flush=True)
 
 
-# w4-event-cards.md 3절. 구현의 EVENT_MOOD를 읽어 기대값으로 쓰지 않는다.
+# w4-event-cards.md 3절 + D-90 heavy_rain 명세. 구현에서 기대값을 읽지 않는다.
 EVENT_MOOD = {
     'heatwave_peak': 'heat',
     'evening_peak_tropical_night': 'heat',
@@ -126,9 +126,13 @@ EVENT_MOOD = {
     'heavy_snow_solar': 'snow',
     'typhoon_coast': 'storm',
     'monsoon_cloud': 'cloud',
+    'heavy_rain': 'rain',
     'spring_dust_haze': 'haze',
     'finedust_coal_cap': 'haze',
 }
+
+# D-90: 장마 중 집중호우와 장마 구름의 기호는 서로 다르다(독립 기대값).
+EVENT_ICON = {'heavy_rain': '☂', 'monsoon_cloud': '☁'}
 
 DOM_JS = r"""(() => {
   const visible = el => {
@@ -438,12 +442,13 @@ def inspect_cards(checks, page, names, forecast, label, mobile, reduced,
             else not h['icons'] for h in card['headings']),
             f"{label} 사건 h3만 기호 span + 제목 span, 기호 aria-hidden=true: {card['title']}")
         if event:
-            expected_icon = page.evaluate("""title => {
+            event_icon = page.evaluate("""title => {
               const L=KCP.league.state(), V=L.S||L.snap, C=KCP.leagueCore;
               const e=C.regionOf(V.region).events.find(e=>e.name===title);
-              return e && typeof KCP.fxTurn.eventIcon==='function' ? KCP.fxTurn.eventIcon(e.id) : null;
+              return {id:e?.id, icon:e && typeof KCP.fxTurn.eventIcon==='function' ? KCP.fxTurn.eventIcon(e.id) : null};
             }""", card['title'])
-            checks.ok(bool(expected_icon) and all(
+            expected_icon = EVENT_ICON.get(event_icon.get('id'), event_icon['icon'])
+            checks.ok(bool(expected_icon) and event_icon['icon'] == expected_icon and all(
                 h['icons'] and h['icons'][0]['text'] == expected_icon for h in card['headings']),
                 f"{label} 사건 카드 기호=eventIcon(id): {card['title']}")
     if not forecast:
@@ -699,13 +704,15 @@ def strip_title(checks, page, label, forecast=False):
       const icon=strip?.querySelector('.fx-turn-strip-icon');
       return {title:strip?.querySelector('.fx-turn-strip-title')?.textContent.trim(),
         text:strip?.textContent, events:events.map(c=>c.title), icon:icon?.textContent,
-        hidden:icon?.getAttribute('aria-hidden'),
+        hidden:icon?.getAttribute('aria-hidden'), id:first?.id,
         expected:first && typeof KCP.fxTurn.eventIcon==='function' ? KCP.fxTurn.eventIcon(first.id) : null};
     }""", forecast)
     checks.ok(bool(data['events']) and bool(data['title']) and data['title'] == data['events'][0] and
               '결산' not in data['title'] and not re.fullmatch(r'\d+월', data['title']),
               f'{label} 띠 제목=첫 사건 제목(결산·월 아님): {data}')
-    checks.ok(bool(data['expected']) and data['icon'] == data['expected'] and data['hidden'] == 'true',
+    expected_icon = EVENT_ICON.get(data.get('id'), data['expected'])
+    checks.ok(bool(expected_icon) and data['expected'] == expected_icon and
+              data['icon'] == expected_icon and data['hidden'] == 'true',
               f'{label} 사건 띠 기호=첫 사건 eventIcon(id), aria-hidden=true: {data}')
     if len(data['events']) == 1:
         checks.ok('외 0장' not in (data['text'] or ''),
@@ -1024,7 +1031,7 @@ def seeded_fixtures():
     fixtures = json.loads(result.stdout)
     targets = [key for fixture in fixtures for key in fixture['targets']]
     if sorted(targets) != sorted(EVENT_MOOD):
-        raise AssertionError(f'고정 시작본의 분위기 표 8항목 누락/중복: {targets}')
+        raise AssertionError(f'고정 시작본의 분위기 표 {len(EVENT_MOOD)}항목 누락/중복: {targets}')
     return fixtures
 
 
@@ -1709,7 +1716,7 @@ def main():
                                 checks.ok(not external, f'{probe_label} 외부 연결 시도 0: {external}')
                                 context.close()
                         # 한 판에서 우연히 본 id나 결과만 본 id로 표 실행을 세지 않는다.
-                        # 화면 크기·motion 각각에서 8종×3단계가 모두 실행돼야 한다.
+                        # 화면 크기·motion 각각에서 표의 모든 사건×3단계가 실행돼야 한다.
                         for key in EVENT_MOOD:
                             for stage in ('plan', 'forecast', 'result'):
                                 checks.ok(key in coverage[stage],

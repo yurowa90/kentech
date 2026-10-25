@@ -196,36 +196,101 @@ test("기존 망 경로에서 live 경로·부족 마을·선 소속을 찾고 �
 
 
 // 실 Canvas 대신 명령 경계만 기록해 전체 합성 상한과 입자·reduced 동작을 확인한다.
-test("사건 분위기는 0.06 이하로 한 번 합성하고 눈 60개·빗줄기 80개를 넘지 않는다", () => {
+function moodPainter() {
   const { paintMapMood, useState, useView } = context.window.mapPaintTest;
   const commands = [];
-  const gradient = { addColorStop() {} };
-  const ink = { clearRect() {}, beginPath() {}, fillRect() {}, fill() {}, stroke() {},
-    moveTo() { commands.push("rain"); }, lineTo() {},
-    arc() { commands.push("snow"); }, ellipse() {},
-    createRadialGradient: () => gradient, createLinearGradient: () => gradient };
+  const ink = {};
+  for (const method of ["clearRect", "beginPath", "fillRect", "fill", "stroke", "moveTo", "lineTo", "arc", "ellipse"]) {
+    ink[method] = (...args) => commands.push([method, ...args]);
+  }
+  for (const method of ["createRadialGradient", "createLinearGradient"]) {
+    ink[method] = (...args) => {
+      commands.push([method, ...args]);
+      return { addColorStop: (...stop) => commands.push(["addColorStop", ...stop]) };
+    };
+  }
+  for (const prop of ["fillStyle", "strokeStyle", "lineWidth", "globalAlpha"]) {
+    Object.defineProperty(ink, prop, { set(value) { commands.push([prop, value]); } });
+  }
   context.document.createElement = () => ({ width: 0, height: 0, getContext: () => ink });
   useView({ W: 390, H: 800, area: { l: 0, r: 390, t: 0, b: 800 } });
-  const state = { alive: true, raf: 1 }; useState(state);
+  useState({ alive: true, raf: 1 });
   const composites = [];
   const g = { save() {}, restore() {}, drawImage() { composites.push(this.globalAlpha); } };
   const bg = context.window.KCP.buildGame;
   assert.equal(typeof bg.setMapMood, "function");
-  bg.setMapMood("snow"); paintMapMood(g, 3, false);
-  assert.equal(commands.filter(c => c === "snow").length, 60);
-  commands.length = 0;
-  bg.setMapMood("storm"); paintMapMood(g, 3, false);
-  assert.equal(commands.filter(c => c === "rain").length, 80);
-  commands.length = 0;
-  for (const mood of ["heat", "cold", "snow", "storm", "cloud", "haze"]) {
-    bg.setMapMood(mood); paintMapMood(g, 50, true);
-    assert.equal(commands.length, 0, `${mood}: reduced에서는 물결·입자·구름을 그리지 않는다`);
+  return (mood, t, reduced) => {
+    commands.length = 0; composites.length = 0;
+    bg.setMapMood(mood); paintMapMood(g, t, reduced);
+    return { commands: commands.slice(), composites: composites.slice() };
+  };
+}
+
+// moveTo→lineTo로 만든 선분 중 실제 stroke된 것만 빗줄기로 센다.
+function rainSegments(commands) {
+  const lines = [];
+  let point, pending = [];
+  for (const [method, ...args] of commands) {
+    if (method === "beginPath") { point = null; pending = []; }
+    if (method === "moveTo") point = args;
+    if (method === "lineTo" && point) {
+      pending.push([args[0] - point[0], args[1] - point[1]]);
+      point = args;
+    }
+    if (method === "stroke") { lines.push(...pending); pending = []; }
   }
-  assert.ok(composites.every(a => a <= 0.06));
-  const count = composites.length;
-  bg.setMapMood(null); paintMapMood(g, 3, false);
-  bg.setMapMood("invalid"); paintMapMood(g, 3, false);
-  assert.equal(composites.length, count, "null과 잘못된 분위기는 그리지 않는다");
+  return lines;
+}
+
+test("rain을 포함한 사건 분위기는 0.06 이하로 한 번 합성하고 눈 60개·storm 빗줄기 80개를 그린다", () => {
+  const paint = moodPainter();
+  assert.equal(paint("snow", 3, false).commands.filter(([method]) => method === "arc").length, 60);
+  assert.equal(rainSegments(paint("storm", 3, false).commands).length, 80);
+  for (const mood of ["heat", "cold", "snow", "storm", "cloud", "haze", "rain"]) {
+    for (const reduced of [false, true]) {
+      const { composites } = paint(mood, 50, reduced);
+      assert.equal(composites.length, 1, `${mood}, reduced=${reduced}: 한 번 합성한다`);
+      assert.ok(composites.every(a => Number.isFinite(a) && a > 0 && a <= 0.06), `${mood}: 합성 투명도 상한`);
+    }
+  }
+  // rain은 정지 빗줄기를 남기는 예외이므로 아래 반복문에서 빼고 별도 검사한다.
+  for (const mood of ["heat", "cold", "snow", "storm", "cloud", "haze"]) {
+    const { commands } = paint(mood, 50, true);
+    assert.equal(commands.filter(([method]) => ["moveTo", "lineTo", "arc", "ellipse"].includes(method)).length,
+      0, `${mood}: reduced에서는 물결·입자·구름을 그리지 않는다`);
+  }
+  for (const mood of [null, "invalid"]) {
+    assert.equal(paint(mood, 3, false).composites.length, 0, "null과 잘못된 분위기는 그리지 않는다");
+  }
+});
+
+test("rain은 움직이는 구름 띠와 storm보다 적고 거의 수직인 빗줄기를 그린다", () => {
+  const paint = moodPainter();
+  const storm = rainSegments(paint("storm", 3, false).commands);
+  const rain = paint("rain", 3, false).commands;
+  const lines = rainSegments(rain);
+  const clouds = commands => commands.filter(([method]) => method === "ellipse");
+  assert.ok(clouds(rain).length > 0, "rain의 구름 띠가 있다");
+  assert.ok(lines.length > 0 && lines.length < 80 && lines.length < storm.length, "rain 빗줄기는 1~79개이며 storm보다 적다");
+  const slope = ([dx, dy]) => Math.abs(dx) / Math.abs(dy);
+  // '거의 수직'의 독립 기준: 가로 이동량은 세로의 1/4 이하.
+  assert.ok(lines.every(line => Number.isFinite(slope(line)) && slope(line) <= 0.25), "rain은 거의 수직이다");
+  assert.ok(Math.max(...lines.map(slope)) < Math.min(...storm.map(slope)), "rain의 가로/세로 기울기는 storm보다 작다");
+  const later = paint("rain", 50, false).commands;
+  assert.notDeepEqual(clouds(later), clouds(rain), "움직임 있음에서 구름 위치가 달라진다");
+  const rainPaths = commands => commands.filter(([method]) => method === "moveTo" || method === "lineTo");
+  assert.notDeepEqual(rainPaths(later), rainPaths(rain), "움직임 있음에서 빗줄기 위치가 달라진다");
+});
+
+test("rain은 움직임 줄이기에서 구름 없이 정지 빗줄기 1~6개만 남기고 시각이 달라도 명령이 같다", () => {
+  const paint = moodPainter();
+  const still = paint("rain", 3, true);
+  const lines = rainSegments(still.commands);
+  assert.ok(lines.length > 0 && lines.length <= 6, "rain 예외: 정지 빗줄기를 몇 개 남긴다");
+  assert.equal(still.commands.filter(([method]) => method === "ellipse" || method === "arc").length, 0, "구름·눈 입자는 없다");
+  for (const t of [0, 50, 500]) {
+    assert.deepEqual(paint("rain", t, true), still, `reduced rain은 t=${t}에서도 같은 명령·투명도를 쓴다`);
+  }
 });
 
 test("분위기 동기화 예외 뒤에도 프레임을 그리고 정지 상태에서 다시 예약할 수 있다", () => {

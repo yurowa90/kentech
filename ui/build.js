@@ -2447,7 +2447,7 @@
   // 사건 표시 전용 층. 모형·날씨·효과 크기와 독립적이며 배너·라벨 DOM 아래에 그린다.
   function setMapMood(mood) {
     if (!S?.alive) return;
-    const next = ["heat", "cold", "snow", "storm", "cloud", "haze"].includes(mood) ? mood : null;
+    const next = ["heat", "cold", "snow", "storm", "cloud", "rain", "haze"].includes(mood) ? mood : null;
     if (S.mapMood === next) return;
     S.mapMood = next;
     request();
@@ -2493,7 +2493,7 @@
     } else {
       ink.fillStyle = mood === "haze" ? "#a89c87" : "rgba(38,58,80,0.45)";
       ink.fillRect(a.l, a.t, w, h);
-      if ((mood === "storm" || mood === "cloud") && !rm) {
+      if ((mood === "storm" || mood === "cloud" || mood === "rain") && !rm) {
         ink.fillStyle = "#263a50";
         for (let k = 0; k < 7; k++) {
           const x = a.l - 160 + (hash(k, 3, 71) * (w + 320) + anim * (mood === "storm" ? 85 : 12)) % (w + 320);
@@ -2507,6 +2507,16 @@
           const x = a.l + (hash(k, 5, 71) * w + anim * 100) % Math.max(1, w);
           const y = a.t + (hash(k, 6, 71) * h + anim * 290) % Math.max(1, h);
           ink.moveTo(x, y); ink.lineTo(x - 6, y + 12);
+        }
+        ink.stroke();
+      }
+      if (mood === "rain") {
+        // 폭풍보다 적고 느린 수직에 가까운 비. 움직임 줄이기에서는 정지한 6개만 남긴다.
+        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        for (let k = 0; k < (rm ? 6 : 36); k++) {
+          const x = a.l + hash(k, 5, 71) * w;
+          const y = a.t + (hash(k, 6, 71) * h + anim * 140) % Math.max(1, h);
+          ink.moveTo(x, y); ink.lineTo(x - 1, y + 14);
         }
         ink.stroke();
       }

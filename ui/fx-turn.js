@@ -11,9 +11,9 @@
   let expandFocus = null, currentResult = null, currentForecast = null, forecastVisible = null, deferredNotice = null;
   // 사건의 종류만 읽는다. 효과 크기·예보 범위로 농도나 입자 수를 바꾸지 않는다(D-65).
   const EVENT_MOOD = Object.freeze({ heatwave_peak: "heat", evening_peak_tropical_night: "heat",
-    coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud",
+    coldwave_heating: "cold", heavy_snow_solar: "snow", typhoon_coast: "storm", monsoon_cloud: "cloud", heavy_rain: "rain",
     spring_dust_haze: "haze", finedust_coal_cap: "haze" });
-  const MOOD_ICON = { heat: "☀", cold: "✧", snow: "❄", storm: "🌀", cloud: "☁", haze: "≋" };
+  const MOOD_ICON = { heat: "☀", cold: "✧", snow: "❄", storm: "🌀", cloud: "☁", rain: "☂", haze: "≋" };
   const EVENT_ICON = Object.freeze({ ...Object.fromEntries(Object.entries(EVENT_MOOD).map(([id, mood]) => [id, MOOD_ICON[mood]])),
     light_load_curtailment: "◐", line_opposition_delay: "⚑", semiconductor_fab_expansion: "⚙", datacenter_siting: "▤",
     planned_maintenance: "⚒", coal_phaseout: "⊘", re100_buyer: "♧", regional_tariff: "₩" });
