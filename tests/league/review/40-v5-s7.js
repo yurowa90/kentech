@@ -50,7 +50,7 @@ const evidenceCases = [
   { key: 'wind', text: '평균 풍속', wind: true, direct: ['weather', 'event'] },
   { key: 'wind', text: '평균 풍속', wind: false, direct: [] },
   { key: 'wind', text: '평균 풍속', direct: [] }, // 접속 정보 없는 옛 기록도 직접 효과 없음.
-  { key: 'grid', text: '접속 여유', direct: ['choice', 'progress'] },
+  { key: 'grid', text: '접속 여유', direct: ['progress'] }, // 명세 A2: choice는 같은 단계.
   { key: 'fuel', text: 'LNG 연료 값', direct: [] },
   { key: 'neighbor', text: '이웃 정전', direct: ['trade'] }
 ];
@@ -863,5 +863,15 @@ for (const basis of ['trial', 'monthly']) for (const target of ['grid', 'uns']) 
     assert.ok(!textOf(html).includes('차이 −'), '차이는 부호 없는 절댓값');
   });
 }
+// 명세 A2: 접속 여유·내 선택 최대는 같은 단계와 다음 근거 안내만 남긴다.
+check('A2 접속 여유→내 선택 최대의 S7 꼬리', () => {
+  const a = partRecord(n1f, 'monthly', 'uns', 10, { ...n1parts, choice: 8, event: 1 });
+  const n = { topic: 'uns', evidence: { key: 'grid', text: '접속 여유', value: 3.65 },
+    pred: { uns: 'up' }, outageOpened: true, outageFrozen: a, missed: 'choice' };
+  const text = textOf(evidenceBlock(M.outageCardsHTML(n1f.V, n1f.res, id, n)));
+  assert.ok(text.includes('같은 단계'));
+  assert.ok(!text.includes('같은 이야기'));
+  assert.match(text, /다음에는 .+도 근거로 살펴봐요/);
+});
 console.log(`V5 S7: ${checks} checks, ${failures.length} failures`);
 process.exitCode = failures.length ? 1 : 0;

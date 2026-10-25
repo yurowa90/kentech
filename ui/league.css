@@ -931,6 +931,8 @@ section#lg-missed.lg-outage { display: block; }
 #lg-final-causes p { margin: 6px 0; }
 #lg-panel details > summary::after { content: "▸"; margin-left: auto; padding-left: 8px; }
 #lg-panel details[open] > summary::after { content: "▾"; }
+/* '!' 설명 단추(.lg-info)는 접힘 표시를 달지 않는다(8차 녹화 A: 원 안의 '!'가 밀리고 ▸가 붙던 결함). */
+#lg-panel details.lg-info > summary.lg-info-btn::after { content: none; }
 
 /* H-U: 밝음·어두움의 작은 글자와 새 정책·반문 표시. */
 .lg-badge { color: #15222c; }
@@ -1357,6 +1359,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* D-82 결정 1·화면 지시서: 계통의 하루 평균·보조 월 합계는 폰에서도 잘리지 않게 줄바꿈한다. */
   .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-grid-baseline { white-space: normal; overflow-wrap: anywhere; }
+  .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-cash-baseline { white-space: normal; overflow-wrap: anywhere; }
   .lg-team-map #lg-panel #lg-predict > .lg-field {
     grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
   }

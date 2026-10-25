@@ -19,6 +19,24 @@
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const SEASON_NAME = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
   const PHASE_NAME = { lobby: "준비", plan: "계획·협상", run: "운영 중", review: "결과·일지", end: "끝" };
+  const REV8_COPY = {
+    C1: "비교 기준: 이번 달 운영 전 현금 {cash}억 · 빚 한도를 뺀 실제 현금이라 머리 칩의 '남은 돈'과 달라요",
+    C2: "현금 예측: {방향} / 실제 결과: 운영 전 {before}억 → 월말 {after}억 · 운영 전 대비 {Δ}억 · {판정}",
+    C3: "{기준}에 정전도 없고 바깥 계통에 기댄 전기도 없어서, 이번 달은 월말 현금으로 약속해요.",
+    C4: "현금이 0보다 적어서, 이번 달은 월말 현금으로 약속해요.",
+    C5: "기준이 0이라 더 줄어들 수 없어요. 그래서 '줄 것'은 고를 수 없어요.",
+    C6: "이번 달 현금이 운영 전보다 {Δ}억 달라져서 ",
+    C7: "다음 달 결과에서 월말 현금이 운영 전보다 어떻게 바뀌는지 확인하고 ",
+    C8: "다음 달 시험에서 정전이 다시 생기지 않는지 확인하고 ",
+    C9: "다음 달 시험에서 바깥 계통에 다시 기대지 않는지 확인하고 ",
+    C10: "시험에는 폭염 때 줄어드는 LNG·일반 태양광 출력도 들어 있지 않아요.",
+    // C11의 {parts}는 우리 도시에 있는 설비만 "LNG 출력이 a%", "일반 태양광 출력이 b%"를 쉼표로 잇는다(아르곤 문장의 한쪽 꼴).
+    C11: "폭염으로 실제 운영에서 {parts} 줄었어요. 다른 설비 출력은 그대로예요.",
+    C12: "폭염 때 출력은 LNG·일반 태양광만 줄어요. 우리 도시엔 이 설비가 없어 출력이 줄지 않았어요.",
+    C13: "{월} {사건}: 특별교부세 {awarded}억 → 계획 {planUsed}억 · 보수비 {repairUsed}억 · 사라짐 {expired}억 (보수비 전체 {repair}억)",
+    C13NoRepair: "{월} {사건}: 특별교부세 {awarded}억 → 계획 {planUsed}억 · 사라짐 {expired}억"
+  };
+  const rev8Copy = (key, values = {}) => REV8_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
   const JQ = [
     { k: "why", q: "우리 도시는 무엇을, 왜 지었나요?" },
     { k: "nb", q: "우리 선택이 이웃 도시에 준 영향은?" },
@@ -166,6 +184,13 @@
   const teamName = id => (C.teamDef(R(), id) || { name: id }).name;
   const teamCol = id => (C.teamDef(R(), id) || { color: "#888" }).color;
   const fmt = (x, d = 0) => (typeof x === "number" && isFinite(x) ? x.toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: 0 }) : "–");
+  // 이번에 추가한 현금 문구만 두 자리와 U+2212 부호를 쓴다. 반올림한 -0은 0으로 표시한다.
+  const cashText = (x, delta = false) => {
+    if (!Number.isFinite(x)) return "–";
+    // 엔진 r2와 같은 Math.round 방식이라 공개 현금(S4)과 운영 전 원값(S6)이 반값에서도 같은 글자가 된다(검토 minor 3).
+    const rounded = Math.round(x * 100) / 100 + 0;
+    return `${rounded < 0 ? "−" : delta && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
   // 하루 평균의 작은 양을 0으로 읽지 않게 한다. 부호 있는 Δ와 상세 계산은 각자 정밀도를 유지한다.
   const perDayText = x => Number.isFinite(x) && x >= 0 && x < GRID_DISPLAY_MIN_PER_DAY ? "0.1 MWh/일 미만" : `${fmt(x, 1)} MWh/일`;
   const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -1103,7 +1128,11 @@
     const frozen = old?.outageFrozen, carry = old?.missedCarry;
     const growthCandidate = frozen ? !!frozen.parts && outageCardCandidates(frozen.parts, frozen).some(p => p.key === "growth") :
       carry?.largest?.key === "growth" && Math.abs(carry.largest.value) >= outageMinPart(carry);
-    const includeFuel = growthCandidate || V.econ.cities[L.team].cash < 0;
+    const previousResult = V.results.find(x => x.round === V.round - 1);
+    const previousGrid = previousResult ? gridReliance(V, previousResult, L.team).perDay : null;
+    const includeFuel = growthCandidate || V.econ.cities[L.team].cash < 0 ||
+      Number.isFinite(previousResult?.team[L.team]?.unsPct) && previousResult.team[L.team].unsPct < ZERO_OUTAGE_PCT &&
+      Number.isFinite(previousGrid) && previousGrid < GRID_DISPLAY_MIN_PER_DAY;
     const allOptions = evidenceOptions(V).map(x => {
       const value = current ? current[x.key] : x.value;
       const neighborId = current ? n.s1EvidenceNeighborId : x.neighborId;
@@ -1131,7 +1160,7 @@
     // 새 문턱으로 다시 읽어 '뚜렷한 원인 없음'인 옛 기록은 일지·지난달 줄과 같게 잇지 않는다.
     const largest = old && outageNoCause(old) ? null : old?.outageLargest || old?.missedCarry?.largest;
     // 사건은 장마·석탄 상한처럼 저녁 수요와 무관한 경우가 많아 잇지 않는다(검토 지적).
-    const linked = { weather: "evening", progress: "grid", choice: "grid", trade: "neighbor", growth: "fuel" }[largest?.key];
+    const linked = { weather: "evening", progress: "grid", trade: "neighbor", growth: "fuel" }[largest?.key];
     add(options.find(x => x.key === linked), `지난달 가장 큰 몫(${outageNames(old?.outageFrozen || old?.missedCarry || { basis: old?.missedBasis })[largest?.key] || ""})과 이어짐`);
     // 3. 접속 여부와 무관하게 계획에 풍력이 있을 때만 풍속을 넣는다.
     add(options.find(x => x.key === "wind"), "계절 대표값");
@@ -1266,7 +1295,7 @@
   const OUTAGE_EVIDENCE_LINKS = {
     evening:  { choice: "stage", weather: "direct", event: "direct", growth: "direct" },
     wind:     { weather: "direct", event: "direct" },
-    grid:     { choice: "direct", progress: "direct" },
+    grid:     { choice: "stage", progress: "direct" },
     fuel:     { event: "indirect", growth: "indirect" },
     neighbor: { progress: "indirect", trade: "direct" }
   };
@@ -1345,9 +1374,10 @@
     if (V.phase !== "plan") return n.topic || "uns";
     const res = { ...curRound(), round: V.round }, trial = matchingTrial(V, res, L.team);
     const baseline = outageBaseline(V, res).value;
+    const grid = promiseGridBaseline(V, n);
     return Number.isFinite(baseline) && baseline < ZERO_OUTAGE_PCT &&
       (!trial || Number.isFinite(trial.unsPct) && trial.unsPct < ZERO_OUTAGE_PCT) &&
-      Number.isFinite(promiseGridBaseline(V).mwh) ? "grid" : "uns";
+      Number.isFinite(grid.mwh) ? Number.isFinite(grid.perDay) && grid.perDay < GRID_DISPLAY_MIN_PER_DAY ? "cash" : "grid" : "uns";
   }
   const freeExperiment = () => L.role === "solo" && tdata().freeExperiment !== false;
   function promiseHistoryHTML(V) {
@@ -1449,6 +1479,8 @@
       // 화면에 숫자로 보이는 하루 평균만 1자리로 추가한다. '0.1 미만'은 계통 단어로 인용한다.
       const dailyNumbers = [grid?.perDay >= GRID_DISPLAY_MIN_PER_DAY ? grid.perDay : null,
         gridTopic && Number.isFinite(r.co2Cons) ? r.co2Cons * period.mul / period.days : null];
+      // 멀티 공개 상태는 지난 결과를 줄여 교부세가 빠진다. 결과를 본 기기 안에만 사본을 둔다(새 전송값 없음, 검토 major 2).
+      if (r.disasterGrant) n.grantCopy = { ...r.disasterGrant, repair: r.cost?.repair ?? 0, events: (res.events || []).map(ev => typeof ev === "string" ? ev : ev.id) };
       n.resultNumbers = [...new Set([r.unsPct, r.outH * period.mul, r.co2Prod * period.mul, city.cash, city.approval]
         .filter(Number.isFinite).flatMap(v => [0, 1, 2].map(digits => String(Number(v.toFixed(digits)))))
         .concat(dailyNumbers.filter(Number.isFinite).map(v => fmt(v, 1).replaceAll(",", ""))))];
@@ -1530,8 +1562,17 @@
       delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(mwh),
       deltaPerDay, deltaPerDayCost: deltaPerDay == null ? null : deltaPerDay * price, tolPerDay: gridSameTolPerDay(perDay) };
   }
+  function promiseDownBlocked(V, n, topic = promiseTopic(V, n)) {
+    if (V.phase !== "plan" || topic === "cash") return false;
+    // 확정 전에는 promiseTopic과 같은 최신 시험 기준을 읽는다(검토 minor 6). 확정한 기록은 그때 남긴 시험 사본을 쓴다.
+    const basis = n.confirmed ? n : {};
+    const value = topic === "grid" ? promiseGridBaseline(V, basis).perDay : outageBaseline(V, { ...curRound(), round: V.round }, basis).value;
+    return Number.isFinite(value) && value < (topic === "grid" ? GRID_DISPLAY_MIN_PER_DAY : ZERO_OUTAGE_PCT);
+  }
   function promiseComplete(V, n) {
-    return !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
+    const topic = promiseTopic(V, n);
+    return !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") &&
+      !(!n.confirmed && n.pred?.[topic] === "down" && promiseDownBlocked(V, n, topic)) && Object.hasOwn(CONFIDENCE, n.confidence || "");
   }
   // 근거·방향·확신과 약속 주제에 맞는 비교 기준을 표시한다.
   function predictionHTML(V) {
@@ -1539,10 +1580,12 @@
     const { d, n } = monthNote();
     if (!needsLoop(V)) return "";
     if (!n.evidence && !n.confirmed && n.s1Pick) chooseEvidence(V, d, n, n.s1Pick);
-    const topic = promiseTopic(V, n), complete = promiseComplete(V, n);
+    const topic = promiseTopic(V, n), downBlocked = promiseDownBlocked(V, n, topic);
+    if (!n.confirmed && downBlocked && n.pred?.[topic] === "down") { delete n.pred[topic]; putData(d); }
+    const complete = promiseComplete(V, n);
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
     const grid = topic === "grid" ? promiseGridBaseline(V) : null;
-    const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
+    const baseline = topic === "cash" ? rev8Copy("C1", { cash: cashText(V.econ.cities[L.team].cash) }) : `비교 기준: ${topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
     const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"} 방향`;
     return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(now => {
       const x = evidenceAtStart(now, n);
@@ -1551,9 +1594,11 @@
       const button = `<button class="v2-btn" type="button" data-evidence="${x.key}" aria-pressed="${n.evidence?.key === x.key}" title="${esc(x.text)}" aria-label="${esc(x.text + (n.s1Pick === x.key ? " · S1에서 고름" : ""))}" ${Number.isFinite(x.value) ? "" : "disabled"}>${esc(label)}${n.s1Pick === x.key ? ' <small class="lg-s1-mark">S1에서 고름</small>' : ""}</button>`;
       return extra ? `<div>${button}${extra}</div>` : button;
     }).join("")}</div>
-      <p id="lg-promise-baseline" class="lg-hint${topic === "grid" ? " lg-promise-grid-baseline" : ""}" title="${esc(baseline)}">${esc(baseline)}</p>
+      <p id="lg-promise-baseline" class="lg-hint${topic === "grid" ? " lg-promise-grid-baseline" : topic === "cash" ? " lg-promise-cash-baseline" : ""}" title="${esc(baseline)}">${esc(baseline)}</p>
       ${topic === "grid" ? `<p class="lg-hint">${matchingTrial(V, { ...curRound(), round: V.round }, L.team) ? "시험에서" : "지난달에"} 정전이 없어서, 이번 달은 부족한 전기를 바깥 계통이 얼마나 메웠는지로 약속해요.</p>` : ""}
-      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      ${topic === "cash" ? `<p id="lg-promise-cash-why" class="lg-hint">${esc(rev8Copy(V.econ.cities[L.team].cash < 0 ? "C4" : "C3", { 기준: V.results.some(x => x.round === V.round - 1) ? "지난달" : "시험" }))}</p>` : ""}
+      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"${downBlocked ? ' aria-describedby="lg-promise-down-why"' : ""}><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}${v === "down" && downBlocked ? " disabled" : ""}>${label}</option>`).join("")}</select></label>
+      ${downBlocked ? `<p id="lg-promise-down-why" class="lg-hint">${esc(rev8Copy("C5"))}</p>` : ""}
       <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
       ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section>${tipBox("promise-rules", "약속 비교 기준 자세히", `<p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">${EVIDENCE_GRID_BASIS}</p><p class="lg-hint">${predictionRule(topic)}</p>`).replace("<details ", '<details id="lg-promise-rules" ')}${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
   }
@@ -1566,19 +1611,23 @@
     const delta = topic === "cash" ? Number.isFinite(c.cash) && Number.isFinite(beforeCash) ? c.cash - beforeCash : null
       : grid ? grid.delta : Number.isFinite(comparison.value) && Number.isFinite(r?.unsPct) ? r.unsPct - comparison.value : null;
     const actual = grid ? grid.deltaPerDay == null ? null : Math.abs(grid.deltaPerDay) <= grid.tolPerDay ? "same" : grid.deltaPerDay > 0 ? "up" : "down" : delta == null ? null : direction(delta);
-    const hit = actual == null ? null : n.pred[topic] === actual;
-    return { result, r, topic, comparison, grid, delta, actual, hit };
+    const hit = actual == null ? null : n.pred?.[topic] === actual;
+    return { result, r, topic, comparison, grid, delta, actual, hit, beforeCash, afterCash: c.cash };
   }
   // 같은 계통 Δ를 보이는 요약·접힘 제목·결과 칸은 같은 자릿수로 맞춘다. '판정 계산' 줄만 계산 설명이라 늘 2자리(D-82).
   const gridDeltaDigits = grid => grid?.tolPerDay < .1 ? 2 : 1;
-  function promiseVerdictText({ r, topic, comparison, grid, delta, actual, hit }, n) {
+  function promiseVerdictText({ r, topic, comparison, grid, delta, actual, hit, beforeCash, afterCash }, n) {
     // 같음 범위가 0.1 MWh/일 미만이면 범위와 Δ를 함께 소수 2자리로 보여 "±0.05 안, +0.1"처럼 Δ가 범위를 넘어 보이지 않게 한다.
     const sameDigits = gridDeltaDigits(grid);
+    if (topic === "cash") return delta == null ? `현금 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: 비교 기준 없음`
+      : rev8Copy("C2", { 방향: DIRECTION_NAMES[n.pred[topic]] || "미선택", before: cashText(beforeCash), after: cashText(afterCash), Δ: cashText(delta, true), 판정: hit ? "예상과 같음" : "예상과 다름" });
     return topic === "grid" ? `계통 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${grid.deltaPerDay == null ? `이번 달 하루 평균 ${perDayText(grid.perDay)}(${grid.base.label})` : `${grid.base.label} ${ACTUAL_NAMES[actual]}(${actual === "same" ? `±${fmt(grid.tolPerDay, sameDigits)} 안, ` : ""}하루 평균 ${signed(grid.deltaPerDay, sameDigits)} MWh/일 변화) · ${hit ? "예상과 같음" : "예상과 다름"}(이번 달 하루 평균 ${perDayText(grid.perDay)} · 월 합계 ${fmt(grid.mwh, 1)} MWh · 월 비용 약 ${fmt(grid.cost, 2)}억)`}`
-      : `${topic === "cash" ? "현금" : "정전"} 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? topic === "cash" ? "비교 기준 없음" : `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${topic === "cash" ? "운영 전 대비" : comparison.label} ${signed(delta, 2)}${topic === "cash" ? "억" : "%p"} · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
+      : `정전 예측: ${DIRECTION_NAMES[n.pred[topic]] || "미선택"} / 실제 결과: ${delta == null ? `${fmt(r.unsPct, 2)}%(비교 기준 없음)` : `${comparison.label} ${signed(delta, 2)}%p · ${hit ? "예상과 같음" : "예상과 다름"}`}`;
   }
   // '이번 달 자세히' 접힘 제목용 짧은 판정. 숫자와 월 합계는 판정 줄·상세에 이미 있다(390 첫 화면 줄 수를 줄인다).
   function promiseVerdictShort(c, n) {
+    if (c.topic === "cash") return c.delta == null ? `현금 예측 ${DIRECTION_NAMES[n.pred?.cash] || "미선택"} · 비교 기준 없음`
+      : `현금 예측 ${DIRECTION_NAMES[n.pred?.cash] || "미선택"} → ${c.hit ? "예상과 같음" : "예상과 다름"} · 운영 전 대비 Δ ${cashText(c.delta, true)}억`;
     if (c.topic !== "grid") return promiseVerdictText(c, n);
     const dir = DIRECTION_NAMES[n.pred?.grid] || "미선택";
     return c.grid.deltaPerDay == null ? `계통 예측 ${dir} · 비교 기준 없음` : `계통 예측 ${dir} → ${c.hit ? "예상과 같음" : "예상과 다름"} · 하루 평균 Δ ${signed(c.grid.deltaPerDay, gridDeltaDigits(c.grid))} MWh/일`;
@@ -1730,9 +1779,10 @@
   function reasonStartsHTML(V) {
     const result = V.results.at(-1), r = result?.team[L.team], left = V.teams[L.team]?.left;
     if (!r) return "";
-    const n = tdata().interview?.months?.[V.round] || {}, grid = promiseTopic(V, n) === "grid" ? gridReliance(V, result, L.team) : null;
-    const starts = [...(Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기가 평균 ${perDayText(grid.perDay)}이어서 `, "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
-      : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), `남은 돈 ${fmt(left, 1)}억이라 `];
+    const n = tdata().interview?.months?.[V.round] || {}, topic = promiseTopic(V, n), grid = topic === "grid" ? gridReliance(V, result, L.team) : null;
+    const starts = [...(topic === "cash" ? [rev8Copy("C6", { Δ: cashText(promiseComparison(V, n).delta, true) }), rev8Copy("C7")]
+      : Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기가 평균 ${perDayText(grid.perDay)}이어서 `, grid.perDay < GRID_DISPLAY_MIN_PER_DAY ? rev8Copy("C9") : "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
+      : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, topic === "uns" && r.unsPct < ZERO_OUTAGE_PCT ? rev8Copy("C8") : `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), `남은 돈 ${fmt(left, 1)}억이라 `];
     return `<div class="lg-acts lg-reason-starts" aria-label="이유 문장 시작">${starts.map(text => `<button class="v2-btn" type="button" data-reason-start="${esc(text)}">${esc(text)}</button>`).join("")}</div>`;
   }
   function resultInterviewHTML(V, reviewOrder = false) {
@@ -1785,7 +1835,9 @@
   // 결정 목록의 예측 이름은 기기에 저장한 약속 주제를 따른다.
   function decisionsHTML(V) {
     const d = tdata(), months = d.interview?.months || {}, journal = d.journal || {};
-    const rounds = [...new Set([...Object.keys(months), ...Object.keys(journal)])].map(Number).filter(t => t > 0 && t <= V.round).sort((a, b) => a - b);
+    // 혼자 하기는 기기에 남은 전체 결과를 읽는다. 공개 요약에서 빠진 지난달 교부세를 새로 전송하지 않는다.
+    const results = L.role === "solo" ? L.S.results : V.results;
+    const rounds = [...new Set([...Object.keys(months), ...Object.keys(journal), ...results.filter(res => res.team[L.team]?.disasterGrant).map(res => String(res.round))])].map(Number).filter(t => t > 0 && t <= V.round).sort((a, b) => a - b);
     const item = t => {
       const n = months[t] || {}, topic = n.topic || "uns", parts = [];
       if (n.evidence?.text) parts.push(`근거 ${n.evidence.text}`);
@@ -1795,7 +1847,15 @@
       const cause = missedText(n); if (cause) parts.push(cause);
       const reason = nextChangeOf(d, t);
       if (reason.text) parts.push(`${n.answer === "keep" ? "유지할 이유" : "바꿀 이유"} ${reason.text}`);
-      return parts.length ? `<li data-decision-month="${t}">${esc(monthName(V, t))} · ${esc(parts.reduce((text, part) => text + (text ? part.startsWith("판정 ") ? " → " : " · " : "") + part, ""))}</li>` : "";
+      const res = results.find(x => x.round === t), own = res?.team[L.team]?.disasterGrant ? res.team[L.team] : null;
+      const copy = own ? null : months[t]?.grantCopy, grant = own?.disasterGrant || copy, repair = own ? own.cost?.repair : copy?.repair;
+      const events = grant ? ((own ? res.events : copy.events) || []).map(ev => C.eventDef(R(), typeof ev === "string" ? ev : ev.id)).filter(E => E?.grant && C.hits(R(), E, L.team)).map(E => E.name).join(" · ") : "";
+      const grantText = grant ? rev8Copy(repair > 0 ? "C13" : "C13NoRepair", {
+        월: monthName(V, t), 사건: events || "재난", awarded: cashText(grant.awarded), planUsed: cashText(grant.planUsed),
+        repairUsed: cashText(grant.repairUsed), expired: cashText(grant.expired), repair: cashText(repair)
+      }) : "";
+      return (parts.length ? `<li data-decision-month="${t}">${esc(monthName(V, t))} · ${esc(parts.reduce((text, part) => text + (text ? part.startsWith("판정 ") ? " → " : " · " : "") + part, ""))}</li>` : "") +
+        (grantText ? `<li data-grant-month="${t}">${esc(grantText)}</li>` : "");
     };
     // 내용이 남은 달 중 최근 석 달을 먼저 보인다. 빈 자동 기록은 접힘 달 수에도 넣지 않는다.
     const items = rounds.map(item).filter(Boolean), recent = items.slice(-3).join(""), older = items.slice(0, -3).join("");
@@ -1996,7 +2056,7 @@
         n.crit = crit; send("crit", crit);
       }
     }
-    if (!skip && needsLoop(V) && (!n.evidence || !Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "") || !Object.hasOwn(CONFIDENCE, n.confidence || ""))) {
+    if (!skip && needsLoop(V) && !promiseComplete(V, n)) {
       BG.toast("근거 하나·결과 방향·확신을 먼저 정해요"); L.awaitReady = true; openPanel("journal"); return;
     }
     if (V.phase === "plan") n.planIssues = planIssueCounts();
@@ -3545,7 +3605,27 @@
   }
   // 사건 단서: 카드에는 우리 도시 정전(계통 대상이면 계통에 기댄 전기)에 닿는 사건 하나를 두 줄 안으로, 나머지는 '단서 더 보기'에 둔다.
   // 고립 운전의 사건 몫과 같은 modsFor 기준으로 대응 뒤 배수를 읽는다. 연계선 끊김은 거래 몫으로 안내한다.
-  const EVENT_KINDS = { solarMul: ["solar", "roof", "tandem", "tandem_roof"], windMul: ["wind"], offshoreMul: ["offshore"], tidalMul: ["tidal"], coalCapMul: ["coal"], lngCapMul: ["lng"] };
+  const EVENT_KINDS = { solarMul: ["solar", "roof", "tandem", "tandem_roof"], solarHeatMul: ["solar", "roof"], windMul: ["wind"], offshoreMul: ["offshore"], tidalMul: ["tidal"], coalCapMul: ["coal"], lngCapMul: ["lng"] };
+  // 사건 하나를 넣은 엔진 배수 / 사건 없는 배수. 감산의 기울기·확정 크기 계산은 엔진에만 둔다.
+  function heatOutputLoss(normalMods, eventMods) {
+    return { lng: (100 * (1 - (eventMods.lngCapMul ?? 1) / (normalMods.lngCapMul ?? 1))).toFixed(1),
+      solar: (100 * (1 - (eventMods.solarHeatMul ?? 1) / (normalMods.solarHeatMul ?? 1))).toFixed(1) };
+  }
+  function resultHeatHTML(V, res, id, n) {
+    const ev = (V.events || []).find(ev => ev.round === res.round && ev.id === "heatwave_peak" &&
+      C.hits(R(), C.eventDef(R(), ev.id), id, { ...V, round: res.round }));
+    if (!ev) return "";
+    const plan = n.operatingPlan || V.teams[id].plan;
+    // 지도에 원래 있는 발전소(예: 기존 LNG)도 엔진은 감산한다. S7 단서처럼 도시 지도의 망 노드로 판정한다(검토 blocker 1).
+    const kinds = withCityPack(id, () => new Set(BG.network(BG.sanitize(plan || {}, 1e9)).nodes.map(node => node.kind)));
+    const hasLng = kinds.has("lng"), hasPv = kinds.has("solar") || kinds.has("roof");
+    const hasHeatPlant = hasLng || hasPv;
+    // 공개 grid 요약에는 entries가 없다. 감산과 무관한 출력제어 계산만 생략하고 같은 입력끼리 비율을 읽는다.
+    const input = { ...V, round: res.round, grid: V.grid?.[id]?.entries ? V.grid : undefined };
+    const heat = hasHeatPlant ? heatOutputLoss(C.modsFor({ ...input, events: [] }, R(), id), C.modsFor({ ...input, events: [ev] }, R(), id)) : null;
+    const parts = heat ? [hasLng ? `LNG 출력이 ${heat.lng}%` : "", hasPv ? `일반 태양광 출력이 ${heat.solar}%` : ""].filter(Boolean).join(", ") : "";
+    return `<p id="lg-result-heat" class="lg-hint">${esc(rev8Copy(heat ? "C11" : "C12", { parts }))}</p>`;
+  }
   function outageEventClue(events, input, res, id, plan) {
     const hit = events.filter(ev => C.eventDef(R(), ev.id) && C.hits(R(), C.eventDef(R(), ev.id), id, input));
     if (!hit.length) return { short: "우리 도시에 해당하는 사건 없음", full: "" };
@@ -3560,7 +3640,9 @@
       const resp = E.opts?.length ? ` · 대응: ${String(opt?.name || "안 함").replace(/^대응\s*/, "")}` : "";
       const effect = cancelled ? " · 대응으로 효과 없음" : f.tieDown ? " · 연계선 끊김 — 거래 몫에서 봐요" : !affects ? " · 우리 도시 정전에 닿는 효과 없음(해당 설비·수요 효과 없음)" : "";
       const size = (x, nx) => evSize(E, x, nx) || "크기 없음";
-      return { affects, text: `${E.name}: 예보 ${size({ id: ev.id, round: ev.round }, input.teams[id]?.fcx?.[ev.id])} → 확정 ${size(ev)}${resp}${effect}` };
+      const heat = ev.id === "heatwave_peak" ? heatOutputLoss(normalMods, eventMods) : null;
+      const heatText = heat ? [kinds.has("lng") ? `LNG 출력 −${heat.lng}%` : "", ["solar", "roof"].some(t => kinds.has(t)) ? `일반 태양광 −${heat.solar}%` : ""].filter(Boolean).join(" · ") : "";
+      return { affects, text: `${E.name}: 예보 ${size({ id: ev.id, round: ev.round }, input.teams[id]?.fcx?.[ev.id])} → 확정 ${size(ev)}${heatText ? ` · ${heatText}(폭염)` : ""}${resp}${effect}` };
     });
     const main = rows.filter(r => r.affects);
     const full = rows.map(r => r.text).join(" / ");
@@ -3769,6 +3851,7 @@
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
     return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><div class="lg-info-line"><p class="lg-hint">운영 기간·정전 시간</p>${infoTip("result-period", `<p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>`, { label: "운영 기간·정전 시간" })}</div>
       <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision, total = ""]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis.startsWith("시험 ") ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}${total ? Number.isFinite(prev) ? `(${esc(total)})` : ` · ${esc(total)}` : ""}</small></div>`).join("")}${gridFillHTML(V, res, id)}</dl>
+      ${resultHeatHTML(V, res, id, n)}
       ${outageDamageHTML(V, res, id)}
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
@@ -3804,7 +3887,7 @@
     return forecast && typeof ev.x === "number" ? `예보 ${forecast} → 확정 ${confirmed}` : confirmed;
   }
   // 설비 출력만 바꾸는 사건인데 우리 지도에 그 설비가 없으면 설비 이름을 돌려준다(카드의 '해당'과 S7 '효과 없음'을 맞춤).
-  const EVENT_KIND_NAMES = { solarMul: "태양광", windMul: "육상풍력", offshoreMul: "해상풍력", tidalMul: "조력", coalCapMul: "석탄", lngCapMul: "LNG" };
+  const EVENT_KIND_NAMES = { solarMul: "태양광", solarHeatMul: "일반 태양광", windMul: "육상풍력", offshoreMul: "해상풍력", tidalMul: "조력", coalCapMul: "석탄", lngCapMul: "LNG" };
   // 계획 단계의 이번 달 카드는 편집 중인 지도, 결과 단계의 이번 달 카드는 운영한 계획(S7 사건 단서와 같은 계획)을 본다.
   // 지난 결과의 카드는 그때 계획을 알 수 없어 붙이지 않는다. 설비 종류 집합은 설비 목록이 같으면 다시 계산하지 않는다.
   function eventIdleKinds(E, id, X, round) {
@@ -4783,8 +4866,14 @@
     const evs = (V.events || []).filter(ev => ev.round === V.round).map(ev => ({ ev, E: C.eventDef(R(), ev.id) })).filter(x => x.E && C.hits(R(), x.E, id));
     const names = evs.map(({ ev, E }) => { const size = evSize(E, { id: ev.id, round: ev.round }, V.teams[id]?.fcx?.[ev.id]); return size ? `${E.name} · 예보 ${size}` : E.name; });
     notes.push(names.length ? `시험에는 ${period} 확정 사건(${names.join(", ")})과 우리 대응이 들어 있지 않아요 — ${actual} 달라질 수 있어요.` : `${period} 우리 도시에 해당하는 사건이 없어요. 시험과 실제는 날씨·운전 기간·이웃 거래로 달라질 수 있어요.`);
+    if (evs.some(({ ev }) => ev.id === "heatwave_peak")) {
+      notes.push(`${rev8Copy("C10")} ${KCP.ECON_DATA.disasterFacts.heat.text} ${KCP.ECON_DATA.disasterFacts.heat.limitation}`);
+    }
     // 원문 문자열은 기존 기록·검산용으로 유지하고, 표시할 때만 보충 설명을 접는다.
     const noteDetails = notes.map(text => {
+      // 폭염 감산: 시험에 없다는 문장은 보이고, 근거·한계 설명은 '!' 안에 둔다(검토 minor 7).
+      if (text.startsWith(rev8Copy("C10")) && text.length > rev8Copy("C10").length)
+        return { key: "heat-derate", visible: rev8Copy("C10"), detail: text.slice(rev8Copy("C10").length + 1), label: "폭염 출력 감산" };
       if (text.startsWith("바깥 계통이 메워 준 전기")) {
         const split = text.indexOf(" · 상한·할증은 ");
         return split < 0 ? null : { key: "grid-assumption", visible: text.slice(0, split) + ")", detail: text.slice(split + 3, -1), label: "바깥 계통 상한·할증" };
@@ -5652,7 +5741,7 @@
     const summary = p.querySelector("#lg-promise-summary");
     if (reviewOrder) {
       // 숫자 → 판정 → 원인 카드 → 결정을 먼저 두고, 상세의 기존 열림 상태는 보존한다.
-      const deltas = p.querySelector("#lg-result-deltas"), outage = p.querySelector("#lg-missed");
+      const deltas = p.querySelector("#lg-result-deltas"), heat = p.querySelector("#lg-result-heat"), outage = p.querySelector("#lg-missed");
       const compared = p.querySelector(".lg-compared"), questions = [...p.querySelectorAll("#lg-loop-review, .lg-ask")];
       const decision = document.createElement("section"); decision.className = "lg-result-decision"; decision.id = "lg-result-decision"; decision.tabIndex = -1;
       decision.append(...questions);
@@ -5678,7 +5767,7 @@
       const monthSummary = document.createElement("summary"), n = monthNote().n;
       monthSummary.innerHTML = esc(`이번 달 자세히 · ${summary ? promiseVerdictShort(promiseComparison(V, n), n) : "정전 시간 정의·피해 추정"}`);
       monthDetails.append(monthSummary, ...sections);
-      panelBody.prepend(...[heading, techNews, deltas, summary, outage, decision.childElementCount ? decision : null, sections.length ? monthDetails : null].filter(Boolean));
+      panelBody.prepend(...[heading, techNews, deltas, heat, summary, outage, decision.childElementCount ? decision : null, sections.length ? monthDetails : null].filter(Boolean));
       if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
     } else if (summary && V?.phase !== "end") panelBody.prepend(summary);
     if (tab === "result" && V?.results?.length) {

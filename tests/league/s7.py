@@ -234,7 +234,7 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
     page.locator("#lg-ready").click()
     pass_issue_check(page)
     page.locator('[data-evidence="grid"]').click()
-    select = page.locator('#lg-predict [data-pred]')  # D-80: 정전 0인 계획은 grid 선택지만 존재한다.
+    select = page.locator('#lg-predict [data-pred]')  # 명세 A3: 정전·계통 모두 0이면 cash, 나머지는 주제 규칙을 따른다.
     screen_topic = select.get_attribute("data-pred")  # D-80: 호출자의 주제 가정보다 실제 화면 주제를 따른다.
     assert screen_topic in ("uns", "cash", "grid"), f"알 수 없는 약속 주제: {screen_topic}"  # D-80: 누락·중복도 실패.
     assert topic != "cash" or screen_topic == "cash", f"현금 약속을 요구했으나 화면 주제는 {screen_topic}"  # D-80: cash 검사를 다른 주제로 우회하지 않는다.
@@ -507,8 +507,9 @@ def clue_and_evidence(checks, page, a, label):
     names = MONTHLY_NAMES if a.get("basis") == "monthly" else NAMES
     # 구현 표와 같음(회귀 고정). 모든 짝이 독립 명세에서 나왔다는 뜻은 아니다.
     # 지시서의 grid→progress/fuel/풍력 없음/evening→choice는 Node 32에서 개별 단언한다.
+    # 명세 A2: 접속 여유→내 선택은 같은 단계, 진행은 직접 연결.
     links = {"evening": {"choice": "stage", "weather": "direct", "event": "direct", "growth": "direct"},
-             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "direct", "progress": "direct"},
+             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "stage", "progress": "direct"},
              "fuel": {"event": "indirect", "growth": "indirect"}, "neighbor": {"progress": "indirect", "trade": "direct"}}
     notes = device_data(page).get("interview", {}).get("months", {})
     note = current_note(page)
@@ -560,6 +561,10 @@ def clue_and_evidence(checks, page, a, label):
     neutral = bool(direct and not evidence_sign)
     ending = f"고른 근거가 가장 큰 몫({names[largest['key']]})과 같은 이야기예요." if largest else ""
     checks.ok(bool(ending and text.endswith(ending)) == neutral, f"{label} 직접 연결·부호 0은 중립 마무리")
+    # 명세 A2: 접속 여유·내 선택 최대는 중립 칭찬 대신 다음 근거 안내.
+    if key == "grid" and largest and largest["key"] == "choice":
+        checks.ok("같은 이야기" not in text and "같은 단계" in text and
+                  re.search(r"다음에는 .+도 근거로 살펴봐요", text), f"{label} A2 같은 단계·다음 근거")
     if neutral or opposite:
         checks.ok("다음에는" not in text and "살펴봐요" not in text, f"{label} 이미 고른 직접 근거의 재검토 권유 없음")
 

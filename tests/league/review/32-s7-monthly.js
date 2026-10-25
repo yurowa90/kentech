@@ -603,7 +603,7 @@ test('근거 5종 × 원인 6종 × 방향·풍력 플래그: 직접/같은 단�
   // evening→choice 같은 단계는 아래 별도 개별 단언으로 검사한다.
   const links = {
     evening: { choice: 'stage', weather: 'direct', event: 'direct', growth: 'direct' },
-    wind: { weather: 'direct', event: 'direct' }, grid: { choice: 'direct', progress: 'direct' },
+    wind: { weather: 'direct', event: 'direct' }, grid: { choice: 'stage', progress: 'direct' }, // 명세 A2.
     fuel: { event: 'indirect', growth: 'indirect' }, neighbor: { progress: 'indirect', trade: 'direct' }
   };
   const effect = { evening: 1, wind: -1, grid: 0, neighbor: 1 };
@@ -667,7 +667,7 @@ test('지시서 근거 연결 짝: grid 직접·fuel/풍력 없음 간접·eveni
   const original = data();
   try {
     // V3B-fix2 §2·5, V3B-fix3 §2, 검사 4 지시서의 연료 간접 연결.
-    for (const [evidence, cause, kind] of [['grid', 'progress', '직접'],
+    for (const [evidence, cause, kind] of [['grid', 'progress', '직접'], ['grid', 'choice', '같은 단계와'], // 명세 A2.
       ['fuel', 'growth', '간접'], ['fuel', 'event', '간접'],
       ['wind', 'weather', '간접'], ['wind', 'event', '간접'], ['evening', 'choice', '같은 단계와']]) {
       const frozen = { ...clone(base), target: 'uns', unit: undefined, // D-82: 정전 합성 기록에 계통 원본의 하루 평균 unit을 상속하지 않음; 정전 단언 유지.
@@ -677,7 +677,9 @@ test('지시서 근거 연결 짝: grid 직접·fuel/풍력 없음 간접·eveni
         missed: cause, evidence: { key: evidence, value: 103, text: '가상 근거' } });
       const text = html.match(/<p>내 예측이 놓친 것: ([\s\S]*?)<\/p>/)?.[1] || '';
       ok(text.includes(`${kind} 연결 — ${names[cause]} −3.50%p`), `${evidence}→${cause}: 지시서 연결 종류`);
-      if (evidence === 'grid') {
+      // 명세 A2: progress 직접 연결은 유지하고 choice에만 다음 근거 꼬리.
+      if (evidence === 'grid' && cause === 'choice') ok(!text.includes('같은 이야기') && /다음에는 .+도 근거로 살펴봐요/.test(text), 'grid→choice 같은 단계·다음 근거');
+      if (evidence === 'grid' && cause === 'progress') {
         ok(text.endsWith('고른 근거가 가장 큰 몫(접속·공사·기술 진행)과 같은 이야기예요.'),
           'grid→progress 직접·부호 0의 마지막 문장');
         ok(!text.includes('다음에는') && !text.includes('살펴봐요'), 'grid→progress 재검토 권유 없음');
