@@ -498,11 +498,11 @@ block("B12", () => {
   const host = require("./review/21-host-policy-grid");
   const result = host.grid();
   host.check(result);
-  ok(true, "B12 실제 호스트 125×6 조합: 공통1위 없음·감세·증세 계열 각각 ≤3도시·세율 축별 6도시 독식 없음");
+  ok(true, "B12 실제 호스트 125×6 조합(반올림 전): 공통1위 없음·감세·증세 계열 각각 ≤3도시·세율 축별 6도시 독식 없음");
   const winners = IDS.filter(id => {
     const diagonal = result[id].rows.filter(r => r.taxRes === r.taxInd);
-    ok(diagonal.length === 25 && diagonal.every(r => finite(r.score)), `${id} B3 실제 호스트 25칸`);
-    return diagonal.find(r => r.key === "-2,-2,2").score === Math.max(...diagonal.map(r => r.score));
+    ok(diagonal.length === 25 && diagonal.every(r => finite(r.score) && finite(r.preRound)), `${id} B3 실제 호스트 25칸`);
+    return host.topRows(diagonal).some(r => r.key === "-2,-2,2");
   });
   ok(winners.length <= 2, `B3 실제 호스트 감세·서비스+2 1위 ${winners.length}/6 (≤2)`);
 });

@@ -6,6 +6,7 @@
   if (!KCP) return;
   const source = "docs/ECON-TECH-SPEC.md", evidence = "docs/ECON-TECH.md";
   const p = (v, grade, note, sources = [source, evidence]) => ({ v, grade, note, sources, refs: sources.filter(s => /^[A-Z]\d+$/.test(s)) });
+  const SMR_COST_BASE = 150 / 20, SMR_CAPEX_BASE = 4500;
   const params = {
     roundSteps: p(4.35, "M", "연구 달 환산 · 계산: 365.25/12/7≈4.35주 · 배속: 없음 · REF 12.7", [source]),
     eurekaFrac: p(1 / 3, "G", "조건 달에 남은 연구량의 1/3, 카드당 한 번"),
@@ -34,7 +35,9 @@
     ccuCo2: p(0.4, "G", "포집 60%; P 포집률 85–90%를 축소"),
     ccuOutput: p(0.79, "M", "포집 후 석탄 출력 · NETL(2022) 순효율 40.2→31.7% [I19][I07] · 계산: 31.7/40.2≈0.79 · 배속: 없음 · REF 12.5", ["I19", "I07"]),
     smrMW: p(4 * 170 / 230, "M", "i-SMR 발전소 4모듈×170MWe=680MWe(사업단 공개 기본 구성) [X16] · 지도 축척 230(선택 G)으로 나눠 2.956522 게임MW · 결정 v1.0.4 · REF 12.6", ["X16", "https://ismr.or.kr/source/file/i-SMR_leaflet_kr.pdf"]),
-    smrCost: p((150 / 20) * (8000 / 4500) * (4 * 170 / 230), "M", "SMR 첫 호기 건설비 · DOE(2023) FOAK overnight 6,000~10,000$/kW 중간값 8,000 [I34] · 기존 기준 150억/20MW=7.5억/게임MW(G 가격지수), 7.5×(8000/4500)=13.333333억/게임MW × (4×170/230)=39.420290억 · 금융비 제외, 미국 첨단원전 범위의 대리값이며 한국 i-SMR 견적 아님 · G7 REF 12.6", ["I34", "https://www.energy.gov/ne/articles/commercializing-advanced-nuclear-reactors-explained-five-charts"]),
+    smrCostBase: p(SMR_COST_BASE, "G", "D-87: 기존 SMR 가격 기준, 억/게임MW; 기존 smrCost 식의 150/20을 분리"),
+    smrCapexBase: p(SMR_CAPEX_BASE, "G", "D-87: 기존 SMR 가격지수의 기준 $/kW; 기존 smrCost 식의 분모"),
+    smrCost: p(SMR_COST_BASE * (8000 / SMR_CAPEX_BASE) * (4 * 170 / 230), "M", "SMR 첫 호기 건설비 · DOE(2023) FOAK overnight 6,000~10,000$/kW 중간값 8,000 [I34] · 기존 기준 150억/20MW=7.5억/게임MW(G 가격지수), 7.5×(8000/4500)=13.333333억/게임MW × (4×170/230)=39.420290억 · 금융비 제외, 미국 첨단원전 범위의 대리값이며 한국 i-SMR 견적 아님 · G7 REF 12.6", ["I34", "https://www.energy.gov/ne/articles/commercializing-advanced-nuclear-reactors-explained-five-charts"]),
     smrTurns: p(12, "P", "SMR 공사 · NREL ATB(2024) 시나리오 43/55/71개월 [I13] · 계산: 55/4.4=12.5 → 12달은 선택(G), 55개월 근거(P)와 구분 · 배속: 이동과 같은 시간 ×4.4 · 결정 v1.0.3 · REF 12.6", ["I13"]),
     smrMin: p(0.8, "G", "SMR 최소 출력 비율"),
     smrFuel: p(0.002, "M", "SMR 연료비 · EIA 2022–24 원자력/가스터빈 연료비 0.16~0.34 [S33] · 계산: LNG 0.008×비=0.0013~0.0027 · 배속: 없음, smrFuelMul은 별도 G · REF 12.6", ["S33"]),

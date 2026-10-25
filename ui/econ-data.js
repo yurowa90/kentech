@@ -15,6 +15,15 @@
   KCP.ECON_DATA = {
     version: 1,
     startYear: 2027,
+    // D-87 1단계 사실 자료. text는 화면 문장(사실 범위 확인본)이며 도구 '!'·배치 안내·시작 전 안내·공사 기간 표가 읽는다.
+    thermalFacts: {
+      coalScenario: { hypothetical: true, phaseoutTargetYear: 2040, grade: "G", targetGrade: "O", sourceDate: "2025-11-19", sourceScope: "title", sources: ["docs/DECISIONS.md#d-87", "https://www.korea.kr/briefing/pressReleaseView.do?newsId=156729173"], text: "정부(기후에너지환경부, 2025년 11월 19일 설명자료) 목표는 2040년까지 석탄발전 폐지예요. 비용·오염을 비교하게 계획에 없는 새 건설을 가정해 열어 둬요." },
+      coalBuild: { realMW: 1040, start: "2018-03", end: "2022-11", months: 56, status: "commercial-operation", gameTurns: 0, grade: "O*→M", gameGrade: "G", sources: ["https://www.fnnews.com/news/202201190510250033", "https://www.gem.wiki/Anin_power_station"], text: "강릉안인 석탄 1호기(1,040MW) 2018년 3월 착공·2022년 11월 상업운전(약 56개월). 게임에선 석탄도 짓자마자 가동해요(공사 기간은 SMR 12달만)." },
+      lngBuild: { realMW: 561, start: "2022-11", end: "2025-06", months: 31, status: "planned", gameTurns: 0, grade: "O*→M", gameGrade: "G", sources: ["https://www.etoday.co.kr/news/view/2190657"], text: "음성 LNG 1호기(561MW)는 2022년 11월 본공사 시작, 2025년 6월 준공 예정(계획, 약 31개월)이나 게임에선 즉시 가동해요." },
+      capex: { year: 2023, unit: "USD/kW", lng: 1275, coal: 1809, grade: "P", table: 3, sources: ["https://doi.org/10.1016/j.esr.2025.101897"], text: "2023년 한국 발전원별 건설비 연구(Moon·Baik·Park, 2025)의 kW당 건설비(LNG 1,275달러, 석탄 1,809달러)를 게임 돈 눈금으로 바꿨어요(바꾸는 비율은 게임 가정)." },
+      pm: { unit: "kg/MWh", coalReference: 0.120, coalNew: 0.044, lngReference: 0.015, lngNew: 0.007, grade: "O", sources: ["https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/b281ee97263e31eaea236d024aa06765", "https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/794ac2b49ba21d4909dbc16f75d7a39f"], text: "산업통상자원부 자료(2017년 기준) 1MWh당 초미세먼지는 석탄 평균 0.120kg·새 석탄 사례 0.044kg, LNG 평균 0.015kg·새 LNG 사례 0.007kg(환산한 값, 동네 공기 농도 아님)이에요. 게임은 새 석탄·LNG를 각 평균의 약 37%·약 47%로 가정해요." },
+      siting: { grade: "G", scope: ["coal", "lng", "smr"], text: "석탄·LNG·SMR 모두 마을·병원·학교 가까운(지도 3칸 안) 곳일수록 입지 민원(크기는 게임 가정)으로 지지율이 낮아져요. 3칸은 발전소주변지역 지원법의 주변지역 반경 5km를 옮긴 근사며 안전거리가 아니에요." }
+    },
     // D-69 확정: 전력 연계선과 독립인 대기 기여 방향(from → to), 쌍별 ratio를 한 번 적용.
     // P61 Table 6, p.158: 당진화력 자체 .092㎍/㎥ 대비 수용 도시의 연평균 모형 기여(P).
     // https://www.jekosae.or.kr/xml/39664/39664.pdf
@@ -220,9 +229,13 @@
       taxGain: p(8, "G", "설계 선택: 감세 한 단계 만족 8점 · REF 11.4", []),
       hospPenHours: p(8, "G", "설계 선택: 병원 정전 8시간에서 최대 감점 · REF 5.6", []),
       priceSteelMul: p(4, "M", "철강 요금 가중 · Kahn–Mansur(2013) 1차 금속 탄력 −0.64~−0.85 · 배속: 없음 · REF 4.3", ["P25"]),
+      thermalMW: p({ lng: 561, coal: 1040 }, "O*", "D-87: 실제 호기 MW. 음성 1호기 561MW·강릉안인 1호기 1040MW; 설계 초안 R04의 보도 확인 기록 승계, region.mwScale로 게임MW 환산 · REF 18.1"),
+      thermalCapex: p({ lng: 1275, coal: 1809 }, "P", "D-87: 2023 CAPEX $/kW, Moon·Baik·Park(2025), Energy Strategy Reviews 62:101897 Table 3; DOI 10.1016/j.esr.2025.101897. SMR 기준 가격지수로 신규 화력만 환산 · REF 18.1"),
+      sitingBase: p(10, G, "D-87: 신설 coal/lng/smr 기당 입지 우려, 운전·PM 무관. 5km는 지원구역 반경의 근사이지 안전반경 아님. 1.5km/칸에서 육각거리 3칸(약 4.5km); 집단 짝짓기는 G"),
+      sitingWeights: p([1, 1, 0.6, 0.3], G, "D-87: 육각거리 0·1·2·3칸 감쇠, 4칸부터 0; 기존 민원 거리띠 적용"),
       complaintScale: p(1, G, "D-62: 민원 점수당 해당 집단 만족 감점; 국내 인과 실증값 없음"),
       complaintCap: p(20, G, "D-62: 집단별 민원 감점 상한; 6달 입지 차이 수용 기준으로 검산"),
-      complaintGroups: p({ noise: ["farm", "senior"], view: ["farm", "senior"], smoke: ["senior", "youth"], forest: ["green"] }, G, "D-62: 민원 종류별 영향 집단 가정"),
+      complaintGroups: p({ noise: ["farm", "senior"], view: ["farm", "senior"], smoke: ["senior", "youth"], forest: ["green"], siting: ["senior", "youth"] }, G, "D-62: 민원 종류별 영향 집단 가정"),
       shareRelief: p(0.5, G, "D-62: 이익공유는 민원 감점의 절반 완화; 민원 없는 곳에 가산하지 않음"),
       saveSatPenalty: p(5, G, "D-62: 절전 카드 집단 만족 목표 −5점"),
       aiComplaintCost: p(0.5, G, "D-62: AI 입지 비교에서 민원 점수당 가상 비용(억); 실제 지출 아님"),
@@ -271,6 +284,7 @@
       }, grade: "G", note: "A1 투자 몫·위험 선호(0..1)·선택 투자 지연(달); 안전 공급은 지연하지 않음" },
       aiResearchDebtShare: p(0, G, "AI 새 연구 인력 건설 예산에 허용하는 지방채 한도의 몫(0~1). 0은 현금·해당 월 지원금 한도 안에서만 건설, 연구·실증·운영 예약비를 먼저 남김; 기존 연구는 유지"),
       aiConnectionMonths: p(4, G, "AI 선택 재생 건설은 최대 4달 접속량 안에서 예약, 기존 미접속이 있으면 추가 건설 대기; 월 접속량·접속 상한 불변"),
+      aiScoreValue: p(35, G, "D-87: 총점 1점당 억, 실제 지출 아닌 AI 비교 비용(학생과 같은 점수식으로 탄소·민원을 환산, 연계선 편익에도 같은 값). 실증 근거 없음, 세 성향 동일, 전망 말 총점 차이에 한 번 곱함. 측정점(같은 씨앗·하네스, D87-report 2~4·7차, B12는 반올림 전 판정): 20 이하 미충족, 30·35·40 충족(네 조건: B16 독식 없음·36달 storage 1위≤3, T5 연구 이득 (0,15], B12 감세·증세 각≤3, 연구0 탄소 회복), 50은 점수 과중 우려로 제외. 35 = 30~40 가운데(총괄 판정 10-25). 7차: 35에서 T5 연구 이득 3.02, 연구0 탄소 58.35(a7f93be 60.6), storage 36달 1위 3/6, SMR 1위 2/6"),
       aiFuelMonths: p(36, G, "AI 종류 간 비교의 연료비 예상 기간(최대 36달, 남은 게임 기간 이내). 공개 대표 주 급전의 실제 단가×예상 발전량 차이를 일수 환산해 건설비에 합산; 미래 가격·사건은 예측하지 않음"),
       aiLocalFuelWeight: p(4, G, "같은 바이오매스 종류 안에서만 축산 인접 입지의 건설·민원 비교비용을 나누는 배수. 종류 간 비용 비교에는 미적용; 실제 단가 불변"),
       aiRenewFloor: { v: 0.1, grade: "G", note: "모든 성향의 피크 대비 최소 재생 정격 목표" },
@@ -445,6 +459,11 @@
   // 사본에서는 getter가 숫자로 굳으므로 복제 시 params 값도 보관한다.
   // 엔진은 그 값에서 달라진 별칭만 명시적 재정의로 취급한다(사본의 sigma=0 계약).
   const intl = KCP.ECON_DATA.intl, params = KCP.ECON_DATA.params;
+  const pmFacts = KCP.ECON_DATA.thermalFacts.pm, pmFuelW = params.pmFuelW.v;
+  params.pmNewFuelW = p({
+    coal: pmFuelW.coal * (pmFacts.coalNew / pmFacts.coalReference),
+    lng: pmFuelW.lng * (pmFacts.lngNew / pmFacts.lngReference)
+  }, M, "D-87 (다): 같은 연료 안에서 신규 설비의 전구물질 비율이 평균과 같다고 보고 피해를 직접 배출에 비례(G), 비율은 산업부 2019-03-05 p.1 표(LNG 평균 0.015·석탄 0.120)·2017-09-01 p.1 표(영흥 3~6호기 0.044·안동 LNG 0.007)에서 계산(M). 신규 전국 평균 아님 · REF 18.2");
   const intlKeys = [];
   const alias = key => {
     intlKeys.push(key);

@@ -427,13 +427,13 @@
   const buildCost = (t, i) => BLD[t].cost + (TILES[i].t === "forest" ? CLEAR_COST : 0);
   function lineCost(p) { let s = 0; for (let k = 1; k < p.length; k++) s += lineUnit() * stepMul(TILES[p[k]]); return s; }
   const capex = st => st.builds.reduce((a, b) => a + (LG && Number.isFinite(b.paidCost) ? b.paidCost : buildCost(b.t, b.i)), 0) + st.lines.reduce((a, L) => a + lineCost(L.p), 0);
-  const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools).concat(LG && KCP.TECH_DATA ? Object.keys(BLD).filter(k => BLD[k].tech) : []);
+  const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools).filter(id => LG || !["coal", "lng"].includes(id)).concat(LG && KCP.TECH_DATA ? Object.keys(BLD).filter(k => BLD[k].tech) : []);
   // 이 타일에 이 발전원을 지을 수 있나(예산 제외)
   function siteRule(type, T) {
     const B = BLD[type];
     if (!B || !toolsOf().includes(type)) return "못 지음";
     if (T.out) return "지도 밖";
-    if (type === "smr" && T.t !== "river" && T.t !== "beach") return "냉각수: 해안·하천만";
+    if (["smr", "lng", "coal"].includes(type) && T.t !== "river" && T.t !== "beach") return "냉각수: 해안·하천만";
     if (B.sea) return (B.sea === "offshore" ? T.offshore : T.tidal) ? "" : B.sea === "tidal" ? (PK.tidalNote || "조력: 항구 가까운 연안 바다만") : "해상풍력: 연안 2칸 바다만";
     if (T.t === "sea") return "바다에는 못 지음";
     if (T.site >= 0) { const k = SITES[T.site].kind; return B.roof && k !== "plant" && k !== "gridpt" && T.t === "urban" ? "" : "시설 자리"; }
@@ -481,7 +481,7 @@
       else if (s.kind === "plant") nodes.push({ kind: s.fuel === "coal" ? "coal" : "lng", tile: s.tile, si, cap: s.cap || 9.5 });
       else if (s.kind === "gridpt") nodes.push({ kind: "import", tile: s.tile, si });
     });
-    st.builds.forEach((B, bi) => { if (!BLD[B.t] || BLD[B.t].cls !== "inst") nodes.push({ kind: B.t, tile: B.i, bi }); });
+    st.builds.forEach((B, bi) => { if (!BLD[B.t] || BLD[B.t].cls !== "inst") nodes.push({ kind: B.t, tile: B.i, bi, ...(["coal", "lng"].includes(B.t) ? { cap: BLD[B.t].mw } : {}) }); });
     const per = new Map();
     nodes.forEach(n => per.set(n.tile, (per.get(n.tile) || 0) + 1));
     per.forEach((c, t) => { if (c > 1) touch(t); });
@@ -570,7 +570,10 @@
       st.builds.forEach((B, bi) => {
         const d = hexDist(B.i, W.tile), f = runFrac ? runFrac[bi] || 0 : 0.6;
         const add = (kind, pts) => items.push({ ti, kind, bi, src: B.t, pts: pts * (share && ["noise", "view"].includes(kind) && ["wind", "offshore", "solar"].includes(B.t) ? 0.5 : 1) });
-        if (["diesel", "biomass"].includes(B.t)) {
+        if (["coal", "lng", "smr"].includes(B.t)) {
+          const weights = KCP.ECON_DATA.params.sitingWeights.v;
+          if (!farm && d < weights.length) add("siting", KCP.ECON_DATA.params.sitingBase.v * weights[d]);
+        } else if (["diesel", "biomass"].includes(B.t)) {
           if (!farm && d <= 3) add("smoke", (B.t === "diesel" ? 30 : 12) * (d <= 1 ? 1 : d === 2 ? 0.6 : 0.3) * f);
           else if (B.t === "diesel" && d <= 1) add("noise", 6 * f);
         } else if (B.t === "wind") {
@@ -680,6 +683,9 @@
     const town = TOWNS.map(() => ({ dem: 0, uns: 0, outH: 0, eveH: 0, cloudH: 0, hotH: 0, dayOut: new Float32Array(days) }));
     const tot = { diesel: 0, waste: 0, curt: 0, loss: 0, ren: 0, renAvail: 0, idle: 0, batOut: 0, dem: 0, sup: 0, by: { lng: 0, coal: 0, import: 0, diesel: 0, biomass: 0 }, fuel: 0, co2: 0, bioCo2: 0, h2mixMWh: 0 };
     if (curtail) { tot.curtailMWh = 0; tot.curtailCapturedMWh = 0; }
+    // PM 전용 신·구 생산 장부. 총 연료·세금·CO₂용 tot.by는 기존대로 유지한다.
+    tot.pmBy = {};
+    const pmKey = g => ["coal", "lng"].includes(g.kind) && g.bi != null ? g.kind + "New" : g.kind;
     let dk = 0;
     gens.forEach(g => {
       g.runH = 0;
@@ -688,7 +694,7 @@
       const D = g.kind === "smr" ? { cap: KCP.TECH_DATA.params.smrMW.v, min: KCP.TECH_DATA.params.smrMW.v * KCP.TECH_DATA.params.smrMin.v, fuel: KCP.TECH_DATA.params.smrFuel.v, co2: 0 } : g.kind === "lng" || g.kind === "coal" || g.kind === "import" || SMOKY[g.kind] ? dispOf(g.kind) : null;
       if (D) {
         if (g.kind === "lng" || g.kind === "coal") D.cap = g.cap;
-        if (g.kind === "coal") D.min = 0.3 * g.cap;
+        if (g.kind === "coal") D.min = 0.3 * D.cap;
         if (MODS && g.kind === "coal" && MODS.coalCapMul != null) { D.cap *= MODS.coalCapMul; D.min = Math.min(D.min, D.cap); }
         if (MODS && g.kind === "lng" && MODS.lngCapMul != null) D.cap *= MODS.lngCapMul;
         if (g.kind === "biomass") D.fuel = biomassFuel(g.tile);
@@ -713,15 +719,18 @@
     const GX = !lgOut ? [] : N.comps.filter(C => C.disp.some(u => u.kind === "import")).map(C => {
       const own = C.disp.filter(u => u.kind !== "import"), capT = own.reduce((a, u) => a + u.D.cap, 0);
       // 거래 CO₂의 co2i와 같은 설비 용량 가중. 실제 시간별 head 가중으로 바꾸면 회계가 달라진다.
-      const byHead = {}, byDisp = {};
+      const byHead = {}, byDisp = {}, pmHead = {}, pmDisp = {};
       own.forEach(u => {
         byHead[u.kind] = (byHead[u.kind] || 0) + (capT > 0 ? u.D.cap / capT : 0);
         byDisp[u.kind] = new Float64Array(H);
+        const key = pmKey(u);
+        pmHead[key] = (pmHead[key] || 0) + (capT > 0 ? u.D.cap / capT : 0);
+        pmDisp[key] = new Float64Array(H);
       });
       const to = [];
       C.disp.forEach(u => { if (u.kind === "import") (SITES[u.si].to || []).forEach(x => { if (!to.includes(x)) to.push(x); }); });
       return {
-        C, own, to, byHead, byDisp, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
+        C, own, to, byHead, byDisp, pmHead, pmDisp, def: new Float32Array(H), ren: new Float32Array(H), head: new Float32Array(H),
         disp: new Float32Array(H), dmc: new Float32Array(H), dco2: new Float32Array(H),
         mc: capT > 0 ? own.reduce((a, u) => a + u.mc * u.D.cap, 0) / capT : Infinity,
         co2i: capT > 0 ? own.reduce((a, u) => a + u.D.co2 * u.D.cap, 0) / capT : 0,
@@ -819,6 +828,7 @@
           C.disp.forEach(u => {
             if (u.out <= 1e-6) return;
             if (u.out < u.D.min) { u.w = u.D.min - u.out; tot.waste += u.w; u.out = u.D.min; }
+            tot.pmBy[pmKey(u)] = (tot.pmBy[pmKey(u)] || 0) + u.out;
             tot.by[u.kind] += u.out; tot.fuel += u.out * u.mc; tot.co2 += u.out * u.D.co2;
             tot.bioCo2 += u.out * (u.D.bioCo2 || 0); u.runH++;
             // F42: 같은 망의 남은 수소만 혼소한다. 이미 방전한 양은 다시 쓰지 않는다.
@@ -846,9 +856,9 @@
           G.head[k] = G.own.reduce((a, u) => a + Math.max(0, u.D.cap - u.out), 0);
           // 이웃 전기로 바꿀 수 있는 우리 화력 출력(석탄은 최소 출력 아래로 못 내림)과 그 평균 연료비·CO₂
           let dq = 0, dm = 0, dc = 0, db = 0;
-          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); G.byDisp[u.kind][k] += q; dq += q; dm += q * u.mc * (u.out > 0 ? 1 - u.mixed / u.out : 1); dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
+          G.own.forEach(u => { const q = Math.max(0, u.out - (u.w || 0) - (u.kind === "coal" || u.kind === "smr" ? u.D.min : 0)); G.byDisp[u.kind][k] += q; G.pmDisp[pmKey(u)][k] += q; dq += q; dm += q * u.mc * (u.out > 0 ? 1 - u.mixed / u.out : 1); dc += q * u.D.co2 * (u.out > 0 ? 1 - u.mixed / u.out : 1); db += q * (u.D.bioCo2 || 0); });
           // dmc/dco2와 같은 대체 가능 출력 구성비. SMR도 분모에 포함하고 PM 입력에서는 뺀다.
-          Object.values(G.byDisp).forEach(by => { by[k] = dq > 0 ? by[k] / dq : 0; });
+          [...Object.values(G.byDisp), ...Object.values(G.pmDisp)].forEach(by => { by[k] = dq > 0 ? by[k] / dq : 0; });
           G.disp[k] = dq; G.dmc[k] = dq > 0 ? dm / dq : 0; G.dco2[k] = dq > 0 ? dc / dq : 0; G.dbioCo2[k] = dq > 0 ? db / dq : 0;
         });
         rem.forEach((r, ti) => {
@@ -896,7 +906,7 @@
       town, tot, cost, co2: tot.co2, bioCo2: tot.bioCo2, cp, sat: satisfaction(town), pol, seed: st.seed, season: PK.climate ? st.season : null, fab2, map: PK.id,
       unsTotal: town.reduce((a, Dt) => a + Dt.uns, 0), outTotal: town.reduce((a, Dt) => a + Dt.outH, 0),
       hrHosp, hrHospDem, hrHospUns, hospH: hrHosp.reduce((a, x) => a + x, 0), research: RR, techDay,
-      gx: GX.map(G => ({ to: G.to, byHead: G.byHead, byDisp: G.byDisp, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
+      gx: GX.map(G => ({ to: G.to, byHead: G.byHead, byDisp: G.byDisp, pmHead: G.pmHead, pmDisp: G.pmDisp, def: G.def, ren: G.ren, head: G.head, disp: G.disp, dmc: G.dmc, dco2: G.dco2, mc: G.mc, co2i: G.co2i, bioCo2i: G.bioCo2i, dbioCo2: G.dbioCo2 }))
     };
     res.missions = judge(st, res);
     res.news = headlines(st, res, N);
@@ -1093,6 +1103,16 @@
       out.h2store = { ...out.battery, name: "수소 탱크", tech: "h2store", mwh: v("h2MWh"), mw: v("h2MW"), cost: v("h2Cost"), spec: `${fmtSpec(v("h2MW"))} MW/${fmtSpec(v("h2MWh"))} MWh · 왕복 ${fmt(v("h2Efficiency") * 100)}%` };
       out.smr = { ...out.diesel, name: "SMR", tech: "smr", mw: v("smrMW"), cost: v("smrCost"), ok: { beach: 1, river: 1 }, spec: `${fmtSpec(v("smrMW"))} MW · 건설 ${fmtSpec(v("smrTurns"))}턴` };
     }
+    // 실제 MW와 해당 지역 축척에서 산출한다. 기존 설비 가격은 변경하지 않는다.
+    const region = Object.values(KCP.LEAGUE_REGIONS || {}).find(r => r.teams.some(t => t.pack === P.id));
+    if (region && KCP.TECH_DATA && KCP.ECON_DATA) {
+      const tp = KCP.TECH_DATA.params, ep = KCP.ECON_DATA.params;
+      const a = tp.smrCostBase.v / tp.smrCapexBase.v;
+      for (const kind of ["lng", "coal"]) {
+        const mw = ep.thermalMW.v[kind] / region.mwScale;
+        out[kind] = { ...out.diesel, icon: kind, name: kind === "lng" ? "LNG" : "석탄", get spec() { return buildingSpec(kind, this); }, mw, cost: mw * a * ep.thermalCapex.v[kind], ok: { beach: 1, river: 1 } };
+      }
+    }
     return out;
   }
   function selectPack(id, mode) { const P = usePack(id, mode); BLD = bldFor(P); if (KCP.buildGame) KCP.buildGame.BLD = BLD; return P; }
@@ -1108,10 +1128,17 @@
   /* =====================================================================
    * 3. 아이콘
    * ===================================================================== */
+  // 기존 plant의 탱크 2개·발전동·굴뚝을 축약한다. 석탄은 굴뚝 띠 색만 다르다.
+  const PLANT_BAND = { lng: "#3f6fb0", coal: "#6b737c" };
+  const plantIcon = fuel => '<ellipse cx="5" cy="12" rx="3" ry="1.5"/><path d="M2 12v7a3 1.5 0 0 0 6 0v-7"/>' +
+    '<ellipse cx="12" cy="9" rx="3" ry="1.5"/><path d="M9 9v7a3 1.5 0 0 0 6 0v-7"/>' +
+    `<path d="M15 21v-6h7v6zM19 15V3h3v12"/><path d="M19 4h3" stroke="${PLANT_BAND[fuel]}" stroke-width="3"/>`;
   const IC = {
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.3M12 19.2v2.3M2.5 12h2.3M19.2 12h2.3M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
     wind: '<path d="M12 11v10M9 21h6"/><circle cx="12" cy="9" r="1.5"/><path d="M12 7.5V2.5M13.3 9.8l4.4 2.4M10.7 9.8l-4.4 2.4"/>',
     diesel: '<path d="M3 21V12l5 3v-3l5 3V8h2.5V3h3v18z"/><path d="M2 21h20"/>',
+    lng: plantIcon("lng"),
+    coal: plantIcon("coal"),
     battery: '<rect x="2.5" y="7" width="17" height="11" rx="2"/><path d="M21.5 11v3M12 9l-2.5 4h3.2L10.3 17"/>',
     line: '<path d="M8 21l4-17 4 17M5.5 8h13M7.2 13h9.6M9 18.5l6-5.5M15 18.5l-6-5.5"/>',
     remove: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -1624,7 +1651,7 @@
       const [hx, hy] = at(0.35, 0.2);
       box(g, hx, hy, s * 0.5, s * 0.3, s * 0.3, "#c7ced4", "#aab4bd", "#87929c");
       g.fillStyle = "#e8ecef"; g.fillRect(hx + s * 0.1, hy - s * 1.0, s * 0.09, s * 0.7);
-      g.fillStyle = "#3f6fb0"; g.fillRect(hx + s * 0.1, hy - s * 1.0, s * 0.09, s * 0.08);
+      g.fillStyle = PLANT_BAND[W.fuel] || PLANT_BAND.lng; g.fillRect(hx + s * 0.1, hy - s * 1.0, s * 0.09, s * 0.08);
     } else if (K === "school") {
       const [bx, by] = at(0, 0.05);
       shadow(g, bx, by, s * 0.6, s * 0.16, 0.2);
@@ -1703,7 +1730,9 @@
   // 플레이어 건물(정적 부분). rec가 있으면 움직이는 부분의 위치를 기록한다.
   function drawBuilding(g, type, T, rec, bi) {
     const [x, y] = tileTop(T), s = V.S;
-    if (type === "solar") {
+    if (type === "lng" || type === "coal") {
+      drawFacility(g, T, { kind: "plant", fuel: type }, (dx, dy) => scr(T.X + dx, T.Y + dy, HGT[T.t]), []);
+    } else if (type === "solar") {
       shadow(g, x, y + s * 0.05, s * 0.62, s * 0.2, 0.2);
       for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
         const px = x - s * 0.42 + c * s * 0.46 + r * s * 0.06, py = y - s * 0.12 + r * s * 0.26 - c * s * 0.02;
@@ -2320,7 +2349,7 @@
       S.net.nodes.forEach(n => { const T = TILES[n.tile]; if (!T || T.out) return; polyPath(g, topPoly(T)); g.lineWidth = 2; g.strokeStyle = n.live ? "#71dceb" : "#ffe07a"; g.stroke(); });
     }
     if (S.lenses.complaints && BLD[S.tool] && S.hover != null) {
-      const T = TILES[S.hover], radius = T.t === "forest" ? 3 : ["diesel", "wind"].includes(S.tool) ? 2 : ["solar", "biomass", "offshore"].includes(S.tool) ? 1 : 0;
+      const T = TILES[S.hover], radius = ["coal", "lng", "smr"].includes(S.tool) ? KCP.ECON_DATA.params.sitingWeights.v.length - 1 : T.t === "forest" ? 3 : ["diesel", "wind"].includes(S.tool) ? 2 : ["solar", "biomass", "offshore"].includes(S.tool) ? 1 : 0;
       TILES.filter(t => radius > 0 && !t.out && hexDist(t.i, T.i) === radius).forEach(t => { polyPath(g, topPoly(t)); g.strokeStyle = "#f0a9e9"; g.lineWidth = 2; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]); });
       // Reuse the complaint calculation for affected demand sites, including wind/smoke direction.
       const cpKey = JSON.stringify([S.st.builds, S.st.policies, S.tool, T.i]);
@@ -2704,7 +2733,7 @@
     return `${KCP.TECH_DATA?.cards.find(c => c.id === tech)?.name || tech} 연구 필요`;
   };
   function toolGroups() {
-    const groups = (PK.groups || []).map(g => ({ ...g, tools: g.tools.slice() }));
+    const groups = (PK.groups || []).map(g => ({ ...g, tools: g.tools.filter(id => S.opts.league || !["coal", "lng"].includes(id)) }));
     if (!S.opts.league || !KCP.TECH_DATA) return groups;
     const add = (base, ids, name) => {
       const group = groups.find(g => g.tools.includes(base));
@@ -2715,9 +2744,22 @@
     add("diesel", ["smr"]);
     return groups;
   }
+  function thermalToolInfo(id) {
+    const facts = KCP.ECON_DATA?.thermalFacts;
+    if (!facts || !["coal", "lng", "smr"].includes(id) || !KCP.league?.infoTip) return "";
+    const rows = id === "smr" ? [["siting", "입지 민원"]] : [
+      ...(id === "coal" ? [["coalScenario", "새 건설 가정"]] : []),
+      ["capex", "건설비"], ["pm", "미세먼지"], ["siting", "입지 민원"]
+    ];
+    // 하위 도구 막대의 transform 안에서는 화면 기준 fixed 좌표가 맞지 않아 막대 위로 펼친다.
+    return KCP.league.infoTip(`build-tool-${id}`, rows.map(([key, label]) => `<p><b>${label}</b> ${esc(facts[key].text)}</p>`).join(""), { label: `${BLD[id].name} 자료와 가정` })
+      .replace('class="lg-info-pop"', 'class="lg-info-pop" style="position:absolute;top:auto;bottom:calc(100% + 8px);max-height:60vh;overflow-y:auto"');
+  }
   const toolBtn = (id, extra = "") => {
     const T = toolMeta(id), why = toolLocked(id);
-    return `<button type="button" class="bd-tool" data-tool="${esc(id)}" aria-pressed="${S.tool === id}"${why ? ` disabled aria-disabled="true" title="${esc(why)}" aria-label="${esc(T.name + ' · ' + why)}"` : ""}${extra}>${ico(T.icon)}<span class="bd-tool-n">${why ? "🔒 " : ""}${esc(T.name)}${why ? `<small>${esc(why)}</small>` : ""}</span><span class="bd-tool-c num">${esc(T.cost)}${T.rated ? `<br>${esc(T.rated)}` : ""}</span></button>`;
+    const button = `<button type="button" class="bd-tool" data-tool="${esc(id)}" aria-pressed="${S.tool === id}"${why ? ` disabled aria-disabled="true" title="${esc(why)}" aria-label="${esc(T.name + ' · ' + why)}"` : ""}${extra}>${ico(T.icon)}<span class="bd-tool-n">${why ? "🔒 " : ""}${esc(T.name)}${why ? `<small>${esc(why)}</small>` : ""}</span><span class="bd-tool-c num">${esc(T.cost)}${T.rated ? `<br>${esc(T.rated)}` : ""}</span></button>`;
+    const info = thermalToolInfo(id);
+    return info ? `<div class="lg-data-chip">${button}${info}</div>` : button;
   };
   function renderTools() {
     const box = $("#bd-tools"), sub = $("#bd-subtools");
@@ -2725,16 +2767,17 @@
     const groups = toolGroups();
     S.root.classList.toggle("bd-grouped", !!PK.groups);
     const undo = '<button type="button" class="bd-tool" id="bd-undo" title="방금 놓은 것 되돌리기 (Ctrl/⌘+Z)" disabled><span>되돌리기</span></button>';
-    if (!PK.groups) { box.innerHTML = toolsOf().map(id => toolBtn(id)).join("") + undo; sub.hidden = true; refreshUndo(); return; }
+    if (!PK.groups) { box.innerHTML = toolsOf().map(id => toolBtn(id)).join("") + undo; sub.hidden = true; refreshUndo(); KCP.league?.bindInfoTips?.(box); return; }
     box.innerHTML = groups.map(G => {
       if (G.tools.length === 1) return toolBtn(G.tools[0]);
       const cur = G.tools.includes(S.tool) ? toolMeta(S.tool) : null;
       return `<button type="button" class="bd-tool bd-group" data-group="${esc(G.id)}" aria-expanded="${S.openGroup === G.id}" aria-controls="bd-subtools"${cur ? ' data-active="true"' : ""}>${ico(cur ? cur.icon : G.icon)}<span class="bd-tool-n">${esc(G.name)}</span><span class="bd-tool-c num">${cur ? esc(cur.name) : G.tools.length + "종"}</span></button>`;
     }).join("") + undo;
+    KCP.league?.bindInfoTips?.(box);
     refreshUndo();
     const G = groups.find(g => g.id === S.openGroup);
     sub.hidden = !G;
-    if (G) { sub.setAttribute("aria-label", G.name); sub.innerHTML = G.tools.map(id => toolBtn(id)).join(""); }
+    if (G) { sub.setAttribute("aria-label", G.name); sub.innerHTML = G.tools.map(id => toolBtn(id)).join(""); KCP.league?.bindInfoTips?.(sub); }
   }
   function openGroup(id) {
     S.openGroup = S.openGroup === id ? null : id;
@@ -3406,15 +3449,17 @@
   function placementAdvice(type, tile) {
     const T = TILES[tile], B = BLD[type], notes = [];
     if (!B || T.out) return notes;
+    const siting = ["coal", "lng", "smr"].includes(type);
+    if ((siting || S.opts.league && ["diesel", "biomass"].includes(type)) && !siteRule(type, T) && !S.st.builds.some(b => b.i === tile)) {
+      const before = complaints(S.st, null), bi = S.st.builds.length;
+      const after = complaints({ ...S.st, builds: [...S.st.builds, { t: type, i: tile }] }, null);
+      const items = after.items.filter(x => x.bi === bi && x.kind !== "green" && x.pts > 0);
+      const affected = new Set(items.map(x => `${x.ti}:${x.kind}`));
+      const villages = new Set((siting ? items : after.list.filter(x => x.kind !== "green" && affected.has(`${x.ti}:${x.kind}`))).map(x => x.ti)).size;
+      notes.push(`이 칸에 지으면 ${siting ? "입지 민원" : "민원"} +${after.issues - before.issues}건(${siting ? "예상 · 가동과 무관" : "예상 · 가동 60% 가정, 실제 가동 시간에 따라 달라짐"}) · 영향 주변 시설·마을 ${villages}곳`);
+    }
+    if (siting) notes.push(KCP.ECON_DATA.thermalFacts.siting.text);
     if (S.opts.league) {
-      if (["diesel", "biomass"].includes(type) && !siteRule(type, T) && !S.st.builds.some(b => b.i === tile)) {
-        const before = complaints(S.st, null), bi = S.st.builds.length;
-        const after = complaints({ ...S.st, builds: [...S.st.builds, { t: type, i: tile }] }, null);
-        const affected = new Set(after.items.filter(x => x.bi === bi && x.kind !== "green" && x.pts > 0).map(x => `${x.ti}:${x.kind}`));
-        const villages = new Set(after.list.filter(x => x.kind !== "green" && affected.has(`${x.ti}:${x.kind}`)).map(x => x.ti)).size;
-        notes.push(`이 칸에 지으면 민원 +${after.issues - before.issues}건(예상 · 가동 60% 가정, 실제 가동 시간에 따라 달라짐) · 영향 주변 시설·마을 ${villages}곳`);
-      }
-      if (type === "smr") notes.push("모형에 SMR 민원 미반영");
       if (["solar", "roof", "tandem", "tandem_roof"].includes(type) && !siteRule(type, T)) {
         const distance = TOWNS.length ? Math.min(...TOWNS.map(w => hexDist(tile, w.tile))) : null;
         const smartGrid = leagueMods(S.st)?.tech?.includes("grid");
@@ -3467,7 +3512,7 @@
     }
     el.innerHTML = `<p class="bd-tip-h"><b>${esc(name)}</b>${b ? `<span>${BLD[b.t].name}</span>` : ""}${mulTxt ? `<span>${mulTxt}</span>` : ""}${T.tidal ? "<span>조력 후보</span>" : ""}</p>` + siteRow +
       (T.wind > 0 ? `<p class="bd-tip-row">${T.sun ? `<span>${ico("sun")}×${T.sun.toFixed(2)}</span>` : ""}<span>${ico("wind")}${T.wind.toFixed(1)} m/s</span>${T.land ? `<span>${ico("people")}${fmt(T.near)}</span>` : ""}</p>` : "") + verdict +
-      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
+      (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => text === KCP.ECON_DATA?.thermalFacts?.siting.text ? `${esc(text.split(". ")[0])}. (자료·가정: 도구 옆 !)` : S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
       (S.sel === i && BLD[S.tool] && canPlace(S.tool, i).ok ? "<p>한 번 더 누르면 설치</p>" : "");
     el.hidden = false;
     const [x, y] = tileTop(T);

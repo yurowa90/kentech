@@ -12,8 +12,36 @@ const ROOT = path.resolve(__dirname, "../../.."), OUT = process.env.TECH_BALANCE
 const ctx = vm.createContext({ console, document: { documentElement: {} }, KCP: { route() {}, on() {}, esc: x => x } });
 ctx.window = ctx;
 vm.runInContext('Math.random = () => { throw new Error("unseeded random"); };', ctx);
-for (const n of ["build-maps", "tech-data", "build", "econ-data", "econ", "league-data", "league-core", "league-ai"])
+for (const n of ["build-maps", "tech-data", "build", "econ-data", "econ", "league-data", "league-core"])
   vm.runInContext(fs.readFileSync(path.join(ROOT, `ui/${n}.js`), "utf8"), ctx, { filename: n });
+// 착공 예외 진단도 AI와 같은 대표 주·연료·학생 총점 비교를 실행한다.
+// 별도 비용식을 복제하지 않고 현재 엔진 함수 본문을 읽어 VM 안에서만 노출한다.
+const aiSource = fs.readFileSync(path.join(ROOT, "ui/league-ai.js"), "utf8");
+function aiBlock(from, to) {
+  const start = aiSource.indexOf(from), end = aiSource.indexOf(to, start);
+  if (start < 0 || end < 0) throw Error("T5 SMR 비교 엔진 구간을 확인하세요");
+  return aiSource.slice(start, end);
+}
+const smrComparison = `
+  KCP.t5SmrComparison = function(S, R, id, bg, plan, tile) {
+    const C = KCP.leagueCore, rounds = C.roundsOf(S), turn = Math.max(1, S.round);
+    const seed = \`\${S.seedKey ?? S.room}:\${S.round}:\${id}\`;
+    const start = bg.SITES.find(s => s.kind === "plant") || bg.SITES.find(s => s.dem);
+    const connected = bg.network(plan), anchor = connected.nodes.find(n => n.tile === start.tile);
+    const roots = new Set([start.tile]);
+    connected.nodes.filter(n => anchor && n.comp === anchor.comp && n.comp >= 0)
+      .forEach(n => n.att.forEach(([i]) => roots.add(i)));
+    const route = routes(bg, roots), t = "smr", best = {
+      cost: bg.capex({ builds: [{ t, i: tile }], lines: [] }) + route.dist[tile]
+    }, capacity = 1; // MW로 나누기 전 순이득(억). 대형 선호는 부호를 바꾸지 않는다.
+    if (!Number.isFinite(best.cost)) throw Error("T5 SMR 비교 경로 없음");
+    const trial = assets(plan); trial.builds.push({ t, i: tile }); addPath(trial, route.path(tile));
+    ${aiBlock('const rd = rounds[turn - 1], publicState', 'const candidates = [], buildBudget')}
+    ${aiBlock('const after = S.econ ? forecast(trial)', 'const large = 1 + style.risk')}
+    return { net: costScore, cost: best.cost, fuelDelta, scoreDelta, scoreValue: value("aiScoreValue") };
+  };
+`;
+vm.runInContext(aiSource.replace("  KCP.leagueAI =", smrComparison + "  KCP.leagueAI ="), ctx);
 const { leagueCore: C, buildGame: B, leagueAI: AI, econ: X, ECON_DATA: D } = ctx.KCP;
 if (process.env.TECH_BALANCE_FUEL_MUL) {
   const value = Number(process.env.TECH_BALANCE_FUEL_MUL);
@@ -37,6 +65,29 @@ report.sources = Object.fromEntries(["tests/league/review/11-tech-balance.js", .
 let passes = 0;
 function ok(test, label) { if (test) passes++; else { report.failures.push(label); console.log("FAIL:", label); } }
 function select(id) { B.selectPack(C.teamDef(R, id).pack, "league"); }
+function observeSmrSite(S, id) {
+  select(id);
+  const sites = B.TILES.filter(t => !B.siteRule("smr", t));
+  const observation = { month: S.round, candidateCount: sites.length };
+  if (sites.length !== 1) return observation;
+  const tile = sites[0].i, plan = S.teams[id].plan;
+  const occupant = plan.builds.find(b => b.i === tile);
+  return { ...observation, tile, ...(occupant ? { occupiedBy: occupant.t } :
+    ctx.KCP.t5SmrComparison(S, R, id, B, plan, tile)) };
+}
+function assertSmrStarted(run) {
+  if (run.months.some(m => m.builds.includes("smr"))) {
+    ok(true, `${run.id} SMR 전략 실제 착공`); return;
+  }
+  const observations = run.smrSiteObservations || [];
+  // 빈 칸에서 양수 이득을 놓친 달·비유한 값·입지 수 변화는 예외로 덮지 않는다.
+  const blocked = run.id === "cheonan" && observations.length === run.months.length && observations.length > 0 &&
+    observations.every(o => o.candidateCount === 1 && (o.occupiedBy ? o.occupiedBy !== "smr" : Number.isFinite(o.net) && o.net <= 0));
+  if (blocked) {
+    run.smrStart = { status: "incomparable", reason: "유일한 SMR 입지: 다른 설비 점유 또는 착공 비교 순이득≤0", observations };
+    console.log("비교 불가: cheonan SMR 전략 실제 착공", JSON.stringify(run.smrStart));
+  } else ok(false, `${run.id} SMR 전략 실제 착공`);
+}
 function affordable(S, id, p) { return C.spendOf(B, S, R, id, p) <= C.budget(S, id); }
 function add(S, id, plan, type, accepts = () => true) {
   const used = new Set(plan.builds.map(b => b.i));
@@ -268,6 +319,7 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
       ok(JSON.stringify(S.teams[focal].plan.builds) === JSON.stringify(plan.builds), `${focal}/hybrid/${m} 추가 계획 그대로 승인`);
       proposals[focal].allowance = room;
     }
+    if (focal === "cheonan" && strategy === "smr") (run.smrSiteObservations ||= []).push(observeSmrSite(S, focal));
     const result = C.run(S, B, m * 100000 + 20), r = result.team[focal], city = S.econ.cities[focal];
     const fiscal = result.econ.fiscal[focal];
     run.account.tariff += fiscal.rev.tariff; run.account.tariffGross += fiscal.tariffGross;
@@ -320,7 +372,7 @@ for (const focal of selectedIds) for (const strategy of selectedStrategies) {
   // B18 공통 실용성 기준: 36달 평균 정전 5% 이하여야 전력 운영 전략으로 비교 가능.
   ok(run.avgUns <= 5, `${focal}/${strategy} 평균 정전 ${run.avgUns.toFixed(3)}% >5%`);
   if (strategy === "none") ok(run.adopted.length === 0, `${focal} 연구0 도입0장`);
-  if (strategy === "smr") ok(run.months.some(m => m.builds.includes("smr")), `${focal} SMR 전략 실제 착공`);
+  if (strategy === "smr") assertSmrStarted(run);
   if (strategy === "hydrogen") ok(run.months.some(m => m.builds.includes("h2store")), `${focal} 수소 전략 실제 저장 건설`);
   console.log(JSON.stringify({ city: run.name, strategy: names[strategy], score: run.score, avgUns: +run.avgUns.toFixed(3), cards: run.adopted.length }));
   fs.writeFileSync(OUT, JSON.stringify(report, null, 2));

@@ -84,7 +84,7 @@
   // D-86: 시작 전 안내는 확정 단추 바로 위에 펼쳐 보이되 단추를 막지 않는다. '안내 확인'은 이 기기에서 다음 판부터 접어 두는 표시다.
   function dataNoticeHTML(key) {
     const seen = dataNoticeConfirmed();
-    return tipBox(`data-notice-${key}`, DATA_NOTICE_TITLE, `<p>${DATA_NOTICE_BODY}</p><button type="button" class="v2-btn" data-notice-confirm ${seen ? "disabled" : ""}>안내 확인</button>`)
+    return tipBox(`data-notice-${key}`, DATA_NOTICE_TITLE, `<p>${DATA_NOTICE_BODY}</p><ul class="bd-tiplist"><li>${esc(KCP.ECON_DATA.thermalFacts.coalScenario.text)}</li></ul><button type="button" class="v2-btn" data-notice-confirm ${seen ? "disabled" : ""}>안내 확인</button>`)
       .replace('<details ', `<details data-data-notice${seen ? "" : " open"} `);
   }
   function bindDataNotices(root, update) {
@@ -382,7 +382,11 @@
     const lead = KCP.ECON_DATA.params.buildLeadYears?.v, kr = KCP.ECON_DATA.params.buildLeadKorea?.v;
     if (!lead || !kr) return "";
     const names = [["solar", "태양광"], ["wind", "육상풍력"], ["ess", "배터리(ESS)"], ["biomass", "바이오매스"], ["diesel", "디젤"], ["smr", "SMR"]];
-    return `<p id="lg-build-lead">실제 공사 기간(착공~가동, 미국 에너지정보청 가정값 · ${esc(gradeWords("P"))}): ${names.map(([k, n]) => `${esc(n)} ${esc(lead[k])}년`).join(" · ")}. 한국 사례 · ${esc(gradeWords("O*"))}: LNG 복합 ${esc(kr.lngMonths.join("~"))}개월(계획 기준), 육상풍력은 인허가까지 약 ${esc(kr.windPermitYears)}년. 송전망은 계획·인허가부터 완공까지 ${esc(kr.gridYears.join("~"))}년(국제에너지기구 · ${esc(gradeWords("P"))}).</p><p id="lg-build-rule">이 게임은 SMR만 공사 ${esc(KCP.TECH_DATA?.params.smrTurns.v ?? 12)}달을 기다리고, 다른 설비는 바로 지어져 전력망 접속만 기다려요. 그래서 SMR이 현실보다 상대적으로 불리하게 그려져 있어요(${esc(gradeWords("G"))}).</p>`;
+    const thermalRows = [["coalBuild", "석탄"], ["lngBuild", "LNG"]].map(([key, name]) => {
+      const fact = KCP.ECON_DATA.thermalFacts[key];
+      return `<tr><th scope="row">${name}</th><td>${esc(fmt(fact.realMW))} MW</td><td>${esc(fact.months)}개월${fact.status === "planned" ? "(계획)" : ""}${infoTip(`build-lead-${key}`, esc(fact.text), { label: `${name} 공사 기간` })}</td><td>${fact.gameTurns === 0 ? "즉시 가동" : `${esc(fact.gameTurns)}달`}</td></tr>`;
+    }).join("");
+    return `<p id="lg-build-lead">실제 공사 기간(착공~가동, 미국 에너지정보청 가정값 · ${esc(gradeWords("P"))}): ${names.map(([k, n]) => `${esc(n)} ${esc(lead[k])}년`).join(" · ")}. 한국 사례 · ${esc(gradeWords("O*"))}: LNG 복합 ${esc(kr.lngMonths.join("~"))}개월(계획 기준), 육상풍력은 인허가까지 약 ${esc(kr.windPermitYears)}년. 송전망은 계획·인허가부터 완공까지 ${esc(kr.gridYears.join("~"))}년(국제에너지기구 · ${esc(gradeWords("P"))}).</p><div class="lg-tablewrap"><table class="lg-table"><caption>신규 화력 공사 기간 · 한국 사례</caption><thead><tr><th scope="col">설비</th><th scope="col">실제 규모</th><th scope="col">현실 공사</th><th scope="col">게임 공사</th></tr></thead><tbody>${thermalRows}</tbody></table></div><p id="lg-build-rule">이 게임은 SMR만 공사 ${esc(KCP.TECH_DATA?.params.smrTurns.v ?? 12)}달을 기다리고, 다른 설비는 바로 지어져 전력망 접속만 기다려요. 그래서 SMR이 현실보다 상대적으로 불리하게 그려져 있어요(${esc(gradeWords("G"))}).</p>`;
   }
   const bioCo2Text = value => `바이오 CO₂ ${fmt(value, 2)} t(국가 총량 밖 · IPCC 정보 항목)`;
   function recalHTML(rep, id, foldSource = false) {

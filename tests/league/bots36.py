@@ -541,8 +541,8 @@ JS = r"""
       const res = C.run(S, BG, at + 50), rep = res?.econ;
       ok(!!rep?.fiscal, `회전${rotation} ${m}달 econ report 계약`);
       if (!rep) throw new Error(`${m}달 econ 보고서 없음`);
-      // 접속용 ESS 묶음은 재생 설비가 실제 접속된 뒤 충전 효과를 확인한다.
-      // 같은 접속 완료 발전·날씨·수요에서 해당 ESS만 뺀 운전과 대조한다.
+      // 접속용 ESS의 관측 달에 접속용 키 전체를 제거해 묶음 효과를 확인한다.
+      // 같은 접속 완료 발전·날씨·수요·mods를 고정한다. 개별 ESS 추가 효과는 정보로만 남긴다.
       for (const id of ids.filter(id => assignment[id] === "storage")) {
         const pending = run.planRequests.filter(p => p.id === id).flatMap(p => p.changes)
           .filter(c => c.storageKeys && !c.verifiedAtMonth);
@@ -551,6 +551,19 @@ JS = r"""
         const plan = S.teams[id].plan, mods = C.modsFor(S, R, id), rnd = {...C.roundsOf(S)[m - 1], seed: res.seed};
         const actual = C.simTeam(BG, R, id, plan, rnd, Number.MAX_VALUE, mods);
         const actualSpill = actual.k.curt + (actual.curtailMWh || 0);
+        const connected = (res.team[id].grid?.waitingMW || 0) <= 1e-6 && pending.some(change =>
+          change.storageKeys.every(key => plan.builds.some(b => b.t + ":" + b.i === key)));
+        if (connected) {
+          const storageKeys = [...new Set(run.planRequests.filter(p => p.id === id && p.strategy === "storage")
+            .flatMap(p => p.changes).flatMap(c => c.storageKeys || []))];
+          const without = {...plan, builds: plan.builds.filter(b => !storageKeys.includes(b.t + ":" + b.i))};
+          const counter = C.simTeam(BG, R, id, without, rnd, Number.MAX_VALUE, mods);
+          const sourceMWh = counter.k.curt + (counter.curtailMWh || 0);
+          (run.storageObservations ||= []).push({id, month: m, connected, storageKeys,
+            sourceMWh, actualMWh: actualSpill});
+          ok(Number.isFinite(sourceMWh) && Number.isFinite(actualSpill) && actualSpill <= sourceMWh + 1e-6,
+            `B18 storage ${id}/${m} 같은 급전의 접속용 ESS 전체 제거 대조: 버림 비증가`);
+        }
         for (const change of pending) {
           const without = {...plan, builds: plan.builds.filter(b => !change.storageKeys.includes(b.t + ":" + b.i))};
           const counter = C.simTeam(BG, R, id, without, rnd, Number.MAX_VALUE, mods);
@@ -559,8 +572,6 @@ JS = r"""
             (res.team[id].grid?.waitingMW || 0) <= 1e-6;
           if (connected) {
             change.observedMonths = (change.observedMonths || 0) + 1;
-            ok(Number.isFinite(source) && Number.isFinite(actualSpill) && actualSpill <= source + 1e-6,
-              `B18 storage ${id}/${m} 같은 급전의 ESS 제거 대조: 버림 비증가`);
           }
           if (source - actualSpill > 1e-6) {
             change.chargeSourceMWh = source; change.capturedMWh = source - actualSpill; change.verifiedAtMonth = m;
@@ -626,15 +637,64 @@ JS = r"""
   if (rotations === strategies.length) {
     const added = out.runs.flatMap(r => r.planRequests).filter(p => p.strategy === "storage")
       .flatMap(p => p.changes);
-    const observed = added.filter(c => c.storageKeys && c.observedMonths > 0);
-    ok(observed.length > 0 && observed.some(c => c.verifiedAtMonth && c.capturedMWh > 1e-6),
-      "B18 storage 접속용 ESS 실제 관측 중 적어도 하나는 버림 감소(양수 분기 밖에서 단언)");
-    ok(added.length > 0 && sum(added.map(c => c.capturedMWh)) > 0,
-      `B18 storage 실제 ESS 추가 ${added.length}회·충전으로 버림 감소 ${sum(added.map(c => c.capturedMWh))}MWh`);
+    // 관측 유무 판정은 Python의 공통 집계에서 한다. 관측0은 통과가 아니다.
+    ok(added.length > 0, `B18 storage 실제 ESS 추가 ${added.length}회`);
   }
   return out;
 }
 """
+
+
+
+def b18_storage_observation(out):
+    """씨앗별 저장 묶음 효과를 단언하고 개별 추가 효과는 정보로 남긴다."""
+    changes = [change for run in out.get("runs", [])
+               for request in run.get("planRequests", []) if request.get("strategy") == "storage"
+               for change in request.get("changes", []) if change.get("storageKeys")]
+    observed = [change for change in changes if change.get("observedMonths", 0) > 0]
+    improved = [change for change in observed
+                if change.get("verifiedAtMonth") and change.get("capturedMWh", 0) > 1e-6]
+    collective = [row for run in out.get("runs", [])
+                  for row in run.get("storageObservations", []) if row.get("connected")]
+    valid = all(isinstance(row.get(key), (int, float)) and math.isfinite(row[key])
+                for row in collective for key in ("sourceMWh", "actualMWh"))
+    nonincreasing = valid and all(row["actualMWh"] <= row["sourceMWh"] + 1e-6
+                                 for row in collective)
+    positive = [row for row in collective
+                if valid and row["sourceMWh"] - row["actualMWh"] > 1e-6]
+    passed = nonincreasing and bool(positive)
+    result = {"status": "관측 없음" if not observed else "통과" if passed else "실패",
+              "bundles": len(changes), "observedBundles": len(observed),
+              "observedMonths": sum(c.get("observedMonths", 0) for c in observed),
+              "improvedBundles": len(improved),
+              "individualCapturedMWh": sum(c.get("capturedMWh", 0) for c in improved),
+              "collectiveEvidence": "관측 있음" if collective else "자료 없음" if observed else "관측 없음",
+              "collectiveMonths": len(collective), "collectiveImprovedMonths": len(positive),
+              "collectiveCapturedMWh": sum(row["sourceMWh"] - row["actualMWh"]
+                                           for row in collective) if collective and valid else None}
+    out["b18Observation"] = result
+    if observed:
+        out["checks"].append([passed,
+            "B18 storage 접속용 ESS 전체 제거 대조: 관측 달 버림 비증가·양수 묶음 효과 존재"])
+    return result
+
+
+def b18_observation_report(outputs):
+    results = [b18_storage_observation(out) for out in outputs]
+    counts = {status: sum(r["status"] == status for r in results)
+              for status in ("통과", "실패", "관측 없음")}
+    print("B18 씨앗 집계: " + " · ".join(f"{k} {v}" for k, v in counts.items()))
+    for i, row in enumerate(results):
+        print(f"B18 씨앗 {i + 1}: " + json.dumps(row, ensure_ascii=False))
+    if counts["통과"] + counts["실패"] == 0:
+        message = "B18 storage 실행 전체에 관측된 씨앗 없음: 미판정(통과 아님)"
+        print("FAIL " + message)
+        if outputs:
+            outputs[0]["checks"].append([False, message])
+    elif counts["실패"]:
+        print(f"FAIL B18 storage 관측 씨앗 중 실패 {counts['실패']}개")
+    print("B18 개별 ESS 추가 효과는 정보 출력이며 단언 아님: 다른 ESS의 중복 흡수로 0일 수 있음.")
+    return counts
 
 
 def load_auto():
@@ -818,6 +878,16 @@ def markdown(out):
         for strategy, row in out["debtBreakdown"]["means"].items():
             values = [str(row["overCities"])] + [f"{row[k]:.3f}" for k in ("income", "fuel", "operation", "purchase", "interest", "service", "construction", "other", "rounding", "cash")]
             lines.append("| " + " | ".join([strategy, *values]) + " |")
+    if "b18Observation" in out:
+        observation = out["b18Observation"]
+        lines += ["", "B18 접속용 ESS: " + observation["status"] +
+                  f" (관측 묶음 {observation['observedBundles']}, 관측 달 {observation['observedMonths']}, "
+                  f"묶음 대조 {observation['collectiveEvidence']}, "
+                  f"묶음 효과 양수 달 {observation['collectiveImprovedMonths']}/{observation['collectiveMonths']}, "
+                  f"버림 감소 {observation['collectiveCapturedMWh']}MWh)",
+                  f"개별 ESS 추가 효과: 양수 {observation['improvedBundles']}묶음 "
+                  f"·최초 양수 기록 합 {observation['individualCapturedMWh']}MWh "
+                  "(정보 출력·단언 아님; 다른 ESS의 중복 흡수로 0일 수 있음)."]
     checks = out.get("checks", [])
     bad = [message for passed, message in checks if not passed]
     lines += ["", f"checks {len(checks)} fail {len(bad)}", ""]
@@ -832,7 +902,13 @@ def main():
     parser.add_argument("--node", action="store_true", help="브라우저 없이 같은 전략 JS를 Node에서 실행")
     parser.add_argument("--quick", action="store_true", help="12달·회전 2개")
     parser.add_argument("--output-dir", type=Path, help="결과 파일 저장 경로(기본 tests/results)")
+    parser.add_argument("--b18-only", nargs="+", type=Path,
+                        help="저장된 씨앗별 JSON의 B18 관측 집계만 재실행(시뮬레이션 없음)")
     args = parser.parse_args()
+    if args.b18_only:
+        outputs = [json.loads(p.read_text(encoding="utf-8")) for p in args.b18_only]
+        counts = b18_observation_report(outputs)
+        return 1 if counts["실패"] or counts["통과"] == 0 else 0
     months, rotations = (12, 2) if args.quick else (args.months, 9)
     out = {"months": months, "rotations": rotations, "strategies":
            ["nothing", "base", "diesel", "renew", "ties", "taxlow", "taxhigh", "dm", "storage"],
@@ -862,6 +938,7 @@ process.stdout.write(JSON.stringify(run({months:arg.months,rotations:arg.rotatio
     except Exception as exc:
         errors.append(f"실행 예외: {exc}")
     out["checks"].extend([[False, message] for message in errors])
+    b18_observation_report([out])
     out["url"] = "node (no network)" if args.node else args.url
     out["strategySummary"] = strategy_summary(out)
     out["horizons"] = horizon_summary(out)
