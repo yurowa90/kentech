@@ -643,10 +643,21 @@ section#lg-missed.lg-outage { display: block; }
     html:is(.v2-league-lobby, .v2-league-seat) .lg-title h1 { font-size: 20px; }
     html.v2-league-lobby .lg-modes { gap: 2px; padding: 4px; }
     html.v2-league-lobby .lg-modes button { font-size: 12px; padding: 8px 4px; }
-    html.v2-league-lobby .lg-world { height: 330px; }
-    html.v2-league-lobby .lg-worldmap { inset: 58px 0 54px; }
-    html.v2-league-lobby .lg-maphelp { inset: auto 12px 12px; font-size: 11px; }
-    html.v2-league-lobby .lg-card { padding: 14px; }
+    html.v2-league-lobby .lg-world { height: 284px; }
+    html.v2-league-lobby .lg-worldmap { inset: 42px 0 32px; }
+    html.v2-league-lobby .lg-maphelp { inset: auto 12px 10px; font-size: 11px; }
+    html.v2-league-lobby .lg-card { padding: 14px; gap: 10px; }
+    html.v2-league-lobby .lg-modehead { gap: 2px; padding-bottom: 8px; }
+    /* 390 첫 화면에 '혼자 시작'이 여유 있게 들어오게 한다(score1 T6(가)). D-87로 시작 전 안내에 석탄 가정 줄이 늘어
+       단추가 화면 밖(아래끝 913px)으로 밀렸다. 안내 문장·지도 크기는 그대로 두고 겹친 여백과 줄 높이만 줄인다:
+       제목과 한 줄 설명을 한 행에, 안내 상자의 바깥 여백(칸 사이 간격과 겹침)은 0, 안내 본문은 목록 줄과 같은 14px·1.5. */
+    html.v2-league-lobby .lg-modehead { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+    html.v2-league-lobby .lg-card [data-data-notice] { margin-block: 0; }
+    html.v2-league-lobby .lg-card [data-data-notice] .lg-tipbody > p { margin: 0 0 6px; font-size: 14px; line-height: 1.5; }
+    html.v2-league-lobby .lg-card [data-data-notice] .bd-tiplist { margin-bottom: 8px; }
+    /* 넓은 화면의 sticky top이 상대 위치로 남아 지도가 12px 내려앉아 있었다(위 26px·아래 2px). 위아래 간격을 8px로 고르게 한다. */
+    html.v2-league-lobby .lg-control-room { gap: 8px; margin-top: 8px; }
+    html.v2-league-lobby .lg-world { top: 0; }
     html.v2-league-lobby .lg-hud-pill { display: none; }
     .lg-seat-map { height: 310px; }
     html.v2-league-seat .lg-seats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1100,8 +1111,13 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-plan-comparison > * { min-width: 0; margin: 0; }
 .lg-plan-comparison p { margin: 0; }
 .lg-debt-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
-/* 특별교부세가 남은 달의 돈 칸 주석: 빚 주석과 같은 글꼴, 좁은 화면에서도 보이고 줄바꿈된다. */
+/* 넓은 화면은 전체 주석, 좁은 화면은 금액 한 줄과 별도 설명을 쓴다. */
 .lg-grant-note { display: block; color: var(--ui-muted); font-size: 12px; white-space: normal; }
+/* 교부세 셋째 줄이 있는 칩은 줄 간격을 1로 줄이고 글을 칩 아래쪽에 붙여, 칩 높이(390에서 46px)를 그대로 두면서
+   금액 줄을 오른쪽 위 '!' 누름 영역 아래로 내린다. */
+.lg-team-map .bd-cap[data-cap="budget"]:has([data-grant-chip]:not([hidden])) { align-items: flex-end; }
+.lg-team-map .bd-cap[data-cap="budget"]:has([data-grant-chip]:not([hidden])) .v2-cap-txt { line-height: 1; }
+.lg-grant-chip { display: block; color: var(--ui-gold); font-size: 10px; white-space: nowrap; line-height: 1.1; letter-spacing: -0.2px; font-weight: 600; }
 .lg-trend-scroll { overflow-x: auto; }
 #lg-timeline [data-change] text { font-size: 11px; }
 #lg-decisions li { margin: 8px 0; }
@@ -1280,6 +1296,13 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   /* 서랍이 화면 아래까지 오므로 알림은 서랍 머리 쪽에 띄워 이유 칸·마지막 줄을 가리지 않는다. */
   #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-toast {
     top: calc(var(--bd-top, 180px) + 8px); bottom: auto;
+    left: 64px; right: auto; max-width: calc(100vw - 168px); transform: translate(0, -6px);
+  }
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])) .bd-toast[data-show="true"] {
+    transform: translate(0, 0);
+  }
+  #bd-root.lg-team-map[data-result-drawer="true"]:has(#lg-panel:not([hidden]):not([data-folded="true"])):has(.lg-map-guidance .lg-map-result:not([hidden])) .bd-toast {
+    top: calc(max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)) + 8px);
   }
 }
 
@@ -1464,8 +1487,16 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 #bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #lg-panel,
 #bd-root.lg-team-map:has(#lg-coach, #lg-plan-issues:not([hidden])) #bd-drawer { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
 
+/* 코치 없는 넓은 계획 화면은 문제 칩을 서랍 왼쪽에만 놓아 약속 카드 높이를 확보한다. */
+@media (min-width: 761px) {
+  #bd-root.lg-team-map[data-league-drawer="true"]:not(:has(#lg-coach)) #lg-plan-issues { width: fit-content; max-width: calc(100% - min(360px, calc(100vw - 16px)) - 16px); }
+  #bd-root.lg-team-map:not(:has(#lg-coach)):has(#lg-plan-issues:not([hidden])) #lg-panel { top: var(--bd-top, 180px); }
+  /* 같은 안내 묶음의 지난달 결과 한 줄도 서랍 왼쪽까지만(768 세로 태블릿에서 서랍 글 앞을 덮지 않게). */
+  #bd-root.lg-team-map[data-league-drawer="true"]:not(:has(#lg-coach)):has(#lg-plan-issues:not([hidden])) .lg-map-guidance .lg-map-result { max-width: min(420px, calc(100% - min(360px, calc(100vw - 16px)) - 16px)); }
+}
+
 /* 좁은 화면: 지도 위 결과 한 줄(U2 계약상 늘 보임)이 서랍을 덮지 않게 서랍을 그 아래부터 시작하고,
-   잠깐 뜨는 토스트는 서랍 제목과 겹치지 않게 화면 맨 아래로 내린다. */
+   다른 서랍의 토스트는 화면 맨 아래로 내린다. 결과 토스트는 위의 더 구체적인 규칙으로 머리에 둔다. */
 @media (max-width: 760px) {
   #bd-root.lg-team-map:has(.lg-map-guidance .lg-map-result:not([hidden])) #lg-panel { top: max(var(--bd-top, 180px), var(--lg-guidance-bottom, 270px)); }
   #bd-root.lg-team-map[data-league-drawer="true"] .bd-toast { top: auto; bottom: 8px; }
@@ -1548,8 +1579,10 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* F1: 교부세 설명은 HUD 높이에 참여하지 않는다. 빈 달에도 같은 글자 폭을 확보한다. */
 .lg-money-info { position: fixed; z-index: 60; width: 44px; height: 44px; }
+/* '!'는 키보드 순서 때문에 HUD 안(쌓임 맥락 z 30)에 있다. 설명이 열린 동안만 HUD를 리그 막대(z 32) 위, 서랍(46) 아래로 올린다. */
+#bd-hud:has(.lg-money-info[open]) { z-index: 33; }
 .lg-money-info[open] { display: block; width: 44px; }
-.lg-money-info .lg-info-pop { position: fixed; top: var(--bd-hudb, 120px); left: 8px; width: min(360px, calc(100vw - 16px)); box-shadow: var(--ui-shadow); }
+.lg-money-info .lg-info-pop { position: fixed; top: calc(var(--bd-hudb, 120px) - var(--lg-money-origin-top, 0px)); left: calc(8px - var(--lg-money-origin-left, 0px)); width: min(360px, calc(100vw - 16px)); max-width: none; box-shadow: var(--ui-shadow); }
 /* 보이는 원은 작게(지름 18px), 누름 영역은 44px. 배지는 칩 오른쪽 위 모서리에 걸쳐 금액을 가리지 않는다. */
 .lg-money-info > .lg-info-btn { color: #06202a; font-size: 12px; background: radial-gradient(circle at center, var(--ui-gold) 0 9px, transparent 9.5px); }
 

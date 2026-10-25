@@ -516,6 +516,12 @@ def graphs(checks, page, label, host=False):
             'nodes => nodes.map(n => n.getBoundingClientRect().height)')
         checks.ok(bool(heights) and min(heights) >= 10,
                   label + ' F12 결과 서랍 끝 그래프 축 화면 높이 10px 이상')
+        if public['role'] == 'solo':
+            # 지시서 T 5번: 첫 달 score1.py에서 옮김. 월별 추이 글자가 0개면 실패한다.
+            timeline_heights = page.locator('#lg-panel #lg-timeline svg text').evaluate_all(
+                'nodes => nodes.map(n => n.getBoundingClientRect().height)')
+            checks.ok(bool(timeline_heights) and min(timeline_heights) >= 10,
+                      label + f' F12 결과 서랍 월별 추이 축 화면 높이 10px 이상(글자 {len(timeline_heights)}개)')
     text = root.text_content()
     naked = re.findall(r'(?<!\w)(?:O\*?|P|M|G)(?!\w)', text)
     # W6 검토 반영: 단일 G 표시에 그치지 않고 gradeWords("M·G")의 두 근거 말을 확인한다.
