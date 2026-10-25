@@ -98,8 +98,25 @@ test('T F4 stage 3 names from data, zero/two/three unlinked counts', () => {
   for (const count of [0,1,2,3]) {
     const issues = { unlinked:count, unlinkedNames:names.slice(0,count), waiting:2 };
     const expected = count ? `(${names.slice(0,count).slice(0,2).join('·')}${count > 2 ? ' 외 1기' : ''})` : ' 0기';
-    assert.equal(ctx.coachSteps(issues,{})[2][0], `마을까지 이어요 · 미연결${expected} · 대기 2기`);
+    // 지시서 T 3번: 묶기용 사전 계산값 없이 issues만 넘긴다.
+    assert.equal(ctx.coachSteps(issues)[2][0], `마을까지 이어요 · 미연결${expected} · 대기 2기`);
   }
+});
+// 지시서 T 3번: 기대 문구는 명세의 일곱 조합에서 직접 작성한다.
+const [A, Bname, Cname] = [...new Set(Object.values(B.BLD).map(b => b.name))].slice(0,3);
+for (const [label, names, expected] of [
+  ['A,A', [A,A], `미연결(${A} 2기)`],
+  ['A,A,B', [A,A,Bname], `미연결(${A} 2기·${Bname})`],
+  ['A,A,B,C', [A,A,Bname,Cname], `미연결(${A} 2기·${Bname} 외 1기)`],
+  ['A,B,C', [A,Bname,Cname], `미연결(${A}·${Bname} 외 1기)`],
+  ['A', [A], `미연결(${A})`],
+  ['0', [], '미연결 0기'],
+  ['A,B,A', [A,Bname,A], `미연결(${A} 2기·${Bname})`],
+]) test(`T F4 unlinked grouping ${label}`, () => {
+  // 지시서 T 3번: 서로 다른 세 이름을 자료에서 확보하며, 전체 문구까지 대조한다.
+  assert.ok(A && Bname && Cname, '자료에서 서로 다른 설비 이름 세 종류 확보');
+  const issues = {unlinked:names.length, unlinkedNames:names, waiting:2};
+  assert.equal(ctx.coachSteps(issues)[2][0], `마을까지 이어요 · ${expected} · 대기 2기`);
 });
 test('T F4 all eight coach scene prefixes', () => {
   // updateCoach의 실제 텍스트 쓰기를 호출하되 단계 자동 전진은 끈다.

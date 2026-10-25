@@ -10,11 +10,11 @@ score1-node.js와 d82ux-node.js에서 합성 입력으로 검사한다. 해당 �
 import json
 import sys
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from econui import (BOOT_JS, Checks, advance, context_for, diagnostics, local_address,
                     mission_status, monitored_page, open_panel, overflow, setup_pair, shown)
-from league_flow import finish_trial, wait_unfolded
+from league_flow import finish_trial, pass_issue_check, wait_unfolded
 from fx_event import restore_fixture, seeded_fixtures
 from s8n import answer, ready
 from solo import click_next, close_drawer, read
@@ -32,6 +32,13 @@ def require(checks, condition, name):
 
 def frames(page):
     page.evaluate('() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+
+
+def inside(inner, outer, tolerance=1):
+    return (bool(inner) and bool(outer) and inner['width'] > 0 and inner['height'] > 0 and
+            inner['x'] >= outer['x'] - tolerance and inner['y'] >= outer['y'] - tolerance and
+            inner['x'] + inner['width'] <= outer['x'] + outer['width'] + tolerance and
+            inner['y'] + inner['height'] <= outer['y'] + outer['height'] + tolerance)
 
 
 def area(page, left, right):
@@ -89,6 +96,18 @@ def first_result(checks, page, tested, label, width):
     page.wait_for_function("() => !document.documentElement.classList.contains('bd-running')")
     wait_unfolded(page)
     frames(page)
+    if width == 390:
+        # 지시서 T 4번: 서랍을 다시 열기 전에 미리 기록한 첫 표시 프레임을 판정한다.
+        try:
+            page.wait_for_function('() => !!window.__score1ResultNotice', timeout=5000)
+        except PlaywrightTimeoutError:
+            pass  # 아래 단언에서 표본 없음 자체를 이름 있는 실패로 기록한다.
+        notice = page.evaluate('window.__score1ResultNotice')
+        if checks.ok(bool(notice) and len(notice['areas']) == 3,
+                     label + ' T4 390 첫 결과 알림 표시 프레임 확보'):
+            for target, overlap in zip(('결과 렌즈', '접기', '×'), notice['areas']):
+                # 지시서 T 4번: 대상이 없거나 안 보이면 교차 0으로 처리하지 않고 실패한다.
+                checks.ok(overlap == 0, label + f' T4 390 결과 알림/{target} 교차 0')
     if width == 1024:
         page.wait_for_function('() => !!window.__score1FirstReview')
         first = page.evaluate('window.__score1FirstReview')
@@ -124,12 +143,7 @@ def first_result(checks, page, tested, label, width):
             label + ' F10 공개 setViewInset을 결과 서랍 열기에 호출')
         # 공개 API에 변환 뒤 viewport 경계 조회 함수가 없으므로 T 허용 대안인 존재/호출로 판정.
         # 사설 변수/그리기 수식에서 기대 좌표를 복제하지 않는다.
-        texts = page.locator('#lg-panel #lg-timeline svg text').evaluate_all(
-            'nodes => nodes.map(n => n.getBoundingClientRect().height)')
-        # 첫 달 결과 서랍에는 월별 추이(#lg-timeline)가 아직 없다. 있으면 축 글자를 재고,
-        # 채점자가 지목한 끝 화면 궤적 그래프(서랍 안)는 fx_end.py 'F12 결과 서랍 끝 그래프 축'이 잰다.
-        checks.ok(not texts or min(texts) >= 10,
-                  label + f' F12 결과 서랍 월별 추이 축 화면 높이 10px 이상(글자 {len(texts)}개, 0개면 끝 화면은 fx_end.py)')
+        # 지시서 T 5번: F12 월별 추이 축은 글자가 생기는 fx_end.py graphs()로 옮겼다.
     open_panel(page, 'rank')
     page.emulate_media(media='print')
     try:
@@ -152,20 +166,56 @@ def grant(checks, page, before, label, width):
     }""")
     require(checks, value > 0, label + ' F1 자연 교부세 달 확보')
     text = f'이번 달 특별교부세 {value:g}억(새 설비·선로·재난 대응만)'
+    chip = page.locator('[data-cap="budget"] [data-grant-chip]')
     if width <= 760:
         after = page.locator('#lg-bar').bounding_box()
         checks.ok(before == after, label + ' F1 390 교부세 유무 막대 사각형 불변')
+        # 지시서 T 1번: 좁은 화면의 셋째 줄은 칩 안에 보이며, 금액은 독립 공개 잔액이다.
+        require(checks, chip.count() == 1 and chip.is_visible(), label + ' F1b 390 교부세 셋째 줄 표시')
+        checks.ok(chip.inner_text() == f'+{value:g}억 전용', label + ' F1b 390 교부세 셋째 줄 확정 문구')
+        money = page.locator('[data-cap="budget"]').bounding_box()
+        checks.ok(inside(chip.bounding_box(), money), label + ' F1b 셋째 줄 사각형은 남은 돈 칩 안(1px 허용)')
         tip = page.locator('details.lg-info.lg-money-info')
         require(checks, tip.count() == 1 and tip.is_visible(), label + ' F1 남은 돈 옆 설명')
+        # 지시서 T 1번: DOM의 바로 다음 형제이며 키보드 Tab도 한 번만 이동한다.
+        checks.ok(page.locator('[data-cap="budget"]').evaluate(
+            "el => el.nextElementSibling?.matches('details.lg-info.lg-money-info') === true"),
+            label + ' F1b !은 남은 돈 칩 바로 다음 형제')
+        page.locator('[data-cap="budget"]').focus()
+        # 지시서 T 1번: Tab 출발점이 실제로 칩인지 확인해 잘못된 포커스의 우연한 통과를 막는다.
+        require(checks, page.locator('[data-cap="budget"]').evaluate('el => el === document.activeElement'),
+                label + ' F1b 남은 돈 칩 포커스 가능')
+        page.keyboard.press('Tab')
+        checks.ok(tip.locator(':scope > summary').evaluate('el => el === document.activeElement'),
+                  label + ' F1b 남은 돈 칩에서 Tab 한 번이면 ! summary')
         checks.ok(tip.locator(':scope > summary').inner_text() == '!', label + ' F1 설명 summary !')
         tip.locator(':scope > summary').click()
-        checks.ok(text == tip.locator('.lg-info-pop').inner_text(), label + ' F1 설명 확정 교부세 문구')
+        # 지시서 T 1번: 좁은 화면 설명은 용도 제한과 소멸을 포함한 문장 그대로다(문구는 아르곤 2차 확정안).
+        explanation = f'남은 특별교부세 {value:g}억은 이번 달 새 설비·선로와 재난 대응에만 쓰고, 안 쓰면 사라져요.'
+        pop = tip.locator('.lg-info-pop')
+        checks.ok(explanation == pop.inner_text(), label + ' F1 설명 확정 교부세 문구')
+        # 지시서 T 1번: 설명 상자 전체가 viewport 안에 보인다(경계 오차 없음).
+        checks.ok(pop.is_visible() and inside(pop.bounding_box(),
+                  {'x': 0, 'y': 0, **page.viewport_size}, tolerance=0),
+                  label + ' F1b ! 설명 상자 전체가 화면 안')
+        # 독립 검토(묶음 2) blocker 1: is_visible은 가림을 보지 않는다. 상자 안 격자점에서 맨 위 요소가 상자 자신인지 잰다.
+        covered = pop.evaluate("""el => { const r=el.getBoundingClientRect(); let hit=0, all=0;
+          for (let i=1;i<10;i++) for (let j=1;j<5;j++) { all++; const n=document.elementFromPoint(r.left+r.width*i/10, r.top+r.height*j/5);
+            if (n && (n===el || el.contains(n))) hit++; } return [hit, all]; }""")
+        checks.ok(covered[0] == covered[1], label + f' F1b ! 설명 상자가 다른 요소에 가리지 않음({covered[0]}/{covered[1]})')
         money = page.locator('[data-cap="budget"]').bounding_box()
         summary = tip.locator(':scope > summary').bounding_box()
+        # 지시서 T 1번: 기존 누름 영역 위치 검사를 x·y 중심점 기준으로 바로잡는다.
         checks.ok(bool(money) and bool(summary) and
-                  money['x'] <= summary['x'] <= money['x'] + money['width'] and
-                  money['y'] <= summary['y'] + summary['height']/2 <= money['y'] + money['height'],
+                  money['x'] <= summary['x'] + summary['width']/2 <= money['x'] + money['width'] and
+                  # 묶음 2(F1b): 셋째 줄 때문에 금액 줄이 올라와 누름 영역 가운데를 칩 위끝 3px 위까지 허용한다.
+                  # 핵심 계약(금액 글자와 교차 0, 화면 안 표시)은 아래 단언이 지킨다.
+                  money['y'] - 4 <= summary['y'] + summary['height']/2 <= money['y'] + money['height'],
                   label + ' F1 !은 남은 돈 칩 옆')
+        # 독립 검토(묶음 2) minor 2: 가운데 y 완화와 함께, 화면 안에서 실제로 누를 수 있는 높이를 잰다.
+        # 칩이 머리 맨 위(y≈13)에 있어 44px 전체를 화면 안에 두면 금액 줄과 겹친다. 화면 안 30px 이상을 하한으로 둔다(남은 한계).
+        checks.ok(summary['y'] + summary['height'] - max(0, summary['y']) >= 30 and summary['width'] >= 44,
+                  label + ' F1b ! 누름 영역 화면 안 높이 30px 이상·폭 44px')
         # 독립 검토 major 1: '!' 누름 영역 전체가 금액 글자와 겹치지 않아야 한다.
         checks.ok(area(page, 'details.lg-money-info > summary', '[data-cap="budget"] [data-v]') == 0,
                   label + ' F1 ! 누름 영역과 남은 돈 금액 글자 교차 0')
@@ -173,6 +223,8 @@ def grant(checks, page, before, label, width):
     else:
         checks.ok(text in page.locator('[data-cap="budget"] .lg-grant-note').inner_text(),
                   label + ' F1 760px 초과 칩 주석 유지')
+        # 지시서 T 1번: 넓은 화면은 기존 주석을 쓰며 셋째 줄 칩은 숨긴다.
+        checks.ok(not shown(page, '[data-grant-chip]'), label + ' F1b 760px 초과 교부세 셋째 줄 숨김')
     overflow(checks, page, label + ' 교부세 달')
 
 
@@ -215,6 +267,35 @@ def arm_plan_notice(page):
     }""")
 
 
+def arm_result_notice(page):
+    # 지시서 T 4번: 준비 전에 설치해 알림이 실제로 보이는 첫 rAF 표본만 보존한다.
+    page.evaluate("""() => {
+      window.__score1ResultNotice=null;
+      const visible=n=>n && !n.hidden &&
+        n.checkVisibility({opacityProperty:true,visibilityProperty:true}) &&
+        n.getBoundingClientRect().width>0 && n.getBoundingClientRect().height>0;
+      const sample=()=>{
+        const L=KCP.league.state(), V=L.S||L.snap;
+        const t=document.querySelector('#bd-toast'), p=document.querySelector('#lg-panel');
+        if(V.round===1 && V.phase==='review' && visible(p) && p.dataset.tab==='result' &&
+          p.dataset.folded==='false' && visible(p.querySelector('.lg-pbody')) &&
+          visible(t) && Number(getComputedStyle(t).opacity)===1) {
+          const x=t.getBoundingClientRect();
+          const selectors=['[data-lens="result"]', '#lg-panel .lg-ptabs #lg-panel-fold',
+            '#lg-panel .lg-ptabs [data-pclose]'];
+          window.__score1ResultNotice={areas:selectors.map(selector=>{
+            const n=document.querySelector(selector);
+            if(!visible(n)) return null;
+            const y=n.getBoundingClientRect();
+            return Math.max(0,Math.min(x.right,y.right)-Math.max(x.left,y.left))*
+              Math.max(0,Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top));
+          })};
+        } else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }""")
+
+
 def solo_case(checks, context, base, fixture, width, pages):
     label = f'{width} score1'
     page, events = monitored_page(context)
@@ -230,11 +311,15 @@ def solo_case(checks, context, base, fixture, width, pages):
     close_drawer(page)
     before = page.locator('#lg-bar').bounding_box()
     checks.ok(not shown(page, '.lg-money-info'), label + ' F1 교부세 없는 1월 설명 없음')
+    # 지시서 T 1번: 교부세 없는 1월은 셋째 줄도 보이지 않아야 한다.
+    checks.ok(not shown(page, '[data-grant-chip]'), label + ' F1b 교부세 없는 1월 셋째 줄 숨김')
     overflow(checks, page, label + ' 첫 계획')
     page.locator('[data-run="7"]').click()
     tested = finish_trial(page)
     page.locator('#bd-drawer-x').click()
     arm_review(page)
+    if width == 390:
+        arm_result_notice(page)
     ready(page)
     first_result(checks, page, tested, label, width)
     # 다음 달 계획에 지난달 이유를 고치라고 요구하지 않는 uncited 계약.
@@ -254,6 +339,148 @@ def solo_case(checks, context, base, fixture, width, pages):
     require(checks, mission.count() == 1, label + ' F13 지난달 미션 존재')
     mission_status(checks, page, UNCITED, label + ' F13 uncited 확정 문구', '#lg-previous-mission', preview=True)
     overflow(checks, page, label + ' 다음 달')
+
+
+def ready_during_trial_case(checks, context, base, fixture, width, pages):
+    label = f'{width} score1 재생 중 준비'
+    page, events = monitored_page(context)
+    pages.append((events, label))
+    restore_fixture(checks, page, base, label, fixture)
+    if shown(page, '#lg-coach'):
+        page.locator('#lg-coach-close').click()
+    close_drawer(page)
+    # 지시서 T 2번: 실제 시험/준비 단추를 연속 클릭하며 재생 종료나 결과를 기다리지 않는다.
+    require(checks, page.locator('[data-run="7"]').is_visible() and
+            page.locator('[data-run="7"]').is_enabled() and
+            page.locator('#lg-ready').is_visible() and page.locator('#lg-ready').is_enabled(),
+            label + ' T2 시험·준비 단추 조작 가능')
+    immediate = page.evaluate("""() => {
+      const L=KCP.league.state(), V=L.S||L.snap, calendar=KCP.leagueCore.roundsOf(V)[0];
+      const round=V.round, phase=V.phase;
+      window.__score1RaceStarted=performance.now();
+      // 독립 검토(묶음 2) minor 5: 준비 뒤 실제 운영 재생이 시작됐는지 표본으로 남긴다.
+      window.__score1RaceReplay=false;
+      const watch=()=>{ if(document.querySelector('#bd-root.bd-replaying')) window.__score1RaceReplay=true;
+        if(performance.now()-window.__score1RaceStarted<12000) requestAnimationFrame(watch); };
+      requestAnimationFrame(watch);
+      document.querySelector('[data-run="7"]').click();
+      const playing=document.documentElement.classList.contains('bd-running');
+      document.querySelector('#lg-ready').click();
+      return {round,phase,calendar,playing,
+        running:document.documentElement.classList.contains('bd-running'),
+        trial:KCP.buildGame.lastTrial()};
+    }""")
+    # 지시서 T 2번: 이미 끝난 시험을 검사하는 공허 통과를 막는다.
+    require(checks, immediate['round'] == 1 and immediate['phase'] == 'plan' and immediate['playing'],
+            label + ' T2 첫 달 시험 재생 경합 전제')
+    # 지시서 T 2번: 준비 클릭과 같은 JS 작업에서 즉시 종료/그 달 기록을 읽는다.
+    checks.ok(not immediate['running'], label + ' T2 준비 직후 bd-running 해제')
+    trial, calendar = immediate['trial'], immediate['calendar']
+    checks.ok(bool(trial) and trial.get('days') == 7 and
+              trial.get('year') == calendar['year'] and trial.get('month') == calendar['month'],
+              label + ' T2 준비 직후 round 1 시험 기록 확정')
+    # s8n.ready의 준비 클릭 뒤 흐름을 재사용한다. 준비를 두 번 누르거나 시험을 건너뛰지 않는다.
+    pass_issue_check(page)
+    page.wait_for_selector('#lg-ready-confirm')
+    page.locator('[data-evidence="grid"]').click()
+    page.locator('[data-pred]').first.select_option('down')
+    page.locator('[data-confidence="fairly"]').click()
+    page.locator('#lg-ready-confirm').click()
+    page.wait_for_selector('#bd-root[data-lg-phase="review"]')
+    page.wait_for_function('() => performance.now() - window.__score1RaceStarted >= 10000')
+    frames(page)
+    late = page.evaluate("""() => {
+      const L=KCP.league.state(), V=L.S||L.snap, p=document.querySelector('#lg-panel');
+      const box=p?.getBoundingClientRect();
+      return {elapsed:performance.now()-window.__score1RaceStarted, round:V.round, phase:V.phase,
+        result:!!p && p.dataset.tab==='result' && !p.hidden &&
+          p.checkVisibility({opacityProperty:true,visibilityProperty:true}) && box.width>0 && box.height>0,
+        buildDrawer:document.documentElement.classList.contains('bd-drawer-open')};
+    }""")
+    # 지시서 T 2번: 늦은 시험 콜백까지 지난 뒤 결과가 유지되는지를 직접 관찰한다(서랍 재열기 없음).
+    checks.ok(late['elapsed'] >= 10000 and late['round'] == 1 and late['phase'] == 'review',
+              label + ' T2 시험 시작 10초 뒤 첫 결과 단계 유지')
+    checks.ok(late['result'], label + ' T2 시험 시작 10초 뒤 결과 서랍 표시 유지')
+    checks.ok(not late['buildDrawer'], label + ' T2 시험 시작 10초 뒤 건설 결과 서랍 닫힘')
+    # 독립 검토(묶음 2) minor 5: 실제 운영 재생이 막히지 않고, 포커스가 건설 결과 제목으로 끌려가지 않는다.
+    # 움직임 줄이기에서는 재생이 원래 없으므로 이 컨텍스트(기본 움직임)에서만 단언한다.
+    checks.ok(page.evaluate('window.__score1RaceReplay === true'), label + ' T2 준비 뒤 실제 운영 재생 시작')
+    checks.ok(page.evaluate("document.activeElement?.id !== 'bd-res-title'"), label + ' T2 포커스가 건설 결과 제목으로 가지 않음')
+
+
+def lobby_path_guard(checks, context, base, fixture, width, pages):
+    label = f'{width} score1 로비 경로'
+    page, events = monitored_page(context)
+    pages.append((events, label))
+    page.goto(base + '#league')
+    page.wait_for_function(BOOT_JS)
+    page.locator('#lg-solo-start').wait_for(state='visible')
+    frames(page)
+    # 지시서 T 6(가)번: 탭 클릭/scrollIntoView 없이 최초 로비의 선택과 좌표를 관찰한다.
+    initial = page.evaluate("""() => ({
+      solo:document.querySelector('.lg-modes [data-mode="solo"]')?.getAttribute('aria-pressed')==='true',
+      scroll:window.scrollY
+    })""")
+    require(checks, initial['solo'] and initial['scroll'] == 0,
+            label + ' T6(가) 혼자 하기 선택·첫 화면 스크롤 0')
+    start = page.locator('#lg-solo-start').bounding_box()
+    checks.ok(bool(start) and start['width'] > 0 and start['height'] > 0 and
+              start['y'] >= 0 and start['y'] + start['height'] <= 844,
+              label + ' T6(가) 혼자 시작 단추 아래끝 844px 이하')
+
+
+def promise_path_guard(checks, context, base, fixture, width, pages):
+    label = f'{width} score1 약속 경로'
+    page, events = monitored_page(context)
+    pages.append((events, label))
+    restore_fixture(checks, page, base, label, fixture)
+    if shown(page, '#lg-coach'):
+        page.locator('#lg-coach-close').click()
+    close_drawer(page)
+    # 지시서 T 6(나)번: 문제 칩 줄이 있는 첫 달 계획·닫힌 코치 조건을 먼저 확보한다.
+    require(checks, page.evaluate("() => {const L=KCP.league.state(), V=L.S||L.snap; return V.round===1 && V.phase==='plan';}") and
+            shown(page, '#lg-plan-issues') and not shown(page, '#lg-coach'),
+            label + ' T6(나) 첫 계획 문제 칩 표시·코치 닫힘')
+    ready(page, submit=False)  # 준비 → 확인 카드가 있으면 그대로 진행 → 약속 서랍.
+    frames(page)
+    # 지시서 T 6(나)번: 확신 단추를 클릭/스크롤하기 전 본문 스크롤 상자 안인지 잰다.
+    confidence = page.locator('[data-confidence="fairly"]')
+    checks.ok(confidence.is_visible() and inside(confidence.bounding_box(),
+              page.locator('#lg-panel .lg-pbody').bounding_box()),
+              label + ' T6(나) fairly 확신 단추는 약속 본문 안(1px 허용)')
+
+
+def host_start_during_trial_case(checks, context, base, pages):
+    # 독립 검토(묶음 2) major 2: 팀이 시험 재생 중일 때 진행자가 운영을 시작하는 경로(팀은 준비를 누르지 않음).
+    from econui import NEXT_JS, SYNC_JS
+    pair = []
+    try:
+        host, team, _ = setup_pair(context, base, 12, pair)
+        advance(host, team, 1, 'plan')
+        if shown(team, '#lg-coach'):
+            team.locator('#lg-coach-close').click()
+        close_drawer(team)
+        playing = team.evaluate("""() => { window.__score1T0=performance.now(); window.__score1HostReplay=false;
+          const watch=()=>{ if(document.querySelector('#bd-root.bd-replaying')) window.__score1HostReplay=true;
+            if(performance.now()-window.__score1T0<12000) requestAnimationFrame(watch); };
+          requestAnimationFrame(watch);
+          document.querySelector('[data-run="7"]').click();
+          return document.documentElement.classList.contains('bd-running'); }""")
+        require(checks, playing, '1280 진행자 운영 시작 경합 전제: 팀 시험 재생 중')
+        host.evaluate(NEXT_JS)
+        team.wait_for_function(SYNC_JS, arg=[1, 'review'])
+        team.wait_for_function('() => performance.now() - window.__score1T0 >= 10000')
+        late = team.evaluate("""() => { const p=document.querySelector('#lg-panel');
+          return {result: !!p && !p.hidden && p.dataset.tab==='result',
+            build: document.documentElement.classList.contains('bd-drawer-open'),
+            running: document.documentElement.classList.contains('bd-running'),
+            focus: document.activeElement?.id || '', replay: window.__score1HostReplay}; }""")
+        checks.ok(late['result'] and not late['build'] and not late['running'],
+                  '1280 진행자 운영 시작 경합: 10초 뒤 팀 결과 서랍 유지·건설 결과 서랍 닫힘')
+        checks.ok(late['replay'], '1280 진행자 운영 시작 경합: 팀 실제 운영 재생 시작')
+        checks.ok(late['focus'] != 'bd-res-title', '1280 진행자 운영 시작 경합: 포커스가 건설 결과 제목으로 가지 않음')
+    finally:
+        pages.extend((events, '진행자 경합 ' + label) for _, events, label in pair)
 
 
 def host_case(checks, context, base, fixture, pages):
@@ -305,6 +532,32 @@ def main():
                             diagnostics(checks,events,label)
                         checks.ok(not external, f'{width} 외부 요청 0')
                         context.close()
+                # 지시서 T 2·6번: 각 경합/경로는 별도 컨텍스트와 새 페이지에서 독립 실행한다.
+                for width, height, case in ((1280,900,ready_during_trial_case),
+                                            (390,844,ready_during_trial_case),
+                                            (390,844,lobby_path_guard),
+                                            (1024,768,promise_path_guard)):
+                    context, external = context_for(browser, base, width, height, 'light')
+                    pages = []
+                    label = f'{width} {case.__name__}'
+                    try:
+                        checks.test(label + ' 예외 0',
+                                    lambda: (case(checks,context,base,fixture,width,pages), True)[1])
+                    finally:
+                        for events, page_label in pages:
+                            diagnostics(checks,events,page_label)
+                        checks.ok(not external, label + ' 외부 요청 0')
+                        context.close()
+                context, external = context_for(browser, base, 1280, 900, 'light')
+                pages = []
+                try:
+                    checks.test('진행자 운영 시작 경합 예외 0',
+                                lambda: (host_start_during_trial_case(checks, context, base, pages), True)[1])
+                finally:
+                    for events, page_label in pages:
+                        diagnostics(checks, events, page_label)
+                    checks.ok(not external, '진행자 운영 시작 경합 외부 요청 0')
+                    context.close()
                 context, external = context_for(browser,base,1280,900,'light')
                 pages = []
                 try:

@@ -3063,7 +3063,7 @@
     line(R.res.hrDem, "rgba(237,244,252,0.85)", 1.4);
     line(R.res.hrSup, "#71dceb", 2);
   }
-  function finishRun() {
+  function finishRun({ quiet = false } = {}) {
     if (!S || !S.run) return;
     const R = S.run;
     R.done = true;
@@ -3091,12 +3091,12 @@
     placeBannerValues();
     S.drawerTab = "result";
     renderDrawer();
-    openDrawer("result");
+    if (!quiet) openDrawer("result");
     const head = $("#bd-res-title");
-    if (head) head.focus({ preventScroll: true });
+    if (!quiet && head) head.focus({ preventScroll: true });
     announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
     // 첫 운영 뒤 한 번만 일지를 저절로 연다.
-    if (!S.opts.league && !S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
+    if (!quiet && !S.opts.league && !S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
     if (S.opts.league) S.opts.onTrial?.(S.result);
     request();
   }
@@ -4157,6 +4157,7 @@
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
     powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset,
+    finishTrial: () => { if (!S?.alive || !S.run || S.run.replay) return false; S.run.k = S.run.res.H - 1; updateRunPanel(1); finishRun({ quiet: true }); return true; },
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues, townLook,
     refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false || S.staticSeason !== currentMapSeason()) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
