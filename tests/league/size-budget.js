@@ -4,8 +4,10 @@
 // league-net.js: 기록 축약 문턱 178000B, 전송 MAX_BYTES 200000B.
 // D-77, 2026-10-17: 6팀 36달 balanced·fixed 149068B, careful·fixed 152599B.
 // 최종 _cp 봉투 전체 기준. 목표선은 실패선, 회귀선은 두 판 최대값 + 2500B.
+// 2026-10-25 기준선 갱신: D-87(LNG·석탄 신설·입지 민원)이 공개 상태를 늘려 두 판 최대 153789B → 155801B(+1.3%).
+// 의도한 기능 증가라 회귀선을 새 최대값 + 2500B로 옮긴다. 실패선 165000B·전송 상한 200000B는 그대로.
 const MAX_TARGET = 165000;
-const REGRESS_COMPACT = 155099;
+const REGRESS_COMPACT = 158301;
 const MAX_FLOOR = 178000;
 const MAX_COMPACT = 200000;
 // 혼자 하기 저장 한도 약 5200000자의 40%. 자유 서술·이전 판은 근사에서 제외한다.
