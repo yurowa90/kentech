@@ -247,7 +247,11 @@ test('D77 생산 축약·시안2 행 사전의 econ 값에 facility 무손실', 
   const V = plain(C.publicView(normal, 0)), before = clone(V);
   // size-budget.measure는 production compact→canonical→expand 전체 깊은 비교를 수행한다.
   const measured = size.measure(K, normal), prod = measured.compact;
-  ok(prod._cp === 1 && prod.keys.some(keys => keys.includes('econ')), '생산 행 사전에 보고서 econ 키');
+  // 이 fixture는 _cp: 2, _refs: 5로 econ.report.score·econ.scoreState.totals를 접는다.
+  // econ.report.offers는 빈 배열이라 접지 않는다. 참조 없는 봉투는 옛 판 1을 유지한다.
+  ok(prod._cp === 1 && !Object.hasOwn(prod, '_refs') ||
+    prod._cp === 2 && Number.isInteger(prod._refs) && prod._refs >= 1, '생산 압축 판수·참조 비트 형식');
+  ok(prod.keys.some(keys => keys.includes('econ')), '생산 행 사전에 보고서 econ 키');
   const restored = N.expandSnapshot(JSON.parse(N.canonical(prod)));
   eq(restored, V, '생산 공개 상태 전체 무손실');
   const packed = proposal.compactV2(V), proposalRestored = proposal.expandV2(JSON.parse(N.canonical(packed)), N);
