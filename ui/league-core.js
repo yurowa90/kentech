@@ -508,6 +508,19 @@
     E.order.forEach(id => {
       const c = E.cities[id];
       cities[id] = { research: researchView(S, id), grid: gridView(S.grid && S.grid[id]), curtailMWh: S.econRep && S.econRep.grid && S.econRep.grid[id] ? S.econRep.grid[id].curtailMWh : 0, name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c, S.econRep?.groups[id]), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
+      if (Object.keys(c.groupOwn || {}).length) cities[id].groupOwn = c.groupOwn;
+      const ownLag = {};
+      Object.entries(c.groupContrib || {}).forEach(([g, terms]) => {
+        const values = {};
+        KCP.ECON_DATA.groupOwnKeys.forEach(k => {
+          const value = r2(terms[k] || 0);
+          if (Number.isFinite(value) && value) values[k] = value;
+        });
+        if (Object.keys(values).length) ownLag[g] = values;
+      });
+      if (Object.keys(ownLag).length) cities[id].groupOwnLag = ownLag;
+      // 공통 rel에 포함된 병원 몫: 화면에서 분리할 때 한 번만 센다.
+      if (r2(c.hospRel || 0)) cities[id].hospRel = r2(c.hospRel);
     });
     const report = S.econRep || null;
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;

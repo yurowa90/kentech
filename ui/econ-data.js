@@ -25,6 +25,9 @@
       repair: { text: "호우·폭염이 든 달에는 공공시설 보수비가 한 번 나가요. 사건이 클수록 커지고, 대응하면 호우 보수비만 줄어요. 금액은 게임 가정이에요." },
       grant: { text: "남은 특별교부세 {n}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요." }
     },
+    // 집단 만족 원인 펼침의 집단 전용 항. 항목 이름은 league.js PART_NAMES(기존 화면 용어)를 쓰고 여기는 순서(엔진 econ.js도 이 목록을 읽음)와 건수·낭독 문구만 둔다.
+    groupOwnKeys: ["outage", "hospital", "complaint", "share", "save", "unrest", "bounds"],
+    groupOwnCopy: { complaintN: "{n}건", sitingN: "입지 {n}건", mixedN: "{n}건 중 입지 {m}건", penalty: "만족 목표에서 깎인 점수", contribution: "만족 목표에 더해진 점수", target: "최종 반영", applied: "현재 반영" },
     // D-87 1단계 사실 자료. text는 화면 문장(사실 범위 확인본)이며 도구 '!'·배치 안내·시작 전 안내·공사 기간 표가 읽는다.
     thermalFacts: {
       coalScenario: { hypothetical: true, phaseoutTargetYear: 2040, grade: "G", targetGrade: "O", sourceDate: "2025-11-19", sourceScope: "title", sources: ["docs/DECISIONS.md#d-87", "https://www.korea.kr/briefing/pressReleaseView.do?newsId=156729173"], text: "정부(기후에너지환경부, 2025년 11월 19일 설명자료) 목표는 2040년까지 석탄발전 폐지예요. 비용·오염을 비교하게 계획에 없는 새 건설을 가정해 열어 둬요." },
