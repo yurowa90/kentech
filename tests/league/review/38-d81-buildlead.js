@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
-const { withoutD90, withoutGroupOwn, assertRequestsUnchanged } = require('./d90-public-contract');
+const { withoutD90, withoutGroupOwn } = require('./d90-public-contract');
 const ROOT = path.resolve(__dirname, '../../..');
 const BEFORE = '777805a', IMPLEMENTATION = '249a41b';
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -352,8 +352,61 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
   } finally { D.params.buildLeadYears.v = years; D.params.buildLeadKorea.v = korea; }
 });
 
+// 팀 요청 경로를 명시한다. local·supabase의 send와 내부 전송 함수도 통째로 비교한다.
+// bytes·secure·sessionId, algorithm·signing, MAX_BYTES·SEND_CAP·ACK_WAIT와 내보내기는
+// 아래 나머지 소스 비교에 포함되어 서명 방식·순번·크기 제한의 변경도 실패한다.
+const requestFunctions = {
+  'league-core': ['reduce'],
+  league: ['send', 'sendPlan'],
+  'league-net': ['publicJWK', 'createIdentity', 'fingerprint', 'signEnvelope', 'verifyEnvelope',
+    'requestBody', 'receiver', 'broadcastMessage', 'local', 'supabase']
+};
+function functionSource(source, name) {
+  const pattern = new RegExp(`^  (?:async )?function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?^  \\}`, 'm');
+  const found = source.match(pattern)?.[0];
+  assert.ok(found, `${name}: 요청·축약 함수 비교 연결점`);
+  return found;
+}
+function withoutSnapshotChanges(source) {
+  for (const name of ['snapshotEnvelope', 'compactSnapshot', 'expandSnapshot'])
+    source = source.replace(functionSource(source, name), `  function ${name} /* snapshot */`);
+  // D-77의 경로 설명 주석과 새 상수 한 줄만 제외한다. snapshotRows 등은 계속 비교한다.
+  return source.replace(/^  \/\/ D-77:[^\n]*\n(?:  \/\/[^\n]*\n)*/m, '')
+    .replace(/^  const snapshotRefs = [^\n]*\n/m, '');
+}
+function assertRequestsUnchanged(current, previous) {
+  for (const [name, functions] of Object.entries(requestFunctions)) for (const fn of functions)
+    assert.equal(functionSource(current[name], fn), functionSource(previous[name], fn),
+      `D-65 ${name}.${fn}: 팀 요청 생성·수신 형식 바이트 불변`);
+  assert.equal(withoutSnapshotChanges(current['league-net']), withoutSnapshotChanges(previous['league-net']),
+    'D-65 league-net: snapshotRefs·snapshotEnvelope·compactSnapshot·expandSnapshot 외 소스 바이트 불변');
+}
+const requestSources = Object.fromEntries(Object.keys(requestFunctions).map(name => [name, read(name)]));
+const previousRequests = Object.fromEntries(Object.keys(requestFunctions).map(name => [name, gitSource('186e182', name)]));
 test('D-65 팀→진행자 요청 형식은 D-90 이전과 동일', () => {
-  assertRequestsUnchanged(ROOT); assertions++;
+  assertRequestsUnchanged(requestSources, previousRequests); assertions++;
+});
+test('D-65 변이: 팀 요청 서명 함수 한 글자 변경을 거부', () => {
+  const source = requestSources['league-net'], signature = functionSource(source, 'signEnvelope');
+  const changed = signature.replace('n: identity.n', 'm: identity.n');
+  ok(changed !== signature, '서명 요청 순번 키 n→m 한 글자 변이 연결점');
+  assertions++;
+  assert.throws(() => assertRequestsUnchanged({ ...requestSources,
+    'league-net': source.replace(signature, changed) }, previousRequests),
+  { name: 'AssertionError', message: /D-65 league-net\.signEnvelope/ }, '실제 요청 비교가 서명 함수 변이를 검출');
+  mutations.push({ kind: '팀 요청 signEnvelope 순번 키 n→m 한 글자', detected: true });
+});
+test('D-65 변이: 비교에서 제외하지 않은 행 사전·크기 제한 변경을 거부', () => {
+  for (const [from, to] of [['snapshotRows(view, row, packing)', 'snapshotRows(view, row, packinG)'],
+    ['const SEND_CAP = 256000;', 'const SEND_CAP = 256001;']]) {
+    const source = requestSources['league-net'];
+    eq(source.split(from).length - 1, 1, `${from}: 변이 연결점 한 곳`);
+    assertions++;
+    assert.throws(() => assertRequestsUnchanged({ ...requestSources,
+      'league-net': source.replace(from, to) }, previousRequests),
+    { name: 'AssertionError', message: /snapshotRefs·snapshotEnvelope·compactSnapshot·expandSnapshot 외/ },
+    '축약 함수 일부를 제외해도 나머지 소스 변경은 검출');
+  }
 });
 
 console.log(JSON.stringify({ suite: '38-d81-buildlead', assertions, failures: failures.length, details: failures, mutations }));
