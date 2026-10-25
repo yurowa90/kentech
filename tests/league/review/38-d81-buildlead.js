@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
+const { withoutD90, assertRequestsUnchanged } = require('./d90-public-contract');
 const ROOT = path.resolve(__dirname, '../../..');
 const BEFORE = '777805a', IMPLEMENTATION = '249a41b';
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -270,12 +271,31 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
       ok(!!oldC.run(old, previous.buildGame, 0) && !!C.run(current, K.buildGame, 0), '양쪽 실제 운영');
     }
     eq(current.phase, phase, `${phase}: 비교 단계`);
-    const before = plain(oldC.publicView(old, 0)), after = plain(C.publicView(current, 0));
+    const before = plain(oldC.publicView(old, 0)), rawAfter = plain(C.publicView(current, 0)), after = withoutD90(rawAfter);
     eq(keyPaths(after), keyPaths(before), `${phase}: 중첩 공개 키 집합 동일`);
     eq(Object.keys(after.econ.speeds).sort(), Object.keys(before.econ.speeds).sort(), `${phase}: speeds 키 집합 동일`);
     eq(after.econ.speeds.items.map(item => item.key), before.econ.speeds.items.map(item => item.key),
       `${phase}: speeds.items 키·순서 동일`);
     eq(numericValues(after), numericValues(before), `${phase}: 공개 상태 숫자 값도 동일`);
+    if (phase === 'review') {
+      const id = current.active[0];
+      for (const [name, mutate] of [
+        ['월 보수비 0→1', v => { v.results[0].team[id].cost.repair = 1; }],
+        ['별도 세출 0→1', v => { v.econ.report.fiscal[id].exp.repair = 1; }],
+        ['미승인 중첩 키', v => { v.results[0].team[id].cost.unapproved = 0; }],
+        ['기존 현금 수치', v => { v.econ.cities[id].cash += 1; }],
+        ['팀 상태쪽 repair 키', v => { v.teams[id].repair = 0; }]
+      ]) {
+        const changed = clone(rawAfter); mutate(changed);
+        assertions++;
+        assert.throws(() => {
+          const normalized = withoutD90(changed);
+          assert.deepEqual(keyPaths(normalized), keyPaths(before));
+          assert.deepEqual(numericValues(normalized), numericValues(before));
+        }, assert.AssertionError, `${name}: 승인 경로 예외로 가려지지 않음`);
+        mutations.push({ kind: name, detected: true });
+      }
+    }
     const stateBefore = clone(current), dataBefore = clone(D);
     U.speedsHTML(after.econ);
     eq(current, stateBefore, `${phase}: 표시 후 게임 상태 불변`);
@@ -287,6 +307,10 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
     D.params.buildLeadKorea.v = { ...KOREA, windPermitYears: 88 };
     eq(C.publicView(current, 0), viewBefore, '기기 안 공사 기간 자료는 공개 상태에 추가되지 않음');
   } finally { D.params.buildLeadYears.v = years; D.params.buildLeadKorea.v = korea; }
+});
+
+test('D-65 팀→진행자 요청 형식은 D-90 이전과 동일', () => {
+  assertRequestsUnchanged(ROOT); assertions++;
 });
 
 console.log(JSON.stringify({ suite: '38-d81-buildlead', assertions, failures: failures.length, details: failures, mutations }));

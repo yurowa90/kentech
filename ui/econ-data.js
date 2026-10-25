@@ -15,8 +15,16 @@
   KCP.ECON_DATA = {
     version: 1,
     startYear: 2027,
-    // D-90 화면 문구는 별도 검토·연결 단위에서 채운다. 숫자의 근거·가정은 params/REF 19.
-    disasterFacts: { rain: { text: "" }, heat: { text: "", limitation: "" }, repair: { text: "" }, grant: { text: "" } },
+    // D-90 최종 화면 문구. 숫자의 근거·가정은 params/REF 19.
+    disasterFacts: {
+      rain: { text: "장마 사건 때 절반 확률로 장마 먹구름 대신 나와요(게임 가정). 재난 및 안전관리 기본법이 정한 자연재난이에요(근거 확인). 피해와 보수비는 게임 가정이에요." },
+      heat: {
+        text: "폭염 달엔 바깥 공기와 패널이 더워져 LNG와 일반 태양광 출력이 조금 줄어요(연구 근거). 얼마나 더 더운지는 게임 가정이에요.",
+        limitation: "석탄·SMR·디젤과 탠덤 태양광은 넣을 근거 값을 못 찾아 이 게임에선 폭염 때 출력을 줄이지 않아요."
+      },
+      repair: { text: "호우·폭염이 든 달에는 공공시설 보수비가 한 번 나가요. 사건이 클수록, 대응하지 않을수록 커지고 금액은 게임 가정이에요." },
+      grant: { text: "남은 특별교부세 {n}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요." }
+    },
     // D-87 1단계 사실 자료. text는 화면 문장(사실 범위 확인본)이며 도구 '!'·배치 안내·시작 전 안내·공사 기간 표가 읽는다.
     thermalFacts: {
       coalScenario: { hypothetical: true, phaseoutTargetYear: 2040, grade: "G", targetGrade: "O", sourceDate: "2025-11-19", sourceScope: "title", sources: ["docs/DECISIONS.md#d-87", "https://www.korea.kr/briefing/pressReleaseView.do?newsId=156729173"], text: "정부(기후에너지환경부, 2025년 11월 19일 설명자료) 목표는 2040년까지 석탄발전 폐지예요. 비용·오염을 비교하게 계획에 없는 새 건설을 가정해 열어 둬요." },

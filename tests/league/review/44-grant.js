@@ -11,7 +11,7 @@ const source = Object.fromEntries(names.map(n => [n, fs.readFileSync(path.join(R
 const clone = x => JSON.parse(JSON.stringify(x));
 const IDS = ['hwaseong', 'pyeongtaek', 'anseong', 'dangjin', 'asan', 'cheonan'];
 const COAST = ['hwaseong', 'pyeongtaek', 'dangjin', 'asan'];
-const DISASTERS = ['typhoon_coast', 'heavy_snow_solar', 'coldwave_heating', 'heatwave_peak', 'spring_dust_haze'];
+const DISASTERS = ['typhoon_coast', 'heavy_snow_solar', 'coldwave_heating', 'heatwave_peak', 'spring_dust_haze', 'heavy_rain'];
 const TOKEN = 'q8-synthetic-token', ID = 'hwaseong';
 const empty = () => ({ builds: [], lines: [], policies: [], rq: [] });
 let assertions = 0, passed = 0, failed = 0, detected = 0;
@@ -119,7 +119,7 @@ function buildMoney(h, S, legacyLeft) {
 function buildDescriptionContract(h, which, withGrant) {
   const S = setup(h, { over: false, general: 50, events: withGrant ? ['heatwave_peak'] : [] });
   const actual = buildMoney(h, S);
-  const description = '남은 돈 50.0억 (빚 한도 포함) · 이번 달 특별교부세 10.0억(새 설비·선로·재난 대응만)';
+  const description = '남은 돈 50.0억 (빚 한도 포함) · 이번 달 특별교부세 10.0억(새 설비·선로·재난 대응, 남으면 보수비)';
   if (which === 'title') a.equal(actual.title, withGrant ? description : '50억', 'build refreshHUD 돈 값 title');
   else a.ok(actual.aria.endsWith(`${withGrant ? description : '예산 잔액 50.0억'}.`), 'build updateAria 지도 예산 문구');
 }
@@ -147,6 +147,22 @@ function responseContract(h, amount, want) {
   a.equal(request(h, S, { type: 'respond', ev: 'heatwave_peak', opt: 'none' }).ok, true, '무료 취소 허용');
 }
 // 실제 월 운영·econ 장부. 세입 전액 선지급/이월 변이가 이 오라클을 깨야 한다.
+// REF 19.1·D-89/D-90의 순서. 구현 장부·grantOf의 출력으로 기대값을 만들지 않는다.
+function settlementExpected(awarded, planUsed, repair, otherBonus = 0) {
+  const cents = value => Math.round(value * 100) / 100;
+  const repairUsed = Math.min(awarded - planUsed, repair);
+  return { grant: { awarded, planUsed, repairUsed, used: cents(planUsed + repairUsed),
+    expired: cents(awarded - planUsed - repairUsed), netRepair: cents(repair - repairUsed) },
+    bonus: cents(otherBonus + planUsed + repairUsed) };
+}
+function assertSettlement(h, S, expected, repair) {
+  const f = S.econRep.fiscal[ID], r = S.results.at(-1).team[ID];
+  a.deepEqual(clone(r.disasterGrant), expected.grant, '계획 → 보수 → 소멸의 정확한 정산 필드·값');
+  near(r.cost.repair, repair, '대표기간 결과에도 월 보수 한 번');
+  near(f.exp.repair, repair, '별도 세출의 월 보수비');
+  near(f.rev.bonus, expected.bonus, '기타 지원금 + 계획 사용 + 보수 사용만 세입');
+  near(Object.values(f.exp).reduce((sum, value) => sum + value, 0), f.expTotal, '보수 포함 세출 합');
+}
 function settleContract(h, mode, used) {
   const S = setup(h, { over: false, general: 50 });
   if (mode === 'solar') a.equal(submit(h, S, solar(h)).ok, true);
@@ -162,10 +178,14 @@ function settleContract(h, mode, used) {
     S.teams[ID].research = { queue: ['grid'], prog: { grid: 8 } };
   }
   const before = S.econ.cities[ID].cash;
+  // 폭염 x=1·ΔT와 별개인 보수 4억. dr은 수요만 줄이므로 보수비는 그대로다.
+  const expected = settlementExpected(10, used, 4);
   near(h.C.grantOf(S, h.R, ID, h.B).used, used, `${mode} 정산 전 적격 사용액`);
+  near(h.C.grantOf(S, h.R, ID, h.B).left, 10 - used, `${mode} 계획 잔액에서 보수 미리 차감 없음`);
+  near(h.C.fundingOf(h.B, S, h.R, ID, S.teams[ID].plan).grant.used, used, `${mode} 승인에는 계획 사용만 포함`);
   h.C.run(S, h.B, 4);
   const f = S.econRep.fiscal[ID];
-  near(f.rev.bonus, used, `${mode} 사용한 몫만 세입`);
+  assertSettlement(h, S, expected, 4);
   near(f.cashBefore, before, `${mode} 현금 선지급 없음`);
   near(f.cashBefore + f.revTotal - f.expTotal, f.cashAfter, `${mode} 현금 항등식`);
   near(S.econ.cities[ID].cash, f.cashAfter, `${mode} 장부와 실제 현금 동일`);
@@ -241,7 +261,8 @@ function nonDisasterResponseContract(h, over) {
       a.equal(S.teams[ID].resp[key], 'dr', '일반 재원으로 승인한 비재난 대응 저장');
       h.C.run(S, h.B, 4);
       const fiscal = S.econRep.fiscal[ID];
-      near(fiscal.rev.bonus, used, '정산에도 재난 대응 사용액만 교부 세입');
+      assertSettlement(h, S, settlementExpected(10, used, 4), 4);
+      near(fiscal.rev.bonus, used + 4, '비재난 대응3억은 제외·폭염 보수4억은 별도 인정');
       near(fiscal.cashBefore + fiscal.revTotal - fiscal.expTotal, fiscal.cashAfter, '혼합 사건 현금 항등식');
     }
   }
@@ -303,6 +324,41 @@ try {
   });
   for (const [mode, used] of [['unused', 0], ['solar', 8], ['line', 6], ['response', 4], ['research', 0]])
     test('정산', mode, () => settleContract(h, mode, used));
+  test('정산', '기타 지원금과 재난 교부 사용액을 별도로 합산', () => {
+    // 실제 금액을 읽어 기대값으로 삼지 않는 가상 지원금 7억 fixture.
+    h.R.events.push({ id: 'synthetic_support', scope: 'region', effect: { budgetAdd: 7 } });
+    try {
+      const S = setup(h, { over: false, general: 50, events: ['heatwave_peak', 'synthetic_support'] });
+      h.C.run(S, h.B, 4);
+      assertSettlement(h, S, settlementExpected(10, 0, 4, 7), 4);
+    } finally { h.R.events.pop(); }
+  });
+  test('계획 승인', '실제 재난 크기·월말 보수비가 grantOf/fundingOf에 들어가지 않음', () => {
+    for (const ev of ['heatwave_peak', 'heavy_rain']) {
+      const S = setup(h, { events: [ev] }), plan = solar(h), values = [];
+      S.teams[ID].plan = plan;
+      for (const x of [.7, 1, 1.3]) {
+        S.events[0].x = x;
+        const grant = h.C.grantOf(S, h.R, ID, h.B), funding = h.C.fundingOf(h.B, S, h.R, ID, plan);
+        a.deepEqual(clone(grant), { awarded: 10, eligible: 8, used: 8, left: 2 }, '새 설비8억만 적격·보수 선차감 없음');
+        a.equal(funding.ok, true, '한도 초과 예외는 계획 적격액만으로 승인');
+        values.push(clone(funding));
+      }
+      a.deepEqual(values[0], values[1], '숨은 x 차이가 승인 형식·금액에 영향 없음');
+      a.deepEqual(values[1], values[2], '보수비가 큰 x도 같은 승인');
+    }
+  });
+  for (const [opt, response, repair] of [['none', 0, 12], ['inspect', 1.5, 9.6], ['drain', 4, 6.6]])
+    test('정산', `호우/${opt}: 보수에 남은 교부만 사용`, () => {
+      // REF 19.1: 12억×x(1)×dev(1/.8/.55), 월 한 번. 금액은 독립 고정값.
+      const S = setup(h, { over: false, general: 50, events: ['heavy_rain'] });
+      if (opt !== 'none') a.equal(request(h, S, { type: 'respond', ev: 'heavy_rain', opt }).ok, true);
+      near(h.C.grantOf(S, h.R, ID, h.B).used, response, '호우 계획에서는 대응비만 사용');
+      h.C.run(S, h.B, 4);
+      assertSettlement(h, S, settlementExpected(10, response, repair), repair);
+      const f = S.econRep.fiscal[ID];
+      near(f.cashBefore + f.revTotal - f.expTotal, f.cashAfter, '호우 보수·지원 후 현금 항등식');
+    });
   test('일반 비용', '미사용 교부세로 연구 예약·직접 연구 불가', () => researchContract(h));
   test('일반 비용', '초과 부채·기존 설비 철거 회수·연구 예약은 교부 유무 모두 거절', () => salvageResearchContract(h));
   for (const over of [true, false]) test('대응 적격', `${over ? '한도 초과' : '일반50억'}: 폭염과 열대야 동시 발생`, () => nonDisasterResponseContract(h, over));
@@ -512,7 +568,7 @@ try {
     a.match(plain, econuiRegex, 'econui.py 실제 정규식 계속 일치');
     const n = (50 - count * 8 + Math.min(amount, count * 8 + (response ? 4 : 0)) - (response ? 4 : 0)).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
     // 일반 돈 50억, 적격 비용은 교부세 먼저 사용. UI 함수 반환값을 기대 문자열로 쓰지 않는다.
-    const suffix = left ? ` · 이번 달 특별교부세 ${left}억(새 설비·선로·재난 대응만)` : '';
+    const suffix = left ? ` · 이번 달 특별교부세 ${left}억(새 설비·선로·재난 대응, 남으면 보수비)` : '';
     const text = `남은 돈 ${n}억 (빚 한도 포함)${suffix}`;
     a.equal(bar.plain, text, '팀 돈 칸 확정 전체 문구');
     a.equal(bar.money.title, text, 'HUD title'); a.equal(bar.money['aria-label'], text, 'HUD aria');
@@ -566,7 +622,7 @@ try {
     const actual = buildMoney(h, S), previous = buildMoney(oldBuild, S, left);
     const value = Number.isInteger(left) ? `${left}억` : `${money}억`;
     a.equal(actual.value, value, 'refreshHUD 표시 잔액에 미사용 교부세 합산 없음');
-    const description = grant ? `남은 돈 ${money}억 (빚 한도 포함) · 이번 달 특별교부세 ${grant}억(새 설비·선로·재난 대응만)` : '';
+    const description = grant ? `남은 돈 ${money}억 (빚 한도 포함) · 이번 달 특별교부세 ${grant}억(새 설비·선로·재난 대응, 남으면 보수비)` : '';
     a.equal(actual.title, description || value, 'refreshHUD가 실제 쓴 [data-v] title');
     a.ok(previous.aria.endsWith(`예산 잔액 ${money}억.`), '3fdcee5 지도 문구 fixture');
     a.equal(actual.aria, grant ? previous.aria.replace(`예산 잔액 ${money}억.`, `${description}.`) : previous.aria,
@@ -575,7 +631,7 @@ try {
   });
   h.D.params.disasterGrant.v = 10;
   mutation('미사용분을 현금 세입으로 이월', { core: replaceOne(source['league-core'],
-    '(grantUsed ?? grantOf(S, R, id).used)', 'grantAmount(S, R, id)') }, mutant => settleContract(mutant, 'unused', 0));
+    '(grantUsed ?? r.disasterGrant?.used ?? grantOf(S, R, id).used)', 'grantAmount(S, R, id)') }, mutant => settleContract(mutant, 'unused', 0));
   mutation('연구 예약을 교부세로 감당', { core: replaceOne(source['league-core'],
     'const generalSpend = r2(spent + extra - grant.used)', 'const generalSpend = r2(spent + extra - grant.awarded)') }, researchContract);
   mutation('한도 초과 예외 경계 +1억', { core: replaceOne(source['league-core'],

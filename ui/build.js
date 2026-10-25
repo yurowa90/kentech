@@ -1211,7 +1211,7 @@
     const value = budgetValue(S && S.st);
     // 교부세가 없는 달에는 빈 문자열: 돈 칸 title·지도 aria-label이 바꾸기 전 문구를 그대로 쓴다.
     if (typeof value === "number" || !(value.grant.left > 0)) return "";
-    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응만)` : "";
+    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응, 남으면 보수비)` : "";
     return `남은 돈 ${fmt(value.left, 1)}억 (빚 한도 포함)${grantNote}`;
   };
   const withinBudget = plan => {
