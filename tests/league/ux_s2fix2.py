@@ -325,7 +325,7 @@ class Suite:
         same_line = a and ready and min(a['bottom'], ready['bottom']) > max(a['top'], ready['top'])
         self.check(bool(a and ready) and (not same_line or a['right'] <= ready['left']-4),
                    name + ' A2 같은 줄 행동 영역 오른쪽 여백 ≥4px', data)
-        for title in ('이웃·거래', '지역 지도', '연구', '결과', '일지', '도시', '순위'):
+        for title in ('사건·거래', '지역 지도', '연구', '결과', '일지', '도시', '순위'):
             buttons = page.locator('#lg-bar .lg-actions').get_by_role('button', name=title, exact=True)
             if not self.check(buttons.count() == 1, name + ' A2 단추 존재 ' + title, buttons.count()):
                 continue

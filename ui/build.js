@@ -3448,15 +3448,62 @@
     const list = SITES.map((W, si) => ({ W, si })).filter(({ W }) => !PK.climate || MAJOR[W.kind] && !(W.kind === "hospital" && PK.climate));
     box.innerHTML = list.map(({ W, si }) => `<div class="bd-banner" data-si="${si}" data-kind="${W.kind}"><span class="bd-bn-code">${esc(W.code || W.id)}</span><span class="bd-bn-name">${esc(W.name)}</span>${W.note ? `<span class="bd-bn-note">${esc(W.note)}</span>` : ""}<span class="bd-bn-val num" data-bv></span></div>`).join("");
     S.banners = Array.from(box.children);
+    delete box.dataset.coachMarks;
+    coachMarks(S.coachMarks || []);
     S.bannerKey = "";
   }
+  // 코치가 알려 준 칸·자료 이름만 받는다. 지도 계산·그리기는 기존 이름표 경로를 그대로 쓴다.
+  function coachMarks(marks) {
+    if (!S) return;
+    const box = $("#bd-banners");
+    if (!box) return;
+    const list = marks.filter(mark => TILES[mark.tile] && typeof mark.text === "string")
+      .map(({ tile, text }) => ({ tile, text }));
+    const key = JSON.stringify(list);
+    if (box.dataset.coachMarks === key) return;
+    box.dataset.coachMarks = key;
+    S.coachMarks = list;
+    box.querySelectorAll(".bd-coach-mark").forEach(el => el.remove());
+    S.coachLabels = list.map(mark => {
+      const el = document.createElement("div"); el.className = "bd-coach-mark";
+      el.textContent = mark.text;
+      // 불투명 바탕과 흰 글자(대비 15.7): 밝음·어두움 모두 같은 가독성. 클릭은 지도로 통과한다.
+      el.style.cssText = "position:absolute;left:0;top:0;box-sizing:border-box;padding:5px 8px;border:2px solid #ffe29a;border-radius:8px;background:#102533;color:#fff;font:700 13px/1.35 sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
+      box.append(el);
+      return el;
+    });
+    S.bannerKey = "";
+    placeBanners(); request();
+  }
+  KCP.buildGame.coachMarks = coachMarks;
   function placeBanners() {
     if (!S.banners) return;
-    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot}`;
+    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot},${V.W},${V.H},${V.area.t}`;
     if (S.bannerKey === key) return;
     S.bannerKey = key;
     const placed = [];
     const hit = (a, b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
+    const targets = (S.coachMarks || []).map(mark => {
+      const [x, y] = tileTop(TILES[mark.tile], 0);
+      return { x: x - V.S * 0.6, y: y - V.S * 0.6, w: V.S * 1.2, h: V.S * 1.2 };
+    });
+    // 코치 표지를 먼저 배치한다. 두 대상 칸과 먼저 놓인 코치 표지를 일반 이름표가 가리지 않는다.
+    (S.coachLabels || []).forEach((el, i) => {
+      const [x, y] = tileTop(TILES[S.coachMarks[i].tile], 0);
+      el.style.maxWidth = `${Math.max(0, V.W - 8)}px`;
+      const w = el.offsetWidth, h = el.offsetHeight, gap = V.S * 0.6 + 6;
+      // 코치 표지는 지도 영역(V.area: 서랍·아래 막대를 뺀 곳) 안에서만 자른다(검토 minor 8).
+      const rect = (bx, by) => ({ x: clamp(bx, V.area.l + 4, Math.max(V.area.l + 4, V.area.r - w - 4)),
+        y: clamp(by, V.area.t, Math.max(V.area.t, V.area.b - h - 4)), w, h });
+      const options = [rect(x + gap, y - h / 2), rect(x - gap - w, y - h / 2),
+        rect(x - w / 2, y - gap - h), rect(x - w / 2, y + gap)];
+      // 가장자리에서도 두 이름이 겹치지 않도록 앞 표지의 위·아래 자리까지 후보로 쓴다.
+      placed.forEach(p => options.push(rect(x - w / 2, p.y - h - 4), rect(x - w / 2, p.y + p.h + 4)));
+      const free = r => !placed.some(p => hit(p, r));
+      const r = options.find(r => free(r) && !targets.some(t => hit(t, r))) || options.find(free) || options[0];
+      placed.push(r);
+      el.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
+    });
     S.banners.forEach(el => {
       const W = SITES[+el.dataset.si];
       if (!W) return;
@@ -3469,7 +3516,7 @@
       let r = null;
       for (const dy of [0, -(h + 4), h + 4 + V.S * 0.6, -2 * (h + 4)]) {
         const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.H - h - 4), w, h };
-        if (!placed.some(p => hit(p, c))) { r = c; break; }
+        if (!targets.some(t => hit(t, c)) && !placed.some(p => hit(p, c))) { r = c; break; }
       }
       if (!r) { el.hidden = true; return; }
       placed.push(r);

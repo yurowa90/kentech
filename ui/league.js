@@ -19,6 +19,7 @@
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const SEASON_NAME = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
   const PHASE_NAME = { lobby: "준비", plan: "계획·협상", run: "운영 중", review: "결과·일지", end: "끝" };
+  const DEAL_PANEL_NAME = "사건·거래";
   const REV8_COPY = {
     C1: "비교 기준: 이번 달 운영 전 현금 {cash}억 · 빚 한도를 뺀 실제 현금이라 머리 칩의 '남은 돈'과 달라요",
     C2: "현금 예측: {방향} / 실제 결과: 운영 전 {before}억 → 월말 {after}억 · 운영 전 대비 {Δ}억 · {판정}",
@@ -470,7 +471,7 @@
   }
   const subsidyText = () => { const months = params("subsidyPayMonths"), quarterly = months.join() === "1,4,7,10"; return `국가 재정지원금은 연초에 연액을 정하고 ${quarterly ? "분기 초" : "지급 월"}(${months.join("·")}월)${quarterly ? "에" : "마다"} 1/${months.length}씩 받아요.`; };
   function helpHTML() {
-    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><button type="button" class="v2-btn" id="lg-coach-again">첫 달 코치 다시 보기</button><p>${esc(SUPPLY_ASSUMPTION())}</p><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>${esc(subsidyText())} 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], ["이웃·거래", "사건 대응, 전기값과 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<span id="lg-sound-controls"><button type="button" class="v2-btn" id="lg-sound" aria-pressed="${KCP.fxAudio?.enabled() === true}">소리</button><input type="range" id="lg-sound-vol" min="0" max="100" step="10" aria-label="소리 크기" value="${Math.round((KCP.fxAudio?.volume() ?? .6) * 100)}"${KCP.fxAudio?.enabled() ? "" : " hidden"}></span><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
+    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><button type="button" class="v2-btn" id="lg-coach-again">첫 달 코치 다시 보기</button><p>${esc(SUPPLY_ASSUMPTION())}</p><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>${esc(subsidyText())} 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], [DEAL_PANEL_NAME, "사건을 보고 대응, 전기값, 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<span id="lg-sound-controls"><button type="button" class="v2-btn" id="lg-sound" aria-pressed="${KCP.fxAudio?.enabled() === true}">소리</button><input type="range" id="lg-sound-vol" min="0" max="100" step="10" aria-label="소리 크기" value="${Math.round((KCP.fxAudio?.volume() ?? .6) * 100)}"${KCP.fxAudio?.enabled() ? "" : " hidden"}></span><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
   }
   function planIssueCounts() {
     const issues = BG.planIssues();
@@ -542,6 +543,8 @@
   function closeCoach(restore = false) {
     const d = tdata(); d.guideSeen = true; putData(d);
     L.coach = null;
+    BG.coachMarks([]);
+    delete document.getElementById("bd-root")?.dataset.coachLine;
     document.getElementById("lg-coach")?.remove();
     document.querySelectorAll(".lg-coach-target").forEach(el => el.classList.remove("lg-coach-target"));
     if (restore) document.getElementById("bd-canvas")?.focus({ preventScroll: true });
@@ -553,7 +556,7 @@
     if (!again && !reattach && (d.guideSeen || L.previous || L.snap?.round !== 1 || curRound().month !== 1 || L.snap?.results?.length)) return;
     document.getElementById("lg-coach")?.remove();
     if (!reattach) L.coach = { step: again && ["review", "end"].includes(L.snap?.phase) ? 5 : 0,
-      round: L.snap.round, builds: BG.current()?.builds.length || 0 };
+      round: L.snap.round, builds: BG.current()?.builds.length || 0, ack: {} };
     const el = document.createElement("aside"); el.id = "lg-coach"; el.setAttribute("aria-label", "첫 달 코치");
     el.innerHTML = '<span id="lg-coach-task" role="status" aria-live="polite"></span><button type="button" class="lg-bbtn" id="lg-coach-action"></button><button type="button" class="lg-bbtn" id="lg-coach-skip">건너뛰기</button><button type="button" class="lg-bbtn" id="lg-coach-close" aria-label="코치 닫기"><span id="lg-guide-close">닫기</span></button>';
     root.querySelector(".lg-map-guidance").append(el);
@@ -588,11 +591,46 @@
       [build, "화력", '[data-group="fire"]'],
       [line, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
-      ["준비 → 근거·방향·확신 고르고 약속해요", L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
-      ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
-      ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
+      ["준비 → 근거·방향·확신 고르고 약속해요", L.snap?.phase === "plan" && document.querySelector("#lg-ready")?.disabled ? "남은 칸 채우기" : L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
+      // 결과 단계에서는 막대 '결과'가 서랍을 닫는 토글이라 판정 줄 단추를 짚는다(검토 major 2).
+      ["운영 끝 · 결과 맨 위에서 내 예측과 실제를 비교해요", "결과", document.querySelector("#lg-promise-summary [data-promise-details]") ? "#lg-promise-summary [data-promise-details]" : '#lg-bar [data-panel="result"]'],
+      coachHasCards()
+        ? ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"]
+        : ["이번 달은 고를 원인 카드가 없어요 · 확인하고 넘어가요", "확인하고 다음", "#lg-missed"],
       [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
     ];
+  }
+  // 다른 서랍으로 바꾸면 #lg-missed가 DOM에서 빠지므로 결과 서랍일 때 읽은 판정을 유지한다(검토 minor 6).
+  function coachHasCards() {
+    const missed = document.querySelector("#lg-missed");
+    if (L.coach && (missed || L.panel === "result")) L.coach.hasCards = !!missed?.matches('[data-opened]:not([data-single="true"])');
+    return !!L.coach?.hasCards;
+  }
+  function coachReplayDone() {
+    const fx = KCP.fxTurn?.state?.();
+    // 재생이 중간에 지워져 끝 신호를 잃는 경우를 대비한 상한(검토 minor 3): 결과 단계 8초 뒤 운영 띠가 없으면 끝으로 본다.
+    if (L.coach) L.coach.reviewAt ??= performance.now();
+    if (L.coach && performance.now() - L.coach.reviewAt > 8000 && !document.querySelector("#bd-run:not([hidden])")) return true;
+    // playing=false만으로는 다음 틱의 재계산 대기를 구별할 수 없다(기존 fx-turn 상태 재사용).
+    return !document.getElementById("bd-root")?.classList.contains("bd-replaying") &&
+      (!fx || (!fx.playing && (fx.skipped || fx.cardsOpen || fx.replayed || fx.ms === 0)));
+  }
+  function coachAck(step) {
+    if (L.coach?.step !== step || !["review", "end"].includes(L.snap?.phase)) return;
+    L.coach.ack[step] = true; // 첫 달 코치의 기기 안 확인: 일지·저장 자료에는 넣지 않는다.
+  }
+  function coachInput(e) {
+    const state = L.coach;
+    if (!state) return;
+    if (state.step === 5 && (e.type === "click" && e.target.closest("[data-promise-details]") ||
+        e.type === "change" && e.target.matches("[data-compared]") && e.target.checked)) coachAck(5);
+    if (state.step === 6 && e.type === "click" && e.target.closest("#lg-outage-open") &&
+        document.querySelector('#lg-missed[data-opened="false"]')) {
+      // 캡처 단계에서 학생 클릭을 잡고 기존 처리기가 카드를 실제로 연 뒤 확인한다.
+      setTimeout(() => {
+        if (L.coach === state && document.querySelector('#lg-missed[data-opened="true"]')) coachAck(6);
+      }, 0);
+    }
   }
   function updateCoach(advance = true) {
     const state = L.coach, el = document.getElementById("lg-coach");
@@ -602,7 +640,7 @@
     const review = ["review", "end"].includes(L.snap?.phase);
     const done = [L.panel === "deal", count > state.builds, count >= 1 && issues.unlinked === 0,
       !!document.querySelector("#bd-again")?.getClientRects().length, n.confirmed || review,
-      review && L.panel === "result", review && (document.querySelector('#lg-missed[data-opened="true"]') || n.outageSingleShown || !document.querySelector("#lg-missed[data-opened]"))];
+      review && coachReplayDone() && state.ack[5], review && coachReplayDone() && state.ack[6]];
     // 한 확인 주기에 한 단계만 전진해 화면의 다음 행동을 읽을 시간을 준다.
     if (advance && state.step < 7 && done[state.step]) state.step++;
     const [task, action, selector] = coachSteps(issues, n)[state.step];
@@ -610,7 +648,16 @@
     const scenes = ["근거 하나", "자리 판단", "자리 판단", "시험 1주", "약속", "예측 대 실제", "원인 하나", "다음 달"];
     const taskEl = el.querySelector("#lg-coach-task"), text = `${scenes[state.step]} · ${state.step + 1}/8 ${task}`;
     if (taskEl.textContent !== text) taskEl.textContent = text;
-    el.querySelector("#lg-coach-action").textContent = action;
+    const actionEl = el.querySelector("#lg-coach-action"), ready = document.getElementById("lg-ready");
+    actionEl.textContent = action;
+    const hide = selector === "#lg-ready" && !!ready?.getClientRects().length && !ready.disabled;
+    if (hide && document.activeElement === actionEl) ready.focus({ preventScroll: true }); // 초점 유실 방지(검토 minor 7)
+    actionEl.hidden = hide;
+    const root = document.getElementById("bd-root");
+    const lineTarget = root && state.step === 2 ? coachLineTarget() : null;
+    if (root) root.dataset.coachLine = String(!!lineTarget);
+    BG.coachMarks(lineTarget ? [{ tile: lineTarget.facility.i, text: lineTarget.facility.name },
+      { tile: lineTarget.town.tile, text: lineTarget.town.name }] : []);
     document.querySelectorAll(".lg-coach-target").forEach(item => item.classList.remove("lg-coach-target"));
     let target = document.querySelector(selector);
     if (state.step === 2 && (!target || target.closest("[hidden]"))) target = document.querySelector('[data-group="grid"]');
@@ -633,7 +680,7 @@
     const step = L.coach?.step;
     if (step == null) return;
     if (step === 1) { closePanel(); BG.closeDrawer?.(); const group = document.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); return; }
-    if (step === 4 && L.awaitReady && document.getElementById("lg-ready")?.disabled) {
+    if (step === 4 && L.snap?.phase === "plan" && document.getElementById("lg-ready")?.disabled) {
       // 약속이 덜 찼으면 비활성 주 단추 대신 남은 단계(근거 → 방향 → 확신)의 첫 조작으로 초점을 옮긴다.
       if (L.panel !== "journal" || L.panelFolded) openPanel("journal");
       const { n } = monthNote(), topic = promiseTopic(L.snap, n);
@@ -648,13 +695,25 @@
       if (target) BG.focusTiles([target.facility.i, target.town.tile], { ring: target.facility.i });
       return;
     }
-    if (step === 0 || step === 5) { openPanel(step === 0 ? "deal" : "result"); updateCoach(); return; }
-    if (step === 6) openPanel("result");
+    if (step === 0) { openPanel("deal"); updateCoach(); return; }
+    if (step === 5) {
+      if (L.panel !== "result" || L.panelFolded) openPanel("result");
+      scrollPanelTo(document.getElementById("lg-promise-summary") || document.getElementById("lg-promise-result"));
+      coachAck(5); updateCoach(); return;
+    }
+    if (step === 6) {
+      if (L.panel !== "result" || L.panelFolded) openPanel("result");
+      const open = document.querySelector("#lg-outage-open");
+      // 카드를 아직 고르지 않아 열기 단추가 꺼져 있으면 카드 묶음만 보이고 완료로 치지 않는다(검토 minor 4).
+      if (open?.disabled) { scrollPanelTo(document.querySelector("#lg-missed") || open); return; }
+      coachAck(6);
+    }
     const { n } = monthNote(), [, , selector] = coachSteps(planIssueCounts(), n)[step];
     const target = document.querySelector(selector);
-    if (!target) { openPanel(step >= 5 ? "result" : "journal"); return; }
+    if (!target) { if (step === 6) updateCoach(); else openPanel(step >= 5 ? "result" : "journal"); return; }
     if (step >= 6 && selector !== "#lg-ready") { scrollPanelTo(target); target.focus({ preventScroll: true }); if (target.matches("button") && !target.disabled) target.click(); }
     else if (!target.disabled) target.click();
+    if (step === 6) updateCoach();
   }
   const coachSyncRoots = new WeakSet();
   function setupMapGuidance(root) {
@@ -695,6 +754,8 @@
     // 지도 처리기(캔버스)가 끝난 뒤 버블 단계에서 문구만 다시 쓴다. 단계 전진은 주기 확인 몫이다.
     if (!coachSyncRoots.has(root)) {
       coachSyncRoots.add(root);
+      root.addEventListener("click", coachInput, true);
+      root.addEventListener("change", coachInput, true);
       for (const type of ["pointerup", "keydown", "click"]) root.addEventListener(type, () => { if (L.coach) setTimeout(() => updateCoach(false), 0); });
     }
     const session = L;
@@ -881,7 +942,7 @@
       <p>필요 연구량 ${esc(fmt(c.need))} · 실증비 ${esc(fmt(c.demo))}억${c.numbers?.demo ? ` (${esc(gradeWords(c.numbers.demo.grade))})` : ""}</p>
       <p>유레카: ${esc(techEurekaText(c.id, V))}${rs.eureka?.includes(c.id) ? " · 달성" : ` · 남은 연구량의 ${esc(fmt(p.eurekaFrac.v * 100, 1))}% 추가 진척(${esc(gradeWords("G"))})`}</p>
       ${pair ? `<p>둘 중 하나: ${pair.map(k => esc(techCard(k)?.name || k)).join(" / ")}</p>` : ""}
-      ${state.why ? `<p>${esc(state.why)}</p>` : ""}${unlocked.length ? `<p>해금: ${unlocked.map(esc).join(" · ")} · 도입 후 설비는 건설 도구, 연계선은 이웃·거래, 정책은 도시 서랍에서 선택</p>` : ""}
+      ${state.why ? `<p>${esc(state.why)}</p>` : ""}${unlocked.length ? `<p>해금: ${unlocked.map(esc).join(" · ")} · 도입 후 설비는 건설 도구, 연계선은 ${esc(DEAL_PANEL_NAME)}, 정책은 도시 서랍에서 선택</p>` : ""}
       ${license ? `<p>이전 원 개발 도시: ${esc(teamName(license))}</p>` : ""}
       ${joint ? `<p>공동 연구: ${esc(teamName(joint.other))} · ${joint.active ? "함께 진행(연결이 끊기면 대기)" : "상대 도시의 같은 카드 요청 대기"}</p>` : ""}
       <div class="lg-tech-actions"><button type="button" data-tech-action="research" data-card="${esc(c.id)}" ${open && !state.blocked && !queue.includes(c.id) ? "" : "disabled"}>연구 순서에 넣기</button>
@@ -5376,7 +5437,7 @@
       <span class="lg-bmoney" aria-hidden="true">남은 돈 <b id="lg-left-hud" data-money="left"></b></span>
       <span class="lg-bphase" id="lg-bphase"></span><span id="lg-hud-chips"></span><span id="lg-watch" aria-label="이번 달 볼 것"></span><b class="lg-timer num" id="lg-timer"></b>
       <span class="lg-conn" id="lg-conn" data-s="${esc(L.conn.status())}">${connLabel(L.conn.status())}</span>${dataChipHTML()}</div>
-      <div class="lg-actions"><button type="button" class="lg-bbtn" data-panel="deal">이웃·거래<b class="lg-badge" id="lg-badge" hidden></b></button>
+      <div class="lg-actions"><button type="button" class="lg-bbtn" data-panel="deal">${esc(DEAL_PANEL_NAME)}<b class="lg-badge" id="lg-badge" hidden></b></button>
       <button type="button" class="lg-bbtn" data-panel="region">지역 지도</button>
       <button type="button" class="lg-bbtn" data-panel="tech">연구</button>
       <button type="button" class="lg-bbtn" data-panel="result">결과</button>
@@ -5725,7 +5786,7 @@
       // 계획 CO₂ 목표 줄은 모든 탭에서 맨 위(폰에서는 머리의 같은 줄이 숨으므로 유일한 표시).
       body = goal + body;
     }
-    p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: DEAL_PANEL_NAME, result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
     if (tab === "result" && V?.phase === "end" && V.econ) {
       const endBody = p.querySelector(".lg-pbody"), more = document.createElement("div");
       more.className = "lg-end-more";

@@ -1169,6 +1169,7 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-team-map #lg-bar .lg-actions > :first-child { margin-left: 0; }
 .lg-team-map #lg-bar #lg-ready {
   grid-column: 2; grid-row: 2; position: static; width: 112px; min-width: 112px; height: 44px; margin: 0; box-shadow: none;
+  white-space: nowrap; word-break: keep-all; font-size: 14px; padding-inline: 4px;
   background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
 }
 .lg-team-map[data-promise-open="true"] #lg-bar #lg-ready {
@@ -1476,6 +1477,7 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 #lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
 #lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map[data-coach-line="true"] .lg-map-keys { display: none; }
 #lg-issue-check { position: fixed; z-index: 48; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; max-width: 540px; max-height: calc(100dvh - var(--lg-mapbar-bottom, 210px) - 8px); overflow-y: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); }
 #lg-issue-check h3 { margin: 0; }
 #lg-issue-check button, #lg-coach-again { min-width: 44px; min-height: 44px; }

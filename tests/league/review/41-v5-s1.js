@@ -507,7 +507,8 @@ test('1 §1·5 교부세 달: 안내·D-90 폭염 도움말 외 서랍 HTML = 9c
   const tip = `<div class="lg-info-line"><p>${escape(E.text)}</p><details class="lg-info" data-fold="event-disaster-heatwave_peak"><summary class="lg-info-btn" data-info-key="event-disaster-heatwave_peak" aria-label="설명 보기: ${escape(E.name)}">!</summary><div class="lg-info-pop" role="note">${escape([E.why, heat, limitation].join(' '))}</div></details></div>`;
   assert.equal(current.html.split(tip).length - 1, 1, '승인된 폭염 설명·접근성 속성·접힘 키를 가진 블록 정확히 하나');
   assert.ok(!baseline.html.includes('event-disaster-heatwave_peak'), '변경 전 폭염 도움말 없음');
-  const normalized = current.html.replace(tip, `<span>${escape(E.text)}</span>`).replace(grantNotice, '');
+  // 명세 rev8 B4: 서랍 제목 '이웃·거래' → '사건·거래'. 제목 한 곳만 기준판 이름으로 되돌려 나머지 바이트를 비교한다.
+  const normalized = current.html.replace(tip, `<span>${escape(E.text)}</span>`).replace(grantNotice, '').replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
   assert.deepEqual(Buffer.from(normalized, 'utf8'), Buffer.from(baseline.html, 'utf8'),
     '사건 자료·교부세 안내·승인 폭염 도움말 외 개행·공백 포함 전체 UTF-8 바이트 동일');
 });
@@ -518,6 +519,8 @@ test('1 §1·5 교부세 0 달: 서랍 HTML 바이트 동일성 유지', () => {
     a.L.snap.events = [{ id: 'evening_peak_tropical_night', round: a.L.snap.round }];
   }
   const current = normalizeEventSources(eventDrawerHTML(h)), baseline = normalizeEventSources(eventDrawerHTML(old));
+  // 명세 rev8 B4: 서랍 제목 이름만 기준판으로 되돌린다(그 밖의 바이트는 정규화하지 않음).
+  current.html = current.html.replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
   assert.equal(h.C.grantAmount(h.L.snap, h.R, h.L.team), 0, '열대야는 교부 대상 아님');
   assert.equal(current.blocks.length, 1, '사건 없는 서랍과 비교하지 않음');
   assert.ok(!current.html.includes('특별교부세'), '교부세 0 달 안내 없음');

@@ -174,7 +174,8 @@ def main():
                     page.wait_for_selector("#bd-again", state="visible", timeout=90000)
                     page.wait_for_timeout(900)
                 elif step == 5:
-                    press("#lg-coach-action", step)
+                    # 명세 B3: 켜진 주 단추와 같은 동작인 코치 행동 단추는 숨긴다.
+                    press("#lg-ready", step)
                     if page.locator("#lg-issue-check").count() and page.locator("#lg-issue-check").is_visible():
                         log.append({"issueCheck": page.locator("#lg-issue-check").inner_text()[:300]})
                         press("#lg-issue-go", step)
@@ -183,10 +184,30 @@ def main():
                         page.locator("#lg-predict [data-pred]").first.select_option("down")
                         actions[step] += 1
                         press('[data-confidence="fairly"]', step)
-                        press("#lg-ready-confirm", step)
+                        press("#lg-ready", step)
                     page.wait_for_function("() => {const L=KCP.league.state(),S=L.S||L.snap;return S && (S.results||[]).length>0;}",
                                            timeout=180000)
                     page.wait_for_timeout(6500)  # 달 넘김 재생(최대 4초)과 서랍 펼침
+                    # 명세 B1: 결과 서랍 자동 열림은 학생의 S6 행동이 아니다.
+                    assert page.evaluate(STEP_JS) == 6, '결과 자동 열림 뒤 6/8 유지'
+                elif step == 6:
+                    assert '운영 끝 · 결과 맨 위에서 내 예측과 실제를 비교해요' in frame['task']
+                    press("#lg-coach-action", step)
+                    page.wait_for_function("() => Number(document.querySelector('#lg-coach')?.dataset.step) === 7")
+                elif step == 7:
+                    # 명세 B1: 카드 없음/고르기 생략도 직접 확인해야 S8로 간다.
+                    no_card = page.locator('#lg-missed[data-opened]').count() == 0 or \
+                        page.locator('#lg-missed[data-single="true"]').count() > 0
+                    if no_card:
+                        assert '원인 카드가 없어요' in frame['task']
+                        assert page.locator('#lg-coach-action').inner_text() == '확인하고 다음'
+                    else:
+                        assert page.locator('#lg-coach-action').inner_text() == '원인 열기'
+                        cards = page.locator('#lg-outage-cards [data-missed]')
+                        if cards.count():
+                            press('#lg-outage-cards [data-missed]', step)
+                    press("#lg-coach-action", step)
+                    page.wait_for_function("() => Number(document.querySelector('#lg-coach')?.dataset.step) === 8")
                 elif step == 8:
                     if page.locator('[data-answer="keep"]').count():
                         press('[data-answer="keep"]', step)
@@ -224,7 +245,7 @@ def main():
             print(" ", item)
     print(" console:", problems[:5])
     # T 검사 규칙: 수집한 단언/페이지 예외·console error/warning을 성공 종료로 숨기지 않는다.
-    if err or problems:
+    if err or problems or skipped or reached != 8:
         raise SystemExit(1)
 
 
