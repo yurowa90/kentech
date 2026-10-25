@@ -618,8 +618,11 @@ def s2(checks, page, label, smart=False):
     restore_solo(page, saved, 1, 'plan')
     tool(page, 'smr')
     text = hover(page, candidates[0])
-    checks.ok('모형에 SMR 민원 미반영' in text,
-              label + ' SMR 민원 모형 미반영 문구')
+    checks.ok('모형에 SMR 민원 미반영' not in text,
+              label + ' SMR 민원 미반영 옛 문구 없음')
+    siting_first = page.evaluate('() => KCP.ECON_DATA.thermalFacts.siting.text').split('. ', 1)[0] + '.'
+    checks.ok(siting_first in text,
+              label + ' SMR 입지 민원 자료 첫 문장 표시')
     screenshot(checks, page, 'v3a-' + label + '-s2.png')
 
 
