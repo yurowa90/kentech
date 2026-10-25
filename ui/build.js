@@ -616,6 +616,8 @@
     if (!MODS) return v0;
     const m = ["solar", "roof", "tandem", "tandem_roof"].includes(g.kind) ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
     let v = typeof m === "number" ? v0 * m : v0;
+    // D-90: 실리콘 단일접합 모듈의 사건 추가 손실. 탠덤에는 근거가 없어 적용하지 않는다.
+    if (["solar", "roof"].includes(g.kind) && MODS.solarHeatMul != null) v *= MODS.solarHeatMul;
     // B18 손잡이가 없으면 기존 계산·반환 자료를 그대로 유지한다.
     if (MODS.reCap && BLD[g.kind] && BLD[g.kind].hostLimited) {
       v *= clamp((MODS.reCap[g.kind + ":" + g.tile] || 0) / BLD[g.kind].mw, 0, 1);
@@ -1214,7 +1216,7 @@
     const value = budgetValue(S && S.st);
     // 교부세가 없는 달에는 빈 문자열: 돈 칸 title·지도 aria-label이 바꾸기 전 문구를 그대로 쓴다.
     if (typeof value === "number" || !(value.grant.left > 0)) return "";
-    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응만)` : "";
+    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응, 남으면 보수비)` : "";
     return `남은 돈 ${fmt(value.left, 1)}억 (빚 한도 포함)${grantNote}`;
   };
   const withinBudget = plan => {

@@ -68,7 +68,10 @@
     const room = Array.from({ length: 8 }, (_, i) => alphabet[parseInt(bits.slice(i * 5, i * 5 + 5), 2)]).join("");
     return { room, fingerprint: btoa(String.fromCharCode(...hash)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "").slice(0, 22) };
   }
-  // D-77: 사전은 고정된 네 경로에서만 쓴다. 경로 참조·재계산은 하지 않는다.
+  // D-77: 행 사전은 고정된 네 경로에서만 쓴다. 재계산·임의 경로 참조는 하지 않는다.
+  // 중복 참조도 아래 세 경로만 허용한다. 각 원본은 econ의 같은 이름 필드다.
+  // [-2]는 판 2의 참조, _refs의 비트는 적용 경로다. 참조 없는 판 1은 옛 형식을 유지한다.
+  const snapshotRefs = [["report", "score"], ["report", "offers"], ["scoreState", "totals"]];
   const snapshotObject = x => x !== null && typeof x === "object" && !Array.isArray(x) &&
     (Object.getPrototypeOf(x) === null || Object.getPrototypeOf(x).constructor?.name === "Object");
   const snapshotKey = k => typeof k === "string" && !["__proto__", "constructor", "prototype"].includes(k);
@@ -76,12 +79,12 @@
     if (!value || typeof value !== "object") return true;
     return Object.keys(value).every(k => snapshotKey(k) && snapshotSafe(value[k]));
   }
-  function snapshotEnvelope(view, keys) {
+  function snapshotEnvelope(view, keys, refs) {
     // 수신기의 서명 세션 결속 검사는 확장 전이므로 기존 sid도 최상위에 둔다.
     const { room, region, sid, ...body } = view;
-    return { _cp: 1, ...(Object.hasOwn(view, "room") ? { room } : {}),
+    return { _cp: refs ? 2 : 1, ...(Object.hasOwn(view, "room") ? { room } : {}),
       ...(Object.hasOwn(view, "region") ? { region } : {}),
-      ...(Object.hasOwn(view, "sid") ? { sid } : {}), keys, body };
+      ...(Object.hasOwn(view, "sid") ? { sid } : {}), ...(refs ? { _refs: refs } : {}), keys, body };
   }
   function snapshotRows(view, row, packing) {
     for (const t of Object.values(view.teams || {}))
@@ -107,6 +110,18 @@
   function compactSnapshot(data) {
     const view = JSON.parse(JSON.stringify(data));
     if (!snapshotSafe(view)) throw Error("snapshot-key");
+    let refs = 0;
+    const econ = view.econ;
+    if (snapshotObject(econ)) snapshotRefs.forEach(([parent, key], i) => {
+      const target = econ[parent];
+      // 깊은 값 비교와 함께 키 순서도 확인해 펼친 JSON 바이트까지 보존한다.
+      // previousScore는 운영 전 점수이므로 현재 점수의 참조로 바꾸지 않는다.
+      if (snapshotObject(target) && Object.hasOwn(target, key) && Object.hasOwn(econ, key) &&
+          canonical(target[key]) === canonical(econ[key]) &&
+          JSON.stringify(target[key]) === JSON.stringify(econ[key]) && bytes(target[key]).length > 4) {
+        target[key] = [-2]; refs |= 1 << i;
+      }
+    });
     const pairs = (rows, a, b) => Array.isArray(rows) && rows.every(x => snapshotObject(x) &&
       Object.keys(x).length === 2 && Object.hasOwn(x, a) && Object.hasOwn(x, b));
     for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {
@@ -127,7 +142,7 @@
         return [index.get(signature), ...ks.map(k => obj[k])];
       };
       snapshotRows(view, row, true);
-      return snapshotEnvelope(view, keys);
+      return snapshotEnvelope(view, keys, refs);
     };
     // 사전까지 포함한 최종 봉투로 판단한다. 행마다 축약률이 달라 보정은 최대 두 번이다.
     const MAX_COMPACTION_PASSES = 2;
@@ -168,7 +183,8 @@
     if (!snapshotObject(view)) return null;
     try {
       if (Object.hasOwn(view, "_cp")) {
-        if (view._cp !== 1 || !snapshotObject(view.body) || !Array.isArray(view.keys) || !snapshotSafe(view)) return null;
+        if ((view._cp !== 1 && view._cp !== 2) || !snapshotObject(view.body) || !Array.isArray(view.keys) || !snapshotSafe(view)) return null;
+        if ((view._cp === 2) !== Object.hasOwn(view, "_refs")) return null;
         const keys = view.keys;
         if (!keys.every(ks => Array.isArray(ks) && ks.every(snapshotKey) && new Set(ks).size === ks.length)) return null;
         const row = values => {
@@ -184,6 +200,17 @@
         if (Object.hasOwn(envelope, "region")) view.region = envelope.region;
         if (Object.hasOwn(envelope, "sid")) view.sid = envelope.sid;
         snapshotRows(view, row, false);
+        if (Object.hasOwn(envelope, "_refs")) {
+          const refs = envelope._refs, econ = view.econ;
+          if (!Number.isSafeInteger(refs) || refs <= 0 || refs >= 1 << snapshotRefs.length || !snapshotObject(econ)) return null;
+          for (const [i, [parent, key]] of snapshotRefs.entries()) {
+            if (!(refs & 1 << i)) continue;
+            const target = econ[parent], marker = target?.[key];
+            if (!snapshotObject(target) || !Array.isArray(marker) || marker.length !== 1 || marker[0] !== -2 ||
+                !Object.hasOwn(econ, key)) return null;
+            target[key] = JSON.parse(JSON.stringify(econ[key]));
+          }
+        }
       }
       // _cp 없는 옛 진행자·혼자 하기 값에는 기존 base/배분 복원만 적용한다.
       for (const t of Object.values(view.teams || {}).filter(snapshotObject)) {

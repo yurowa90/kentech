@@ -167,9 +167,10 @@ def local_base():
 
 
 def expand_snapshot(view):
-    """D-77 진행자 스냅 봉투({_cp:1, room, region, sid, keys, body})를 앱의 expandSnapshot과 같은 규칙으로 펼친다.
-    봉투가 아니면 그대로 돌려준다. 프레임 관찰(지연 측정)이 rev·팀 계획을 읽기 위한 것이다."""
-    if not isinstance(view, dict) or view.get("_cp") != 1:
+    """D-77 진행자 스냅 봉투(_cp 1·2)의 본문과 행 배열을 프레임 관찰용으로 읽는다.
+    지연 측정에 필요한 rev·팀 계획만 읽으며 _refs 참조는 복원하지 않는다.
+    지원하는 봉투가 아니면 그대로 돌려준다. 앱의 전체 확장·형식 검증을 대신하지 않는다."""
+    if not isinstance(view, dict) or view.get("_cp") not in (1, 2):
         return view
     keys, body = view.get("keys"), view.get("body")
     if not isinstance(keys, list) or not isinstance(body, dict):

@@ -787,7 +787,7 @@ def debt_breakdown(out):
         assignment = run.get("assignment") or {city: run["style"] for city in run["hist"][0]["fiscal"]}
         for city, strategy in assignment.items():
             totals = dict(income=0, fuel=0, operation=0, purchase=0, interest=0,
-                          service=0, construction=0, other=0, rounding=0)
+                          service=0, construction=0, repair=0, other=0, rounding=0)
             for h in run["hist"]:
                 f, r = h["fiscal"][city], h["energy"][city]
                 # 월별 보고에 사용한 실제 달력 일수. 2027년부터 시작하는 검사 방.
@@ -799,7 +799,8 @@ def debt_breakdown(out):
                 purchase = r["pay"] * wk
                 amounts = dict(income=f["revTotal"] + power, fuel=fuel, operation=operation,
                     purchase=purchase, interest=f["exp"]["interest"], service=f["exp"]["service"],
-                    construction=f["exp"]["capex"], other=f["exp"]["incentive"] + f["exp"]["policy"],
+                    construction=f["exp"]["capex"], repair=f["exp"].get("repair", 0),
+                    other=f["exp"]["incentive"] + f["exp"]["policy"],
                     rounding=power + f["exp"]["opex"] - fuel - operation - purchase)
                 for key, amount in amounts.items():
                     totals[key] += amount
@@ -872,11 +873,11 @@ def markdown(out):
                       f"nothing 도시별 현금 순위: `{json.dumps(h['nothingCashCityRanks'], ensure_ascii=False)}`",
                       f"nothing 도시별 점수 순위: `{json.dumps(h['nothingScoreCityRanks'], ensure_ascii=False)}`"]
     if out.get("debtBreakdown"):
-        lines += ["", "## 누적 지출 분해(도시 평균 억)", "", "차익에서 상계한 전력 원가를 복원한 총액 회계. 연료와 차익 비용의 중복 없음. operation은 전력 정책·사건 대응·연구 운영비이며 서비스·이자는 별도다.", "",
-                  "| 전략 | 초과 | 총수입 | 연료 | 운영 | 전력구매 | 이자 | 서비스 | 건설 | 기타 | 반올림 | 최종 현금 |",
-                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+        lines += ["", "## 누적 지출 분해(도시 평균 억)", "", "차익에서 상계한 전력 원가를 복원한 총액 회계. 연료와 차익 비용의 중복 없음. operation은 전력 정책·사건 대응·연구 운영비이며 보수비·서비스·이자는 별도다.", "",
+                  "| 전략 | 초과 | 총수입 | 연료 | 운영 | 전력구매 | 이자 | 서비스 | 건설 | 보수 | 기타 | 반올림 | 최종 현금 |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for strategy, row in out["debtBreakdown"]["means"].items():
-            values = [str(row["overCities"])] + [f"{row[k]:.3f}" for k in ("income", "fuel", "operation", "purchase", "interest", "service", "construction", "other", "rounding", "cash")]
+            values = [str(row["overCities"])] + [f"{row[k]:.3f}" for k in ("income", "fuel", "operation", "purchase", "interest", "service", "construction", "repair", "other", "rounding", "cash")]
             lines.append("| " + " | ".join([strategy, *values]) + " |")
     if "b18Observation" in out:
         observation = out["b18Observation"]

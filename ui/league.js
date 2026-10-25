@@ -697,7 +697,7 @@
   }
   function grantMoneyNote(V, id) {
     const left = V && C.grantOf(V, R(), id, BG).left;
-    return left > 0 ? ` · 이번 달 특별교부세 ${fmt(left, 1)}억(새 설비·선로·재난 대응만)` : "";
+    return left > 0 ? ` · 이번 달 특별교부세 ${fmt(left, 1)}억(새 설비·선로·재난 대응, 남으면 보수비)` : "";
   }
   function cityHTML(V) {
     const E = V.econ, c = E.cities[L.team], rep = E.report, f = rep?.fiscal[L.team], g = rep?.groups[L.team];
@@ -709,8 +709,8 @@
     const grantNote = grantMoneyNote(V, L.team), moneyNote = grantNote ? ` (빚 한도 포함)${grantNote}` : "";
     const moneyDescription = `남은 돈 ${fmt(V.teams[L.team].left, 1)}억${moneyNote}`;
     const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", facility: `지역자원시설세(${gradeWords("O·M·G")})`, tariff: "전기요금 차익", trade: "전력 판매", royalty: "기술 사용료", bonus: "사건 지원금", salvage: "철거 회수" };
-    const expenses = { capex: "건설", fuel: "연료", opex: "운영", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
-    const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k) && !(k === "facility" && !vals[k])).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd>${esc(fmt(vals[k], 2))}억</dd></div>`).join("")}</dl>`;
+    const expenses = { capex: "건설", fuel: "연료", opex: "운영", repair: "보수비", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
+    const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k) && !(["facility", "repair"].includes(k) && !vals[k])).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd${k === "repair" ? ' class="lg-info-line"' : ""}>${esc(fmt(vals[k], 2))}억${k === "repair" ? infoTip("city-repair", esc(KCP.ECON_DATA.disasterFacts.repair.text), { label: names[k] }) : ""}</dd></div>`).join("")}</dl>`;
     return `<section id="lg-city" class="lg-sec"><h3>${esc(c.name)} 도시</h3>${sourceHTML(L.team)}${lossHTML(V)}
       ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <div class="lg-info-line"><p class="lg-left"${grantNote ? ` title="${esc(moneyDescription)}"` : ""}>남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b>${esc(moneyNote)}</p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 억 = 게임 단위</p>${infoTip("city-money", "예약·지원금·연계선 정산을 반영해요. 실제 시 예산이 아니에요.", { label: "남은 돈 단위" })}</div><p class="lg-hint">${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd><small>다음 평가 ${esc(fmt(remaining))}달 뒤</small>${infoTip("city-approval-rule", `통과: 참가 도시 평균 지지율 변화 대비 −${esc(fmt(params("approvalDrop"), 1))}%p 이내`, { label: "지지율" })}</div></dl>
@@ -725,9 +725,26 @@
   }
   function groupCauseHTML(c, key, rep, prev) {
     const weights = params("groupW")[key], parts = c.groupParts || {}, target = rep?.cities[L.team]?.Lparts || {};
+    const own = c.groupOwn?.[key] || {}, ownKeys = KCP.ECON_DATA.groupOwnKeys, copy = KCP.ECON_DATA.groupOwnCopy;
+    const ownLag = c.groupOwnLag?.[key] || {};
+    const z = Object.keys(weights).filter(k => parts[k] != null).reduce((n, k) => n + weights[k], 0) || 1;
     // groupTargets가 lagL에서 그대로 읽는 다섯 항목만 지연 비교. air·tax·taxI는 다른 식이다.
     const bars = causeBreakdown({}, parts, weights, 0, false).filter(x => x.key !== "other");
-    return `<div class="lg-cause">${infoTip(`city-group-${key}`, `만족도 목표에 들어가는 점수(집단 만족이 따라가기 전) · 옅은 글 상자: 앞으로 반영될 변화(${esc(gradeWords("G"))})`, { label: "집단 만족 계산" })}${bars.map(x => `<div>${esc(PART_NAMES[x.key] || x.key)} ${esc(fmt(x.value, 1))}점<meter min="0" max="100" value="${esc(Math.max(0, x.value))}" aria-label="목표 기여(지연 반영 전)"></meter>${["rel", "price", "jobs", "svc", "crowd"].includes(x.key) && target[x.key] != null ? `<span class="lg-pending">앞으로 반영될 변화 ${esc(signed((target[x.key] - (parts[x.key] || 0)) * weights[x.key], 1))}점</span>` : ""}</div>`).join("")}</div>`;
+    const totalWeight = Object.values(weights).reduce((n, w) => n + w, 0) || 1;
+    bars.forEach(x => {
+      x.value *= totalWeight / z;
+      if (x.key === "rel" && c.groupOwn) x.value -= (weights.rel || 0) * (c.hospRel || 0) / z;
+    });
+    const ownBars = ownKeys.filter(k => (Number.isFinite(own[k]) && own[k] !== 0) || (Number.isFinite(ownLag[k]) && ownLag[k] !== 0)).map(k => {
+      let label = PART_NAMES[k] || k;
+      if (k === "complaint" && own.complaintN) {
+        const count = own.sitingN === own.complaintN ? copy.sitingN.replace("{n}", own.sitingN) :
+          own.sitingN ? copy.mixedN.replace("{n}", own.complaintN).replace("{m}", own.sitingN) : copy.complaintN.replace("{n}", own.complaintN);
+        label += `(${count})`;
+      }
+      return { key: k, value: own[k] || 0, applied: ownLag[k] || 0, label, own: true };
+    });
+    return `<div class="lg-cause">${infoTip(`city-group-${key}`, `만족도 목표에 들어가는 점수(집단 만족이 따라가기 전) · 옅은 글 상자: 앞으로 반영될 변화(${esc(gradeWords("G"))})`, { label: "집단 만족 계산" })}${[...bars, ...ownBars].map(x => `<div>${esc(x.label || PART_NAMES[x.key] || x.key)} ${x.own ? `${esc(copy.target)} ${esc(x.value.toFixed(2))}점 · ${esc(copy.applied)} ${esc(x.applied.toFixed(2))}점` : `${esc(fmt(x.value, 2))}점`}<meter min="0" max="100" value="${esc(Math.abs(x.value))}"${x.value < 0 ? ' low="100" high="100" optimum="100"' : ""} aria-label="${esc((x.value || x.applied) < 0 ? copy.penalty : copy.contribution)}" aria-valuetext="${esc(x.own ? `${copy.target} ${x.value.toFixed(2)}점 · ${copy.applied} ${x.applied.toFixed(2)}점` : `${fmt(x.value, 2)}점`)}"></meter>${!x.own && ["rel", "price", "jobs", "svc", "crowd"].includes(x.key) && target[x.key] != null ? `<span class="lg-pending">앞으로 반영될 변화 ${esc(signed((target[x.key] - (parts[x.key] || 0)) * weights[x.key] / z, 1))}점</span>` : ""}</div>`).join("")}</div>`;
   }
   function migrationReason(flow) {
     const subject = `${teamName(flow.from)}에서 ${teamName(flow.to)}보다`;
@@ -3757,6 +3774,7 @@
       <p id="lg-result-causes">가장 큰 변화 원인(${esc(gradeWords(rep?.groups?.[id]?.whyGrade))}): ${esc(whyText(rep?.groups?.[id]) || "표시할 만큼 큰 변화 없음")}</p><details id="lg-result-reasons"><summary>무엇 때문에 달라졌나요</summary>${causeHTML(V)}
       </details><details id="lg-result-details"><summary>자세히 · 장부와 거래</summary>${trialCompareHTML(V, res, id)}<p id="lg-site-impact">자리 탓: 송전 손실 ${esc(fmt(r.loss * mul, 1))} MWh · 선 없는 설비 출력 ${esc(fmt(r.idle * mul, 1))} MWh · 접속 대기 ${esc(fmt(r.grid?.waitingMW, 1))} MW</p>
       <p id="lg-result-ledger">장부(억): ${ledger ? `달 초 ${esc(fmt(ledger.open, 2))} + 수입 ${esc(fmt(ledger.income, 2))} − 신규 투자 ${esc(fmt(ledger.invest, 2))} − 운영비 ${esc(fmt(ledger.opex, 2))} = 달 말 ${esc(fmt(ledger.close, 2))} · 이번 ${V.econ ? "달" : "턴"} 총지출 ${esc(fmt(ledger.invest + ledger.opex, 2))}` : "자료 없음"}</p><p class="lg-hint">억 = 게임 단위 · 장부는 이미 월 기준이에요.</p>
+      ${r.disasterGrant ? `<div class="lg-info-line"><p id="lg-result-grant">특별교부세: 지급액 ${esc(fmt(r.disasterGrant.awarded, 2))}억 · 계획 지출 ${esc(fmt(r.disasterGrant.planUsed, 2))}억 · 보수비 ${esc(fmt(r.disasterGrant.repairUsed, 2))}억 · 소멸액 ${esc(fmt(r.disasterGrant.expired, 2))}억</p></div>` : ""}
       ${rep?.fiscal?.[id]?.rev?.facility > 0 ? `<p id="lg-result-facility">지역자원시설세 ${esc(fmt(rep.fiscal[id].rev.facility, 3))}억(게임 단위, 세입에 포함) · 지방세법 제146조·지방재정법 제29조, 2026년 세율(${esc(gradeWords("O"))}) · 징수교부금 차감 전·돈 환산(${esc(gradeWords("M"))}), 지도 축척(${esc(gradeWords("G"))})</p>` : ""}
       ${co2AttributionHTML(V, res, id)}${coopHTML(V, res, id)}${migrationBenefitHTML(V, res, id)}
       <p>병원 정전 ${esc(fmt(r.hospH * mul, 1))}시간 · CO₂ 소비 기준 ${esc(fmt(r.co2Cons * mul))} t · 민원(지금 지도 기준) ${esc(fmt(complaintsNow))}건 · 운영 당시 ${esc(fmt(r.cp))}건</p>
@@ -3815,12 +3833,14 @@
       const idle = mine ? eventIdleKinds(E, me, X, round) : "";
       const size = evSize(E, ev, nx), known = typeof ev.x === "number";
       const cur = myT && myT.resp ? myT.resp[round + ":" + E.id] || "none" : "none", opts = Array.isArray(E.opts) ? E.opts : [];
-      const choose = act && mine && opts.length ? `<div class="lg-evopts" role="group" aria-label="${esc(E.name)} 대응">${[{ id: "none", name: "대응 안 함", cost: 0 }, ...opts].map(o => `<button type="button" class="lg-evopt" data-resp="${o.id}" data-ev="${esc(E.id)}" aria-pressed="${cur === o.id}"${o.note ? ` title="${esc(turnText(o.note, X))}"` : ""}>${esc(o.name)}${o.cost ? ` <b class="num">${fmt(o.cost)}억</b>` : ""}</button>`).join("")}</div>${cur !== "none" ? `<small class="lg-evnote">${esc(turnText((opts.find(o => o.id === cur) || {}).note || "", X))}</small>` : ""}` : "";
-      const co = opts.find(o => o.id === cur), after = known && co && typeof co.dev === "number" && !co.knobs ? evSize(E, { x: ev.x * co.dev }) : "";
+      const choose = act && mine && opts.length ? `<div class="lg-evopts" role="group" aria-label="${esc(E.name)} 대응">${[{ id: "none", name: "대응 안 함", cost: 0 }, ...opts].map(o => `<button type="button" class="lg-evopt" data-resp="${o.id}" data-ev="${esc(E.id)}" aria-pressed="${cur === o.id}"${o.note ? ` title="${esc(turnText(o.note, X))}"` : ""}>${esc(o.name)}${o.cost ? ` <b class="num">${fmt(o.cost, 1)}억</b>` : ""}</button>`).join("")}</div>${cur !== "none" ? `<small class="lg-evnote">${esc(turnText((opts.find(o => o.id === cur) || {}).note || "", X))}</small>` : ""}` : "";
+      const co = opts.find(o => o.id === cur), after = known && co && typeof co.dev === "number" && (!co.knobs || Object.keys(E.effect || {}).filter(k => typeof E.effect[k] === "number").every(k => co.knobs.includes(k))) ? evSize(E, { x: ev.x * co.dev }) : "";
       const picked = !act && mine && cur !== "none" ? `<small class="lg-evnote">우리 대응: ${esc((co || {}).name || "")}${after ? ` → ${esc(after)}` : ""}</small>`
         : !me && X.teams && opts.length ? (() => { const who = actT(X).map(({ id }) => { const o = opts.find(q => q.id === (X.teams[id].resp || {})[round + ":" + E.id]); return o ? `${teamName(id)} ${o.name}` : ""; }).filter(Boolean); return `<small class="lg-evnote">대응: ${esc(who.join(" · ") || "아직 없음")}</small>`; })() : "";
-      return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b><span>${esc(turnText(E.text || "", X))}</span>
-        ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}${X.econ && E.grant && (!me || C.grantAmount({ ...X, events: [ev] }, reg, me, round) > 0) ? `<small class="lg-evnote">특별교부세 ${fmt(KCP.ECON_DATA.params[E.grant.param].v, 2)}억: 이번 달 새 설비·선로·재난 대응 비용에만 쓰며, 남은 돈은 사라져요.</small>` : ""}
+      const facts = KCP.ECON_DATA.disasterFacts;
+      const disasterNote = E.id === "heavy_rain" ? facts.rain.text : E.id === "heatwave_peak" ? [E.why, facts.heat.text, facts.heat.limitation].filter(Boolean).join(" ") : "";
+      return `<li class="lg-ev" data-mine="${mine}"><b>${esc(E.name)}</b>${disasterNote ? `<div class="lg-info-line"><p>${esc(turnText(E.text || "", X))}</p>${infoTip(`event-disaster-${E.id}`, esc(disasterNote), { label: E.name })}</div>` : `<span>${esc(turnText(E.text || "", X))}</span>`}
+        ${size ? `<span class="lg-evsize"><i>${known ? "확정" : nx ? "정밀 예보" : E.fc ? "예보" : "크기"}</i> ${esc(size)}</span>` : ""}${X.econ && E.grant && (!me || C.grantAmount({ ...X, events: [ev] }, reg, me, round) > 0) ? `<small class="lg-evnote">특별교부세 ${fmt(KCP.ECON_DATA.params[E.grant.param].v, 2)}억: ${E.repairParam ? "새 설비·선로·재난 대응에 쓰고, 남으면 이달 말 보수비에 먼저 쓰여요. 그래도 남으면 사라져요." : "이번 달 새 설비·선로·재난 대응 비용에만 쓰며, 남은 돈은 사라져요."}</small>` : ""}
         ${E.tip && mine !== false ? `<small class="lg-evnote">${esc(E.tip)}</small>` : ""}${techData()?.eventHints?.[E.id] && mine !== false ? `<small class="lg-tech-event-hint">${esc(techData().eventHints[E.id].text)}</small>` : ""}${choose}${picked}
         <small>${esc(who)}${mine === true ? idle ? ` · 우리 도시 해당 · 우리 지도에 ${esc(idle)} 설비가 없어 우리 발전엔 영향 없음(이웃 거래로는 닿을 수 있음)` : " · 우리 도시 해당" : mine === false ? " · 우리 도시 해당 없음" : ""} · <abbr class="${gradeClass(E.grade)}" title="사건의 근거: ${esc(gradeWords(E.grade))}. 크기와 대응 효과: ${esc(gradeWords("G"))}">근거 ${esc(gradeWords(E.grade))} · 크기 ${esc(gradeWords("G"))}</abbr></small>${eventSourceHTML(E)}</li>`;
     }).join("")}</ul>`;
@@ -4899,7 +4919,7 @@
     if (L.away) return;
     const panel = document.getElementById("lg-panel"), root = document.getElementById("bd-root");
     L.home = { panel, scroll: panel?.querySelector(".lg-pbody")?.scrollTop || 0, phase: L.snap?.phase, round: L.snap?.round,
-      view: BG.saveView(), group: root?.querySelector('[data-group][aria-expanded="true"]')?.dataset.group,
+      view: BG.saveView(), group: root?.querySelector('#bd-dock [data-group][aria-expanded="true"]')?.dataset.group,
       layer: root?.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer,
       drawer: root?.querySelector('#bd-pm')?.getAttribute("aria-expanded") === "true",
       tab: root?.querySelector('[data-tab][aria-pressed="true"]')?.dataset.tab };
@@ -5100,7 +5120,7 @@
     }
     const root = document.getElementById("bd-root");
     if (home?.layer) root.querySelector(`[data-layer="${home.layer}"]`)?.click();
-    if (home?.group && root.querySelector(`[data-group="${home.group}"]`)?.getAttribute("aria-expanded") !== "true") root.querySelector(`[data-group="${home.group}"]`)?.click();
+    if (home?.group && root.querySelector(`#bd-dock [data-group="${home.group}"]`)?.getAttribute("aria-expanded") !== "true") root.querySelector(`#bd-dock [data-group="${home.group}"]`)?.click();
     if (home?.drawer) root.querySelector("#bd-pm")?.click();
     if (home?.tab) root.querySelector(`[data-tab="${home.tab}"]`)?.click();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.panel === L.panel)));
@@ -5144,7 +5164,8 @@
     ["pointerup", "click", "keydown"].forEach(name => root.addEventListener(name, unlockAudio, true));
     root.dataset.lineTool = "false";
     const syncTool = () => { root.dataset.lineTool = String(!!root.querySelector('[data-tool="line"][aria-pressed="true"]')); };
-    root.addEventListener("click", e => { if (e.target.closest("#bd-pm, [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
+    // 건설 도구 묶음([data-group])은 #bd-dock 안의 것만 서랍을 닫는다. 도시 서랍의 집단 만족 단추도 data-group을 쓴다.
+    root.addEventListener("click", e => { if (e.target.closest("#bd-pm, #bd-dock [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
     root.addEventListener("keydown", () => queueMicrotask(syncTool));
     syncTool();
     L.hudObserver?.disconnect();
@@ -5191,7 +5212,7 @@
         if (tip) {
           tip.hidden = !grantNote || !narrow || !!L.away;
           if (tip.hidden) tip.open = false;
-          const pop = tip.querySelector(".lg-info-pop"), text = `남은 특별교부세 ${fmt(grantLeft, 1)}억은 이번 달 새 설비·선로와 재난 대응에만 쓰고, 안 쓰면 사라져요.`;
+          const pop = tip.querySelector(".lg-info-pop"), text = KCP.ECON_DATA.disasterFacts.grant.text.replace("{n}", fmt(grantLeft, 1));
           if (pop.textContent !== text) pop.textContent = text;
           // backdrop-filter가 있는 HUD의 padding box가 fixed 요소의 좌표 기준이다.
           const hud = root.querySelector("#bd-hud"), origin = hud.getBoundingClientRect(), rect = money.getBoundingClientRect();

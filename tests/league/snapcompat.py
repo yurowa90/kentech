@@ -73,8 +73,10 @@ def wire_contract(checks, host):
     # D-77 계약: 최상위 teams 없이 {_cp:1, room, region, sid, keys, body}로 전송한다.
     # sid는 hostReceiver의 세션 검사(D-64)에, keys는 행 배열 키 사전에 필요하다(독립 검토 2026-10-17 지적으로
     # 단위2-E 명세의 네 필드를 실제 계약에 맞춰 고침). 허용 집합 밖의 필드와 최상위 teams는 실패.
-    checks.ok(actual.get("cp") == 1 and
-              set(actual["fields"]) <= {"_cp", "body", "keys", "region", "room", "sid"} and
+    # 중복 접기(2026-10-25, D-77 각주): 접은 경로가 있으면 _cp 2와 _refs, 없으면 옛 형식 _cp 1(‘_refs’ 없음).
+    checks.ok(((actual.get("cp") == 1 and "_refs" not in actual["fields"]) or
+               (actual.get("cp") == 2 and "_refs" in actual["fields"])) and
+              set(actual["fields"]) <= {"_cp", "_refs", "body", "keys", "region", "room", "sid"} and
               {"_cp", "body", "region", "room"} <= set(actual["fields"]) and
               not actual["hasTeams"] and actual["bodyPresent"] and
               actual["roomMatches"] and actual["regionMatches"],

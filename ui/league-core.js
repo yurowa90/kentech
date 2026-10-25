@@ -174,6 +174,21 @@
     const eligible = r2(fresh + respCost(S, R, id, S.round, true)), used = Math.min(awarded, eligible);
     return { awarded, eligible, used, left: r2(awarded - used) };
   }
+  // D-90: 숨은 x는 월말 정산에서만 읽는다. fundingOf/grantOf는 계획 지출만 승인한다.
+  function repairOf(S, R, id, grantOnly = false) {
+    if (!S.econ) return 0;
+    return r2((S.events || []).filter(ev => ev.round === S.round).reduce((sum, ev) => {
+      const E = eventDef(R, ev.id);
+      if (!E?.repairParam || grantOnly && !E.grant || !eventValid(S, R, E) || !scopeHits(R, E, id)) return sum;
+      const o = respOpt(R, S, id, ev), dv = o?.knobs?.includes("repair") ? o.dev ?? 1 : 1;
+      return sum + KCP.ECON_DATA.params[E.repairParam].v * (typeof ev.x === "number" ? ev.x : 1) * dv;
+    }, 0));
+  }
+  function disasterSettlementOf(S, R, id, bg, repair) {
+    const g = grantOf(S, R, id, bg), repairUsed = Math.min(g.left, repairOf(S, R, id, true));
+    return { awarded: g.awarded, planUsed: g.used, repairUsed, used: r2(g.used + repairUsed),
+      expired: r2(g.left - repairUsed), netRepair: r2(repair - repairUsed) };
+  }
   // 승인 경로와 AI가 공유하는 자금 판정. plan은 문법·해금 검사를 마친 후보다.
   // extra는 새 연계선 등 일반 지출. kind=respond는 유료 대응을 적용한 임시 상태에서 호출한다.
   // 기존 공개 budget/fixed/base/plan/resp/events만으로 재현하며 반환값을 저장·전송하지 않는다.
@@ -493,6 +508,19 @@
     E.order.forEach(id => {
       const c = E.cities[id];
       cities[id] = { research: researchView(S, id), grid: gridView(S.grid && S.grid[id]), curtailMWh: S.econRep && S.econRep.grid && S.econRep.grid[id] ? S.econRep.grid[id].curtailMWh : 0, name: c.name, pop: c.pop, ind: c.ind, pop0: c.pop0, ind0: c.ind0, cash: r2(c.cash), debtCap: c.debtCap, co2pc: c.co2pc, unsS: c.unsS, approval: c.approval, approval0: c.approval0, L: Math.round(c.L), A: Math.round(c.A), policy: S.teams[id].econPol || c.policy, groups: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].sat])), groupParts: groupParts(c, S.econRep?.groups[id]), shares: Object.fromEntries(Object.keys(c.groups).map(g => [g, c.groups[g].share])), lagL: c.lagL, lagA: c.lagA, hist: (c.hist || []).slice(-36) };
+      if (Object.keys(c.groupOwn || {}).length) cities[id].groupOwn = c.groupOwn;
+      const ownLag = {};
+      Object.entries(c.groupContrib || {}).forEach(([g, terms]) => {
+        const values = {};
+        KCP.ECON_DATA.groupOwnKeys.forEach(k => {
+          const value = r2(terms[k] || 0);
+          if (Number.isFinite(value) && value) values[k] = value;
+        });
+        if (Object.keys(values).length) ownLag[g] = values;
+      });
+      if (Object.keys(ownLag).length) cities[id].groupOwnLag = ownLag;
+      // 공통 rel에 포함된 병원 몫: 화면에서 분리할 때 한 번만 센다.
+      if (r2(c.hospRel || 0)) cities[id].hospRel = r2(c.hospRel);
     });
     const report = S.econRep || null;
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
@@ -817,12 +845,13 @@
     if (sc.startsWith("kind:")) return packHas(R, id, sc.slice(5));
     return false;
   }
-  const MUL = ["demandMul", "solarMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"];
+  const MUL = ["demandMul", "solarMul", "solarHeatMul", "windMul", "offshoreMul", "tidalMul", "coalCapMul", "lngCapMul"];
   const eventDef = (R, id) => (R.events || []).find(E => E.id === id) || null;
   function drawEvents(S, R) {
     const rd = roundsOf(S)[S.round - 1], act = activeOf(S);
-    const pool = (R.events || []).filter(E => (!S.econ || !["finedust_coal_cap", "light_load_curtailment"].includes(E.id)) &&
-      (!S.rounds || !(S.events || []).some(ev => ev.round === S.round - 1 && ev.id === E.id)) &&
+    const bundle = id => eventDef(R, id)?.drawParent || id;
+    const pool = (R.events || []).filter(E => !E.drawParent && (!S.econ || !["finedust_coal_cap", "light_load_curtailment"].includes(E.id)) &&
+      (!S.rounds || !(S.events || []).some(ev => ev.round === S.round - 1 && bundle(ev.id) === E.id)) &&
       (E.seasons || []).includes(rd.season) && act.some(id => scopeHits(R, E, id)) && eventValid(S, R, E));
     const rnd = rng(hashStr((S.seedKey ?? S.room) + ":" + S.round)), out = [];
     // P(event)=monthEventP*w/sum(w)。그 계절의 나머지 가중을 고정하고 역산한다.
@@ -840,6 +869,10 @@
       if (pool.length > 1 && rnd() < 0.4) out.push(pick());
     }
     if (S.econ && [12, 1, 2, 3].includes(rd.month)) { const fixed = eventDef(R, "finedust_coal_cap"); if (fixed) out.push(fixed); }
+    // 주 추첨·크기 난수열은 소비하지 않는다. 두 분기는 같은 fc를 가지며 전월 제외도 묶음 단위다.
+    const rain = eventDef(R, "heavy_rain"), rainIndex = out.findIndex(E => E.id === "monsoon_cloud");
+    // 계절 4라운드(비경제)에는 보수비·교부세가 없으므로 호우 분기를 두지 않는다.
+    if (S.econ && rain && rainIndex >= 0 && rng(hashStr((S.seedKey ?? S.room) + ":" + S.round + ":heavy_rain"))() < P.heavyRainShare.v) out[rainIndex] = rain;
     // 예보는 범위(fc)로만 알린다. 실제 크기 x(1 ± fc)는 지금 정해 두고 운영이 끝나야 공개한다(같은 방·라운드면 같은 값).
     S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round, x: r3(1 + (E.fc || 0) * (2 * rnd() - 1)) })));
     return out;
@@ -908,6 +941,11 @@
       const E = eventDef(R, ev.id);
       if (!E || !eventValid(S, R, E) || !scopeHits(R, E, id)) return;
       const f = E.effect || {}, o = respOpt(R, S, id, ev), x = typeof ev.x === "number" ? ev.x : 1;
+      if (ev.id === "heatwave_peak") {
+        const P = KCP.ECON_DATA.params;
+        M.lngCapMul = (M.lngCapMul ?? 1) * Math.max(0, 1 - P.heatLngSlope.v * P.heatAirDelta.v * x);
+        M.solarHeatMul = (M.solarHeatMul ?? 1) * Math.max(0, 1 - P.heatPvSlope.v * P.heatModuleDelta.v * x);
+      }
       // 크기 = 1 + (기본 배수 − 1) × 실제 크기 x × 대응 배수(dev, knobs가 있으면 그 손잡이만)
       MUL.forEach(k => {
         if (typeof f[k] !== "number") return;
@@ -1260,8 +1298,8 @@
       // 현금 흐름: 이번 라운드 새 투자(누적 투자 − 지난 라운드까지) + 이번 라운드 운영비. 라운드를 더해도 건설비가 두 번 세지지 않는다.
       const rfix = r2(Tm.rfix || 0), stock = r2(K.capex + tie + loss + rfix), resp = respCost(S, R, t.id, S.round);
       const labs = ((Tm.plan && Tm.plan.builds) || []).filter(b => b.t === "lab").length, research = (bg.RS ? labs * bg.RS.labOpexR : 0) + coolingCost(S, t.id);
-      const cost = { capex: r2(K.capex), ties: r2(tie), loss, rfix, stock, inv: r2(stock - (Tm.stock || 0)), fuel: r2(K.fuel + o.fuelX - o.saveFuel), policy: r2(K.policy), resp, research, trade: r2(o.pay - o.earn) };
-      cost.opex = r2(cost.fuel + cost.policy + cost.resp + cost.research + cost.trade);
+      const cost = { capex: r2(K.capex), ties: r2(tie), loss, rfix, stock, inv: r2(stock - (Tm.stock || 0)), fuel: r2(K.fuel + o.fuelX - o.saveFuel), policy: r2(K.policy), resp, research, repair: repairOf(S, R, t.id), trade: r2(o.pay - o.earn) };
+      cost.opex = r2(cost.fuel + cost.policy + cost.resp + cost.research + cost.repair + cost.trade);
       cost.total = r2(cost.inv + cost.opex);
       const co2Prod = K.co2 + o.co2X - o.saveCo2, co2Cons = co2Prod - o.co2X + o.co2In;
       team[t.id] = {
@@ -1271,6 +1309,8 @@
         unlinked: o.unlinked, isolated: { uns: r2(K.uns), co2: Math.round(K.co2) }
       };
       if (S.econ) {
+        const grant = disasterSettlementOf(S, R, t.id, bg, cost.repair);
+        if (grant.awarded || cost.repair) team[t.id].disasterGrant = grant;
         Object.assign(team[t.id], { loss: s.loss, idle: s.idle, cpList: s.cpList });
         team[t.id].grid = gridView(S.grid[t.id]);
         team[t.id].curtailMWh = s.curtailMWh;
@@ -1282,7 +1322,7 @@
       const ledger = royalties[id], cost = team[id].cost;
       cost.research = r2(cost.research + ledger.expense);
       if (!S.econ) cost.trade = r2(cost.trade - ledger.income);
-      cost.opex = r2(cost.fuel + cost.policy + cost.resp + cost.research + cost.trade);
+      cost.opex = r2(cost.fuel + cost.policy + cost.resp + cost.research + cost.repair + cost.trade);
       cost.total = r2(cost.inv + cost.opex);
       if (ledger.income || ledger.expense || coolingCost(S, id)) team[id].technologyCost = { ...ledger, cooling: coolingCost(S, id) };
     });
@@ -1336,7 +1376,7 @@
     const beforeResearch = Object.fromEntries(activeOf(S).map(id => [id, S.teams[id].rfix || 0]));
     if (bg.TECHS) advanceResearchAll(bg, R, S, res, now);
     // 월초 자산을 갱신하기 전에 적격 사용액을 지역 변수로 보존한다(공개 상태에 추가하지 않음).
-    const grants = Object.fromEntries(activeOf(S).map(id => [id, grantOf(S, R, id, bg).used]));
+    const grants = Object.fromEntries(activeOf(S).map(id => [id, res.team[id].disasterGrant?.used ?? 0]));
     Object.keys(res.team).forEach(id => {
       const T = S.teams[id], add = r2((T.rfix || 0) - beforeResearch[id]), c = res.team[id].cost;
       if (add) { c.rfix = r2(c.rfix + add); c.stock = r2(c.stock + add); c.inv = r2(c.inv + add); c.total = r2(c.inv + c.opex); }
@@ -1388,9 +1428,9 @@
     return {
       // by는 거래 후 대표 운영 기간의 생산 MWh(시작 보정은 거래 없음). 수입 전기는 제외한다.
       energy: { ...(r.pmBy ? { pmGenMWh: Object.fromEntries(Object.entries(r.pmBy).map(([f, v]) => [f, v * wk])) } : {}), genMWh: Object.fromEntries(["coal", "lng", "diesel", "biomass", "smr"].map(f => [f, (r.by?.[f] || 0) * wk])), bioCo2: (r.bioCo2 || 0) * wk, priceMul: (S.events || []).some(ev => ev.round === S.round && ev.id === "regional_tariff" && scopeHits(R, eventDef(R, ev.id), id)) ? eventDef(R, "regional_tariff").effect.industryPriceMul : 1, residentDemandShare: r.residentDemandShare ?? 1, cpList: r.cpList || [], exportMWh: r.exp * wk, importMWh: r.imp * wk, tieCost: c.ties || 0, ...(S.econ ? { waitingMW: r.grid ? r.grid.waitingMW : 0, curtailMWh: (r.curtailMWh || 0) * wk } : {}), unsPct: r.unsPct, hospH: r.hospH * wk, costPerMWh: served > 0 ? (Math.max(0, c.fuel - (r.exportFuel || 0)) + c.policy + r.pay) / served : 0, co2Local: r.co2Prod * wk, co2: r.co2Cons * wk, renPct: r.renPct,
-        tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0))), capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
+        tradeNet: r2((r.earn - r.pay) * wk), royalty: r.technologyCost?.income || 0, opex: r2(Math.max(0, (c.fuel + c.policy) * wk + (c.resp || 0) + (c.research || 0) + (c.repair || 0))), repair: c.repair || 0, capexNew: Math.max(0, c.inv || 0), demMWh: r.dem * wk, servedMWh: served * wk, buyCost: r.pay * wk, spareMW: r.spareMW,
         // 특별교부세의 미사용분은 세입으로 인정하지 않아 운영 적자·다음 달 현금에 쓰이지 않는다.
-        bonus: r2(bonusOf(S, R, id, S.round) - grantAmount(S, R, id) + (grantUsed ?? grantOf(S, R, id).used)), salvage: Math.max(0, -(c.inv || 0)) },
+        bonus: r2(bonusOf(S, R, id, S.round) - grantAmount(S, R, id) + (grantUsed ?? r.disasterGrant?.used ?? grantOf(S, R, id).used)), salvage: Math.max(0, -(c.inv || 0)) },
       policy: { ...(S.teams[id].econPol || {}), save: (plan.policies || []).includes("save"), share: (plan.policies || []).includes("share") },
       assets: Object.assign({ uni: (KCP.ECON_DATA.start[id]?.univ0 || 0) + n("uni"), lab: (KCP.ECON_DATA.start[id]?.lab0 || 0) + n("lab") }, extra || {})
     };
