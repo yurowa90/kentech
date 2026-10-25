@@ -611,6 +611,8 @@
     if (!MODS) return v0;
     const m = ["solar", "roof", "tandem", "tandem_roof"].includes(g.kind) ? MODS.solarMul : g.kind === "wind" ? MODS.windMul : g.kind === "offshore" ? MODS.offshoreMul : g.kind === "tidal" ? MODS.tidalMul : null;
     let v = typeof m === "number" ? v0 * m : v0;
+    // D-90: 실리콘 단일접합 모듈의 사건 추가 손실. 탠덤에는 근거가 없어 적용하지 않는다.
+    if (["solar", "roof"].includes(g.kind) && MODS.solarHeatMul != null) v *= MODS.solarHeatMul;
     // B18 손잡이가 없으면 기존 계산·반환 자료를 그대로 유지한다.
     if (MODS.reCap && BLD[g.kind] && BLD[g.kind].hostLimited) {
       v *= clamp((MODS.reCap[g.kind + ":" + g.tile] || 0) / BLD[g.kind].mw, 0, 1);

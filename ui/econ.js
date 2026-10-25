@@ -81,7 +81,7 @@
       co2Local: has(e, "co2Local") ? clamp(e.co2Local, 0, BIG) : null,
       co2: has(e, "co2") ? clamp(e.co2, 0, BIG) : null,
       renPct: num(e.renPct, 0, 100, 0), tradeNet: num(e.tradeNet, -BIG, BIG, 0), royalty: num(e.royalty, 0, BIG, 0),
-      opex: num(e.opex, 0, BIG, 0), capexNew: num(e.capexNew, 0, BIG, 0),
+      opex: num(e.opex, 0, BIG, 0), repair: num(e.repair, 0, BIG, 0), capexNew: num(e.capexNew, 0, BIG, 0),
       bonus: num(e.bonus, -BIG, BIG, 0), salvage: num(e.salvage, 0, BIG, 0),
       demMWh: has(e, "demMWh") ? clamp(e.demMWh, 0, BIG) : null,
       servedMWh: has(e, "servedMWh") ? clamp(e.servedMWh, 0, BIG) : null,
@@ -390,7 +390,7 @@
     return E;
   }
   // 자기수요 연료·정책·구매비는 차익에서 한 번 차감한다. 판매용 연료·대응·연구는 별도 지출.
-  const netOpex = e => Math.max(0, e.opex + e.buyCost - servedOf(e) * (e.costPerMWh || 0));
+  const netOpex = e => (e.repair || 0) + Math.max(0, e.opex - (e.repair || 0) + e.buyCost - servedOf(e) * (e.costPerMWh || 0));
   function ownRev(C, inp, data, out, reg) {
     const P = k => pv(data, k), e = inp.energy, pol = C.policy;
     // H03: 생산지 과세(수출 생산 포함, 수입 제외). 지도 축척은 기존 지역 숫자 필드를 쓴다.
@@ -686,7 +686,7 @@
       const own = ownRev(c, inp, data, o.v, reg);
       const rev = { subsidy: fin(sub[id], 0), resTax: own.resTax, indTax: own.indTax, facility: own.facility, tariff: own.tariff, trade: own.trade, royalty: r3(e.royalty, data), bonus: r3(e.bonus, data), salvage: r3(e.salvage, data) };
       const exp = {
-        capex: r3(e.capexNew, data), opex: r3(netOpex(e), data),
+        capex: r3(e.capexNew, data), opex: r3(netOpex(e) - e.repair, data), repair: r3(e.repair, data),
         service: r3(serviceBase(c, data) * (1 + P("svcStep") * c.policy.service), data),
         incentive: r3(c.policy.incentive * (1 - (data.start[id]?.natShare || 0)), data), interest: r3(Math.max(0, -c.cash) * P("debtRate"), data),
         trade: 0, policy: r3(polCost[id], data)
