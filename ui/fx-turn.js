@@ -244,6 +244,7 @@
     if (!keepCurrentCards()) return;
     const stage = root.querySelector(".bd-stage")?.getBoundingClientRect();
     if (!stage) return;
+    const desktop = window.innerWidth >= 761;
     let box = { left: Math.max(8, stage.left + 8), right: Math.min(window.innerWidth - 8, stage.right - 8),
       top: Math.max(8, stage.top + 8), bottom: Math.min(window.innerHeight - 8, stage.bottom - 8) };
     // #lg-map-result: 지도 왼쪽 위 'N월 실제' 요약 줄. 요약 띠가 이것을 덮지 않게 그 아래에서 시작한다.
@@ -257,18 +258,19 @@
     }
     const mapBox = { ...box }, panels = [], drawers = openDrawers(root);
     if (expanded && !drawers.length) expanded = false;
-    let guidanceBox = null;
+    let guidanceBox = null, keysBox = null;
     const overlaps = (b, p) => p.left < b.right && p.right > b.left && p.top < b.bottom && p.bottom > b.top;
     const area = b => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
     const spacesAround = (b, p, gap = 8) => [
       { ...b, right: Math.min(b.right, p.left - gap) }, { ...b, left: Math.max(b.left, p.right + gap) },
       { ...b, bottom: Math.min(b.bottom, p.top - gap) }, { ...b, top: Math.max(b.top, p.bottom + gap) }
     ].filter(b => area(b) > 0);
-    for (const sel of [".lg-map-guidance", "#lg-plan-issues", "#lg-issue", "#lg-issue-check", "#lg-coach", "#lg-panel", "#bd-drawer"]) {
+    for (const sel of [".lg-map-guidance", "#lg-plan-issues", "#lg-issue", "#lg-issue-check", "#lg-coach", "#lg-panel", "#bd-drawer", ...(desktop ? [".lg-map-keys"] : [])]) {
       const p = visibleRect(root.querySelector(sel));
       if (!p) continue;
       panels.push(p);
       if (sel === ".lg-map-guidance") guidanceBox = p;
+      if (sel === ".lg-map-keys") keysBox = p;
       if (overlaps(box, p)) {
         box = spacesAround(box, p).sort((a, b) => area(b) - area(a))[0] ||
           { ...box, right: box.left, bottom: box.top };
@@ -302,6 +304,32 @@
     if (run && !run.hidden) {
       // 운영 띠의 위치는 build.layout의 V.area가 맡는다. 사건은 그 위의 빈 공간만 쓴다.
       box.bottom = Math.min(box.bottom, run.getBoundingClientRect().top - 8);
+    }
+    let compact = box.right - box.left < 600;
+    // 학생이 띠를 펼쳤으면 기존 서랍 위 펼침(over) 배치를 그대로 쓴다(검토 major 2, D-83 ④).
+    if (deck && desktop && !expanded) {
+      // 카드 수별 기존 폭(1장 280, 2장 520, 3장 794)·높이 330과 표시 방식을 유지한다.
+      // 덱의 빈 여백만 걷어 왼쪽 아래로 붙이고 범례·서랍·코치를 피한다.
+      const bounds = { ...mapBox, bottom: Math.min(mapBox.bottom,
+        run && !run.hidden ? run.getBoundingClientRect().top - 8 : Infinity) };
+      const candidates = freeSpaces(bounds);
+      const leftOf = list => list.filter(fits).sort((a, b) => a.left - b.left || b.bottom - a.bottom)[0];
+      const leftLimit = bounds.left + (bounds.right - bounds.left) / 3;
+      let corner = leftOf(candidates);
+      // 코치 띠와 범례 사이가 좁아 왼쪽에 자리가 없으면, 지도 가운데로 가는 대신 범례 위를 덮는다(범례가 지도 핵심부보다 덜 중요).
+      if (keysBox && (!corner || corner.left > leftLimit)) {
+        const overKeys = leftOf(freeSpaces(bounds, 8, panels.filter(p => p !== keysBox)));
+        if (overKeys && overKeys.left <= leftLimit) corner = overKeys;
+      }
+      if (corner) {
+        const count = deck.querySelectorAll(".fx-turn-card").length;
+        // 카드 수별 기존 폭과 표시 방식(넓은 화면은 펼쳐 보임, 소리 계약)을 유지하고 왼쪽 가장자리에만 붙인다.
+        compact = corner.right - corner.left < 600;
+        const rowWidth = compact || count > 3 ? 360 : count === 1 ? 280 : count === 2 ? 520 : 794;
+        box = { left: corner.left, right: Math.min(corner.right, corner.left + rowWidth + 8),
+          top: Math.max(corner.top, corner.bottom - 388), bottom: corner.bottom };
+      } else box = candidates[0] || { ...bounds, right: bounds.left, bottom: bounds.top };
+      layer.dataset.over = "false";
     }
     status.strip = !!(deck && !fits(box));
     layer.dataset.strip = String(status.strip);
@@ -361,7 +389,7 @@
     }
     const width = Math.max(0, box.right - box.left), height = Math.max(0, box.bottom - box.top);
     Object.assign(layer.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${width}px`, height: `${height}px` });
-    layer.dataset.compact = String(width < 600);
+    layer.dataset.compact = String(desktop && deck && !status.strip ? compact : width < 600);
     syncLayerVisibility();
     if (status.deferred && !wasDeferred) deferredNotice?.();
     if (wasStrip !== status.strip || wasDeferred !== status.deferred) armCards?.();
@@ -505,7 +533,7 @@
       const ro = new ResizeObserver(() => schedulePlace(root));
       // 운영 띠(#bd-run)는 관찰하지 않는다: 띠 크기는 layout()이 서랍 관찰(panelObserver) 고리 안에서 동기로 쓸 수 있어
       // 같은 깊이의 관찰 대상이 되면 WebKit 'ResizeObserver loop'가 난다. 띠 표시·펼침은 아래 MutationObserver(hidden)가 잡는다.
-      [root, ...root.querySelectorAll("#lg-panel, #bd-drawer, .lg-bar, #bd-hud, #bd-mapbar, #bd-dock, .lg-map-guidance, #lg-issue-check")].forEach(el => ro.observe(el));
+      [root, ...root.querySelectorAll("#lg-panel, #bd-drawer, .lg-bar, #bd-hud, #bd-mapbar, #bd-dock, .lg-map-guidance, .lg-map-keys, #lg-issue-check")].forEach(el => ro.observe(el));
       off.push(() => ro.disconnect());
     }
     if (window.MutationObserver) {

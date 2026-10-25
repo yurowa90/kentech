@@ -3478,7 +3478,7 @@
   KCP.buildGame.coachMarks = coachMarks;
   function placeBanners() {
     if (!S.banners) return;
-    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot},${V.W},${V.H},${V.area.t}`;
+    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot},${V.W},${V.H},${V.area.l},${V.area.t},${V.area.r},${V.area.b}`;
     if (S.bannerKey === key) return;
     S.bannerKey = key;
     const placed = [];
@@ -3512,10 +3512,13 @@
       const [x, y] = tileTop(T, 0);
       el.hidden = false;
       const w = el.offsetWidth, h = el.offsetHeight;
-      const bx = clamp(x - w / 2, 4, V.W - w - 4);
+      if (w > V.area.r - V.area.l - 8 || h > V.area.b - V.area.t - 4) { el.hidden = true; return; }
+      // 자기 칸이 지도 영역(서랍·막대 밖) 밖이면 가장자리에 떨어져 붙이지 않고 숨긴다(검토 minor 5).
+      if (x < V.area.l || x > V.area.r || y < V.area.t || y > V.area.b) { el.hidden = true; return; }
+      const bx = clamp(x - w / 2, V.area.l + 4, V.area.r - w - 4);
       let r = null;
       for (const dy of [0, -(h + 4), h + 4 + V.S * 0.6, -2 * (h + 4)]) {
-        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.H - h - 4), w, h };
+        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.area.b - h - 4), w, h };
         if (!targets.some(t => hit(t, c)) && !placed.some(p => hit(p, c))) { r = c; break; }
       }
       if (!r) { el.hidden = true; return; }

@@ -1029,7 +1029,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
 .lg-team-map #bd-mapbar { z-index: 28; }
 .lg-lens-key { display: none; position: absolute; left: 0; top: var(--lg-lens-key-top, 48px); width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
-/* 마을 모양 범례: 지도 아래쪽 왼쪽, 도크 바로 위. 사건 카드 층(z 35)보다 아래이고 fx-turn 배치의 장애물이 아니라 카드 자리를 줄이지 않는다. */
+/* 마을 모양 범례: 지도 아래쪽 왼쪽, 도크 바로 위. 데스크톱 사건 덱은 이 범례 바로 위에 놓는다. */
 .lg-town-key { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 5px 8px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; overflow-wrap: anywhere; word-break: keep-all; pointer-events: none; }
 .lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
@@ -1760,9 +1760,21 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* S4 근거 칩: 좁은 칩에서 말줄임이 'S1에서 고름' 표시를 가리지 않게 표시를 다음 줄에 둔다. */
 #lg-evidence [data-evidence] .lg-s1-mark { display: block; margin: 2px 0 0; white-space: nowrap; }
-/* 휴대폰 막대의 '약속하고 준비'가 112px 단추 안에서 두 줄로 꺾이지 않게 한다. */
+/* 휴대폰 탐색은 전폭으로 줄바꿈하고 주 동작은 별도 행에 둔다. 한 줄 준비 문구가 일지를 가리지 않는다. */
 @media (max-width: 760px) {
-  .lg-team-map #lg-bar #lg-ready { white-space: nowrap; font-size: 14px; letter-spacing: -.02em; padding-inline: 4px; }
+  /* 줄 수는 그대로 둔다(econui U1: 서랍을 닫으면 지도 60% 이상). 준비는 상태 줄 오른쪽, 탐색은 둘째 줄 전폭(검토 major 3). */
+  .lg-team-map #lg-bar:not(.lg-awaybar) { grid-template-rows: 44px auto; }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-status { grid-column: 1; }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions {
+    grid-column: 1 / -1; flex-wrap: wrap; gap: 4px; overflow: visible;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions > button { min-width: 44px; min-height: 44px; }
+  .lg-team-map #lg-bar #lg-ready { grid-row: 1; grid-column: 2; white-space: nowrap; font-size: 14px; letter-spacing: -.02em; padding-inline: 4px; }
+}
+/* 224폭 viewBox의 12px 눈금은 최대 15px까지만 확대한다. 390 표시는 유지한다. */
+@media (min-width: 761px) {
+  .lg-fx-chart svg { max-width: 280px; margin-inline: auto; }
 }
 /* 태블릿·데스크톱: 운영 띠를 한 줄(이름표·운영일·날씨 | 건너뛰기·그래프 열기)과 얇은 진행 막대로 줄여
    작은 지도(1024×768 등)에서도 지도 아래 1/4 지점을 덮지 않게 한다. */
