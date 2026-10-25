@@ -199,7 +199,7 @@
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
     L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
     BG.setViewInset?.({ right: 0 });
-    clearInterval(L.guidanceTimer); L.guidanceTimer = null; cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
+    clearInterval(L.guidanceTimer); L.guidanceTimer = null; if (L.guidanceFrame) cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
     if (L.conn) L.conn.close();
@@ -537,20 +537,33 @@
     el.querySelector("#lg-coach-action").onclick = coachAction;
     updateCoach(!reattach);
   }
+  function coachLineTarget() {
+    const facility = BG.planIssues().unlinked[0];
+    const town = facility && BG.nearestTown(facility.i);
+    return facility && town ? { facility, town } : null;
+  }
   function coachSteps(issues, n = {}) {
     // 말풍선 gridWaitInfo도 hostLimited가 없는 설비에는 접속 대기를 적용하지 않는다.
     const immediate = Object.entries(BG.BLD).find(([id, b]) => b.cls === "disp" && !b.hostLimited && document.querySelector(`[data-group="fire"]`) && id === "diesel");
     const build = immediate ? `${immediate[1].name} 하나 놓기 · 접속 대기 없어요` : "설비 하나 놓기 · 말풍선의 '대기'를 확인해요";
-    const groups = new Map();
-    for (const name of issues.unlinkedNames || []) groups.set(name, (groups.get(name) || 0) + 1);
-    const shown = [...groups].slice(0, 2), rest = issues.unlinked - shown.reduce((sum, [, count]) => sum + count, 0);
-    const unlinked = shown.map(([name, count]) => count > 1 ? `${name} ${count}기` : name).join("·");
+    const target = coachLineTarget();
+    let line = `마을까지 이어요 · 미연결 0기 · 대기 ${issues.waiting}기`;
+    if (target) {
+      const { facility, town } = target, state = BG.lineState();
+      const built = BG.current()?.builds.some(b => b.i === facility.i);
+      line = state.end != null ? "칸 수·비용 막대의 '연결'을 누르세요" :
+        state.start === facility.i ? `이제 ${town.name} 칸을 누르고 뜨는 막대의 '연결'을 누르세요` :
+        built ? `${facility.name} 칸, ${town.name} 칸을 차례로 누르고 '연결'을 누르세요` :
+        `기존 ${facility.name}도 이어야 넘어가요. ${facility.name} 칸, ${town.name} 칸을 누르고 '연결'을 누르세요`;
+      if (issues.unlinked >= 2) line += ` · 전선 미연결 ${issues.unlinked}기`;
+      if (issues.waiting >= 1) line += ` · 대기 ${issues.waiting}기`;
+    }
     return [
       ["이번 달 사건을 열어 봐요", "사건 보기", '#lg-bar [data-panel="deal"]'],
       [build, "화력", '[data-group="fire"]'],
-      [`마을까지 이어요 · 미연결${issues.unlinked ? `(${unlinked}${rest > 0 ? ` 외 ${rest}기` : ""})` : " 0기"} · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
+      [line, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
-      ["준비 → 근거·방향·확신 고르고 약속해요", "준비", L.awaitReady ? "#lg-ready-confirm" : "#lg-ready"],
+      ["준비 → 근거·방향·확신 고르고 약속해요", "준비", "#lg-ready"],
       ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
       ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
       [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
@@ -576,6 +589,18 @@
     document.querySelectorAll(".lg-coach-target").forEach(item => item.classList.remove("lg-coach-target"));
     let target = document.querySelector(selector);
     if (state.step === 2 && (!target || target.closest("[hidden]"))) target = document.querySelector('[data-group="grid"]');
+    // 송전선 도구를 든 채 대상(첫 미연결 설비)이나 시작점이 바뀌면 다음에 누를 칸이 화면 안에 오게 지도를 옮긴다.
+    // 시작점을 고른 뒤에는 마을 칸을 먼저 맞춘다. 같은 대상·상태에서는 다시 옮기지 않아 학생이 끈 지도를 되돌리지 않는다.
+    if (state.step === 2 && document.getElementById("bd-root")?.dataset.mode === "line") {
+      const line = coachLineTarget(), ls = BG.lineState();
+      const key = line ? `${line.facility.i}:${ls.start === line.facility.i}` : "";
+      if (line && state.focusKey !== key) {
+        const first = state.focusKey != null;
+        state.focusKey = key;
+        // 다음에 누를 칸이 이미 보이면 옮기지 않는다(onlyIfHidden). 끝점 취소로 돌아온 경우도 같은 키라 다시 옮기지 않는다.
+        if (first && ls.end == null) BG.focusTiles(ls.start === line.facility.i ? [line.town.tile] : [line.facility.i], { onlyIfHidden: true });
+      }
+    } else if (state.step === 2) state.focusKey = null;
     if (state.step === 4 && !target) target = document.getElementById("lg-ready");
     target?.classList.add("lg-coach-target");
   }
@@ -583,7 +608,12 @@
     const step = L.coach?.step;
     if (step == null) return;
     if (step === 1) { closePanel(); BG.closeDrawer?.(); const group = document.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); return; }
-    if (step === 2) { choosePlanTool("line"); return; }
+    if (step === 2) {
+      choosePlanTool("line");
+      const target = coachLineTarget();
+      if (target) BG.focusTiles([target.facility.i, target.town.tile], { ring: target.facility.i });
+      return;
+    }
     if (step === 0 || step === 5) { openPanel(step === 0 ? "deal" : "result"); updateCoach(); return; }
     if (step === 6) openPanel("result");
     const { n } = monthNote(), [, , selector] = coachSteps(planIssueCounts(), n)[step];
@@ -592,6 +622,7 @@
     if (step >= 6 && selector !== "#lg-ready") { scrollPanelTo(target); target.focus({ preventScroll: true }); if (target.matches("button") && !target.disabled) target.click(); }
     else if (!target.disabled) target.click();
   }
+  const coachSyncRoots = new WeakSet();
   function setupMapGuidance(root) {
     clearInterval(L.guidanceTimer);
     const stack = document.createElement("div"); stack.className = "lg-map-guidance";
@@ -618,13 +649,20 @@
     // 관찰 콜백 안에서 --lg-guidance-bottom을 바로 쓰면 서랍(#lg-panel, panelObserver 관찰 대상)의 높이가 같은 전달 고리 안에서
     // 바뀐다. 서랍은 이번 고리의 가장 얕은 관찰 대상과 같은 깊이라 WebKit이 'ResizeObserver loop … undelivered' 오류를 낸다.
     // 쓰기를 다음 프레임으로 미루고 한 프레임에 한 번만 한다(값이 같으면 syncBottom이 쓰지 않는다).
-    cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
+    // 예약된 프레임이 있을 때만 취소한다(프레임 API가 없는 Node 검사 VM에서도 설치가 멈추지 않게).
+    if (L.guidanceFrame) cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
     const owner = L;
     L.guidanceObserver = new ResizeObserver(() => {
       if (owner.guidanceFrame) return;
       owner.guidanceFrame = requestAnimationFrame(() => { owner.guidanceFrame = 0; syncBottom(); });
     });
     L.guidanceObserver.observe(stack);
+    // 송전선 시작점·끝점을 고르면 코치 문구가 다음 동작을 바로 말하게 한다(0.5초 주기를 기다리지 않음).
+    // 지도 처리기(캔버스)가 끝난 뒤 버블 단계에서 문구만 다시 쓴다. 단계 전진은 주기 확인 몫이다.
+    if (!coachSyncRoots.has(root)) {
+      coachSyncRoots.add(root);
+      for (const type of ["pointerup", "keydown", "click"]) root.addEventListener(type, () => { if (L.coach) setTimeout(() => updateCoach(false), 0); });
+    }
     const session = L;
     L.guidanceTimer = setInterval(() => {
       if (L !== session || !root.isConnected || L.away) return;
@@ -961,6 +999,15 @@
     const name = `${item.key === "neighbor" && neighborId ? teamName(neighborId) + " · " : ""}${EVIDENCE_NAMES[item.key]}`;
     return { ...item, value, text: `${name}: ${fmt(value, 2)}${evidenceUnit(item.key)}`,
       ...(item.key === "neighbor" ? { neighborId } : {}) };
+  }
+  function chooseEvidence(V, d, n, key) {
+    const options = evidenceOptions(V), item = options.find(x => x.key === key);
+    const start = item && evidenceAtStart(item, n);
+    if (!start || !Number.isFinite(start.value)) return false;
+    n.evidence = { ...start, ...(Number.isFinite(item.value) ? { nowValue: item.value } : {}) };
+    n.evidenceValues = Object.fromEntries(options.filter(x => Number.isFinite(x.value)).map(x => [x.key, x.value]));
+    n.confirmed = false; putData(d);
+    return true;
   }
   function evidenceComparisonValues(n, previous) {
     const key = n.evidence?.key;
@@ -1451,12 +1498,16 @@
       delta, deltaCost: delta == null ? null : delta * price, tol: gridSameTol(mwh),
       deltaPerDay, deltaPerDayCost: deltaPerDay == null ? null : deltaPerDay * price, tolPerDay: gridSameTolPerDay(perDay) };
   }
+  function promiseComplete(V, n) {
+    return !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[promiseTopic(V, n)] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
+  }
   // 근거·방향·확신과 약속 주제에 맞는 비교 기준을 표시한다.
   function predictionHTML(V) {
     rememberLocalPlan(V);
-    const { n } = monthNote();
+    const { d, n } = monthNote();
     if (!needsLoop(V)) return "";
-    const topic = promiseTopic(V, n), complete = !!n.evidence && Object.hasOwn(DIRECTION_NAMES, n.pred?.[topic] || "") && Object.hasOwn(CONFIDENCE, n.confidence || "");
+    if (!n.evidence && !n.confirmed && n.s1Pick) chooseEvidence(V, d, n, n.s1Pick);
+    const topic = promiseTopic(V, n), complete = promiseComplete(V, n);
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
     const grid = topic === "grid" ? promiseGridBaseline(V) : null;
     const baseline = `비교 기준: ${topic === "cash" ? "이번 달 운영 전 현금" : topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
@@ -1985,13 +2036,7 @@
     }
     const evidence = e.target.closest("[data-evidence]");
     if (evidence && V.phase === "plan") {
-      const options = evidenceOptions(V), item = options.find(x => x.key === evidence.dataset.evidence);
-      const start = item && evidenceAtStart(item, n);
-      if (start && Number.isFinite(start.value)) {
-        n.evidence = { ...start, ...(Number.isFinite(item.value) ? { nowValue: item.value } : {}) };
-        n.evidenceValues = Object.fromEntries(options.filter(x => Number.isFinite(x.value)).map(x => [x.key, x.value]));
-        n.confirmed = false; putData(d); renderPanel();
-      }
+      if (chooseEvidence(V, d, n, evidence.dataset.evidence)) renderPanel();
       return true;
     }
     const confidence = e.target.closest("[data-confidence]"), missed = e.target.closest("[data-missed]");
@@ -2057,7 +2102,14 @@
       n.crit = crit; putData(d); queueCrit(crit); return true;
     }
     if (note) { n[note.dataset.note] = note.value.slice(0, 1000); putData(d); updateMission(); return true; }
-    if (pred) { n.topic = pred.dataset.pred; n.pred = {}; n.pred[pred.dataset.pred] = pred.value; n.confirmed = false; putData(d); const b = document.getElementById("lg-ready-confirm"); if (b) b.disabled = !(n.evidence && n.pred[n.topic] && n.confidence); const remaining = document.getElementById("lg-promise-remaining"); if (remaining) remaining.textContent = b?.disabled ? `남은 단계: ${!n.evidence ? "근거" : !n.pred[n.topic] ? "방향" : "확신"}` : "준비할 수 있어요"; return true; }
+    if (pred) {
+      n.topic = pred.dataset.pred; n.pred = {}; n.pred[n.topic] = pred.value; n.confirmed = false; putData(d);
+      const complete = promiseComplete(L.snap, n), b = document.getElementById("lg-ready-confirm");
+      if (b) b.disabled = !complete;
+      const remaining = document.getElementById("lg-promise-remaining");
+      if (remaining) remaining.textContent = complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[promiseTopic(L.snap, n)] ? "방향" : "확신"}`;
+      syncReadyButton(); return true;
+    }
     if (end) { d.interview.end = d.interview.end || {}; d.interview.end[end.dataset.end] = end.value.slice(0, 1000); putData(d); return true; }
     if (weight) { updateWeights(document.getElementById("lg-panel"), L.snap.econ); return true; }
     return false;
@@ -5231,9 +5283,10 @@
         L.panel === p.dataset.panel ? closePanel() : openPanel(p.dataset.panel); return;
       }
       if (e.target.closest("#lg-ready")) {
-        // 약속을 다 채웠으면 막대 단추도 확정이다. 덜 채운 자유 실험 달에만 다시 누르기 = 건너뛰기(ECON-UI v1.1).
-        const confirm = document.getElementById("lg-ready-confirm"), complete = !!confirm && !confirm.disabled;
-        readyAction(!complete && !!L.awaitReady && L.panel === "journal" && !L.panelFolded && freeExperiment());
+        if (document.getElementById("lg-ready")?.disabled) return;
+        // 약속을 다 채웠으면 서랍이 닫혀 있어도 막대 단추가 확정이다. 덜 채웠으면 약속 서랍을 다시 연다.
+        if (L.snap?.phase === "plan" && L.awaitReady && (L.panel !== "journal" || L.panelFolded) && !promiseComplete(L.snap, monthNote().n)) { openPanel("journal"); return; }
+        readyAction(false);
       }
     });
     bindInfoTips(bar);
@@ -5294,6 +5347,16 @@
     });
     renderBar();
   }
+  function syncReadyButton() {
+    const V = L.snap, rb = document.getElementById("lg-ready");
+    if (!V || !rb) return;
+    const me = V.teams[L.team], promise = V.econ && V.phase === "plan" && L.awaitReady;
+    const panel = document.getElementById("lg-panel");
+    const open = promise && L.panel === "journal" && !L.panelFolded && panel && !panel.hidden && !!panel.querySelector("#lg-ready-confirm");
+    rb.setAttribute("aria-pressed", String(!!me.ready));
+    rb.textContent = promise ? "약속하고 준비" : L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비";
+    rb.disabled = !readyAllowed(V) || (!!open && !promiseComplete(V, monthNote().n));
+  }
   function renderBar() {
     const V = L.snap, reg = R();
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
@@ -5314,7 +5377,7 @@
     const rb = document.getElementById("lg-ready");
     for (const id of ["lg-bar", "lg-panel"]) { const el = document.getElementById(id); if (el) el.dataset.econ = String(!!V.econ); }
     if (rb) rb.style.minHeight = V.econ ? "44px" : "";
-    if (rb) { rb.setAttribute("aria-pressed", String(!!me.ready)); rb.textContent = V.econ && V.phase === "plan" && L.awaitReady ? "기준 확인" : L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비"; rb.disabled = !readyAllowed(V); }
+    syncReadyButton();
     if (V.econ && !document.querySelector('.lg-bar [data-panel="city"]')) {
       const bar = document.getElementById("lg-bar"), b = document.createElement("button"); b.type = "button"; b.className = "lg-bbtn"; b.dataset.panel = "city"; b.textContent = "도시"; bar?.querySelector(".lg-actions")?.append(b);
       const rank = b.cloneNode(true); rank.dataset.panel = "rank"; rank.textContent = "순위"; bar?.querySelector(".lg-actions")?.append(rank);
@@ -5389,6 +5452,7 @@
     root.dataset.resultDrawer = String(wide);
     root.dataset.leagueDrawer = String(!!p && !p.hidden);
     root.dataset.promiseOpen = String(!!p && !p.hidden && !L.panelFolded && L.panel === "journal" && !!p.querySelector("#lg-ready-confirm"));
+    syncReadyButton();
     if (before !== root.dataset.resultDrawer || drawerBefore !== root.dataset.leagueDrawer) window.dispatchEvent(new Event("resize"));
     syncViewInset();
   }

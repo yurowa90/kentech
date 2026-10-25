@@ -17,6 +17,7 @@ from econui import OVERFLOW_JS
 
 sys.path.insert(0, str(Path(__file__).parent))
 from ux_task import CFG, TILE_XY_JS  # noqa: E402
+from ux_s2fix import reveal_tile  # noqa: E402
 
 STEP_JS = "() => { const c=document.querySelector('#lg-coach'); return c ? Number(c.dataset.step) : 0; }"
 # 수요지(마을)에서 가까운 순서로, 지금 도구로 지을 수 있고 화면에 보이는 칸.
@@ -48,6 +49,7 @@ def main():
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     log, problems, actions = [], [], {}
+    pans = 0
     touch = CFG[a.cfg].get("has_touch", False)
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -66,6 +68,14 @@ def main():
             page.wait_for_timeout(350)
 
         def tile(i, step):
+            nonlocal pans
+            if step == 3 and page.evaluate(TILE_XY_JS, i) is None:
+                # M2: 자동 확대 뒤 다른 끝점이 가려졌으면 터치 pointer 드래그로 드러낸다.
+                def count_pan():
+                    nonlocal pans
+                    pans += 1
+                    actions[step] = actions.get(step, 0) + 1
+                reveal_tile(page, touch, i, count_pan)
             xy = page.evaluate(TILE_XY_JS, i)
             if not xy:
                 return False
@@ -104,17 +114,32 @@ def main():
                 assert page.evaluate(OVERFLOW_JS) <= 0, '코치 장면 가로 스크롤 0'
                 if step == 3:
                     issues = page.evaluate("""() => {
-                      const B=KCP.buildGame, p=B.planIssues();
-                      return {names:p.unlinked.map(b=>B.BLD[b.t]?.name || B.SITES.find(s=>s.tile===b.i)?.name),
-                        waiting:p.waiting.length};
+                      const B=KCP.buildGame, p=B.planIssues(), b=p.unlinked[0];
+                      if(!b) return {count:0, waiting:p.waiting.length};
+                      const T=B.TILES[b.i], q=t=>t.c-(t.r-(t.r&1))/2;
+                      // M2: odd-r → axial 헥스 거리. 구현의 대상/문구 생성 함수는 쓰지 않는다.
+                      const d=t=>Math.max(Math.abs(q(t)-q(T)),Math.abs(t.r-T.r),
+                        Math.abs(q(t)-q(T)+t.r-T.r));
+                      const town=B.SITES.filter(s=>s.dem).slice().sort((a,z)=>
+                        d(B.TILES[a.tile])-d(B.TILES[z.tile]) || a.tile-z.tile)[0];
+                      return {count:p.unlinked.length, waiting:p.waiting.length, name:b.name,
+                        town:town?.name, existing:!B.current().builds.some(x=>x.i===b.i)};
                     }""")
-                    names = issues['names']
-                    assert all(names), '미연결 설비 이름은 자료에 있어야 함'
-                    count = len(names)
-                    listed = ('(' + '·'.join(names[:2]) + (f' 외 {count-2}기' if count > 2 else '') + ')'
-                              if count else ' 0기')
-                    assert log[-1]['task'] == (f'자리 판단 · 3/8 마을까지 이어요 · 미연결{listed}'
-                                              f' · 대기 {issues["waiting"]}기'), log[-1]
+                    count, waiting = issues['count'], issues['waiting']
+                    if count:
+                        name, town = issues['name'], issues['town']
+                        assert name and town, 'M2 미연결 설비·가장 가까운 수요지 이름 존재'
+                        if issues['existing']:
+                            text = (f"기존 {name}도 이어야 넘어가요. {name} 칸, {town} 칸을 누르고 '연결'을 누르세요")
+                        else:
+                            text = f"{name} 칸, {town} 칸을 차례로 누르고 '연결'을 누르세요"
+                        if count >= 2:
+                            text += f' · 전선 미연결 {count}기'
+                        if waiting:
+                            text += f' · 대기 {waiting}기'
+                    else:
+                        text = f'마을까지 이어요 · 미연결 0기 · 대기 {waiting}기'
+                    assert log[-1]['task'] == f'자리 판단 · 3/8 {text}', log[-1]
                 if step == 2:
                     press("#lg-coach-action", step)
                     tool = page.locator('[data-tool="diesel"]')
@@ -189,7 +214,8 @@ def main():
           return {team:L.team, unsPct:r?.team?.[L.team]?.unsPct ?? null, builds:KCP.buildGame.current().builds.map(b=>b.t)};}""")
         browser.close()
     summary = {"cfg": a.cfg, "city": a.city or "기본", "error": err, "reachedStep": reached, "skipped": skipped,
-               "actions": actions, "totalActions": sum(actions.values()), "month1": res, "console": problems[:10], "log": log}
+               "actions": actions, "totalActions": sum(actions.values()), "pans": pans,
+               "month1": res, "console": problems[:10], "log": log}
     (out / f"ux-coach-{a.cfg}-{a.city or 'default'}.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
     print(json.dumps({k: summary[k] for k in ("cfg", "city", "error", "reachedStep", "skipped", "totalActions", "month1")},
                      ensure_ascii=False))

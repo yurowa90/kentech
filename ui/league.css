@@ -1170,10 +1170,10 @@ html.bd-drawer-open #lg-plan-reminder,
   background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
 }
 .lg-team-map[data-promise-open="true"] #lg-bar #lg-ready {
-  background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
+  background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold);
 }
-/* HUD 주 동작은 금색, 약속 카드의 primary는 기존 청록·파랑 그라데이션이다. */
-/* 약속 카드가 열려 있으면(data-promise-open) 위 규칙대로 보조로 둔다: 주 단추가 둘처럼 보이지 않게(UX 조건). */
+.lg-team-map[data-promise-open="true"] #lg-bar #lg-ready:disabled { opacity: .55; cursor: not-allowed; }
+/* 약속 중에도 HUD를 주 동작으로 유지하고 서랍의 확인은 보조로 둔다. */
 .lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="false"] { background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); }
 .lg-team-map:not([data-promise-open="true"]) #lg-bar #lg-ready:enabled[aria-pressed="true"] { background: var(--ui-cyan); color: #0d2a33; border-color: var(--ui-cyan); }
 #bd-hud[data-last-outage="true"] { border-color: color-mix(in srgb, var(--ui-danger) 75%, white); }
@@ -1192,6 +1192,7 @@ html.bd-drawer-open #lg-plan-reminder,
   gap: 2px 8px; padding: 2px 12px; border-top: 1px solid var(--line); background: var(--sheet);
 }
 .lg-promise-actions button { min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 4px 8px; white-space: nowrap; }
+.lg-team-map #lg-panel #lg-ready-confirm { background: transparent; border: 1px solid var(--ui-gold); color: var(--ink); box-shadow: none; }
 .lg-promise-actions #lg-promise-remaining { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 16px; }
 .lg-promise-actions:not(:has(#lg-predict-skip)) #lg-ready-confirm { grid-column: 1 / -1; }
 .lg-promise-actions #lg-predict-skip { background: transparent; color: var(--ink-2); border-color: transparent; }
@@ -1592,7 +1593,7 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 #bd-root.lg-team-map[data-lg-phase="review"] #lg-bar #lg-ready:enabled:not([aria-pressed="true"]) {
   background: var(--ui-gold); color: #06202a; border-color: var(--ui-gold); box-shadow: none;
 }
-.lg-team-map[data-lg-phase="review"] .bd-go[data-run] {
+.lg-team-map .bd-go[data-run] {
   min-height: 44px; background: var(--ui-panel); border: 1px solid var(--ui-border); color: var(--ui-text); box-shadow: none;
 }
 
