@@ -199,7 +199,7 @@
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
     L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
     BG.setViewInset?.({ right: 0 });
-    clearInterval(L.guidanceTimer); L.guidanceTimer = null;
+    clearInterval(L.guidanceTimer); L.guidanceTimer = null; cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
     if (L.conn) L.conn.close();
@@ -615,7 +615,15 @@
       const bottom = `${Math.ceil(stack.getBoundingClientRect().bottom + 8)}px`;
       if (root.style.getPropertyValue("--lg-guidance-bottom") !== bottom) root.style.setProperty("--lg-guidance-bottom", bottom);
     };
-    L.guidanceObserver = new ResizeObserver(syncBottom);
+    // 관찰 콜백 안에서 --lg-guidance-bottom을 바로 쓰면 서랍(#lg-panel, panelObserver 관찰 대상)의 높이가 같은 전달 고리 안에서
+    // 바뀐다. 서랍은 이번 고리의 가장 얕은 관찰 대상과 같은 깊이라 WebKit이 'ResizeObserver loop … undelivered' 오류를 낸다.
+    // 쓰기를 다음 프레임으로 미루고 한 프레임에 한 번만 한다(값이 같으면 syncBottom이 쓰지 않는다).
+    cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
+    const owner = L;
+    L.guidanceObserver = new ResizeObserver(() => {
+      if (owner.guidanceFrame) return;
+      owner.guidanceFrame = requestAnimationFrame(() => { owner.guidanceFrame = 0; syncBottom(); });
+    });
     L.guidanceObserver.observe(stack);
     const session = L;
     L.guidanceTimer = setInterval(() => {
@@ -4601,12 +4609,15 @@
       const hud = summary.slice(1).map((s, i) => ({ el: document.querySelector(i === 1 ? '[data-cap="co2"]' : '[data-cap="power"]'), direction: s.direction }));
       const replayed = KCP.fxTurn?.monthEnd({ round: result?.round || V.round, monthLabel, team: L.team, result, view: V, cards, summary, hud,
         sound: kind => signal(kind === "done" ? "complete" : kind) });
-      foldResultDuringReplay(replayed);
+      // 390에서는 재생 동안 결과 서랍을 접는다. 단계 알림(약 2.2초)이 재생보다 먼저 사라져, 결과를 읽을 수 있게
+      // 펼쳐지는 순간에는 알림이 없었다(재생 길이에 따라 겹치기도 하는 경합, score1 T4). 펼칠 때 알림 자리가 비어 있으면
+      // 같은 알림을 한 번 더 띄운다. 아직 떠 있거나(짧은 재생) 다른 알림(미반영 편집 안내 등)이 떠 있으면 덮지 않는다.
+      foldResultDuringReplay(replayed, () => { if (document.getElementById("bd-toast")?.dataset.show !== "true") BG.toast(t); });
       if (!replayed) signal(team?.unsPct > 0 ? "outage" : "complete");
     }
     else if (V.phase === "plan") { signal("month"); BG.clearTrialDisplay?.(); closePanel(); forecastStart(V); }
   }
-  function foldResultDuringReplay(replayed) {
+  function foldResultDuringReplay(replayed, onReveal) {
     if (!replayed || !matchMedia("(max-width: 760px)").matches ||
         matchMedia("(prefers-reduced-motion: reduce)").matches || KCP.v2?.reduced?.()) return;
     const session = L, panel = document.getElementById("lg-panel"), round = L.snap.round;
@@ -4627,7 +4638,7 @@
     };
     const reveal = () => {
       const show = active(); stop();
-      if (show) { session.panelFolded = false; renderPanel(); }
+      if (show) { session.panelFolded = false; renderPanel(); onReveal?.(); }
     };
     session.resultReplayWait = stop;
     // 접기 직전 그리기에서 시작된 연구 완료 연출 시계를 지워, 펼칠 때 연출이 보이게 한다.
