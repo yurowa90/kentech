@@ -21,7 +21,7 @@ DOM 관찰자는 앱 상태를 바꾸지 않고 첫 등장/180ms 뒤의 사각�
 390은 has_touch 컨텍스트에서 카드 전/후 결과 탭 터치, 서랍 안 터치·스크롤,
 유지 선택 뒤 띠 유지, 지도 터치·Esc·10초 닫힘, 제목·초점·보류·예보를 검사한다.
 기대값은 W4c와 총괄 추가 명세 1~9항(열린 서랍 안 누름은 닫지 않음)이다.
-캡처는 econui 형식(tests/results/fx-event-*.png), 마지막 줄은 checks N fail M.
+캡처는 econui 형식(tests/results/fx-event-*.png), 마지막 줄은 checks N fail M SKIP S.
 """
 
 import json
@@ -33,10 +33,89 @@ import time
 
 from playwright.sync_api import sync_playwright
 
-from econui import (BOOT_JS, WAIT, Checks, context_for, diagnostics,
+from econui import (BOOT_JS, WAIT, Checks as BaseChecks, context_for, diagnostics,
                     local_address, monitored_page, overflow, screenshot)
 from league_flow import pass_issue_check, wait_unfolded
 from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer
+
+
+class Checks(BaseChecks):
+    """B: 미실행 보조 검사도 이름을 보존한다. SKIP은 실패/검사 수와 별도다."""
+
+    def __init__(self):
+        super().__init__()
+        self.skipped = 0
+        self.names = set()
+
+    def ok(self, condition, label):
+        self.names.add(label)
+        return super().ok(condition, label)
+
+    def skip(self, label, reason):
+        self.names.add(label)
+        self.skipped += 1
+        print(f'SKIP {label} ({reason})', flush=True)
+
+    def finish(self):
+        print(f'checks {self.count} fail {self.failed} SKIP {self.skipped}', flush=True)
+        return 1 if self.failed else 0
+
+
+class ForecastProbeChecks(BaseChecks):
+    """390 보조 판의 고정 이름 목록. 기존 helper의 기대식은 그대로 사용한다.
+
+    helper가 이름 뒤에 붙이는 좌표/관측값은 INFO로 분리한다. 중도 반환,
+    해당 사건 없음, 예외에도 finally에서 미실행 이름 전부를 SKIP으로 낸다.
+    """
+
+    def __init__(self, checks, label, reduced):
+        self.parent = checks
+        self.pending = {}
+        self.reason = '선행 조건이 맞지 않아 이 단언까지 도달하지 않음'
+        suffixes = [
+            '예보 결과 서랍 #lg-panel이 열린 상태',
+            '예보 W4c 2절 .fx-turn-layer[data-strip="true"]',
+            '예보 W4c 1절 layer·카드·띠와 #lg-panel/#bd-drawer 사각형 교차 면적 0',
+            '예보 자동 띠 가로 스크롤 0',
+            '열린 서랍 앞 예보 state.strip true',
+            '예보 띠 제목=첫 사건 제목(결산·월 아님)',
+            '예보 사건 띠 기호=첫 사건 eventIcon(id), aria-hidden=true',
+            '예보 남은 사건 0장일 때 외 0장 표기 없음',
+            '서랍 접기 단추 터치 뒤 예보 유지',
+            '서랍 펼치기 단추 터치 뒤 예보 유지',
+            '예보 W4c 띠 안 펼치기 단추 1개',
+            '예보 펼치기 전 aria-expanded=false',
+            '예보 사용자 펼치기 뒤 aria-expanded=true·카드 표시',
+            '예보 실제 표시 뒤 sessionStorage 소비 기록 있음',
+        ]
+        if reduced:
+            suffixes.append('예보 W4c 7절 reduce 띠 애니메이션 없음')
+        self.expected = [f'{label} {suffix}' for suffix in suffixes]
+        self.health_name = label + ' 예보 보조 준비·검사 예외 0'
+        self.health = True
+
+    def ok(self, condition, label):
+        name = next((name for name in self.expected if label == name or
+                     label.startswith(name + ': ') or label.startswith(name + ' (')), None)
+        if name is None:
+            # helper의 이름이 달라져 조용히 누락되는 것을 허용하지 않는다.
+            self.health = False
+            print(f'INFO {self.health_name} 등록되지 않은 단언: {label}', flush=True)
+        else:
+            self.pending.setdefault(name, []).append((bool(condition), label))
+        return bool(condition)
+
+    def flush(self):
+        self.parent.ok(self.health, self.health_name)
+        for name in self.expected:
+            values = self.pending.get(name)
+            if values is None:
+                self.parent.skip(name, self.reason)
+            else:
+                self.parent.ok(all(ok for ok, _ in values), name)
+                for _, detail in values:
+                    if detail != name:
+                        print(f'INFO {name} 관측: {detail[len(name):].lstrip()}', flush=True)
 
 
 # w4-event-cards.md 3절. 구현의 EVENT_MOOD를 읽어 기대값으로 쓰지 않는다.
@@ -1472,56 +1551,83 @@ def esc_one_layer(checks, page, base, label, reduced, fixture, coverage):
 
 
 def run_forecast_case(checks, page, base, label, reduced, fixture, coverage):
-    """예보의 짧은 대기 창은 별도 저장소에서 시도해 기존 8종 검사를 보존한다."""
-    restore_fixture(checks, page, base, label, fixture)
-    coach = page.locator('#lg-guide-close')
-    if coach.count() and coach.is_visible():
-        coach.click()
-    for month in (1, 2):
-        # 이 보조 판의 사건·달도 화면 단추로만 진행한다.
-        page.keyboard.press('Escape')
-        result = click_progress(page, observe(page))
-        if not reduced:
-            page.wait_for_function('() => KCP.fxTurn?.state?.().playing===true', timeout=WAIT)
+    """B: 최종 표시 상태를 기다리고, 예보 마운트 전 서랍을 확정한다.
+
+    기존 Esc1과 같은 monthStart 붙잡기를 쓴다. 원래 receiver/인자와 실제
+    화면 진행을 보존하며, 전환 중인 짧은 틱/playing===true를 기다리지 않는다.
+    미표시 닫힘→재로딩 계약은 run_case의 필수 forecast-reload 경로에 그대로 있다.
+    """
+    probes = {month: ForecastProbeChecks(checks, f'{label} {month + 1}월', reduced)
+              for month in (1, 2)}
+    current = probes[1]
+    try:
+        restore_fixture(checks, page, base, label, fixture)
+        coach = page.locator('#lg-guide-close')
+        if coach.count() and coach.is_visible():
+            coach.click()
+        for month in (1, 2):
+            current = probes[month]
+            # 일반/reduce 공통으로 결과 재생이 끝난 최종 상태를 기다린다.
             page.keyboard.press('Escape')
-        if result['resultEvents']:
-            page.wait_for_function('() => KCP.fxTurn?.state?.().cardsOpen===true', timeout=WAIT)
+            result = click_progress(page, observe(page))
+            page.wait_for_function('() => KCP.fxTurn?.state?.().playing===false', timeout=WAIT)
+            if result['resultEvents']:
+                page.wait_for_function("""() => {
+                  const D=""" + DOM_JS + """, fx=KCP.fxTurn?.state?.();
+                  return fx?.cardsOpen===true && !fx.forecastOpen && !fx.playing &&
+                    (D.cards().some(c=>c.visible)||
+                     [...document.querySelectorAll('.fx-turn-strip')].some(D.visible));
+                }""", timeout=WAIT)
             page.keyboard.press('Escape')
-        else:
-            page.keyboard.press('Escape')
-        previous_marks = forecast_marks(page)
-        # 다음 달은 forecastStart 두 RAF 전에 도시 탭을 실제 터치로 연다.
-        # 시각을 놓쳐 이미 보인 예보를 닫았다면 INFO이며 성공으로 세지 않는다.
-        state = click_progress(
-            page, observe(page), after_progress=lambda: pointer_press(
+            previous_marks = forecast_marks(page)
+            # 두 RAF 안에 서랍을 누르려던 경쟁을 없앤다. 사건/달을 주입하지 않는다.
+            page.evaluate("""() => {
+              const held={original:KCP.fxTurn.monthStart,calls:[]};
+              window.__fxForecastProbeMonthStart=held;
+              KCP.fxTurn.monthStart=function(...args){held.calls.push({receiver:this,args});};
+            }""")
+            state = click_progress(page, observe(page), after_progress=lambda: pointer_press(
                 page, page.locator('#lg-bar [data-panel="city"]')))
-        page.wait_for_timeout(200)
-        prefix = f'{label} {month + 1}월'
-        if not any(e['mine'] for e in state['events']):
-            print(f'INFO {prefix} 예보 띠 재현 불가: 내 도시 예보 없음', flush=True)
-            continue
-        record = page.evaluate("""month => window.__fxEventProbe.find(
-          r=>r.round===month && r.forecast) || null""", month + 1)
-        fx = observe(page)['fx'] or {}
-        if fx.get('forecastOpen') and page.locator('#lg-panel').is_visible():
-            if inspect_forecast_strip(checks, page, prefix, reduced):
+            page.locator('#lg-panel').wait_for(state='visible', timeout=2000)
+            page.wait_for_function("""month=>window.__fxForecastProbeMonthStart.calls.some(
+              c=>c.args[0]?.round===month)""", arg=month + 1, timeout=WAIT)
+            page.evaluate("""() => {
+              const held=window.__fxForecastProbeMonthStart;
+              KCP.fxTurn.monthStart=held.original;
+              for(const call of held.calls.splice(0))held.original.apply(call.receiver,call.args);
+              delete window.__fxForecastProbeMonthStart;
+            }""")
+            if not any(e['mine'] for e in state['events']):
+                current.reason = '내 도시 예보가 없는 달'
+                continue
+            # reduce는 즉시 최종 상태가 된다. 중간 애니메이션/고정 200ms 대기를 요구하지 않는다.
+            page.wait_for_function("""() => {
+              const D=""" + DOM_JS + """,fx=KCP.fxTurn?.state?.();
+              return fx?.forecastOpen===true && !fx.playing && !fx.deferred &&
+                D.visible(document.querySelector('#lg-panel')) &&
+                [...document.querySelectorAll('.fx-turn-layer')].some(D.visible);
+            }""", timeout=WAIT)
+            if inspect_forecast_strip(current, page, f'{label} {month + 1}월', reduced):
                 coverage['paths'].add('forecast-strip')
             marks = forecast_marks(page)
-            checks.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
-                      prefix + ' 예보 실제 표시 뒤 sessionStorage 소비 기록 있음')
-        elif record and record['firstVisibleAt'] is None and fx.get('forecastOpen') is False:
-            # 서랍을 여는 누름이 예보가 보이기 전에 닫은 경우(보류 아님). 보조 판은 타이밍에 따라
-            # 이 분기를 탈 수도 있다. 필수 'forecast-reload'는 run_case의 결정적 경로에서만 채워지도록
-            # 다른 이름을 쓴다. 보류 상태를 기다리는 forecast_before_visible은 여기 맞지 않는다.
-            checks.ok(forecast_marks(page) == previous_marks,
-                      prefix + ' 보이기 전 닫힌 예보: sessionStorage 소비 기록 추가 0')
-            if forecast_reload_shows(checks, page, prefix, month + 1, previous_marks,
-                                     reduced) is not None:
-                coverage['paths'].add('forecast-reload-probe')
-        else:
-            print(f'INFO {prefix} 예보 띠 재현 불가: 서랍 열기보다 예보 표시가 먼저였음',
-                  flush=True)
-        page.keyboard.press('Escape')
+            current.ok(any(value != previous_marks.get(key) for key, value in marks.items()),
+                       f'{label} {month + 1}월 예보 실제 표시 뒤 sessionStorage 소비 기록 있음')
+            page.keyboard.press('Escape')
+    except Exception as exc:
+        current.health = False
+        current.reason = f'{type(exc).__name__}: {str(exc).splitlines()[0][:200]}'
+        print(f'INFO {label} 보조 예보 진행 예외: {current.reason}', flush=True)
+    finally:
+        # 예외 중에도 패치를 남기거나 다음 달 이름을 빠뜨리지 않는다.
+        try:
+            page.evaluate("""() => {
+              const held=window.__fxForecastProbeMonthStart;
+              if(held)KCP.fxTurn.monthStart=held.original;
+              delete window.__fxForecastProbeMonthStart;
+            }""")
+        finally:
+            for probe in probes.values():
+                probe.flush()
 
 
 class MotionBrowser:

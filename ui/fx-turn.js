@@ -299,12 +299,9 @@
       if (fits(over)) { box = over; layer.dataset.over = "true"; }
     }
     const run = root.querySelector("#bd-run");
-    if (root.classList.contains("bd-replaying") && run && !run.hidden) {
-      Object.assign(run.style, { left: `${(box.left + box.right) / 2}px`,
-        width: `${Math.max(0, Math.min(580, box.right - box.left))}px`, bottom: `${window.innerHeight - box.bottom}px` });
+    if (run && !run.hidden) {
+      // 운영 띠의 위치는 build.layout의 V.area가 맡는다. 사건은 그 위의 빈 공간만 쓴다.
       box.bottom = Math.min(box.bottom, run.getBoundingClientRect().top - 8);
-    } else if (run) {
-      ["left", "width", "bottom"].forEach(k => run.style.removeProperty(k));
     }
     status.strip = !!(deck && !fits(box));
     layer.dataset.strip = String(status.strip);
@@ -506,7 +503,8 @@
     if (window.visualViewport) listen(window.visualViewport, "resize", () => schedulePlace(root));
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(() => schedulePlace(root));
-      // place가 크기를 쓰는 #bd-run과 덧층은 관찰하지 않는다.
+      // 운영 띠(#bd-run)는 관찰하지 않는다: 띠 크기는 layout()이 서랍 관찰(panelObserver) 고리 안에서 동기로 쓸 수 있어
+      // 같은 깊이의 관찰 대상이 되면 WebKit 'ResizeObserver loop'가 난다. 띠 표시·펼침은 아래 MutationObserver(hidden)가 잡는다.
       [root, ...root.querySelectorAll("#lg-panel, #bd-drawer, .lg-bar, #bd-hud, #bd-mapbar, #bd-dock, .lg-map-guidance, #lg-issue-check")].forEach(el => ro.observe(el));
       off.push(() => ro.disconnect());
     }
@@ -551,7 +549,8 @@
     if (!status.forecastOpen) return false;
     // 어느 클릭도 막지 않고 카드만 닫는다. 이전·다음은 카드 안에서 처리한다.
     listen(document, "click", e => {
-      if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
+      // 결과 서랍의 접기·펼치기는 예보 카드를 닫지 않는다(결과 단계 drawerFold와 같은 예외).
+      if (!status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target) && !e.target.closest?.("#lg-panel-fold")) closeCards();
     }, true);
     // 리그 처리기(캡처 단계)가 서랍·코치·확인 상자를 닫으면 전파가 멈춰 예보까지 오지 않는다. 그래서 서랍에
     // 가려 보류된 예보는 Esc1에 서랍이 닫힌 뒤 보이고, Esc2에 닫힌다. 예보 처리는 버블 단계에서 하고, 다른
@@ -632,17 +631,23 @@
       if (pending) { pending = false; status.skipped = true; status.ms = 0; done(); }
       else if (status.playing) { status.skipped = true; KCP.buildGame.skipReplay(); }
     };
+    // 운영 띠의 '그래프 열기/접기'와 펼친 영역은 재생을 끝내지 않는다(그래프를 보려고 누른 것).
+    const stripControl = e => !!e.target.closest?.("#bd-run-toggle, #bd-run-detail");
+    // 결과 서랍의 접기·펼치기는 서랍 크기만 바꾼다. 그 사이 띠↔카드 배치가 바뀌어도 사건 카드(예보 포함)를 닫지 않는다.
+    const drawerFold = e => !!e.target.closest?.("#lg-panel-fold");
     listen(document, "pointerdown", e => {
+      if (stripControl(e)) { pointerSkipped = false; return; }
       if (status.playing || pending) { pointerSkipped = true; skip(); return; }
       pointerSkipped = false;
-      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
+      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target) && !drawerFold(e)) closeCards();
       if (toast) { pointerSkipped = true; advanceSummary?.(); }
     }, true);
     // 키보드로 발생한 클릭도 기존 동작을 유지하면서 재생을 끝낸다.
     listen(document, "click", e => {
       if (pointerSkipped) { pointerSkipped = false; return; }
+      if (stripControl(e)) return;
       if ((status.playing || pending) && e.target.closest("button, a, [role=button]")) { skip(); return; }
-      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target)) closeCards();
+      if (status.cardsOpen && !status.deferred && !deck?.contains(e.target) && !insideStripDrawer(root, e.target) && !drawerFold(e)) closeCards();
       if (toast && !e.target.closest("#bd-skip")) advanceSummary?.();
     }, true);
     // 보류 중에는 Esc로 화면 밖 덱을 닫지 않는다.

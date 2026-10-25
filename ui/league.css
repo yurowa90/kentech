@@ -1651,3 +1651,122 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   #lg-rank .lg-rankrow { break-inside: avoid; }
   #lg-rank .lg-rankrow[data-me="true"] { border: 2px solid #000 !important; }
 }
+
+/* 시각 채점 2: 휴대폰 HUD의 숫자는 온전히 두고 각 캡슐 안에 담는다. */
+@media (max-width: 760px) {
+  /* 한 줄(홈 · 캡슐 다섯 · 도움말)로 두어 지도 높이를 지킨다(econui U1: 서랍을 닫으면 지도 높이 60% 이상). */
+  .lg-team-map #bd-hud { flex-wrap: nowrap; padding: 4px; gap: 4px; }
+  .lg-team-map #bd-hud .bd-caps { order: 0; flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
+  /* 남은 돈 캡슐에 교부세 셋째 줄(+n억 전용)이 생겨도 줄 높이·아래 막대가 움직이지 않게 세 줄 높이를 늘 확보한다. */
+  .lg-team-map #bd-hud .bd-cap { min-width: 0; min-height: 48px; padding: 3px 1px; box-sizing: border-box; border-radius: 10px; }
+  .lg-team-map #bd-hud .bd-cap .v2-ico { display: none; }
+  .lg-team-map #bd-hud .bd-cap .v2-cap-txt { width: 100%; min-width: 0; gap: 2px; align-content: start; }
+  /* 긴 값('정전 12060h' 등)은 낱말 사이에서 두 줄로 꺾여 캡슐 폭 안에 머문다. 이름표는 두 줄 자리를 미리 잡지 않아
+     어느 조합(이름표 두 줄+값 한 줄, 이름표 한 줄+값 두 줄, 남은 돈+교부세 셋째 줄)도 48px 캡슐 안에 든다. */
+  .lg-team-map #bd-hud .bd-cap .v2-cap-v { font-size: clamp(10px, 2.55vw, 12px); letter-spacing: -.04em; line-height: 1.3; white-space: normal; word-break: keep-all; overflow-wrap: normal; }
+  .lg-team-map #bd-hud .bd-cap .v2-cap-k { font-size: clamp(10px, 2.55vw, 11px); line-height: 1.3; letter-spacing: -.025em; word-break: keep-all; overflow-wrap: anywhere; }
+  /* 이전 flex 줄 규칙의 폭을 초기화하고 준비 단추와 4px 간격을 둔다. */
+  .lg-team-map #lg-bar:not(.lg-awaybar) { column-gap: 4px; }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions { display: flex; justify-self: stretch; min-width: 0; width: auto; max-width: 100%; margin: 0; overflow-x: auto; scrollbar-width: thin; }
+  /* 줄 끝에서 잘린 단추가 '가려진' 것이 아니라 밀어서 볼 수 있다는 단서: 오른쪽 끝 16px을 흐리게 한다. */
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
+}
+
+/* 리그 운영 패널만 지도 아래 가장자리 띠로 바꾼다. */
+#bd-root.lg-team-map #bd-run {
+  transform: none; box-sizing: border-box; width: auto; max-width: calc(100vw - 16px);
+  padding: 6px; gap: 4px; border-radius: 12px; pointer-events: auto;
+}
+.lg-team-map #bd-run .bd-run-top { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 4px; min-width: 0; }
+.lg-team-map #bd-run-len { grid-column: 1; grid-row: 1; justify-self: start; max-width: 100%; box-sizing: border-box; font-size: 11px; }
+.lg-team-map #bd-run-day { grid-column: 1; grid-row: 2; font-size: 14px; }
+.lg-team-map #bd-run-wx { grid-column: 2 / -1; grid-row: 1; justify-self: end; font-size: 11px; line-height: 1.3; min-width: 0; }
+.lg-team-map #bd-run-wx .v2-ico { flex: none; width: 16px; height: 16px; }
+.lg-team-map #bd-skip { grid-column: 2; grid-row: 2; }
+.lg-team-map #bd-run-toggle { grid-column: 3; grid-row: 2; }
+.lg-team-map #bd-run :is(#bd-skip, #bd-run-toggle) { min-width: 44px; min-height: 44px; margin: 0; padding: 0 8px; white-space: nowrap; font-size: 12px; }
+.lg-team-map #bd-run-detail { min-height: 0; box-sizing: border-box; max-height: 260px; overflow: auto; overscroll-behavior: contain; padding-bottom: 6px; border-bottom: 1px solid var(--ui-border); }
+.lg-team-map #bd-run-detail .bd-run-tip { margin: 6px 0 0; }
+/* 띠 높이를 공유해 알림이 띠와 겹치지 않게 한다. */
+#bd-root.lg-team-map:has(#bd-run:not([hidden])) .bd-toast {
+  top: auto; bottom: calc(var(--bd-dock, 100px) + var(--lg-run-height, 88px) + 16px);
+  left: calc(var(--lg-run-left, 8px) + var(--lg-run-width, calc(100vw - 16px)) / 2); right: auto;
+  max-width: max(0px, calc(var(--lg-run-width, calc(100vw - 16px)) - 24px));
+  transform: translate(-50%, 6px);
+}
+#bd-root.lg-team-map:has(#bd-run:not([hidden])) .bd-toast[data-show="true"] { transform: translate(-50%, 0); }
+#bd-root.lg-team-map:has(.fx-turn-layer:not([hidden]):not([data-strip="true"]) .fx-turn-card-row:not([hidden]) article:not([data-forecast="true"])) .bd-toast:not([data-warn="true"]) { visibility: hidden; }
+.fx-turn-card h3 { word-break: keep-all; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  #bd-root.lg-team-map:has(#bd-run:not([hidden])) #lg-panel:not([hidden]):not([data-folded="true"]) {
+    bottom: calc(var(--bd-dock, 100px) + var(--lg-run-height, 88px) + 16px);
+  }
+}
+
+/* 끝 결과는 HUD·리그 막대 아래의 전폭 화면. 접으면 지도로 돌아간다. */
+#bd-root.lg-team-map[data-lg-phase="end"] #bd-dock { display: none; }
+#bd-root.lg-team-map #lg-panel[data-stage="end"][data-tab="result"]:not([data-folded="true"]) {
+  left: 8px; right: 8px; top: var(--bd-top, 180px); bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: auto; max-width: none; max-height: none; box-sizing: border-box;
+}
+.lg-team-map #lg-panel .lg-end-more { min-width: 0; }
+@media (min-width: 761px) {
+  .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 20px; align-items: start;
+  }
+  .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody > * { min-width: 0; margin: 0; }
+  .lg-team-map #lg-panel[data-stage="end"] #lg-final-summary { grid-column: 1; grid-row: 1; }
+  .lg-team-map #lg-panel[data-stage="end"] #lg-decisions { grid-column: 2; grid-row: 1; }
+  .lg-team-map #lg-panel[data-stage="end"] #lg-rank { grid-column: 1; grid-row: 2; }
+  .lg-team-map #lg-panel[data-stage="end"] .lg-fx-end { grid-column: 1; grid-row: 3; }
+  .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-column: 2; grid-row: 2 / 4; }
+}
+
+/* 축의 100점 폭과 막대 폭을 맞추고 끝 점수 숫자의 여백은 별도로 확보한다. */
+#lg-rank-chart { --rank-label: 100px; --rank-value: 52px; min-width: 0; margin: 12px 0 18px; color: var(--ink); font-size: 12px; }
+.lg-rank-axis { position: relative; height: 24px; margin-left: var(--rank-label); margin-right: var(--rank-value); border-bottom: 1px solid currentColor; }
+.lg-rank-axis > span { position: absolute; left: var(--tick); transform: translateX(-50%); }
+.lg-rank-axis > span::after { content: ""; position: absolute; top: 18px; left: 50%; height: 6px; border-left: 1px solid currentColor; }
+.lg-rank-bar-row { display: grid; grid-template-columns: var(--rank-label) minmax(0, 1fr); align-items: center; min-height: 44px; }
+.lg-rank-bar-name { box-sizing: border-box; padding-right: 8px; overflow-wrap: anywhere; word-break: keep-all; }
+.lg-rank-bar-name small { display: block; color: inherit; font-size: 11px; font-weight: 700; }
+.lg-rank-track { position: relative; display: block; height: 24px; margin-right: var(--rank-value); background: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 25%); }
+.lg-rank-bar { display: block; height: 100%; box-sizing: border-box; background: var(--ink-2); border: 1px solid currentColor; }
+.lg-rank-track b { position: absolute; left: calc(var(--score) + 4px); top: 0; line-height: 24px; white-space: nowrap; font-size: 11px; font-variant-numeric: tabular-nums; }
+.lg-rank-bar-row[data-own="true"] .lg-rank-bar { background: var(--ui-gold); border: 2px solid var(--ink); }
+.lg-rank-bar-row[data-own="true"] .lg-rank-bar-name { font-weight: 700; }
+.lg-rank-axis-name { margin: 6px var(--rank-value) 6px var(--rank-label); text-align: center; }
+#lg-rank-chart figcaption { line-height: 1.5; overflow-wrap: anywhere; }
+@media print {
+  #lg-rank-chart,
+  #lg-rank-chart * { color: #111 !important; }
+  #lg-rank-chart .lg-rank-track { background: none !important; }
+  #lg-rank-chart .lg-rank-bar { background: #ddd !important; border: 1px solid #111 !important; print-color-adjust: exact; }
+  #lg-rank-chart [data-own="true"] .lg-rank-bar { border: 3px double #111 !important; }
+  #lg-rank-chart .lg-rank-bar-row { break-inside: avoid; }
+}
+
+/* 축 끝 눈금(100)이 좁은 절대 위치 상자에서 글자마다 꺾이지 않게 한다. */
+.lg-rank-axis > span { white-space: nowrap; }
+/* 전폭 끝 화면이 펼쳐진 동안에는 지도 위 결과 칩·범례가 끝 화면 머리를 덮지 않게 숨긴다(접으면 다시 보인다). */
+#bd-root.lg-team-map:has(#lg-panel[data-stage="end"][data-tab="result"]:not([hidden]):not([data-folded="true"])) :is(.lg-map-guidance, .lg-map-keys) { display: none; }
+/* 운영 띠가 떠 있는 동안 지도 범례는 띠 위로 올린다(띠 밑으로 비치지 않게). */
+#bd-root.lg-team-map:has(#bd-run:not([hidden])) .lg-map-keys { bottom: calc(var(--bd-dock, 112px) + var(--lg-run-height, 88px) + 16px); }
+
+/* S4 근거 칩: 좁은 칩에서 말줄임이 'S1에서 고름' 표시를 가리지 않게 표시를 다음 줄에 둔다. */
+#lg-evidence [data-evidence] .lg-s1-mark { display: block; margin: 2px 0 0; white-space: nowrap; }
+/* 휴대폰 막대의 '약속하고 준비'가 112px 단추 안에서 두 줄로 꺾이지 않게 한다. */
+@media (max-width: 760px) {
+  .lg-team-map #lg-bar #lg-ready { white-space: nowrap; font-size: 14px; letter-spacing: -.02em; padding-inline: 4px; }
+}
+/* 태블릿·데스크톱: 운영 띠를 한 줄(이름표·운영일·날씨 | 건너뛰기·그래프 열기)과 얇은 진행 막대로 줄여
+   작은 지도(1024×768 등)에서도 지도 아래 1/4 지점을 덮지 않게 한다. */
+@media (min-width: 761px) {
+  #bd-root.lg-team-map #bd-run { padding: 4px 6px; gap: 3px; }
+  .lg-team-map #bd-run .bd-run-top { grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; }
+  .lg-team-map #bd-run-len { grid-column: 1; grid-row: 1; }
+  .lg-team-map #bd-run-day { grid-column: 2; grid-row: 1; }
+  .lg-team-map #bd-run-wx { grid-column: 3; grid-row: 1; justify-self: start; }
+  .lg-team-map #bd-skip { grid-column: 4; grid-row: 1; }
+  .lg-team-map #bd-run-toggle { grid-column: 5; grid-row: 1; }
+}

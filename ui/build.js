@@ -3032,8 +3032,9 @@
    * 7. 시뮬레이션 재생
    * ===================================================================== */
   const RUN_MS = 8000;
+  function leagueEnded() { return !!S.opts.league && S.root?.dataset?.lgPhase === "end"; }
   function startRun(days) {
-    if (S.run) return;
+    if (S.run || leagueEnded()) return;
     if (!S.opts.league && S.st.missions.length !== 2) {
       openDrawer("mission");
       toast("미션 2개를 먼저 고르세요");
@@ -3063,6 +3064,7 @@
     $("#bd-replay-note").hidden = true;
     $("#bd-skip span").textContent = "결과 보기";
     $("#bd-run-len").textContent = days === 7 ? "1주" : days === 30 ? "1달" : "3달";
+    syncRunStrip();
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
     if (reduced()) {
       // 움직임 줄이기: 짧은 진행 막대 뒤 결과로 건너뛴다.
@@ -3158,6 +3160,7 @@
       paintSpark();
       refreshHUD();
       placeBannerValues();
+      syncRunStrip();
     }
     const tipK = reduced() ? 0 : Math.floor((performance.now() - R.t0) / 3000);
     if (tipK !== R.tip) {
@@ -3176,8 +3179,10 @@
     const c = $("#bd-spark"), R = S.run;
     if (!c || !R) return;
     const box = c.getBoundingClientRect();
-    if (!box.width) return;
-    const dpr = dprOf(), W = box.width, H = box.height;
+    // 접힌 그래프도 현재 시점으로 그린다. 펼칠 때는 실측 폭으로 즉시 다시 그린다.
+    const fallback = S.opts.league && $("#bd-run-detail")?.hidden;
+    if (!box.width && !fallback) return;
+    const dpr = dprOf(), W = box.width || Math.max(1, $("#bd-run").getBoundingClientRect().width - 90), H = box.height || 54;
     if (c.width !== Math.round(W * dpr)) c.width = Math.round(W * dpr);
     if (c.height !== Math.round(H * dpr)) c.height = Math.round(H * dpr);
     const g = c.getContext("2d");
@@ -3210,7 +3215,8 @@
       $("#bd-replay-note").hidden = true;
       ["left", "width", "bottom"].forEach(k => $("#bd-run").style.removeProperty(k));
       $("#bd-skip span").textContent = "결과 보기";
-      S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+      S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = leagueEnded(); });
+      syncRunStrip();
       refreshHUD(); placeBannerValues(); request();
       R.opts.onDone?.();
       return;
@@ -3220,7 +3226,8 @@
     S.lastTick = "";
     html.classList.remove("bd-running");
     $("#bd-run").hidden = true;
-    S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+    S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = leagueEnded(); });
+    syncRunStrip();
     S.result.entry = addEntry(R.res);
     refreshHUD();
     placeBannerValues();
@@ -3641,16 +3648,39 @@
   // 경고 토스트(opts.warn)가 떠 있는 동안에는 일반 토스트가 덮지 못한다: 같은 동작 안의 '결과가 나왔어요'가
   // 저장 실패 경고를 75ms 만에 지우던 문제(2026-10-20 재현).
   let toastWarnUntil = 0;
+  // 결과 공개 카드만 알림을 미룬다. 계획 단계 예보 카드와 '계획 시작' 알림은 기존 계약대로 함께 보이며 서로 겹치지 않게 배치된다(score1 F9).
+  const toastBlocked = () => S.opts.league && S.root.querySelector('.fx-turn-layer:not([hidden]):not([data-strip="true"]) .fx-turn-card-row:not([hidden]) article:not([data-forecast="true"])');
   function toast(msg, opts) {
     const el = $("#bd-toast");
     if (!el) return;
     const warn = !!opts?.warn, now = Date.now();
     if (!warn && now < toastWarnUntil) return;
+    if (!warn && toastBlocked()) {
+      // 카드의 효과 숫자와 알림을 동시에 겹쳐 보이지 않는다. 닫힌 뒤 원래 수명으로 표시한다.
+      // 저장 실패 같은 경고(opts.warn)는 미루지 않는다(미룬 채 화면이 다시 붙으면 사라질 수 있다).
+      const state = S;
+      S.toastPending = { msg, opts };
+      clearTimeout(toastTimer);
+      // 다시 시도 타이머는 하나만 둔다(clearTimeout으로 덮어써 S.timers에 쌓지 않는다. 화면이 닫힌 뒤 불려도 S 비교로 무시된다).
+      toastTimer = setTimeout(() => { if (S === state && S.alive) toast(msg, opts); }, 150);
+      return;
+    }
+    S.toastPending = null;
     if (warn) toastWarnUntil = now + 2200;
     el.textContent = msg;
     el.dataset.show = "true";
+    el.dataset.warn = String(warn);
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { if (S && S.alive) { const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false"; } }, 2200);
+    const state = S;
+    // 수명 절반(1.1초) 때 카드에 가려져 있었는지 기록한다. 이미 절반 넘게 보인 알림은 카드가 닫힌 뒤 다시 띄우지 않는다.
+    let hiddenEarly = false;
+    S.timers.push(setTimeout(() => { if (S === state && S.alive) hiddenEarly = !warn && !!toastBlocked(); }, 1100));
+    toastTimer = setTimeout(() => {
+      if (S !== state || !S.alive) return;
+      // 단계 알림이 먼저 뜬 뒤 곧바로 카드가 열린 경우만 보류해 카드가 닫힌 뒤 다시 보인다.
+      if (!warn && hiddenEarly && toastBlocked()) { toast(msg, opts); return; }
+      const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false";
+    }, 2200);
     S.timers.push(toastTimer);
   }
   function announce(msg) { const el = $("#bd-live"); if (el) el.textContent = msg; }
@@ -4041,12 +4071,12 @@
     const lgb = S.root.querySelector(".lg-bar"), top = lgb ? Math.max(hud.bottom, lgb.getBoundingClientRect().bottom) : hud.bottom;
     html.style.setProperty("--bd-top", `${Math.round(top + 8)}px`);
     html.style.setProperty("--lg-mapbar-bottom", `${Math.round($("#bd-mapbar").getBoundingClientRect().bottom + 8)}px`);
-    html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
+    html.style.setProperty("--bd-dock", `${dock.height ? Math.round(H - dock.top) : 0}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
     if (S.opts.league && W >= 761 && W <= 1279 && S.root.dataset.resultDrawer === "true") {
       const drawer = S.root.querySelector("#lg-panel");
-      if (drawer && !drawer.hidden) r = drawer.getBoundingClientRect().left - 8;
+      if (drawer && !drawer.hidden && drawer.dataset.folded !== "true" && drawer.dataset.stage !== "end") r = drawer.getBoundingClientRect().left - 8;
     }
     const insetRight = W - 8 - (S.viewInsetRight || 0);
     if (W - (S.viewInsetRight || 0) >= W * 0.45) r = Math.min(r, insetRight);
@@ -4071,6 +4101,7 @@
     }
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     if (S.opts.league) V.area.t = S.leagueMapTop;
+    syncRunStrip();
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -4145,6 +4176,46 @@
   //   leagueTrialGoals(R) 리그 성적표의 이번 달 목표 줄·사건 안내({rows, notes}). 리그 모드에서는 독립 시안 미션 줄을 대신한다.
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
   const K_LENSES = "kcp-league-lenses-v1";
+  function syncRunStrip() {
+    if (!S?.opts.league) return;
+    const panel = $("#bd-run"), dock = $("#bd-dock").getBoundingClientRect();
+    const bottom = dock.height ? dock.top : window.innerHeight;
+    // 지도 영역을 줄이지 않는 서랍(순위·도시 등)이 띠 높이까지 내려와 있으면 띠 오른쪽 끝을 그 서랍 왼쪽에서 끊는다.
+    let right = V.area.r;
+    const drawer = S.root.querySelector("#lg-panel:not([hidden]):not([data-folded=\"true\"])")?.getBoundingClientRect();
+    if (drawer && drawer.width && drawer.width < window.innerWidth * 0.9 && drawer.bottom > bottom - 130 && drawer.left > V.area.l) right = Math.min(right, drawer.left - 8);
+    panel.style.left = `${V.area.l}px`;
+    panel.style.width = `${Math.max(0, right - V.area.l)}px`;
+    panel.style.bottom = `${Math.max(8, window.innerHeight - bottom + 8)}px`;
+    const detail = $("#bd-run-detail");
+    if (detail && !panel.hidden) {
+      let top = V.area.t;
+      for (const el of S.root.querySelectorAll(".lg-map-guidance, #lg-coach, #lg-plan-issues:not([hidden])")) {
+        if (el.getClientRects().length) top = Math.max(top, el.getBoundingClientRect().bottom + 8);
+      }
+      const baseHeight = panel.getBoundingClientRect().height - (detail.hidden ? 0 : detail.getBoundingClientRect().height);
+      detail.style.maxHeight = `${Math.max(0, Math.min(260, bottom - 8 - top - baseHeight))}px`;
+    }
+    S.root.style.setProperty("--lg-run-height", `${panel.hidden ? 0 : Math.ceil(panel.getBoundingClientRect().height)}px`);
+    S.root.style.setProperty("--lg-run-left", `${V.area.l}px`);
+    S.root.style.setProperty("--lg-run-width", `${Math.max(0, right - V.area.l)}px`);
+  }
+  function mountRunStrip(root) {
+    const panel = root.querySelector("#bd-run"), detail = document.createElement("div"), toggle = document.createElement("button");
+    detail.id = "bd-run-detail"; detail.hidden = true;
+    detail.append(...panel.querySelectorAll(".bd-run-mid, .bd-run-tip"));
+    panel.prepend(detail);
+    toggle.type = "button"; toggle.id = "bd-run-toggle"; toggle.className = "bd-skip";
+    toggle.textContent = "그래프 열기";
+    toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", detail.id);
+    panel.querySelector(".bd-run-top").append(toggle);
+    on(toggle, "click", () => {
+      detail.hidden = !detail.hidden;
+      toggle.setAttribute("aria-expanded", String(!detail.hidden));
+      toggle.textContent = detail.hidden ? "그래프 열기" : "그래프 접기";
+      syncRunStrip(); paintSpark();
+    });
+  }
   function rememberLenses() {
     S.lensChosen = true;
     try { localStorage.setItem(K_LENSES, JSON.stringify(S.lenses)); } catch (_) {}
@@ -4171,6 +4242,7 @@
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     if (opts.league) {
+      mountRunStrip(root);
       try { const saved = JSON.parse(localStorage.getItem(K_LENSES)); if (saved) { ["complaints", "grid", "result"].forEach(k => { if (typeof saved[k] === "boolean") S.lenses[k] = saved[k]; }); S.lensChosen = true; } } catch (_) {}
       const lenses = document.createElement("div"); lenses.className = "lg-lenses"; lenses.setAttribute("role", "group"); lenses.setAttribute("aria-label", "영향과 결과 렌즈");
       lenses.innerHTML = [["complaints", "민원"], ["grid", "전력망"], ["result", "결과"]].map(([key, label]) => `<button type="button" class="bd-layer" data-lens="${key}" aria-pressed="${S.lenses[key]}">${label}</button>`).join("");

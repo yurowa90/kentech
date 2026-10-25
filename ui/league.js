@@ -563,7 +563,7 @@
       [build, "화력", '[data-group="fire"]'],
       [line, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
-      ["준비 → 근거·방향·확신 고르고 약속해요", "준비", "#lg-ready"],
+      ["준비 → 근거·방향·확신 고르고 약속해요", L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
       ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
       ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"],
       [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
@@ -608,6 +608,15 @@
     const step = L.coach?.step;
     if (step == null) return;
     if (step === 1) { closePanel(); BG.closeDrawer?.(); const group = document.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); return; }
+    if (step === 4 && L.awaitReady && document.getElementById("lg-ready")?.disabled) {
+      // 약속이 덜 찼으면 비활성 주 단추 대신 남은 단계(근거 → 방향 → 확신)의 첫 조작으로 초점을 옮긴다.
+      if (L.panel !== "journal" || L.panelFolded) openPanel("journal");
+      const { n } = monthNote(), topic = promiseTopic(L.snap, n);
+      const next = !n.evidence ? document.querySelector("#lg-evidence [data-evidence]:not(:disabled)")
+        : !n.pred?.[topic] ? document.querySelector("#lg-predict [data-pred]") : document.querySelector("#lg-predict [data-confidence]");
+      if (next) { scrollPanelTo(next); next.focus({ preventScroll: true }); }
+      return;
+    }
     if (step === 2) {
       choosePlanTool("line");
       const target = coachLineTarget();
@@ -917,8 +926,14 @@
     const rows = E.score?.rank || [], own = rows.findIndex(r => r.id === L.team), prev = E.previousScore?.by || {};
     const leaders = Object.fromEntries(SCORE_KEYS.map(k => [k, Math.max(...rows.map(r => r.parts[k]))]));
     const V = L.S || L.snap, ended = L.snap?.phase === "end" || L.S?.phase === "end";
+    // 기존 카드와 같은 공개 범위. data-team은 기존 카드에만 두어 카드별 합계 선택자를 보존한다.
+    const chart = ended ? `<figure id="lg-rank-chart"><div class="lg-rank-axis" aria-hidden="true">${[0, 25, 50, 75, 100].map(n => `<span style="--tick:${n}%">${n}</span>`).join("")}</div><div class="lg-rank-bars">${rows.map((r, i) => {
+      const name = !nearby || Math.abs(i - own) <= 1 ? r.name : "(이름 가림)";
+      const score = r.score.toFixed(1), mine = r.id === L.team;
+      return `<div class="lg-rank-bar-row" data-own="${mine}"><span class="lg-rank-bar-name"><span aria-hidden="true">${esc(r.rank)}위 ${esc(name)}</span>${mine ? " <small>내 도시</small>" : ""}</span><span class="lg-rank-track"><span class="lg-rank-bar" role="img" aria-label="${esc(`${r.rank}위 ${name}, 종합 ${score}점(100점 만점)`)}" data-me="${mine}" style="width:${Math.max(0, Math.min(100, r.score))}%"></span><b aria-hidden="true" style="--score:${Math.max(0, Math.min(100, r.score))}%">${esc(score)}점</b></span></div>`;
+    }).join("")}</div><div class="lg-rank-axis-name">종합 점수(점)</div><figcaption>막대 길이는 종합 점수(0~100점, 높을수록 좋음·모형 계산·게임 가정)</figcaption></figure>` : "";
     let gridShown = false;
-    return `<section id="lg-rank" class="lg-sec"><h2>${ended ? "최종 순위" : "도시 순위"} <span class="tag-mine">모형 점수 · ${esc(gradeWords("G"))}</span></h2><div class="lg-rankrows">${rows.map((r, i) => {
+    return `<section id="lg-rank" class="lg-sec"><h2>${ended ? "최종 순위" : "도시 순위"} <span class="tag-mine">모형 점수 · ${esc(gradeWords("G"))}</span></h2>${chart}<div class="lg-rankrows">${rows.map((r, i) => {
       const shown = !nearby || Math.abs(i - own) <= 1, delta = prev[r.id] ? prev[r.id].rank - r.rank : 0;
       // 팀은 다른 도시의 옛 달을 보관하지 않으므로 자기 도시의 합계만 공개한다.
       const grid = ended && shown && (L.role !== "team" || r.id === L.team) ? gridTotal(V, r.id) : null;
@@ -5601,6 +5616,13 @@
       body = goal + body;
     }
     p.innerHTML = `<div class="lg-ptabs" aria-label="리그 서랍"><strong>${esc({ deal: "이웃·거래", result: "결과", journal: "일지", city: "도시", rank: "순위", tech: "연구", help: "도움말" }[tab])}</strong><button class="lg-bbtn" type="button" id="lg-panel-fold" aria-expanded="${!L.panelFolded}">${L.panelFolded ? "펼치기" : "접기"}</button><button type="button" class="lg-px" data-pclose aria-label="닫기">×</button></div><div class="lg-pbody" ${L.panelFolded ? "hidden" : ""}>${body}<p class="lg-hint">${ASSUMPTIONS}</p></div>`;
+    if (tab === "result" && V?.phase === "end" && V.econ) {
+      const endBody = p.querySelector(".lg-pbody"), more = document.createElement("div");
+      more.className = "lg-end-more";
+      // 첫 세 요소(요약 → 결정 → 궤적)의 형제 관계와 인쇄 대상은 보존한다.
+      [...endBody.children].filter(el => !el.matches("#lg-final-summary, #lg-decisions, .lg-fx-end, #lg-rank")).forEach(el => more.append(el));
+      endBody.append(more);
+    }
     p.querySelectorAll(".lg-promise-carry > p").forEach(line => { line.title = line.textContent; });
     if (tab === "result" && V?.phase === "end") KCP.fxEnd?.mount(p);
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
