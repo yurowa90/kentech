@@ -648,6 +648,16 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-lobby .lg-maphelp { inset: auto 12px 10px; font-size: 11px; }
     html.v2-league-lobby .lg-card { padding: 14px; gap: 10px; }
     html.v2-league-lobby .lg-modehead { gap: 2px; padding-bottom: 8px; }
+    /* 390 첫 화면에 '혼자 시작'이 여유 있게 들어오게 한다(score1 T6(가)). D-87로 시작 전 안내에 석탄 가정 줄이 늘어
+       단추가 화면 밖(아래끝 913px)으로 밀렸다. 안내 문장·지도 크기는 그대로 두고 겹친 여백과 줄 높이만 줄인다:
+       제목과 한 줄 설명을 한 행에, 안내 상자의 바깥 여백(칸 사이 간격과 겹침)은 0, 안내 본문은 목록 줄과 같은 14px·1.5. */
+    html.v2-league-lobby .lg-modehead { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+    html.v2-league-lobby .lg-card [data-data-notice] { margin-block: 0; }
+    html.v2-league-lobby .lg-card [data-data-notice] .lg-tipbody > p { margin: 0 0 6px; font-size: 14px; line-height: 1.5; }
+    html.v2-league-lobby .lg-card [data-data-notice] .bd-tiplist { margin-bottom: 8px; }
+    /* 넓은 화면의 sticky top이 상대 위치로 남아 지도가 12px 내려앉아 있었다(위 26px·아래 2px). 위아래 간격을 8px로 고르게 한다. */
+    html.v2-league-lobby .lg-control-room { gap: 8px; margin-top: 8px; }
+    html.v2-league-lobby .lg-world { top: 0; }
     html.v2-league-lobby .lg-hud-pill { display: none; }
     .lg-seat-map { height: 310px; }
     html.v2-league-seat .lg-seats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
