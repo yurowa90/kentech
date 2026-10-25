@@ -92,31 +92,71 @@ test('T F6 nearest hint lasts approximately 1.6 seconds', () => {
   assert.equal(timers.at(-1).ms,1600);
   timers.at(-1).fn(); assert.equal(st.siteHint,null);
 });
-test('T F4 stage 3 names from data, zero/two/three unlinked counts', () => {
-  const names = Object.values(B.BLD).slice(0,3).map(b => b.name);
-  assert.equal(names.length,3);
-  for (const count of [0,1,2,3]) {
-    const issues = { unlinked:count, unlinkedNames:names.slice(0,count), waiting:2 };
-    const expected = count ? `(${names.slice(0,count).slice(0,2).join('·')}${count > 2 ? ' 외 1기' : ''})` : ' 0기';
-    // 지시서 T 3번: 묶기용 사전 계산값 없이 issues만 넘긴다.
-    assert.equal(ctx.coachSteps(issues)[2][0], `마을까지 이어요 · 미연결${expected} · 대기 2기`);
-  }
+// 새 F4 명세: 실제 첫 미연결 설비와 자료의 수요지로 기대 문장을 만든다.
+// 최근접 마을은 F6과 같은 odd-r → axial 거리식으로 독립 계산한다.
+function withCoachLineTarget(check) {
+  const st = state(() => 1000);
+  try {
+    const tile = B.TILES.find(t => !t.out && t.site < 0 && B.siteRule('diesel',t) === '');
+    assert.ok(tile, '전선 없이 학생 설비를 놓을 합법적인 빈 칸');
+    st.st.builds = [{t:'diesel',i:tile.i}]; st.st.lines = [];
+    st.lineStart = null; st.pending = null;
+    const unlinked = B.planIssues().unlinked, target = unlinked[0];
+    assert.ok(unlinked.some(b => b.i === tile.i && b.t === 'diesel'), '학생 설비가 실제 미연결');
+    assert.ok(target && target.name, '실제 첫 미연결 설비의 이름');
+    const from = B.TILES[target.i];
+    const q = t => t.c - (t.r - (t.r & 1)) / 2;
+    const distance = t => Math.max(Math.abs(q(t)-q(from)), Math.abs(t.r-from.r), Math.abs(q(t)-q(from)+t.r-from.r));
+    const town = B.SITES.filter(s => s.dem).sort((a,b) =>
+      distance(B.TILES[a.tile]) - distance(B.TILES[b.tile]) || a.tile - b.tile)[0];
+    assert.ok(town && town.name, '자료에서 헥스 거리가 가장 가까운 수요지');
+    const instruction = st.st.builds.some(b => b.i === target.i)
+      ? `${target.name} 칸, ${town.name} 칸을 차례로 누르고 '연결'을 누르세요`
+      : `기존 ${target.name}도 이어야 넘어가요. ${target.name} 칸, ${town.name} 칸을 누르고 '연결'을 누르세요`;
+    check({st,target,town,instruction});
+  } finally { E.set(null); }
+}
+for (const waiting of [0,2]) test(`T F4 stage 3 no target, waiting ${waiting}`, () => {
+  E.set(null);
+  assert.equal(B.planIssues().unlinked.length,0);
+  assert.equal(ctx.coachSteps({unlinked:0,unlinkedNames:[],waiting})[2][0],
+    `마을까지 이어요 · 미연결 0기 · 대기 ${waiting}기`);
 });
-// 지시서 T 3번: 기대 문구는 명세의 일곱 조합에서 직접 작성한다.
-const [A, Bname, Cname] = [...new Set(Object.values(B.BLD).map(b => b.name))].slice(0,3);
-for (const [label, names, expected] of [
-  ['A,A', [A,A], `미연결(${A} 2기)`],
-  ['A,A,B', [A,A,Bname], `미연결(${A} 2기·${Bname})`],
-  ['A,A,B,C', [A,A,Bname,Cname], `미연결(${A} 2기·${Bname} 외 1기)`],
-  ['A,B,C', [A,Bname,Cname], `미연결(${A}·${Bname} 외 1기)`],
-  ['A', [A], `미연결(${A})`],
-  ['0', [], '미연결 0기'],
-  ['A,B,A', [A,Bname,A], `미연결(${A} 2기·${Bname})`],
-]) test(`T F4 unlinked grouping ${label}`, () => {
-  // 지시서 T 3번: 서로 다른 세 이름을 자료에서 확보하며, 전체 문구까지 대조한다.
-  assert.ok(A && Bname && Cname, '자료에서 서로 다른 설비 이름 세 종류 확보');
-  const issues = {unlinked:names.length, unlinkedNames:names, waiting:2};
-  assert.equal(ctx.coachSteps(issues)[2][0], `마을까지 이어요 · ${expected} · 대기 2기`);
+test('T F4 stage 3 first unlinked facility and nearest town names from data', () => {
+  withCoachLineTarget(({target,instruction}) => {
+    assert.equal(ctx.coachSteps({unlinked:1,unlinkedNames:[target.name],waiting:0})[2][0],instruction);
+  });
+});
+// 꼬리의 경계·순서는 명세의 여섯 조합을 직접 적는다. 개수는 issues를 따른다.
+for (const [unlinked, waiting, suffix] of [
+  [1,0,''],
+  [1,2,' · 대기 2기'],
+  [2,0,' · 전선 미연결 2기'],
+  [2,2,' · 전선 미연결 2기 · 대기 2기'],
+  [3,0,' · 전선 미연결 3기'],
+  [3,2,' · 전선 미연결 3기 · 대기 2기'],
+]) test(`T F4 stage 3 suffix unlinked ${unlinked}, waiting ${waiting}`, () => {
+  withCoachLineTarget(({target,instruction}) => {
+    const issues = {unlinked,unlinkedNames:[target.name],waiting};
+    assert.equal(ctx.coachSteps(issues)[2][0],instruction + suffix);
+  });
+});
+test('T F4 stage 3 selected source asks for nearest town', () => {
+  withCoachLineTarget(({st,target,town}) => {
+    st.lineStart = target.i;
+    const issues = {unlinked:2,unlinkedNames:[target.name],waiting:2};
+    assert.equal(ctx.coachSteps(issues)[2][0],
+      `이제 ${town.name} 칸을 누르고 뜨는 막대의 '연결'을 누르세요 · 전선 미연결 2기 · 대기 2기`);
+  });
+});
+test('T F4 stage 3 pending endpoint asks for connection confirmation', () => {
+  withCoachLineTarget(({st,target,town}) => {
+    st.lineStart = target.i;
+    st.pending = {p:[target.i,town.tile],end:town.tile,cost:1};
+    const issues = {unlinked:3,unlinkedNames:[target.name],waiting:2};
+    assert.equal(ctx.coachSteps(issues)[2][0],
+      "칸 수·비용 막대의 '연결'을 누르세요 · 전선 미연결 3기 · 대기 2기");
+  });
 });
 test('T F4 all eight coach scene prefixes', () => {
   // updateCoach의 실제 텍스트 쓰기를 호출하되 단계 자동 전진은 끈다.

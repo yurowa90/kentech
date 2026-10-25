@@ -4,7 +4,7 @@
   const KCP = window.KCP;
   if (!KCP) return;
   const ICON = { heat: ["☀", "폭염"], cold: ["✧", "한파"], snow: ["❄", "눈"],
-    storm: ["🌀", "태풍"], cloud: ["☁", "구름"], haze: ["≋", "안개·먼지"] };
+    storm: ["🌀", "태풍"], cloud: ["☁", "구름"], rain: ["☂", "집중호우"], haze: ["≋", "안개·먼지"] };
   const METRICS = [["appr", "지지", "%"], ["pop", "주민 · 시작 대비 변화", "%p"], ["uns", "정전", "%"], ["co2", "CO₂", " t/일"], ["grid", "계통이 메운 전기", " MWh/일"]];
   const mounted = new WeakSet();
   const played = new Set();

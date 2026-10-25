@@ -165,7 +165,7 @@ def grant(checks, page, before, label, width):
       return C.grantOf(V,C.regionOf(V.region),L.team,KCP.buildGame).left;
     }""")
     require(checks, value > 0, label + ' F1 자연 교부세 달 확보')
-    text = f'이번 달 특별교부세 {value:g}억(새 설비·선로·재난 대응만)'
+    text = f'이번 달 특별교부세 {value:g}억(새 설비·선로·재난 대응, 남으면 보수비)'
     chip = page.locator('[data-cap="budget"] [data-grant-chip]')
     if width <= 760:
         after = page.locator('#lg-bar').bounding_box()
@@ -191,7 +191,7 @@ def grant(checks, page, before, label, width):
         checks.ok(tip.locator(':scope > summary').inner_text() == '!', label + ' F1 설명 summary !')
         tip.locator(':scope > summary').click()
         # 지시서 T 1번: 좁은 화면 설명은 용도 제한과 소멸을 포함한 문장 그대로다(문구는 아르곤 2차 확정안).
-        explanation = f'남은 특별교부세 {value:g}억은 이번 달 새 설비·선로와 재난 대응에만 쓰고, 안 쓰면 사라져요.'
+        explanation = f'남은 특별교부세 {value:g}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요.'
         pop = tip.locator('.lg-info-pop')
         checks.ok(explanation == pop.inner_text(), label + ' F1 설명 확정 교부세 문구')
         # 지시서 T 1번: 설명 상자 전체가 viewport 안에 보인다(경계 오차 없음).

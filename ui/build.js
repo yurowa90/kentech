@@ -92,6 +92,11 @@
     const A = cube(TILES[a]), B = cube(TILES[b]);
     return Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
   }
+  function nearestTown(tile) {
+    if (!TILES[tile]) return null;
+    const town = TOWNS.slice().sort((a, b) => hexDist(tile, a.tile) - hexDist(tile, b.tile) || a.tile - b.tile)[0];
+    return town ? { tile: town.tile, name: town.name } : null;
+  }
   const PACKS = KCP.BUILD_MAPS || {};
   // REF 8.5 [S31], NASA POWER 2001–2020: 대표 격자 월평균 일강수×달 일수(mm).
   // 다른 기후 계수는 유지한다. 모든 지역에 대표 격자를 사용하는 것은 M 가정이다.
@@ -1184,7 +1189,7 @@
   // 도구 이름·아이콘·비용 표시(지도마다 비용이 다를 수 있다)
   const toolMeta = id => (id === "line" ? { id, icon: "line", name: "송전선", cost: `${fmt(lineUnit(), 1)}억/칸` }
     : id === "remove" ? { id, icon: "remove", name: "철거", cost: S && S.opts && S.opts.salvage ? "회수" : "환불" }
-    : { id, icon: BLD[id].icon, name: BLD[id].name, cost: `${fmt(BLD[id].cost)}억`, rated: BLD[id].mw > 0 ? `정격 ${BLD[id].mw} MW` : "" });
+    : { id, icon: BLD[id].icon, name: BLD[id].name, cost: `${fmt(BLD[id].cost)}억`, rated: BLD[id].mw > 0 ? `정격 ${fmt(BLD[id].mw, 1)} MW` : "" });
   const LAYERS = [
     { id: "map", icon: "map", name: "지도" },
     { id: "sun", icon: "sun", name: "일사" },
@@ -1403,6 +1408,67 @@
     V.ox = (a.l + a.r) / 2 - ((u0 + u1) / 2) * V.S + V.panX;
     V.oy = (a.t + a.b) / 2 - (((v0 + v1) / 2) * SQ - 0.35) * V.S + V.panY;
     if (V.lastRot !== V.rot) { V.lastRot = V.rot; computeOrder(); }
+  }
+  function isTouchUI() {
+    return !!(window.matchMedia?.("(pointer: coarse)").matches || S?.pointerType === "touch");
+  }
+  // 손가락이 누르는 것은 지형 높이가 반영된 칸 윗면이다. 높이가 다른 이웃(언덕·산)끼리는 화면에서 더 가까워지므로
+  // 지도 안 육지 칸과 그 이웃(물 포함)의 윗면 중심 거리 가운데 최솟값을 쓴다(검사·채점의 tileXY 거리와 같은 정의).
+  function tileGap() {
+    let gap = Infinity;
+    TILES.forEach(T => {
+      if (!T.land || T.out) return;
+      const [x, y] = tileTop(T);
+      T.nb.forEach(i => {
+        const N = TILES[i];
+        if (N.out || (N.land && i < T.i)) return;
+        const [nx, ny] = tileTop(N);
+        gap = Math.min(gap, Math.hypot(nx - x, ny - y));
+      });
+    });
+    return gap;
+  }
+  const touchZoom = () => Math.min(6, Math.max(V.zoom, V.zoom * 44 * 1.05 / tileGap()));
+  // onlyIfHidden: 배율이 이미 충분하고 대상 칸이 모두 보이는 지도 사각형 안에 있으면 옮기지 않는다(학생이 끈 지도 보존).
+  function focusTiles(tiles, { ring, onlyIfHidden = false } = {}) {
+    if (!S?.alive) return;
+    if (S.dirtyLayout) layout();
+    if (onlyIfHidden && (!isTouchUI() || touchZoom() <= V.zoom + 1e-9)) {
+      const a = { ...V.area }, guidance = S.root.querySelector(".lg-map-guidance");
+      if (guidance && !guidance.hidden && guidance.getClientRects().length) a.t = Math.max(a.t, guidance.getBoundingClientRect().bottom + 8);
+      const inside = tiles.filter(i => TILES[i]).every(i => { const [x, y] = tileTop(TILES[i]); return x >= a.l + 24 && x <= a.r - 24 && y >= a.t + 24 && y <= a.b - 24; });
+      if (inside) return;
+    }
+    const previous = V.zoom;
+    if (isTouchUI()) V.zoom = touchZoom();
+    // 칸을 지정하지 않은 확대는 화면 가운데의 세계 좌표를 그대로 유지한다.
+    V.panX *= V.zoom / previous; V.panY *= V.zoom / previous;
+    fitView();
+    const points = tiles.filter(i => TILES[i]).map(i => tileTop(TILES[i]));
+    if (points.length) {
+      const a = { ...V.area }, guidance = S.root.querySelector(".lg-map-guidance");
+      if (guidance && !guidance.hidden && guidance.getClientRects().length) a.t = Math.max(a.t, guidance.getBoundingClientRect().bottom + 8);
+      const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+      const l = Math.min(...xs), r = Math.max(...xs), t = Math.min(...ys), b = Math.max(...ys);
+      const fits = r - l <= a.r - a.l - 48 && b - t <= a.b - a.t - 48;
+      const [x, y] = fits ? [(l + r) / 2, (t + b) / 2] : points[0];
+      V.panX += (a.l + a.r) / 2 - x; V.panY += (a.t + a.b) / 2 - y;
+    }
+    if (TILES[ring]) {
+      const state = S, focus = { i: ring, until: performance.now() + 2400 };
+      S.focusRing = focus;
+      S.timers.push(setTimeout(() => {
+        if (S === state && S.alive && S.focusRing === focus) { S.focusRing = null; request(); }
+      }, 2400));
+    }
+    layout();
+    request();
+  }
+  function zoomStep(direction) {
+    const steps = isTouchUI() ? [1, 1.5, 2.2, 3.2, 4.5, 6] : [1, 1.5, 2.2];
+    V.zoom = direction > 0 ? steps.find(z => z > V.zoom) ?? steps.at(-1) : steps.slice().reverse().find(z => z < V.zoom) ?? steps[0];
+    if (V.zoom === 1) { V.panX = 0; V.panY = 0; }
+    S.dirtyLayout = true; hideTip(); request();
   }
   function setViewInset({ right = 0 } = {}) {
     if (!S?.alive) return;
@@ -2247,6 +2313,12 @@
       g.lineWidth = 5; g.strokeStyle = MAP_INK.dust; g.stroke();
       g.lineWidth = 3; g.strokeStyle = MAP_INK.cyan; g.stroke(); g.restore();
     }
+    if (S.focusRing && performance.now() < S.focusRing.until) {
+      const [x, y] = tileTop(TILES[S.focusRing.i]), pulse = rm ? 1 : 1 + 0.06 * Math.sin(t * 7);
+      g.save(); g.beginPath(); g.ellipse(x, y, V.S * 0.9 * pulse, V.S * 0.9 * SQ * pulse, 0, 0, Math.PI * 2);
+      g.lineWidth = 5; g.strokeStyle = MAP_INK.dust; g.stroke();
+      g.lineWidth = 3; g.strokeStyle = "#ecd083"; g.stroke(); g.restore();
+    }
     // 송전선 미리보기
     const pv = S.pending ? S.pending.p : S.preview ? S.preview.p : null;
     if (pv) {
@@ -2375,7 +2447,7 @@
   // 사건 표시 전용 층. 모형·날씨·효과 크기와 독립적이며 배너·라벨 DOM 아래에 그린다.
   function setMapMood(mood) {
     if (!S?.alive) return;
-    const next = ["heat", "cold", "snow", "storm", "cloud", "haze"].includes(mood) ? mood : null;
+    const next = ["heat", "cold", "snow", "storm", "cloud", "rain", "haze"].includes(mood) ? mood : null;
     if (S.mapMood === next) return;
     S.mapMood = next;
     request();
@@ -2421,7 +2493,7 @@
     } else {
       ink.fillStyle = mood === "haze" ? "#a89c87" : "rgba(38,58,80,0.45)";
       ink.fillRect(a.l, a.t, w, h);
-      if ((mood === "storm" || mood === "cloud") && !rm) {
+      if ((mood === "storm" || mood === "cloud" || mood === "rain") && !rm) {
         ink.fillStyle = "#263a50";
         for (let k = 0; k < 7; k++) {
           const x = a.l - 160 + (hash(k, 3, 71) * (w + 320) + anim * (mood === "storm" ? 85 : 12)) % (w + 320);
@@ -2435,6 +2507,16 @@
           const x = a.l + (hash(k, 5, 71) * w + anim * 100) % Math.max(1, w);
           const y = a.t + (hash(k, 6, 71) * h + anim * 290) % Math.max(1, h);
           ink.moveTo(x, y); ink.lineTo(x - 6, y + 12);
+        }
+        ink.stroke();
+      }
+      if (mood === "rain") {
+        // 폭풍보다 적고 느린 수직에 가까운 비. 움직임 줄이기에서는 정지한 6개만 남긴다.
+        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        for (let k = 0; k < (rm ? 6 : 36); k++) {
+          const x = a.l + hash(k, 5, 71) * w;
+          const y = a.t + (hash(k, 6, 71) * h + anim * 140) % Math.max(1, h);
+          ink.moveTo(x, y); ink.lineTo(x - 1, y + 14);
         }
         ink.stroke();
       }
@@ -2707,6 +2789,16 @@
     closePops();
     renderTools();
     S.root.dataset.mode = S.tool || "";
+    if (S.tool && isTouchUI()) {
+      if (S.dirtyLayout) layout();
+      if (S.tool === "line") {
+        const facility = planIssues().unlinked[0], town = facility && nearestTown(facility.i);
+        focusTiles(facility && town ? [facility.i, town.tile] : []);
+      } else if (touchZoom() > V.zoom + 1e-9) {
+        const town = BLD[S.tool] && TOWNS.slice().sort((a, b) => avgDem(b.ti) - avgDem(a.ti) || a.tile - b.tile)[0];
+        focusTiles(town ? [town.tile] : []);
+      }
+    }
     if (S.hover != null) showTip(S.hover);
     request();
   }
@@ -2825,6 +2917,7 @@
     S.st = S.doc.maps[id];
     S.mapFx = []; S.flowView = null;
     S.siteHint = null;
+    S.focusRing = null;
     S.tool = null; S.hover = null; S.sel = null; S.lineStart = null; S.pending = null; S.preview = null; S.result = null;
     S.openGroup = null; S.seasonOpen = false;
     S.root.dataset.mode = "";
@@ -2902,6 +2995,15 @@
       act(i);
     });
     on(cv, "pointercancel", () => { down = null; });
+    // 손가락 탭은 pointerup에서 처리가 끝난다. 설치·연결로 지도 위 안내(코치 띠·확인 칩)의 높이가 바뀌면 브라우저가
+    // 뒤따라 만드는 호환 click이 손가락 아래로 옮겨 온 단추(예: 코치 '닫기')를 누른다. 지도에서 시작한 터치는 click을 만들지 않게 한다.
+    // click을 막으면 다른 곳을 눌렀을 때의 포커스 이동도 사라지므로, 입력 칸에 있던 포커스(화면 키보드)는 직접 거둔다.
+    on(cv, "touchend", e => {
+      if (!e.cancelable) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      if (active && active !== cv && active.matches?.("input, textarea, select")) active.blur();
+    }, { passive: false });
     on(cv, "pointerleave", e => { if (e.pointerType !== "touch" && !S.kbd) setHover(null); });
     on(cv, "keydown", e => {
       if (S.run) return;
@@ -2942,8 +3044,9 @@
    * 7. 시뮬레이션 재생
    * ===================================================================== */
   const RUN_MS = 8000;
+  function leagueEnded() { return !!S.opts.league && S.root?.dataset?.lgPhase === "end"; }
   function startRun(days) {
-    if (S.run) return;
+    if (S.run || leagueEnded()) return;
     if (!S.opts.league && S.st.missions.length !== 2) {
       openDrawer("mission");
       toast("미션 2개를 먼저 고르세요");
@@ -2973,6 +3076,7 @@
     $("#bd-replay-note").hidden = true;
     $("#bd-skip span").textContent = "결과 보기";
     $("#bd-run-len").textContent = days === 7 ? "1주" : days === 30 ? "1달" : "3달";
+    syncRunStrip();
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
     if (reduced()) {
       // 움직임 줄이기: 짧은 진행 막대 뒤 결과로 건너뛴다.
@@ -3068,6 +3172,7 @@
       paintSpark();
       refreshHUD();
       placeBannerValues();
+      syncRunStrip();
     }
     const tipK = reduced() ? 0 : Math.floor((performance.now() - R.t0) / 3000);
     if (tipK !== R.tip) {
@@ -3086,8 +3191,10 @@
     const c = $("#bd-spark"), R = S.run;
     if (!c || !R) return;
     const box = c.getBoundingClientRect();
-    if (!box.width) return;
-    const dpr = dprOf(), W = box.width, H = box.height;
+    // 접힌 그래프도 현재 시점으로 그린다. 펼칠 때는 실측 폭으로 즉시 다시 그린다.
+    const fallback = S.opts.league && $("#bd-run-detail")?.hidden;
+    if (!box.width && !fallback) return;
+    const dpr = dprOf(), W = box.width || Math.max(1, $("#bd-run").getBoundingClientRect().width - 90), H = box.height || 54;
     if (c.width !== Math.round(W * dpr)) c.width = Math.round(W * dpr);
     if (c.height !== Math.round(H * dpr)) c.height = Math.round(H * dpr);
     const g = c.getContext("2d");
@@ -3120,7 +3227,8 @@
       $("#bd-replay-note").hidden = true;
       ["left", "width", "bottom"].forEach(k => $("#bd-run").style.removeProperty(k));
       $("#bd-skip span").textContent = "결과 보기";
-      S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+      S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = leagueEnded(); });
+      syncRunStrip();
       refreshHUD(); placeBannerValues(); request();
       R.opts.onDone?.();
       return;
@@ -3130,7 +3238,8 @@
     S.lastTick = "";
     html.classList.remove("bd-running");
     $("#bd-run").hidden = true;
-    S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = false; });
+    S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = leagueEnded(); });
+    syncRunStrip();
     S.result.entry = addEntry(R.res);
     refreshHUD();
     placeBannerValues();
@@ -3551,16 +3660,39 @@
   // 경고 토스트(opts.warn)가 떠 있는 동안에는 일반 토스트가 덮지 못한다: 같은 동작 안의 '결과가 나왔어요'가
   // 저장 실패 경고를 75ms 만에 지우던 문제(2026-10-20 재현).
   let toastWarnUntil = 0;
+  // 결과 공개 카드만 알림을 미룬다. 계획 단계 예보 카드와 '계획 시작' 알림은 기존 계약대로 함께 보이며 서로 겹치지 않게 배치된다(score1 F9).
+  const toastBlocked = () => S.opts.league && S.root.querySelector('.fx-turn-layer:not([hidden]):not([data-strip="true"]) .fx-turn-card-row:not([hidden]) article:not([data-forecast="true"])');
   function toast(msg, opts) {
     const el = $("#bd-toast");
     if (!el) return;
     const warn = !!opts?.warn, now = Date.now();
     if (!warn && now < toastWarnUntil) return;
+    if (!warn && toastBlocked()) {
+      // 카드의 효과 숫자와 알림을 동시에 겹쳐 보이지 않는다. 닫힌 뒤 원래 수명으로 표시한다.
+      // 저장 실패 같은 경고(opts.warn)는 미루지 않는다(미룬 채 화면이 다시 붙으면 사라질 수 있다).
+      const state = S;
+      S.toastPending = { msg, opts };
+      clearTimeout(toastTimer);
+      // 다시 시도 타이머는 하나만 둔다(clearTimeout으로 덮어써 S.timers에 쌓지 않는다. 화면이 닫힌 뒤 불려도 S 비교로 무시된다).
+      toastTimer = setTimeout(() => { if (S === state && S.alive) toast(msg, opts); }, 150);
+      return;
+    }
+    S.toastPending = null;
     if (warn) toastWarnUntil = now + 2200;
     el.textContent = msg;
     el.dataset.show = "true";
+    el.dataset.warn = String(warn);
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { if (S && S.alive) { const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false"; } }, 2200);
+    const state = S;
+    // 수명 절반(1.1초) 때 카드에 가려져 있었는지 기록한다. 이미 절반 넘게 보인 알림은 카드가 닫힌 뒤 다시 띄우지 않는다.
+    let hiddenEarly = false;
+    S.timers.push(setTimeout(() => { if (S === state && S.alive) hiddenEarly = !warn && !!toastBlocked(); }, 1100));
+    toastTimer = setTimeout(() => {
+      if (S !== state || !S.alive) return;
+      // 단계 알림이 먼저 뜬 뒤 곧바로 카드가 열린 경우만 보류해 카드가 닫힌 뒤 다시 보인다.
+      if (!warn && hiddenEarly && toastBlocked()) { toast(msg, opts); return; }
+      const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false";
+    }, 2200);
     S.timers.push(toastTimer);
   }
   function announce(msg) { const el = $("#bd-live"); if (el) el.textContent = msg; }
@@ -3749,17 +3881,17 @@
     const model = C ? [
       `태양광: 월별 일사량(GHI) × 성능비 ${M.pvYield} × 날씨 가중치 / 월평균 날씨 가중치, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}`,
       `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, ${M.cutin} m/s 아래 0 · ${M.rated} m/s 정격 · ${M.cutout} m/s 넘으면 정지`,
-      `해상풍력 ${BLD.offshore.mw} MW(100 m 풍속) · 조력 ${BLD.tidal.mw} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 사흘째부터 더 줄어듦), 정격 상한`,
+      `해상풍력 ${fmtSpec(BLD.offshore.mw)} MW(100 m 풍속) · 조력 ${fmtSpec(BLD.tidal.mw)} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 사흘째부터 더 줄어듦), 정격 상한`,
       [...plants.map(s => `${s.fuel === "coal" ? "기존 석탄" : "기존 LNG"} ${fmt(s.cap || dispOf("lng").cap, 1)} MW(CO₂ ${dispOf(s.fuel === "coal" ? "coal" : "lng").co2} t/MWh)`), LG ? `${leagueImportText()}(CO₂ ${imp.co2} t/MWh)` : `외부 전력망 수입 총 ${fmt(imp.cap * SITES.filter(s => s.kind === "gridpt").length, 1)} MW, 연결점마다 ${fmt(imp.cap, 1)} MW(CO₂ ${imp.co2} t/MWh)`].join(" · "),
-      `디젤 ${BLD.diesel.mw} MW(최소 ${diesel.min} MW, CO₂ ${diesel.co2}) · 바이오매스 ${BLD.biomass.mw} MW(CO₂ 총량에는 ${bio.co2}, 바이오 배출 ${bio.bioCo2} t/MWh는 별도 정보 — 축산 단지 옆은 연료비 싸짐)`,
+      `디젤 ${fmtSpec(BLD.diesel.mw)} MW(최소 ${diesel.min} MW, CO₂ ${diesel.co2}) · 바이오매스 ${fmtSpec(BLD.biomass.mw)} MW(CO₂ 총량에는 ${bio.co2}, 바이오 배출 ${bio.bioCo2} t/MWh는 별도 정보 — 축산 단지 옆은 연료비 싸짐)`,
       `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×${stepMul({ t: "mount" })} · 바다·호수 ×${stepMul({ t: "sea" })}) · ${cityName()} 밖은 못 지남`,
       LG ? `급전 순서: 재생 → 배터리 → 도시 급전원(석탄·LNG·디젤·바이오매스·SMR 등, 연료 가격·탄소세에 따라 순서 변동) → 이웃 거래(부족 보충, 더 싸면 우리 화력 대체)${leagueMonth() ? " → 자동 계통 수입" : ""}` : "급전 순서: 재생 → 배터리 → 연료 가격·탄소세에 따라 싼 급전원부터(석탄·LNG·수입·디젤·바이오매스 등)",
       `${scale} · 수요는 실제 규모의 축소판`
     ] : [
-      `태양광 ${BLD.solar.mw} MW × 일사(맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}) × 타일 계수`,
-      `풍력 ${BLD.wind.mw} MW × min(1, (풍속/${M.rated})³), ${M.cutout} m/s 넘으면 정지`,
-      `디젤 ${BLD.diesel.mw} MW(켜면 최소 ${diesel.min} MW) · CO₂ ${diesel.co2} t/MWh · 연료 ${diesel.fuel}억/MWh`,
-      `배터리 ${BLD.battery.mw} MW/${M.batMWh} MWh · 충전·방전 각 ${fmt(M.batEff * 100, 1)}%(왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%) · 바닥 ${fmt(M.socFloor * 100)}%`,
+      `태양광 ${fmtSpec(BLD.solar.mw)} MW × 일사(맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}) × 타일 계수`,
+      `풍력 ${fmtSpec(BLD.wind.mw)} MW × min(1, (풍속/${M.rated})³), ${M.cutout} m/s 넘으면 정지`,
+      `디젤 ${fmtSpec(BLD.diesel.mw)} MW(켜면 최소 ${diesel.min} MW) · CO₂ ${diesel.co2} t/MWh · 연료 ${diesel.fuel}억/MWh`,
+      `배터리 ${fmtSpec(BLD.battery.mw)} MW/${M.batMWh} MWh · 충전·방전 각 ${fmt(M.batEff * 100, 1)}%(왕복 약 ${fmt(M.batEff ** 2 * 100)}% · BMS 도입 뒤 각 ${fmt(bmsParams().efficiency * 100, 1)}%, 왕복 약 ${fmt(bmsParams().efficiency ** 2 * 100)}%) · 바닥 ${fmt(M.socFloor * 100)}%`,
       `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(산 ×${stepMul({ t: "mount" })} · 바다 ×${stepMul({ t: "sea" })})`
     ];
     S.help.body.innerHTML = `<ol class="bd-steps">
@@ -3951,12 +4083,12 @@
     const lgb = S.root.querySelector(".lg-bar"), top = lgb ? Math.max(hud.bottom, lgb.getBoundingClientRect().bottom) : hud.bottom;
     html.style.setProperty("--bd-top", `${Math.round(top + 8)}px`);
     html.style.setProperty("--lg-mapbar-bottom", `${Math.round($("#bd-mapbar").getBoundingClientRect().bottom + 8)}px`);
-    html.style.setProperty("--bd-dock", `${Math.round(H - $("#bd-dock").getBoundingClientRect().top)}px`);
+    html.style.setProperty("--bd-dock", `${dock.height ? Math.round(H - dock.top) : 0}px`);
     let r = W - 8;
     if (S.drawerOpen && !mob) { const dr = $("#bd-drawer").getBoundingClientRect(); if (dr.width) r = dr.left - 8; }
     if (S.opts.league && W >= 761 && W <= 1279 && S.root.dataset.resultDrawer === "true") {
       const drawer = S.root.querySelector("#lg-panel");
-      if (drawer && !drawer.hidden) r = drawer.getBoundingClientRect().left - 8;
+      if (drawer && !drawer.hidden && drawer.dataset.folded !== "true" && drawer.dataset.stage !== "end") r = drawer.getBoundingClientRect().left - 8;
     }
     const insetRight = W - 8 - (S.viewInsetRight || 0);
     if (W - (S.viewInsetRight || 0) >= W * 0.45) r = Math.min(r, insetRight);
@@ -3981,6 +4113,7 @@
     }
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     if (S.opts.league) V.area.t = S.leagueMapTop;
+    syncRunStrip();
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";
@@ -4055,6 +4188,46 @@
   //   leagueTrialGoals(R) 리그 성적표의 이번 달 목표 줄·사건 안내({rows, notes}). 리그 모드에서는 독립 시안 미션 줄을 대신한다.
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
   const K_LENSES = "kcp-league-lenses-v1";
+  function syncRunStrip() {
+    if (!S?.opts.league) return;
+    const panel = $("#bd-run"), dock = $("#bd-dock").getBoundingClientRect();
+    const bottom = dock.height ? dock.top : window.innerHeight;
+    // 지도 영역을 줄이지 않는 서랍(순위·도시 등)이 띠 높이까지 내려와 있으면 띠 오른쪽 끝을 그 서랍 왼쪽에서 끊는다.
+    let right = V.area.r;
+    const drawer = S.root.querySelector("#lg-panel:not([hidden]):not([data-folded=\"true\"])")?.getBoundingClientRect();
+    if (drawer && drawer.width && drawer.width < window.innerWidth * 0.9 && drawer.bottom > bottom - 130 && drawer.left > V.area.l) right = Math.min(right, drawer.left - 8);
+    panel.style.left = `${V.area.l}px`;
+    panel.style.width = `${Math.max(0, right - V.area.l)}px`;
+    panel.style.bottom = `${Math.max(8, window.innerHeight - bottom + 8)}px`;
+    const detail = $("#bd-run-detail");
+    if (detail && !panel.hidden) {
+      let top = V.area.t;
+      for (const el of S.root.querySelectorAll(".lg-map-guidance, #lg-coach, #lg-plan-issues:not([hidden])")) {
+        if (el.getClientRects().length) top = Math.max(top, el.getBoundingClientRect().bottom + 8);
+      }
+      const baseHeight = panel.getBoundingClientRect().height - (detail.hidden ? 0 : detail.getBoundingClientRect().height);
+      detail.style.maxHeight = `${Math.max(0, Math.min(260, bottom - 8 - top - baseHeight))}px`;
+    }
+    S.root.style.setProperty("--lg-run-height", `${panel.hidden ? 0 : Math.ceil(panel.getBoundingClientRect().height)}px`);
+    S.root.style.setProperty("--lg-run-left", `${V.area.l}px`);
+    S.root.style.setProperty("--lg-run-width", `${Math.max(0, right - V.area.l)}px`);
+  }
+  function mountRunStrip(root) {
+    const panel = root.querySelector("#bd-run"), detail = document.createElement("div"), toggle = document.createElement("button");
+    detail.id = "bd-run-detail"; detail.hidden = true;
+    detail.append(...panel.querySelectorAll(".bd-run-mid, .bd-run-tip"));
+    panel.prepend(detail);
+    toggle.type = "button"; toggle.id = "bd-run-toggle"; toggle.className = "bd-skip";
+    toggle.textContent = "그래프 열기";
+    toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", detail.id);
+    panel.querySelector(".bd-run-top").append(toggle);
+    on(toggle, "click", () => {
+      detail.hidden = !detail.hidden;
+      toggle.setAttribute("aria-expanded", String(!detail.hidden));
+      toggle.textContent = detail.hidden ? "그래프 열기" : "그래프 접기";
+      syncRunStrip(); paintSpark();
+    });
+  }
   function rememberLenses() {
     S.lensChosen = true;
     try { localStorage.setItem(K_LENSES, JSON.stringify(S.lenses)); } catch (_) {}
@@ -4076,11 +4249,12 @@
       g: null, raf: 0, ambientTimer: 0, mapVisible: true, born: performance.now(), off: [], timers: [], ro: null, io: null, layer: "map", tool: null, hover: null, kbd: false, sel: null,
       lenses: { complaints: false, grid: false, result: true }, lensCache: null,
       townAppearance: null, townWindowCounts: { darkWins: 0, totalWins: 0 }, townLights: true,
-      lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy", viewInsetRight: 0, siteHint: null, siteHintTimer: 0,
+      lineStart: null, pending: null, preview: null, undo: [], run: null, result: null, drawerOpen: false, drawerTab: "policy", viewInsetRight: 0, siteHint: null, siteHintTimer: 0, focusRing: null, pointerType: null,
       floaters: [], mapFx: [], flowView: null, rec: { hubs: [], stacks: [], wins: [], pylons: new Map() }, dirtyStatic: true, dirtyLayout: true, banners: null, bannerKey: "",
       tipSeq: 0, lastTick: "", help: null, jdlg: null, speak: 0, runNet: { dk: {} }
     };
     if (opts.league) {
+      mountRunStrip(root);
       try { const saved = JSON.parse(localStorage.getItem(K_LENSES)); if (saved) { ["complaints", "grid", "result"].forEach(k => { if (typeof saved[k] === "boolean") S.lenses[k] = saved[k]; }); S.lensChosen = true; } } catch (_) {}
       const lenses = document.createElement("div"); lenses.className = "lg-lenses"; lenses.setAttribute("role", "group"); lenses.setAttribute("aria-label", "영향과 결과 렌즈");
       lenses.innerHTML = [["complaints", "민원"], ["grid", "전력망"], ["result", "결과"]].map(([key, label]) => `<button type="button" class="bd-layer" data-lens="${key}" aria-pressed="${S.lenses[key]}">${label}</button>`).join("");
@@ -4123,14 +4297,11 @@
       on(document, "pointerdown", e => { if (!mapPop.hidden && !e.target.closest(".bd-maps")) mapPopShow(false); });
       on(document, "keydown", e => { if (e.key === "Escape" && !mapPop.hidden) { mapPopShow(false); mapCur.focus({ preventScroll: true }); e.preventDefault(); } });
     }
+    on(root, "pointerdown", e => { S.pointerType = e.pointerType; }, true);
     on(document, "pointerdown", e => { if (S && (S.openGroup || S.seasonOpen) && !e.target.closest("#bd-dock")) closePops(); });
     root.querySelectorAll("[data-layer]").forEach(b => on(b, "click", () => setLayer(b.dataset.layer)));
     root.querySelectorAll("[data-zoom]").forEach(b => on(b, "click", () => {
-      const steps = [1, 1.5, 2.2], k = steps.indexOf(V.zoom);
-      const nk = clamp((k < 0 ? 0 : k) + +b.dataset.zoom, 0, steps.length - 1);
-      V.zoom = steps[nk];
-      if (V.zoom === 1) { V.panX = 0; V.panY = 0; }
-      S.dirtyLayout = true; hideTip(); request();
+      zoomStep(+b.dataset.zoom);
     }));
     root.querySelectorAll("[data-run]").forEach(b => on(b, "click", () => startRun(+b.dataset.run)));
     root.querySelectorAll("[data-tab]").forEach(b => on(b, "click", () => { S.drawerTab = b.dataset.tab; renderDrawer(); }));
@@ -4206,7 +4377,8 @@
     powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset,
     finishTrial: () => { if (!S?.alive || !S.run || S.run.replay) return false; S.run.k = S.run.res.H - 1; updateRunPanel(1); finishRun({ quiet: true }); return true; },
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
-    current: () => (S ? S.st : null), planIssues, townLook,
+    current: () => (S ? S.st : null), planIssues, townLook, nearestTown, focusTiles,
+    lineState: () => ({ start: S?.lineStart ?? null, end: S?.pending?.end ?? null }),
     refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false || S.staticSeason !== currentMapSeason()) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },
     setSeason: id => { if (S && SEASONS.some(x => x.id === id) && S.st.season !== id) { S.st.season = id; S.result = null; S.dirtyStatic = true; refreshHUD(); renderSeasons(); request(); } },
     toast: (msg, opts) => { if (S) toast(msg, opts); }

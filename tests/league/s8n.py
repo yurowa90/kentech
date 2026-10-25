@@ -123,7 +123,13 @@ def drawer(checks, page, width, tab, result, label):
     open_panel(page, tab)
     box = page.locator('#lg-panel').bounding_box()
     require(checks, bool(box), label + ' 서랍 표시')
-    if width == 1180:
+    if label.endswith('-끝') and page.locator('#lg-panel').get_attribute('data-tab') == 'result':
+        viewport_width = page.evaluate('() => innerWidth')
+        checks.ok(abs(box['x'] - 8) <= 2 and
+                  abs(box['x'] + box['width'] - (viewport_width - 8)) <= 2 and
+                  box['width'] >= viewport_width - 32,
+                  label + ' 끝 결과 전폭 [17·V5]')
+    elif width == 1180:
         if result:
             checks.ok(.45 <= box['width'] / width <= .55,
                       label + ' 결과·일지 폭 45~55% [17]')

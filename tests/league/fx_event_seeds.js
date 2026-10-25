@@ -8,17 +8,20 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const ROOT = path.resolve(__dirname, '../..');
 const TEAM = 'pyeongtaek', IDS = [TEAM, 'dangjin'];
 // D-64 room = hash(room), seedKey = String(salt); fixed = 0 (방 코드 무관).
-// 유효한 8자리 FXW4+4자리 코드를 순서대로 탐색한 첫 100개 중 8종을 덮는 두 판.
+// 유효한 8자리 FXW4+4자리 코드를 순서대로 탐색한 판들로 9종을 덮는다.
+// D-90: 기존 두 판을 유지하고 첫 후보 FXW4AAAA의 자연 monsoon_cloud를 추가한다.
 // 우선 분위기까지 확인한 독립 고정 표: 같은 달의 계절관리제가 겨울 사건을 가리지 않는다.
 const CASES = [
   { room: 'FXW4AAA8', salt: 2932481647, targets: {
     finedust_coal_cap: 1, heavy_snow_solar: 2, spring_dust_haze: 4,
-    monsoon_cloud: 6, evening_peak_tropical_night: 7 } },
+    heavy_rain: 6, evening_peak_tropical_night: 7 } },
   { room: 'FXW4AABT', salt: 3233934336, targets: {
     coldwave_heating: 2, heatwave_peak: 8, typhoon_coast: 9 } },
+  { room: 'FXW4AAAA', salt: 3318366884, targets: { monsoon_cloud: 6 } },
 ];
 const KEYS = ['heatwave_peak', 'evening_peak_tropical_night', 'coldwave_heating',
-  'heavy_snow_solar', 'typhoon_coast', 'monsoon_cloud', 'spring_dust_haze', 'finedust_coal_cap'];
+  'heavy_snow_solar', 'typhoon_coast', 'monsoon_cloud', 'heavy_rain',
+  'spring_dust_haze', 'finedust_coal_cap'];
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function engine() {
@@ -43,7 +46,8 @@ function fixtures() {
     for (let month = 1; month <= 12; month++) { S.round = month; C.drawEvents(S, R); }
     return clone(S.events);
   });
-  assert.deepEqual(fixed[0], fixed[1], 'fixed 사건은 방 코드와 무관');
+  for (const events of fixed.slice(1))
+    assert.deepEqual(fixed[0], events, 'fixed 사건은 방 코드와 무관');
   const result = CASES.map(spec => {
     // league.js #lg-solo-start의 newState→도시 claim→lobby 저장과 같은 형식.
     const S = C.newState(spec.room, R.id, 0, IDS, { turns: 12, seedMode: 'room' });
@@ -92,7 +96,8 @@ if (require.main === module) {
       console.log(`room ${f.room} salt/seedKey ${f.salt} team ${f.save.team} (사건 주입 없음)`);
       for (const [id, month] of Object.entries(f.targets)) console.log(`  ${month}월 ${id}`);
     }
-    console.log('engine months 24 targets 8 missing 0 (DOM/mood 검증은 fx_event.py 담당)');
+    const months = data.reduce((total, f) => total + f.months.length, 0);
+    console.log(`engine months ${months} targets ${KEYS.length} missing 0 (DOM/mood 검증은 fx_event.py 담당)`);
   }
 }
 module.exports = { fixtures };

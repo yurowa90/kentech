@@ -72,6 +72,17 @@ test("36달 띠는 달마다 비조작 칸 하나와 사건·정전 대안을 �
   assert.doesNotMatch(html, /<button|role="button"/);
   assert.match(html, /2028년 12월/);
 });
+test("heavy_rain 한 달은 ☂·집중호우로, monsoon_cloud는 ☁·구름으로 표시한다", () => {
+  const K = setup();
+  for (const [id, symbol, name] of [["heavy_rain", "☂", "집중호우"], ["monsoon_cloud", "☁", "구름"]]) {
+    const V = fixture(1);
+    V.events = [{ id, round: 1 }];
+    const html = K.fxEnd.html(V, "a");
+    assert.equal((html.match(/data-fx-month="/g) || []).length, 1, `${id}: 사건이 든 달 하나`);
+    assert.ok(html.includes(symbol), `${id}: 기호 ${symbol}`);
+    assert.ok(html.includes(name), `${id}: 이름 ${name}`);
+  }
+});
 test("진행자 모드는 모든 활성 도시 궤적과 도시 이름을 제공한다", () => {
   const K = setup(), html = K.fxEnd.html(fixture(), null, { allCities: true });
   assert.equal((html.match(/data-fx-series="[abc]"/g) || []).length, 15);
