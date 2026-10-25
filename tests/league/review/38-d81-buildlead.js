@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
-const { withoutD90, assertRequestsUnchanged } = require('./d90-public-contract');
+const { withoutD90, withoutGroupOwn, assertRequestsUnchanged } = require('./d90-public-contract');
 const ROOT = path.resolve(__dirname, '../../..');
 const BEFORE = '777805a', IMPLEMENTATION = '249a41b';
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -253,6 +253,42 @@ test('공사 규칙 실행: SMR만 12달 대기·완공 경계', () => {
   }
 });
 
+test('집단 전용 항: 승인 경로·모양만 정규화하고 원본과 다른 경로 보존', () => {
+  const view = { sid: undefined, teams: { pyeongtaek: { groupOwn: 9, groupOwnLag: 8, hospRel: 7 } },
+    econ: { cities: { pyeongtaek: { cash: 12, groupOwn: { senior: { complaint: -10, complaintN: 2, sitingN: 1 },
+      youth: { hospital: -.29, outage: -2, share: .01, save: -1, unrest: -3, bounds: .02 } },
+      groupOwnLag: { senior: { complaint: -1.52 } }, hospRel: -.29 } },
+      before: { pyeongtaek: { groupOwn: 6 } } }, results: [{ econ: { groupOwn: 5 } }] };
+  const original = clone(view), normalized = withoutGroupOwn(view);
+  assertions++; assert.deepEqual(normalized, { sid: undefined, teams: original.teams,
+    econ: { cities: { pyeongtaek: { cash: 12 } }, before: original.econ.before }, results: original.results });
+  assertions++; assert.deepEqual(view, original, '검증·제거가 원본 상태를 바꾸지 않음');
+  assertions++; assert.deepEqual(withoutGroupOwn({ econ: { cities: { pyeongtaek: { groupOwn: {}, hospRel: 0 } } } },
+    { internal: true }), { econ: { cities: { pyeongtaek: { hospRel: 0 } } } }, '내부 상태의 빈 목표 객체만 승인');
+  assertions++; assert.deepEqual(withoutGroupOwn(view, { internal: true }).econ.cities.pyeongtaek,
+    { cash: 12, groupOwnLag: { senior: { complaint: -1.52 } }, hospRel: -.29 }, '내부 상태에서 공개 전용 예외로 확장하지 않음');
+
+  const reject = (city, internal = false) => {
+    assertions++;
+    assert.throws(() => withoutGroupOwn({ econ: { cities: { pyeongtaek: city } } }, { internal }),
+      assert.AssertionError, JSON.stringify(city));
+  };
+  for (const internal of [false, true]) {
+    for (const bad of [null, [], 1, { unknown: { save: 1 } }, { senior: {} },
+      { senior: { extra: 1 } }, { senior: { complaintN: 1 } }, { senior: { complaint: -1 } },
+      { senior: { complaint: -1, complaintN: 0 } }, { senior: { complaint: -1, complaintN: 1.5 } },
+      { senior: { complaint: -1, complaintN: 1, sitingN: 0 } },
+      { senior: { complaint: -1, complaintN: 1, sitingN: 2 } }]) reject({ groupOwn: bad }, internal);
+    for (const bad of [0, -0, .001, NaN, Infinity, '1', null]) reject({ groupOwn: { senior: { save: bad } } }, internal);
+  }
+  reject({ groupOwn: {} });
+  for (const bad of [null, [], {}, { unknown: { save: 1 } }, { senior: {} },
+    { senior: { other: 1 } }, { senior: { complaint: -1, complaintN: 1 } }]) reject({ groupOwnLag: bad });
+  for (const bad of [0, .001, NaN, Infinity, '1', null]) {
+    reject({ groupOwnLag: { senior: { save: bad } } }); reject({ hospRel: bad });
+  }
+});
+
 test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
   const previous = engine(BEFORE), oldC = previous.leagueCore, old = game(previous), current = game(K);
   // E1(10-21) 근사 표시 추가, 문장 비교 제외. speeds.items.note와 공개
@@ -271,7 +307,8 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
       ok(!!oldC.run(old, previous.buildGame, 0) && !!C.run(current, K.buildGame, 0), '양쪽 실제 운영');
     }
     eq(current.phase, phase, `${phase}: 비교 단계`);
-    const before = plain(oldC.publicView(old, 0)), rawAfter = plain(C.publicView(current, 0)), after = withoutD90(rawAfter);
+    const before = plain(oldC.publicView(old, 0)), rawAfter = plain(C.publicView(current, 0)),
+      after = withoutGroupOwn(withoutD90(rawAfter));
     eq(keyPaths(after), keyPaths(before), `${phase}: 중첩 공개 키 집합 동일`);
     eq(Object.keys(after.econ.speeds).sort(), Object.keys(before.econ.speeds).sort(), `${phase}: speeds 키 집합 동일`);
     eq(after.econ.speeds.items.map(item => item.key), before.econ.speeds.items.map(item => item.key),
@@ -284,12 +321,18 @@ test('777805a 대비 publicView·speeds 키 집합과 값 불변', () => {
         ['별도 세출 0→1', v => { v.econ.report.fiscal[id].exp.repair = 1; }],
         ['미승인 중첩 키', v => { v.results[0].team[id].cost.unapproved = 0; }],
         ['기존 현금 수치', v => { v.econ.cities[id].cash += 1; }],
-        ['팀 상태쪽 repair 키', v => { v.teams[id].repair = 0; }]
+        ['팀 상태쪽 repair 키', v => { v.teams[id].repair = 0; }],
+        ...['groupOwn', 'groupOwnLag', 'hospRel'].map(key =>
+          [`팀 상태쪽 ${key} 키`, v => { v.teams[id][key] = 0; }]),
+        ['과거 상태쪽 groupOwn 키', v => { v.econ.before[id].groupOwn = {}; }],
+        ['목표 전용 항 0 노출', v => { v.econ.cities[id].groupOwn = { senior: { save: 0 } }; }],
+        ['반영 전용 항 정밀도', v => { v.econ.cities[id].groupOwnLag = { senior: { save: .001 } }; }],
+        ['병원 몫 0 노출', v => { v.econ.cities[id].hospRel = 0; }]
       ]) {
         const changed = clone(rawAfter); mutate(changed);
         assertions++;
         assert.throws(() => {
-          const normalized = withoutD90(changed);
+          const normalized = withoutGroupOwn(withoutD90(changed));
           assert.deepEqual(keyPaths(normalized), keyPaths(before));
           assert.deepEqual(numericValues(normalized), numericValues(before));
         }, assert.AssertionError, `${name}: 승인 경로 예외로 가려지지 않음`);

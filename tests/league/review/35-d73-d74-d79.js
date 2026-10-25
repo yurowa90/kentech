@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { createHash } = require('node:crypto');
-const { withoutD90 } = require('./d90-public-contract');
+const { withoutD90, withoutGroupOwn } = require('./d90-public-contract');
 const ROOT = process.env.KCP_ROOT || path.resolve(__dirname, '../../..');
 const clone = x => structuredClone(x);
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -272,15 +272,16 @@ const LEGACY_KEYS = {
   "allKeyCount": 5161,
   "allKeyHash": "9a4825d2426c95f50f75e4c844831c23910f5da6a78a3d53eab8faa1cc43a148"
 };
-test('D74-public', '승인된 rev.facility·D-90 정산 이외 새 공개 필드0', () => {
+test('D74-public', '승인된 rev.facility·D-90 정산·집단 전용 항 이외 새 공개 필드0', () => {
   const S = state(); C.run(S, B, 0);
   const V = C.publicView(S, 0);
-  // H03의 rev.facility 경로와 D-90의 검증된 정산 필드만 승인한다.
+  // H03의 rev.facility 경로와 검증된 D-90 정산·집단 전용 항만 승인한다.
   // 나머지는 fa472b4의 해시를 그대로 써서 예상 밖 중첩 공개 키도 계속 검출한다.
   const allowed = new Set(ids.flatMap(id => [`.econ.report.fiscal.${id}.rev.facility`, `.results[].econ.fiscal.${id}.rev.facility`]));
   const actual = new Set(allPublicKeyPaths(V));
   ok([...allowed].every(key => actual.has(key)), '승인된 facility 경로도 실제로 공개됨');
-  eq(publicKeys(withoutD90(V), allowed), LEGACY_KEYS, 'fa472b4 대비 rev.facility·D-90 정산만 허용(배열 인덱스 정규화)');
+  eq(publicKeys(withoutGroupOwn(withoutD90(V)), allowed), LEGACY_KEYS,
+    'fa472b4 대비 rev.facility·D-90 정산·집단 전용 항만 허용(배열 인덱스 정규화)');
 });
 for (const [key, value] of [['hvdcCap', 1.5], ['hvdcCost', 1.3]]) test('D79-params', key, () => near(T.params[key]?.v, value, 'H2 근거값'));
 function tieFixture() {

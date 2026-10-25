@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
-const { withoutD90 } = require('./d90-public-contract');
+const { withoutD90, withoutGroupOwn } = require('./d90-public-contract');
 const ROOT = path.resolve(__dirname, '../../..'), OLD = '3dca4f9';
 const source = fs.readFileSync(path.join(ROOT, 'ui/league.js'), 'utf8');
 const clone = x => JSON.parse(JSON.stringify(x)), id = 'pyeongtaek', ids = [id, 'dangjin'];
@@ -274,7 +274,7 @@ test('정전 회귀: 3dca4f9와 같은 입력의 첫 달/월간 판정·분해',
     }
     return copy;
   };
-  eq(S, oldS, '두 판의 최초 입력 동일');
+  eq(withoutGroupOwn(S, { internal: true }), oldS, '검증된 내부 groupOwn 외 두 판의 최초 입력 동일');
   for (let month = 1; month <= 2; month++) {
     if (month > 1) { h.C.host(S, 'next', 0); old.C.host(oldS, 'next', 0); }
     for (const [env, state] of [[h, S], [old, oldS]]) {
@@ -283,8 +283,8 @@ test('정전 회귀: 3dca4f9와 같은 입력의 첫 달/월간 판정·분해',
       const V = clone(env.C.publicView(state, 0)), res = V.results.at(-1);
       use(env, V); record(env, V, res, { unsPct: 50 }); env.api.receive(V);
     }
-    eq(withoutDisplayText(withoutD90({ results: S.results }).results), withoutDisplayText(oldS.results),
-      'D-90의 검증된 정산 필드 외 두 판 공개 운전 결과 동일');
+    eq(withoutDisplayText(withoutGroupOwn(withoutD90(S), { internal: true }).results), withoutDisplayText(oldS.results),
+      '검증된 D-90 정산·내부 집단 전용 항 외 두 판 공개 운전 결과 동일');
     const V = h.session.snap, ov = old.session.snap, res = V.results.at(-1), ores = ov.results.at(-1);
     const n = note('uns', 'same', { unsPct: 50, days: 7 });
     const a = h.api.attribution(V, res, id, n), b = old.api.attribution(ov, ores, id, n);

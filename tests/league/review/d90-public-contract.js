@@ -39,6 +39,54 @@ function withoutD90(view) {
   fiscal(copy.econ?.report);
   return copy;
 }
+// 집단 전용 항 병합 승인: 공개 econ.cities[*]의 3필드와 내부 상태의 groupOwn만.
+// 엔진과의 값 일치는 48·49가 검사한다. 여기서는 제거 전 스키마를 독립적으로 검사한다.
+function withoutGroupOwn(view, { internal = false } = {}) {
+  const copy = clone(view);
+  const groups = ['worker', 'youth', 'senior', 'business', 'farm', 'green'];
+  const terms = ['outage', 'hospital', 'complaint', 'share', 'save', 'unrest', 'bounds'];
+  function object(value, label) {
+    assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value), `${label}: 객체`);
+    assert.equal(Object.getPrototypeOf(value), Object.prototype, `${label}: 일반 객체`);
+  }
+  function number(value, label) {
+    assert.ok(Number.isFinite(value) && value !== 0, `${label}: 유한한 0 아닌 숫자`);
+    assert.equal(value, Math.round(value * 100) / 100, `${label}: 소수 둘째 자리 반올림`);
+  }
+  function own(value, label, counts, allowEmpty) {
+    object(value, label);
+    assert.ok(allowEmpty || Object.keys(value).length > 0, `${label}: 빈 도시 객체 생략`);
+    for (const [group, row] of Object.entries(value)) {
+      const at = `${label}.${group}`;
+      assert.ok(groups.includes(group), `${at}: 승인된 집단`);
+      object(row, at);
+      assert.ok(Object.keys(row).length > 0, `${at}: 빈 집단 생략`);
+      for (const [key, v] of Object.entries(row)) {
+        if (counts && ['complaintN', 'sitingN'].includes(key)) {
+          assert.ok(Number.isSafeInteger(v) && v > 0, `${at}.${key}: 양의 정수 건수`);
+          assert.ok(Object.hasOwn(row, 'complaint'), `${at}.${key}: 민원 항이 있을 때만 건수`);
+        } else {
+          assert.ok(terms.includes(key), `${at}.${key}: 승인된 전용 항`);
+          number(v, `${at}.${key}`);
+        }
+      }
+      if (counts && Object.hasOwn(row, 'complaint'))
+        assert.ok(Object.hasOwn(row, 'complaintN'), `${at}: 민원 건수 필수`);
+      if (Object.hasOwn(row, 'sitingN'))
+        assert.ok(row.sitingN <= row.complaintN, `${at}: 입지 건수는 전체 민원 건수 이하`);
+    }
+  }
+  for (const [id, city] of Object.entries(copy.econ?.cities || {})) {
+    for (const key of internal ? ['groupOwn'] : ['groupOwn', 'groupOwnLag', 'hospRel']) {
+      if (!Object.hasOwn(city, key)) continue;
+      const at = `econ.cities.${id}.${key}`;
+      if (key === 'hospRel') number(city[key], at);
+      else own(city[key], at, key === 'groupOwn', internal);
+      delete city[key];
+    }
+  }
+  return copy;
+}
 function assertRequestsUnchanged(root) {
   // D-65: 진행자 공개 필드의 예외가 팀 요청 스키마 예외로 번지지 않게 한다.
   // D-90 직전의 실제 송신·수신 함수/봉투를 그대로 비교한다. Git은 읽기만 한다.
@@ -56,4 +104,4 @@ function assertRequestsUnchanged(root) {
   assert.equal(fs.readFileSync(path.join(root, 'ui/league-net.js'), 'utf8'), before('league-net'),
     'D-65 서명·봉투·요청 필드 전송 모듈 불변');
 }
-module.exports = { withoutD90, assertRequestsUnchanged };
+module.exports = { withoutD90, withoutGroupOwn, assertRequestsUnchanged };
