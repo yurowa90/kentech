@@ -433,7 +433,7 @@
       events: [
         { id: "eu_indirect", name: "EU, 철강 간접배출 포함 결정(가상)", dur: [999, 999], fx: { eu_indirect: 1 }, disabled: true, carbonWeight: 0.3, grade: G, note: "설계 선택: 실제 CBAM과 분리한 가상 시나리오 · 기간 999달은 상시 적용용 표지(G), carbonWeight 0.3은 가상 가중(G) · REF 7.15", text: "가상 결정: 철강 수출에 전력 탄소도 반영해요" },
         { id: "ship_red", name: "홍해 해운 차질", dur: [3, 6], fx: { ship: -0.3 }, grade: M, note: "홍해 차질 · World Bank 2023.12~2024.6 LNG Japan 14.44→12.13으로 하락 [S28][S16] · ship 크기 −0.3은 G · 기간 3~6달은 게임 가정(G) · 배속: 없음 · REF 7.9", text: "항구가 있는 도시의 물류 여건과 산업 산출이 줄어요(물류비 지출은 따로 계산하지 않아요)" },
-        { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, grade: G, note: "효과 크기 G(+0.5)·지속 기간 G(2~5달): 급등 관측 범위 [S16]를 참고한 게임 사건이며 인과 추정값은 아님 · REF 7.8", text: "LNG·디젤 연료비가 크게 올라요" },
+        { id: "lng_spike", name: "LNG 가격 급등", dur: [2, 5], fx: { lng: 0.5 }, grade: G, note: "효과 크기 G(+0.5)·지속 기간 G(2~5달): 급등 관측 범위 [S16]를 참고한 게임 사건이며 인과 추정값은 아님 · REF 7.8", text: "LNG 연료비가 가장 크게 오르고 디젤·석탄도 올라요" },
         { id: "export_boom", name: "반도체 수출 호황", dur: [4, 8], fx: { export: { semi: 0.25, display: 0.1 } }, grade: G, note: "효과 크기 G(반도체 +0.25·디스플레이 +0.1)·지속 기간 G(4~8달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "반도체 도시 산출이 늘어요" },
         { id: "auto_slump", name: "자동차 수출 둔화", dur: [3, 6], fx: { export: { auto: -0.2 } }, grade: G, note: "효과 크기 G(자동차 −0.2)·지속 기간 G(3~6달): 연 수출 변동 [S30]을 참고한 게임 가정 · REF 7.10", text: "자동차 도시 산출이 줄어요" },
         { id: "cbam", name: "EU 탄소국경조정(CBAM)", dur: [999, 999], fx: { cbam: 1 }, sched: true, grade: G, note: "효과 크기 G(cbam=1은 켜짐 표시)·지속 기간 G(999달은 상시 적용용): 실제 감소율·도입 일정은 등급 있는 cbamDrop·cbamPhase로 계산 · REF 7.13, 7.15", text: "철강 비중과 수출 비중에 따라 산출이 깎여요(EU 몫은 모든 도시 같음, 단계 도입, 공정별 직접배출 차이는 생략한 근사)" }
