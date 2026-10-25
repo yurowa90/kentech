@@ -351,7 +351,7 @@
 .lg-policy small { color: var(--ink-2); font-size: 13px; }
 .lg-policy input:disabled { opacity: 0.6; }
 .lg-money { margin: 0; }
-.lg-money div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.lg-money > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .lg-money dd { margin: 0; font-variant-numeric: tabular-nums; }
 .lg-offer { margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
 .lg-offer p { margin: 5px 0; }
