@@ -537,14 +537,18 @@
     el.querySelector("#lg-coach-action").onclick = coachAction;
     updateCoach(!reattach);
   }
-  function coachSteps(issues, n) {
+  function coachSteps(issues, n = {}) {
     // 말풍선 gridWaitInfo도 hostLimited가 없는 설비에는 접속 대기를 적용하지 않는다.
     const immediate = Object.entries(BG.BLD).find(([id, b]) => b.cls === "disp" && !b.hostLimited && document.querySelector(`[data-group="fire"]`) && id === "diesel");
     const build = immediate ? `${immediate[1].name} 하나 놓기 · 접속 대기 없어요` : "설비 하나 놓기 · 말풍선의 '대기'를 확인해요";
+    const groups = new Map();
+    for (const name of issues.unlinkedNames || []) groups.set(name, (groups.get(name) || 0) + 1);
+    const shown = [...groups].slice(0, 2), rest = issues.unlinked - shown.reduce((sum, [, count]) => sum + count, 0);
+    const unlinked = shown.map(([name, count]) => count > 1 ? `${name} ${count}기` : name).join("·");
     return [
       ["이번 달 사건을 열어 봐요", "사건 보기", '#lg-bar [data-panel="deal"]'],
       [build, "화력", '[data-group="fire"]'],
-      [`마을까지 이어요 · 미연결${issues.unlinked ? `(${issues.unlinkedNames.slice(0, 2).join("·")}${issues.unlinked > 2 ? ` 외 ${issues.unlinked - 2}기` : ""})` : " 0기"} · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
+      [`마을까지 이어요 · 미연결${issues.unlinked ? `(${unlinked}${rest > 0 ? ` 외 ${rest}기` : ""})` : " 0기"} · 대기 ${issues.waiting}기`, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
       ["준비 → 근거·방향·확신 고르고 약속해요", "준비", L.awaitReady ? "#lg-ready-confirm" : "#lg-ready"],
       ["운영 끝 · 결과에서 예측과 실제를 비교해요", "결과", '#lg-bar [data-panel="result"]'],
@@ -1882,6 +1886,7 @@
     if (L.away) return;
     const V = L.snap;
     if (!V) return;
+    BG.finishTrial?.();
     if (skip && !freeExperiment()) return;
     unlockAudio();
     const { d, n } = monthNote();
@@ -4572,7 +4577,8 @@
     }
     if (L.away) return; // 알림만 갱신하고 돌아갈 서랍은 유지한다.
     if (V.phase === "review" || V.phase === "end") {
-      BG.clearTrialDisplay?.(); warnUnsentPlan(); openPanel("result");
+      // 진행자가 팀의 시험 재생 중에 운영을 시작해도 시험을 조용히 확정해 실제 운영 재생·결과 서랍을 지킨다.
+      BG.finishTrial?.(); BG.clearTrialDisplay?.(); warnUnsentPlan(); openPanel("result");
       const result = V.results.at(-1), team = result?.team[L.team];
       const previous = V.results.find(r => r.round === result?.round - 1), p = previous?.team[L.team];
       // 결과 서랍의 월 환산과 fmt를 그대로 쓴다. 대표 운영일을 늘려 시뮬레이션하지 않는다.
@@ -4777,7 +4783,7 @@
         L.rev++; const z = tdata(); z.rev = L.rev; putData(z); clearTimeout(L.planT);
         // 혼자 하기는 같은 탭에서 즉시 반영한다. 이탈 때 취소되는 전송 타이머를 기다리지 않는다.
         if (L.role === "solo") sendPlan(); else L.planT = setTimeout(sendPlan, 400); },
-      onTrial: () => { closePanel(); if (L.snap?.econ && curRound().month === 1 && !monthNote().n.baselineSeen) { const { d, n } = monthNote(); n.baselineSeen = true; putData(d); } },
+      onTrial: () => { if (!["plan", "lobby"].includes(L.snap?.phase)) return; closePanel(); if (L.snap?.econ && curRound().month === 1 && !monthNote().n.baselineSeen) { const { d, n } = monthNote(); n.baselineSeen = true; putData(d); } },
       onHelp: () => openPanel("help"),
       onDrawer: closePanel,
       onTool: closePanel,
@@ -5086,22 +5092,40 @@
         }
         const visibleNote = narrow ? "(빚 한도 포함)" : noteText;
         if (note && note.textContent !== visibleNote) note.textContent = visibleNote;
+        const grantLeft = C.grantOf(L.snap, R(), id, BG).left;
+        let chip = money.querySelector("[data-grant-chip]");
+        if (!chip && grantLeft > 0 && narrow && !L.away) {
+          chip = document.createElement("small"); chip.className = "lg-grant-chip"; chip.dataset.grantChip = "";
+          money.querySelector(".v2-cap-txt").append(chip);
+        }
+        if (chip) {
+          chip.hidden = !(grantLeft > 0) || !narrow || !!L.away;
+          const text = `+${fmt(grantLeft, 1)}억 전용`;
+          if (chip.textContent !== text) chip.textContent = text;
+        }
         let tip = root.querySelector(".lg-money-info");
         if (!tip && grantNote && narrow && !L.away) {
-          // HUD의 backdrop-filter가 fixed 설명의 기준 좌표를 바꾸지 않도록 루트에 둔다.
-          root.insertAdjacentHTML("beforeend", infoTip("money-grant", "", { label: "남은 돈" }));
-          tip = root.lastElementChild; tip.classList.add("lg-money-info");
+          // 칩 다음 Tab 정지점이 되도록 중첩 없이 바로 다음 형제에 둔다.
+          money.insertAdjacentHTML("afterend", infoTip("money-grant", "", { label: "남은 돈" }));
+          tip = money.nextElementSibling; tip.classList.add("lg-money-info");
           bindInfoTips(root);
         }
         if (tip) {
           tip.hidden = !grantNote || !narrow || !!L.away;
           if (tip.hidden) tip.open = false;
-          const pop = tip.querySelector(".lg-info-pop"), text = grantNote.replace(/^ · /, "");
+          const pop = tip.querySelector(".lg-info-pop"), text = `남은 특별교부세 ${fmt(grantLeft, 1)}억은 이번 달 새 설비·선로와 재난 대응에만 쓰고, 안 쓰면 사라져요.`;
           if (pop.textContent !== text) pop.textContent = text;
-          const rect = money.getBoundingClientRect();
-          // 44px 누름 영역의 가운데를 칩 오른쪽 위 모서리에 둔다: 금액 글자(칩 아래쪽)와 겹치지 않는다.
-          tip.style.left = `${rect.right - 26}px`;
-          tip.style.top = `${rect.top - 22}px`;
+          // backdrop-filter가 있는 HUD의 padding box가 fixed 요소의 좌표 기준이다.
+          const hud = root.querySelector("#bd-hud"), origin = hud.getBoundingClientRect(), rect = money.getBoundingClientRect();
+          const left = origin.left + hud.clientLeft, top = origin.top + hud.clientTop;
+          tip.style.setProperty("--lg-money-origin-left", `${left}px`);
+          tip.style.setProperty("--lg-money-origin-top", `${top}px`);
+          // 44px 누름 영역의 가운데를 칩 오른쪽 위 모서리 근처에 둔다. 교부세 셋째 줄 때문에 금액 줄이 칩 높이를
+          // 나눠 쓰므로(390에서 금액 줄 위끝 약 칩 위+20px) 누름 영역 아래끝이 금액 글자에 닿지 않게 한다.
+          // 폭마다 금액 줄 위치가 달라 상수 대신 실측한 금액 글자 위끝에서 44px 위로 올린다(칩 위−22px보다 낮게는 두지 않음).
+          const amount = money.querySelector("[data-v]")?.getBoundingClientRect();
+          tip.style.left = `${rect.right - 26 - left}px`;
+          tip.style.top = `${Math.min(rect.top - 22, amount ? Math.floor(amount.top) - 44 : rect.top - 25) - top}px`;
         }
         const description = `남은 돈 ${text} ${noteText}`;
         if (money.title !== description) money.title = description;

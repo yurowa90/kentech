@@ -47,7 +47,7 @@ function load({ core = source['league-core'], build = source.build, league = sou
       const callback = text.slice(text.indexOf('      budget:', start)).split('\n')[0].trim().slice(8).replace(/,$/, '');
       a.ok(start >= 0 && callback.length > 0, '실제 팀 편집기 예산 어댑터 연결');
       text = replaceOne(text, 'let L = null;', 'let L = globalThis.session;');
-      text = replaceOne(text, '  // 검사용\n', `  globalThis.view = { cityHTML, budget: ${callback}, note: typeof grantMoneyNote === 'function' ? grantMoneyNote : () => '' };\n  // 검사용\n`);
+      text = replaceOne(text, '  // 검사용\n', `  globalThis.view = { cityHTML, budget: ${callback}, note: typeof grantMoneyNote === 'function' ? grantMoneyNote : () => '', region: typeof R === 'function' ? R : null };\n  // 검사용\n`);
     }
     vm.runInContext(text, ctx, { filename: `VM:ui/${name}.js`, timeout: 5000 });
     if (name === 'econ-data') ctx.KCP.ECON_DATA.params.disasterGrant.v = grant;
@@ -485,7 +485,9 @@ try {
     // DOM 쓰기만 대역 처리한다. 생성·자금·문구 계산은 실제 함수 그대로다.
     vm.runInContext(`{ const L = session, id = L.team, root = { querySelector: s => s === '[data-cap="budget"]' ? hudMoney : null },
       document = { createElement: tag => ({ tagName: tag, textContent: '', dataset: {}, className: '' }) },
-      fmt = KCP.league.uiMath.fmt, grantMoneyNote = view.note, syncLastOutage = () => {};
+      fmt = KCP.league.uiMath.fmt, grantMoneyNote = view.note, syncLastOutage = () => {},
+      // 묶음 2(F1b): syncMoney가 좁은 화면 셋째 줄 금액을 실제 grantOf로 읽는다. 실제 모듈 값을 그대로 넘긴다.
+      C = KCP.leagueCore, BG = KCP.buildGame, R = view.region || (() => KCP.leagueCore.regionOf(session.snap.region));
       ${harness.league.slice(start, end).replace('const syncMoney', 'globalThis.syncMoney')} }`, harness.ctx);
     harness.ctx.syncMoney();
     return { money, note, value, label, plain: `${label.textContent} ${value.textContent} ${note.textContent}`,
