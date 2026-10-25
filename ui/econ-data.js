@@ -15,6 +15,19 @@
   KCP.ECON_DATA = {
     version: 1,
     startYear: 2027,
+    // D-90 최종 화면 문구. 숫자의 근거·가정은 params/REF 19.
+    disasterFacts: {
+      rain: { text: "장마 사건 때 절반 확률로 장마 먹구름 대신 나와요(게임 가정). 재난 및 안전관리 기본법이 정한 자연재난이에요(근거 확인). 피해와 보수비는 게임 가정이에요." },
+      heat: {
+        text: "폭염 달엔 바깥 공기와 패널이 더워져 LNG와 일반 태양광 출력이 조금 줄어요(연구 근거). 얼마나 더 더운지는 게임 가정이에요.",
+        limitation: "석탄·SMR·디젤과 탠덤 태양광은 넣을 근거 값을 못 찾아 이 게임에선 폭염 때 출력을 줄이지 않아요."
+      },
+      repair: { text: "호우·폭염이 든 달에는 공공시설 보수비가 한 번 나가요. 사건이 클수록 커지고, 대응하면 호우 보수비만 줄어요. 금액은 게임 가정이에요." },
+      grant: { text: "남은 특별교부세 {n}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요." }
+    },
+    // 집단 만족 원인 펼침의 집단 전용 항. 항목 이름은 league.js PART_NAMES(기존 화면 용어)를 쓰고 여기는 순서(엔진 econ.js도 이 목록을 읽음)와 건수·낭독 문구만 둔다.
+    groupOwnKeys: ["outage", "hospital", "complaint", "share", "save", "unrest", "bounds"],
+    groupOwnCopy: { complaintN: "{n}건", sitingN: "입지 {n}건", mixedN: "{n}건 중 입지 {m}건", penalty: "만족 목표에서 깎인 점수", contribution: "만족 목표에 더해진 점수", target: "최종 반영", applied: "현재 반영" },
     // D-87 1단계 사실 자료. text는 화면 문장(사실 범위 확인본)이며 도구 '!'·배치 안내·시작 전 안내·공사 기간 표가 읽는다.
     thermalFacts: {
       coalScenario: { hypothetical: true, phaseoutTargetYear: 2040, grade: "G", targetGrade: "O", sourceDate: "2025-11-19", sourceScope: "title", sources: ["docs/DECISIONS.md#d-87", "https://www.korea.kr/briefing/pressReleaseView.do?newsId=156729173"], text: "정부(기후에너지환경부, 2025년 11월 19일 설명자료) 목표는 2040년까지 석탄발전 폐지예요. 비용·오염을 비교하게 계획에 없는 새 건설을 가정해 열어 둬요." },
@@ -196,6 +209,13 @@
       eduConn: p(27, "G", "설계 선택: 재생 접속 속도 27배 · REF 8.12", []),
       connPerMonthReal: p(0.00375, "M", "월 접속 속도 · 2024 태양광 신규 3,955,673kW [S22] ÷ 2024 최대 월평균 87,799MW [S21] ÷ 12 ≈ 월 0.375% · 배속: eduConn · REF 8.12", ["S22", "S21"]),
       hazardFreq: p(0.1, "G", "설계 선택: 기상 사건 빈도 현실의 1/10 · REF 13.7", []),
+      heavyRainShare: p(0.5, G, "장마 묶음 중 호우 분기 비율 · 별도 결정적 난수 · D-90 REF 19"),
+      heatAirDelta: p(3, G, "폭염 사건 달 대표운전의 유효 추가 외기온 ℃ · 실측 온도차 아님 · D-90 REF 19"),
+      heatModuleDelta: p(5, G, "폭염 사건 달 대표운전의 유효 추가 모듈온도 ℃ · 외기온과 별개 · D-90 REF 19"),
+      heatLngSlope: p(0.226 / 30, M, "Wan et al. (2021): 외기 5→35℃ 출력 −22.6%의 기준출력 대비 선형 평균 /℃ · 현 cap에 적용하는 연결은 G 근사 · D-90 REF 19", ["D90-R1"]),
+      heatPvSlope: p(0.004165, "P", "Dash et al. (2015): 실리콘 모듈 −0.00387~−0.00446/℃ 가운데값 · solar/roof만 · D-90 REF 19", ["D90-R2"]),
+      repairHeavyRain: p(12, G, "호우 도시당 사건 보수비 게임억 · x·대응 dev 곱, 월 1회 · D-90 REF 19"),
+      repairHeatwave: p(4, G, "폭염 도시당 사건 보수비 게임억 · x 곱, 월 1회 · DR·절전으로 완화하지 않음 · D-90 REF 19"),
       coopEase: p(1, "G", "설계 선택: 지역 탄소 목표 조정 배수 · REF 13.6", []),
       coopCo2Cut: p(0.40, "O", "2030 감축 목표 · 탄소중립기본법 시행령 2018 대비 40% · 배속: 없음 · REF 13.6", ["L12"]),
       scoreCo2Best: p(0.25038, "M", "탄소 절대 눈금의 중간점 · 2023년 소비단 계수 0.4173×(1−0.4)=0.25038 tCO₂eq/MWh [S36][L12] · 목표를 전력 집약도에 대응한 것은 G · 배속: 없음 · D-73 REF 13.5"),

@@ -25,6 +25,9 @@ const newPM = { coal: 1 * pmFacts.coalNew / pmFacts.coalReference,
 // SPEC §1.1/1.2의 개별 등급이 REF 절 전체의 혼합 등급보다 우선한다.
 // 최신 정정: D-73(탄소), G7(FOAK 비용), G4(공사 기간) 순으로 반영했다.
 const expected = {
+  // REF §19.1 원문 대장: LNG 5→35℃ 출력 −22.6%, 실리콘 두 계수 가운데값.
+  heatLngSlope: [.226 / 30, 'M', '19.1', ['D90-R1']],
+  heatPvSlope: [.004165, 'P', '19.1', ['D90-R2']],
   // REF §18: 출처 ID는 새 대장의 D87-Rxx 표기다. params는 REF 절을 참조한다.
   thermalMW: [{ lng: 561, coal: 1040 }, 'O*', '18.1', [], ['D87-R04']],
   thermalCapex: [{ lng: 1275, coal: 1809 }, 'P', '18.1', [], ['D87-R01']],
@@ -139,6 +142,8 @@ const expected = {
 // 대장에 계산 결과가 그대로 없는 값은 입력 숫자와 정의식을 모두 확인한다.
 // 구현에서 식·입력값을 역산하지 않는다. 단위 정의도 검사를 생략하지 않는다.
 const definitions = {
+  heatLngSlope: { inputs: [.226, 30], formula: /0\.226\s*\/\s*30/,
+    value: () => .226 / (35 - 5) },
   pmNewFuelW: { inputs: Object.values(pmFacts),
     formula: /pmFuelW\.coal\s*×\s*0\.044\/0\.120[\s\S]*pmFuelW\.lng\s*×\s*0\.007\/0\.015/,
     value: () => newPM },
@@ -169,7 +174,7 @@ function sectionsIn(text) {
   });
   return sections;
 }
-const sourceIds = text => new Set([...text.matchAll(/\[((?:[A-Z]\d+|D87-R\d+))\]/g)].map(m => m[1]));
+const sourceIds = text => new Set([...text.matchAll(/\[((?:[A-Z]\d+|D(?:87|90)-R\d+))\]/g)].map(m => m[1]));
 const baseKey = key => key.replace(/^tech_/, '');
 const hasKey = (text, key) => new RegExp(`\\b${baseKey(key)}\\b`).test(text);
 function numbersIn(text) {
@@ -291,8 +296,8 @@ for (const key of Object.keys(expected)) for (const kind of ['값', '등급', '�
     mutations.push({ key, kind, detected: true });
   });
 }
-for (const key of ['thermalMW', 'thermalCapex', 'pmNewFuelW']) check(result, '변형 확인', `${key}/대장 출처 삭제`, () => {
-  const id = expected[key][4][0];
+for (const key of ['thermalMW', 'thermalCapex', 'pmNewFuelW', 'heatLngSlope', 'heatPvSlope']) check(result, '변형 확인', `${key}/대장 출처 삭제`, () => {
+  const id = (expected[key][4] || expected[key][3])[0];
   const rerun = inspect(structuredClone(D), references.replaceAll(`[${id}]`, '[REMOVED_SOURCE]'));
   assert.ok(rerun.failures.some(f => f.key === key && f.kind === '대장 출처'));
 });
