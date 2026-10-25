@@ -42,7 +42,7 @@ function withoutD90(view) {
 function assertRequestsUnchanged(root) {
   // D-65: 진행자 공개 필드의 예외가 팀 요청 스키마 예외로 번지지 않게 한다.
   // D-90 직전의 실제 송신·수신 함수/봉투를 그대로 비교한다. Git은 읽기만 한다.
-  const before = name => execFileSync('git', ['show', `81fa187^:ui/${name}.js`],
+  const before = name => execFileSync('git', ['show', `186e182:ui/${name}.js`],
     { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
   for (const [name, functions] of [['league-core', ['reduce']], ['league', ['send', 'sendPlan']]]) {
     const old = before(name), current = fs.readFileSync(path.join(root, 'ui', name + '.js'), 'utf8');

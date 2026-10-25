@@ -1928,7 +1928,7 @@ G 비중은 94%(210/224)에서 55%(123/224)로 준다. O·O\*·P·M은 8개에�
 
 회계: cost.repair는 cost.opex/total과 월 energy.opex에 한 번 포함한다. 전력 원가(costPerMWh)와 자산에는 넣지 않는다. 경제 세출은 exp.repair로 분리하며 exp.opex에서 같은 금액을 뺀다. 보수비가 전력 원가 차감에 흡수되지 않도록 netOpex에 보존한다. 계획 사용 Uplan 뒤 남은 교부세로 Urepair=min(G−Uplan, 적격 보수비)를 충당하고 rev.bonus=기타 지원금+Uplan+Urepair, 소멸=G−Uplan−Urepair로 정산한다. fundingOf에는 실제 x·보수비를 넣지 않고 기존 한도 초과 예외를 유지한다.
 
-자료의 disasterFacts 및 호우 text/opts.name/opts.note는 문구 담당·화면 담당이 채울 빈 자리다. 호우 name은 현재 사실 명칭 "호우"이며 최종 카드 이름은 문구 담당의 검토 대상이다. 화면 설명·서랍·툴팁 함수는 이 구현에서 변경하지 않았다. 새 학생 전송값은 없으며 결과의 cost.repair·disasterGrant와 fiscal.exp.repair는 진행자 계산값이다. 월말 결과에만 공개한다.
+(이력, 10-25 구현 당시) 자료의 disasterFacts 및 호우 text/opts.name/opts.note는 문구 담당·화면 담당이 채울 빈 자리다. 호우 name은 현재 사실 명칭 "호우"이며 최종 카드 이름은 문구 담당의 검토 대상이다. 화면 설명·서랍·툴팁 함수는 이 구현에서 변경하지 않았다. 새 학생 전송값은 없으며 결과의 cost.repair·disasterGrant와 fiscal.exp.repair는 진행자 계산값이다. 월말 결과에만 공개한다.
 
 | 구현 키 | 승인값 | 등급·출처 |
 |---|---:|---|
@@ -1940,4 +1940,4 @@ G 비중은 94%(210/224)에서 55%(123/224)로 준다. O·O\*·P·M은 8개에�
 | repairHeavyRain | 12 게임억/도시·사건 | G |
 | repairHeatwave | 4 게임억/도시·사건 | G |
 
-검사 인계: `heatLngSlope`는 REF 19.1·[D90-R1]·M, `heatPvSlope`는 REF 19.1·[D90-R2]·P에 대응한다. SPEC의 같은 이름 행에도 승인값·단위를 기록했다. 현재 `41-evidence-all.js`의 `expected`는 문서에서 자동 생성하지 않는 고정 대응표이므로 두 키를 독립적으로 전사해야 한다. `sourceIds`도 현재 D87-R 형식만 별도로 인식하므로 D90-R 출처 인식을 추가해야 한다. 이 구현 단위에서는 검사 파일을 수정하지 않았다. 문서 보강만으로 `대장 대응` 실패가 해소됐다고 간주하지 않는다.
+검사 인계(이력, 10-25 이후 41-evidence-all에 두 키 반영 완료): `heatLngSlope`는 REF 19.1·[D90-R1]·M, `heatPvSlope`는 REF 19.1·[D90-R2]·P에 대응한다. SPEC의 같은 이름 행에도 승인값·단위를 기록했다. 현재 `41-evidence-all.js`의 `expected`는 문서에서 자동 생성하지 않는 고정 대응표이므로 두 키를 독립적으로 전사해야 한다. `sourceIds`도 현재 D87-R 형식만 별도로 인식하므로 D90-R 출처 인식을 추가해야 한다. 이 구현 단위에서는 검사 파일을 수정하지 않았다. 문서 보강만으로 `대장 대응` 실패가 해소됐다고 간주하지 않는다.

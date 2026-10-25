@@ -858,7 +858,8 @@
     if (S.econ && [12, 1, 2, 3].includes(rd.month)) { const fixed = eventDef(R, "finedust_coal_cap"); if (fixed) out.push(fixed); }
     // 주 추첨·크기 난수열은 소비하지 않는다. 두 분기는 같은 fc를 가지며 전월 제외도 묶음 단위다.
     const rain = eventDef(R, "heavy_rain"), rainIndex = out.findIndex(E => E.id === "monsoon_cloud");
-    if (rain && rainIndex >= 0 && rng(hashStr((S.seedKey ?? S.room) + ":" + S.round + ":heavy_rain"))() < P.heavyRainShare.v) out[rainIndex] = rain;
+    // 계절 4라운드(비경제)에는 보수비·교부세가 없으므로 호우 분기를 두지 않는다.
+    if (S.econ && rain && rainIndex >= 0 && rng(hashStr((S.seedKey ?? S.room) + ":" + S.round + ":heavy_rain"))() < P.heavyRainShare.v) out[rainIndex] = rain;
     // 예보는 범위(fc)로만 알린다. 실제 크기 x(1 ± fc)는 지금 정해 두고 운영이 끝나야 공개한다(같은 방·라운드면 같은 값).
     S.events = (S.events || []).filter(x => x.round !== S.round).concat(out.map(E => ({ id: E.id, round: S.round, x: r3(1 + (E.fc || 0) * (2 * rnd() - 1)) })));
     return out;
