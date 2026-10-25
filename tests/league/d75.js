@@ -291,6 +291,8 @@ function protocolUI(localStorage = storage(), sessionStorage = storage()) {
     document: { addEventListener() {}, getElementById: id => nodes.get("#" + id) || null,
       documentElement: { classList: { add() {}, remove() {} } } },
     location: { hash: "#league/team" }, setTimeout: schedule, setInterval: schedule,
+    // 526b060부터 close()가 안내 묶음 관찰 프레임을 취소한다. 관찰자가 없는 대역이라 프레임은 돌지 않는다.
+    requestAnimationFrame: () => 0, cancelAnimationFrame() {},
     clearTimeout: id => timers.delete(id), clearInterval: id => timers.delete(id),
     structuredClone, TextEncoder, URL, console, btoa, atob };
   const source = fs.readFileSync(path.resolve(__dirname, "../../ui/league.js"), "utf8");
