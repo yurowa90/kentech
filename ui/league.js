@@ -678,9 +678,26 @@
   }
   function groupCauseHTML(c, key, rep, prev) {
     const weights = params("groupW")[key], parts = c.groupParts || {}, target = rep?.cities[L.team]?.Lparts || {};
+    const own = c.groupOwn?.[key] || {}, ownKeys = KCP.ECON_DATA.groupOwnKeys, copy = KCP.ECON_DATA.groupOwnCopy;
+    const ownLag = c.groupOwnLag?.[key] || {};
+    const z = Object.keys(weights).filter(k => parts[k] != null).reduce((n, k) => n + weights[k], 0) || 1;
     // groupTargets가 lagL에서 그대로 읽는 다섯 항목만 지연 비교. air·tax·taxI는 다른 식이다.
     const bars = causeBreakdown({}, parts, weights, 0, false).filter(x => x.key !== "other");
-    return `<div class="lg-cause">${infoTip(`city-group-${key}`, `만족도 목표에 들어가는 점수(집단 만족이 따라가기 전) · 옅은 글 상자: 앞으로 반영될 변화(${esc(gradeWords("G"))})`, { label: "집단 만족 계산" })}${bars.map(x => `<div>${esc(PART_NAMES[x.key] || x.key)} ${esc(fmt(x.value, 1))}점<meter min="0" max="100" value="${esc(Math.max(0, x.value))}" aria-label="목표 기여(지연 반영 전)"></meter>${["rel", "price", "jobs", "svc", "crowd"].includes(x.key) && target[x.key] != null ? `<span class="lg-pending">앞으로 반영될 변화 ${esc(signed((target[x.key] - (parts[x.key] || 0)) * weights[x.key], 1))}점</span>` : ""}</div>`).join("")}</div>`;
+    const totalWeight = Object.values(weights).reduce((n, w) => n + w, 0) || 1;
+    bars.forEach(x => {
+      x.value *= totalWeight / z;
+      if (x.key === "rel" && c.groupOwn) x.value -= (weights.rel || 0) * (c.hospRel || 0) / z;
+    });
+    const ownBars = ownKeys.filter(k => (Number.isFinite(own[k]) && own[k] !== 0) || (Number.isFinite(ownLag[k]) && ownLag[k] !== 0)).map(k => {
+      let label = PART_NAMES[k] || k;
+      if (k === "complaint" && own.complaintN) {
+        const count = own.sitingN === own.complaintN ? copy.sitingN.replace("{n}", own.sitingN) :
+          own.sitingN ? copy.mixedN.replace("{n}", own.complaintN).replace("{m}", own.sitingN) : copy.complaintN.replace("{n}", own.complaintN);
+        label += `(${count})`;
+      }
+      return { key: k, value: own[k] || 0, applied: ownLag[k] || 0, label, own: true };
+    });
+    return `<div class="lg-cause">${infoTip(`city-group-${key}`, `만족도 목표에 들어가는 점수(집단 만족이 따라가기 전) · 옅은 글 상자: 앞으로 반영될 변화(${esc(gradeWords("G"))})`, { label: "집단 만족 계산" })}${[...bars, ...ownBars].map(x => `<div>${esc(x.label || PART_NAMES[x.key] || x.key)} ${x.own ? `${esc(copy.target)} ${esc(x.value.toFixed(2))}점 · ${esc(copy.applied)} ${esc(x.applied.toFixed(2))}점` : `${esc(fmt(x.value, 2))}점`}<meter min="0" max="100" value="${esc(Math.abs(x.value))}"${x.value < 0 ? ' low="100" high="100" optimum="100"' : ""} aria-label="${esc((x.value || x.applied) < 0 ? copy.penalty : copy.contribution)}" aria-valuetext="${esc(x.own ? `${copy.target} ${x.value.toFixed(2)}점 · ${copy.applied} ${x.applied.toFixed(2)}점` : `${fmt(x.value, 2)}점`)}"></meter>${!x.own && ["rel", "price", "jobs", "svc", "crowd"].includes(x.key) && target[x.key] != null ? `<span class="lg-pending">앞으로 반영될 변화 ${esc(signed((target[x.key] - (parts[x.key] || 0)) * weights[x.key] / z, 1))}점</span>` : ""}</div>`).join("")}</div>`;
   }
   function migrationReason(flow) {
     const subject = `${teamName(flow.from)}에서 ${teamName(flow.to)}보다`;
@@ -4832,7 +4849,7 @@
     if (L.away) return;
     const panel = document.getElementById("lg-panel"), root = document.getElementById("bd-root");
     L.home = { panel, scroll: panel?.querySelector(".lg-pbody")?.scrollTop || 0, phase: L.snap?.phase, round: L.snap?.round,
-      view: BG.saveView(), group: root?.querySelector('[data-group][aria-expanded="true"]')?.dataset.group,
+      view: BG.saveView(), group: root?.querySelector('#bd-dock [data-group][aria-expanded="true"]')?.dataset.group,
       layer: root?.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer,
       drawer: root?.querySelector('#bd-pm')?.getAttribute("aria-expanded") === "true",
       tab: root?.querySelector('[data-tab][aria-pressed="true"]')?.dataset.tab };
@@ -5033,7 +5050,7 @@
     }
     const root = document.getElementById("bd-root");
     if (home?.layer) root.querySelector(`[data-layer="${home.layer}"]`)?.click();
-    if (home?.group && root.querySelector(`[data-group="${home.group}"]`)?.getAttribute("aria-expanded") !== "true") root.querySelector(`[data-group="${home.group}"]`)?.click();
+    if (home?.group && root.querySelector(`#bd-dock [data-group="${home.group}"]`)?.getAttribute("aria-expanded") !== "true") root.querySelector(`#bd-dock [data-group="${home.group}"]`)?.click();
     if (home?.drawer) root.querySelector("#bd-pm")?.click();
     if (home?.tab) root.querySelector(`[data-tab="${home.tab}"]`)?.click();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.panel === L.panel)));
@@ -5077,7 +5094,8 @@
     ["pointerup", "click", "keydown"].forEach(name => root.addEventListener(name, unlockAudio, true));
     root.dataset.lineTool = "false";
     const syncTool = () => { root.dataset.lineTool = String(!!root.querySelector('[data-tool="line"][aria-pressed="true"]')); };
-    root.addEventListener("click", e => { if (e.target.closest("#bd-pm, [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
+    // 건설 도구 묶음([data-group])은 #bd-dock 안의 것만 서랍을 닫는다. 도시 서랍의 집단 만족 단추도 data-group을 쓴다.
+    root.addEventListener("click", e => { if (e.target.closest("#bd-pm, #bd-dock [data-group], [data-run]")) closePanel(); queueMicrotask(syncTool); });
     root.addEventListener("keydown", () => queueMicrotask(syncTool));
     syncTool();
     L.hudObserver?.disconnect();

@@ -336,7 +336,7 @@
       C.out = outIdx(C, ins[id], E.intl.cur, data, E.year).v;
       C.hospRel = l.parts.rel - c100(100 * (1 - e.unsPct / P("unsZeroL")));
       const g = groupTargets(C, ins[id], C.out, data, reg);
-      C.groupContrib = clone(g.contrib); C.groupParts = clone(g.parts);
+      C.groupContrib = clone(g.contrib); C.groupParts = clone(g.parts); C.groupOwn = g.own;
       Object.keys(C.groups).forEach(k => { C.groups[k].sat = g.tg[k]; });
       C.approval = c100(sum(Object.keys(C.groups).map(k => C.groups[k].share * C.groups[k].sat)));
       C.approval0 = C.approval;
@@ -569,10 +569,28 @@
       terms.bounds = tg[g] - total;
       contrib[g] = terms;
     });
-    return { tg, parts, contrib };
+    // 화면은 지연된 groupContrib와 공통 목표 parts를 섞지 않는다.
+    // 계산식은 그대로 두고, 지연 적용 전 전용 항만 소수 둘째 자리로 보존한다.
+    const own = {};
+    Object.keys(contrib).forEach(g => {
+      const values = {};
+      data.groupOwnKeys.forEach(k => {
+        const value = Math.round(contrib[g][k] * 100) / 100;
+        if (value) values[k] = value;
+      });
+      if (values.complaint) {
+        const complaints = e.cpList.filter(c => (P("complaintGroups")[c.kind] || []).includes(g));
+        values.complaintN = complaints.length;
+        const sitingN = complaints.filter(c => c.kind === "siting").length;
+        if (sitingN) values.sitingN = sitingN;
+      }
+      if (Object.keys(values).length) own[g] = values;
+    });
+    return { tg, parts, contrib, own };
   }
   // 실제 월 운영과 AI 예상이 같은 만족 기억·지지율 창을 사용한다.
   function advanceApproval(c, g, data) {
+    c.groupOwn = g.own;
     const P = k => pv(data, k);
     const changes = {}, previous = c.groupContrib || {};
     Object.keys(c.groups).forEach(k => {
