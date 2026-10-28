@@ -4,6 +4,8 @@ const path = require("path");
 const fs = require("fs");
 const ROOT = path.resolve(__dirname, "../..");
 global.window = { KCP: {} };
+// ECON_DATA의 SMR 기간 설명도 실제 앱과 같은 기술 원장을 읽는다.
+require(path.join(ROOT, "ui/tech-data.js"));
 require(path.join(ROOT, "ui/econ-data.js"));
 require(path.join(ROOT, "ui/econ.js"));
 const KCP = window.KCP, X = KCP.econ, D = KCP.ECON_DATA;

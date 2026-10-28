@@ -1,8 +1,8 @@
 'use strict';
-// 186e182 설명 재대조용 읽기 전용 조사. 브라우저·네트워크·파일 출력 없음.
+// 186e182 설명 기준판 + SCORE3 후속 대조. 브라우저·네트워크·파일 출력 없음.
 // 실행: node tests/league/review/e-audit-probe.js [--detail] [--ref <sha>]
 // 기본은 현재 작업 파일을 읽는다(회귀 검사용). --ref를 주면 그 판본을 git show로 읽는다(감사 재현용, 186e182판은 --ref 186e182).
-// 회귀 검사 통과와 343행의 수동 의미 대조를 구별한다. VM에서 참조만 노출한다.
+// 회귀 검사 통과와 표의 수동 의미 대조를 구별한다. VM에서 참조만 노출한다.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
@@ -13,6 +13,8 @@ const read = n => ref ? execFileSync('git', ['show', `${ref}:ui/${n}.js`], { cwd
   : fs.readFileSync(path.join(root, 'ui', n + '.js'), 'utf8');
 const names = ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core', 'league'];
 const sources = Object.fromEntries(names.map(n => [n, read(n)]));
+// HUD 전체 DOM 대신 실제 syncMoney 클로저만 같은 VM 스코프에서 실행한다.
+const hudSync = sources.league.match(/    const syncMoney = \(\) => \{[\s\S]*?\n    \};(?=\n    root.querySelectorAll\('\[data-cap\]'\))/)?.[0];
 const ctx = vm.createContext({ console, structuredClone, URL, performance,
   document: { documentElement: {}, addEventListener() {} }, addEventListener() {},
   KCP: { route() {}, on() {}, esc: String, leagueNet: {} } });
@@ -23,9 +25,14 @@ const expose = {
     help: () => { openHelp(); return S.help.body.innerHTML; },
     cards: () => { renderDrawer(); return S.root.querySelector('#bd-drawer-body').innerHTML; } };`,
   econ: 'KCP.auditE = { groupTargets, causeOf, pmContext };',
-  'league-core': 'KCP.auditC = { econView, modsFor, bonusOf, tieMods, eurekaMet };',
+  'league-core': `KCP.auditC = { econView, modsFor, bonusOf, tieMods, eurekaMet,
+    repairOf: typeof repairOf === 'function' ? repairOf : null,
+    disasterSettlementOf: typeof disasterSettlementOf === 'function' ? disasterSettlementOf : null };`,
   league: `KCP.auditU = { speedsHTML, buildLeadHTML, techEffectText, techEurekaText,
-    eventSourceHTML, evSize, migrationReason, gridReliance, airNoteHTML,
+    eventSourceHTML, evSize, evCards, cityHTML, groupCauseHTML,
+    grantMoneyNote: typeof grantMoneyNote === 'function' ? grantMoneyNote : null,
+    migrationReason, gridReliance, airNoteHTML,
+    moneyHUD: (root, money, id) => { ${hudSync || 'throw Error("syncMoney 연결점 없음")'}; syncMoney(); },
     setState: x => L = x };`
 };
 for (const n of names) {
@@ -138,6 +145,95 @@ for (const event of region.events) {
     opts: event.opts, effect: event.effect, asOf: event.asOf, published: event.published, variants });
 }
 report.international = D.intl.events;
+if (!ref) {
+  eq(!!D.disasterFacts, true); eq(Array.isArray(D.groupOwnKeys), true);
+}
+// D09~D13: 설명의 출력 경로와 실제 사건·정산을 함께 대조한다.
+if (D.disasterFacts) {
+  const f = D.disasterFacts, s = structuredClone(state), id = 'pyeongtaek';
+  s.round = 7; s.phase = 'plan';
+  s.teams[id].plan = { builds: [], lines: [], policies: [], missions: [] };
+  s.teams[id].base = []; s.teams[id].resp = {};
+  U.setState({ room: 'AUDIT', team: id, snap: s, doc: { maps: {} } });
+  B.selectPack(id, 'league');
+  const event = (eventId, x = 1, response) => {
+    s.events = [{ id: eventId, round: 7, x }];
+    s.teams[id].resp = response ? { ['7:' + eventId]: response } : {};
+    return U.evCards(s, 7, id, true);
+  };
+  const rain = event('heavy_rain');
+  eq(rain.includes(f.rain.text), true); has(rain, /event-disaster-heavy_rain/);
+  has(f.rain.text, /절반 확률/); near(D.params.heavyRainShare.v, .5);
+  eq(C.eventDef(region, 'heavy_rain').drawParent, 'monsoon_cloud');
+  // 분기 양끝에서 실제 추첨 결과가 같은 먹구름 한 자리를 대체한다.
+  let rainBranch = false;
+  const savedShare = D.params.heavyRainShare.v;
+  try {
+    for (let seed = 0; seed < 50 && !rainBranch; seed++) {
+      const a = structuredClone(s), b = structuredClone(s);
+      a.seedKey = b.seedKey = 'audit-rain-' + seed; a.events = []; b.events = [];
+      D.params.heavyRainShare.v = 0; C.drawEvents(a, region);
+      D.params.heavyRainShare.v = 1; C.drawEvents(b, region);
+      if (!a.events.some(e => e.id === 'monsoon_cloud')) continue;
+      eq(b.events.some(e => e.id === 'heavy_rain'), true);
+      eq(b.events.some(e => e.id === 'monsoon_cloud'), false);
+      eq(a.events, b.events.map(e => ({ ...e, id: e.id === 'heavy_rain' ? 'monsoon_cloud' : e.id })));
+      rainBranch = true;
+    }
+    eq(rainBranch, true);
+  } finally { D.params.heavyRainShare.v = savedShare; }
+  const heat = event('heatwave_peak');
+  eq(heat.includes(f.heat.text), true); eq(heat.includes(f.heat.limitation), true);
+  has(heat, /event-disaster-heatwave_peak/);
+  has(f.heat.text, /바깥 공기와 패널.*LNG와 일반 태양광/);
+  has(f.heat.limitation, /석탄·SMR·디젤과 탠덤 태양광.*근거 값.*출력을 줄이지 않아요/);
+  const mods = K.auditC.modsFor(s, region, id);
+  near(mods.lngCapMul, 1 - D.params.heatLngSlope.v * D.params.heatAirDelta.v);
+  near(mods.solarHeatMul, 1 - D.params.heatPvSlope.v * D.params.heatModuleDelta.v);
+  for (const k of ['coalCapMul', 'smrCapMul', 'dieselCapMul', 'tandemHeatMul']) eq(k in mods, false);
+  const repairs = {};
+  for (const [eventId, key, response, factor] of [
+    ['heavy_rain', 'repairHeavyRain', 'inspect', .8],
+    ['heatwave_peak', 'repairHeatwave', 'dr', 1]
+  ]) {
+    event(eventId, 1); const base = K.auditC.repairOf(s, region, id);
+    near(base, D.params[key].v);
+    event(eventId, 2); near(K.auditC.repairOf(s, region, id), base * 2);
+    event(eventId, 1, response); near(K.auditC.repairOf(s, region, id), base * factor);
+    repairs[eventId] = base;
+  }
+  event('heavy_rain');
+  s.econRep = { fiscal: { [id]: { rev: {}, exp: { repair: repairs.heavy_rain } } },
+    cities: {}, groups: {}, flows: { pop: [], ind: [] } };
+  const cityHTML = U.cityHTML(C.publicView(s, 0));
+  eq(cityHTML.includes(f.repair.text), true); has(cityHTML, /city-repair/);
+  has(f.repair.text, /한 번.*사건이 클수록.*대응하면 호우 보수비만/);
+  const g = C.grantOf(s, region, id, B), repair = K.auditC.repairOf(s, region, id);
+  const settled = K.auditC.disasterSettlementOf(s, region, id, B, repair);
+  near(settled.repairUsed, Math.min(g.left, repair));
+  near(settled.expired, g.left - Math.min(g.left, repair));
+  has(rain, /새 설비·선로·재난 대응에 쓰고, 남으면 이달 말 보수비에 먼저.*그래도 남으면 사라져요/);
+  has(f.grant.text, /새 설비·선로·재난 대응.*이달 말 재난 보수비에 먼저.*그래도 남으면 사라져요/);
+  has(U.grantMoneyNote(s, id), /특별교부세.*남으면 보수비/);
+  // 기존 노드에 실제 HUD 갱신 함수를 적용한다(배치·터치 검사는 아님).
+  eq(typeof hudSync, 'string');
+  const node = () => ({ textContent: '', dataset: {}, style: { setProperty() {} },
+    getBoundingClientRect: () => ({ left: 0, top: 100, right: 100 }),
+    getAttribute(k) { return this[k]; }, setAttribute(k, v) { this[k] = v; } });
+  const chip = node(), pop = node(), amount = node(), label = node(), note = node();
+  const tip = { ...node(), querySelector: () => pop };
+  const money = { ...node(), querySelector: sel => ({ '[data-v]': amount, '.v2-cap-k': label,
+    '[data-money-note], .lg-debt-note': note, '[data-grant-chip]': chip }[sel]) };
+  const hud = { ...node(), clientLeft: 0, clientTop: 0, querySelector: () => null };
+  const root = { querySelector: sel => ({ '.lg-money-info': tip, '#bd-hud': hud }[sel]) };
+  ctx.matchMedia = () => ({ matches: true });
+  U.moneyHUD(root, money, id);
+  eq(chip.hidden, false); eq(tip.hidden, false);
+  eq(chip.textContent, '+' + Number(g.left.toFixed(1)) + '억 전용');
+  eq(pop.textContent, f.grant.text.replace('{n}', Number(g.left.toFixed(1))));
+  report.observations.disaster = { repairs, grant: settled, moneyChip: chip.textContent };
+  U.setState({ room: 'AUDIT', team: id, snap: state });
+}
 const city = state.econ.cities.pyeongtaek;
 const input = K.econ.cleanInput({ energy: { demMWh: 100, servedMWh: 100, unsPct: 0, hospH: 0 }, policy: {} }, city, D.start.pyeongtaek, D);
 const groups = E.groupTargets(city, input, 1, D, { pm25: { pyeongtaek: { delta: .01 } }, taxResAvg: 0, taxIndAvg: 0 });
@@ -146,6 +242,50 @@ for (const [key, weights] of Object.entries(D.params.groupW.v)) {
   for (const [part, w] of Object.entries(weights)) if (part !== 'rel') near(groups.contrib[key][part], groups.parts[part] * w / sum);
   near(groups.tg[key], Math.min(100, Math.max(0, Object.values(groups.contrib[key]).reduce((a, b) => a + b, 0))));
   report.groups[key] = { weights, target: groups.tg[key] };
+}
+// G48~G50: 실제 월 정산 → 공개 상태 → 집단 막대. 목표/현재·건수·병원 분리.
+if (D.groupOwnKeys) {
+  const variants = [
+    { list: [{ kind: 'siting', src: 'coal', score: 6 }], label: '민원(입지 1건)' },
+    { list: [{ kind: 'siting', src: 'coal', score: 6 }, { kind: 'smoke', src: 'coal', score: 4 }], label: '민원(2건 중 입지 1건)' },
+    { list: [{ kind: 'smoke', src: 'coal', score: 4 }], label: '민원(1건)' }
+  ];
+  for (const { list, label } of variants) {
+    const s = structuredClone(state), inputs = Object.fromEntries(ids.map(id => [id, {
+      energy: { demMWh: 100, servedMWh: 100, unsPct: 0, hospH: 4, cpList: list }, policy: {}
+    }]));
+    s.econ.cities.pyeongtaek.groups.senior.sat = 0; // 회복 지연 경로에서 목표≠현재를 확인.
+    const step = K.econ.monthStep(s.econ, inputs, D);
+    s.econ = step.E; s.econRep = step.report; s.round = step.E.t;
+    const current = s.econ.cities.pyeongtaek, pub = C.publicView(s, 0).econ.cities.pyeongtaek;
+    U.setState({ room: 'AUDIT', team: 'pyeongtaek', snap: s });
+    const html = U.groupCauseHTML(pub, 'senior', step.report, null);
+    const rows = [...html.matchAll(/<div>([^<>]*?)<meter\b([^>]*)><\/meter>/g)];
+    const own = pub.groupOwn.senior, applied = pub.groupOwnLag.senior;
+    eq(html.includes(label), true);
+    for (const term of ['complaint', 'hospital']) {
+      const name = term === 'complaint' ? label : '병원 정전';
+      const row = rows.find(r => r[1].startsWith(name + ' ')); eq(!!row, true);
+      const text = `최종 반영 ${own[term].toFixed(2)}점 · 현재 반영 ${applied[term].toFixed(2)}점`;
+      eq(row[1].includes(text), true); eq(row[2].includes(`aria-valuetext="${text}"`), true);
+      has(row[2], /aria-label="만족 목표에서 깎인 점수"/);
+      near(applied[term], Math.round(current.groupContrib.senior[term] * 100) / 100);
+    }
+    eq(own.complaint === applied.complaint, false);
+    eq(own.complaintN, list.length); eq(own.sitingN || 0, list.filter(c => c.kind === 'siting').length);
+    // rel에서 병원 감점을 빼고 전용 항에 한 번만 둔다(노년 추가 감점 별도).
+    const weights = D.params.groupW.v.senior;
+    const z = Object.keys(weights).filter(k => pub.groupParts[k] != null).reduce((n, k) => n + weights[k], 0);
+    const rel = rows.find(r => r[1].startsWith('전력 신뢰 ')); eq(!!rel, true);
+    const cleanRel = weights.rel * (pub.groupParts.rel - pub.hospRel) / z;
+    near(Number(rel[1].match(/([\d.-]+)점/)[1]), Number(cleanRel.toFixed(2)));
+    const hospital = weights.rel * pub.hospRel / z - D.params.seniorHosp.v * .5;
+    near(own.hospital, Math.round(hospital * 100) / 100);
+  }
+  // 목표가 0이어도 이전 감점이 남으면 현재 반영을 따로 읽을 수 있다.
+  const html = U.groupCauseHTML({ groupParts: {}, groupOwn: {}, groupOwnLag: { senior: { complaint: -1.52 } } }, 'senior', null, null);
+  has(html, /최종 반영 0\.00점 · 현재 반영 -1\.52점/);
+  U.setState({ room: 'AUDIT', team: 'pyeongtaek', snap: state });
 }
 for (const [which, key] of [['L', 'wL'], ['A', 'wA']]) for (const part of Object.keys(D.params[key].v)) {
   const zero = Object.fromEntries(Object.keys(D.params[key].v).map(k => [k, 0]));
@@ -186,6 +326,25 @@ for (const [fuel, key] of [['coal', 'coalBuild'], ['lng', 'lngBuild']]) {
     mw: B.BLD[fuel].mw, cost: B.BLD[fuel].cost, ratio, weight: D.params.pmNewFuelW.v[fuel] };
 }
 has(facts.siting.text, new RegExp('지도 ' + (D.params.sitingWeights.v.length - 1) + '칸'));
+// D02/D05/D06/D07: 원자료 기본값뿐 아니라 params 변경도 문장이 따라야 한다.
+if (!ref) {
+  const pm = D.params.pmNewFuelW.v, weights = D.params.sitingWeights.v, turns = T.params.smrTurns.v;
+  const saved = { coal: pm.coal, lng: pm.lng, weights: [...weights] };
+  try {
+    pm.coal = D.params.pmFuelW.v.coal * .5; pm.lng = D.params.pmFuelW.v.lng * .6;
+    weights.push(.1); T.params.smrTurns.v = 8;
+    has(facts.pm.text, /약 50%·약 60%/);
+    has(facts.siting.text, /지도 4칸 안/); has(facts.siting.text, /4칸은/);
+    has(facts.coalBuild.text, /SMR 8달만/);
+    eq(A.thermalToolInfo('coal').includes(facts.pm.text), true);
+    eq(A.thermalToolInfo('coal').includes(facts.siting.text), true);
+    has(A.placementAdvice('coal', B.TILES.find(t => !t.out).i).join(' '), /지도 4칸 안/);
+    has(U.buildLeadHTML(), /SMR 8달만/);
+  } finally {
+    pm.coal = saved.coal; pm.lng = saved.lng;
+    D.params.sitingWeights.v = saved.weights; T.params.smrTurns.v = turns;
+  }
+}
 has(sources.build, /급전 순서: 재생 → 배터리 → 도시 급전원\(.*\) → 이웃 거래/);
 has(sources.build, /"급전 순서: 재생 → 배터리 → 연료 가격·탄소세에 따라 싼 급전원부터/);
 // D08: 냉각수 거절은 석탄·LNG·SMR 공통, 문구는 해안·하천

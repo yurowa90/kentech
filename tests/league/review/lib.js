@@ -3,6 +3,8 @@ const path = require("path");
 const ROOT = process.env.KCP_ROOT || path.resolve(__dirname, "../../..");
 global.window = { KCP: {} };
 Math.random = () => { throw new Error("Math.random used"); };
+// 화면 설명까지 복제하는 검사도 실제 앱의 기술 → 경제 자료 순서를 따른다.
+require(path.join(ROOT, "ui/tech-data.js"));
 require(path.join(ROOT, "ui/econ-data.js"));
 require(path.join(ROOT, "ui/econ.js"));
 require(path.join(ROOT, "ui/league-data.js"));
