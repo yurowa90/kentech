@@ -638,7 +638,8 @@ def event_gate_and_journal(host, team, checks, fixture):
       const L=KCP.league.state(), S=L.S||L.snap;
       return (S.events||[]).some(e=>e.id===ev && e.round===round) && !S.teams[L.team].crit;
     }""", arg=[seeded["event"], seeded["round"]])
-    panel(team, r"이웃")
+    # rev8 4절: 사건 서랍 이름 변경을 반영하고 옛 '이웃·거래' 이름도 허용한다.
+    panel(team, r"(?:사건|이웃)·거래")
     response_button = team.locator('#lg-panel [data-resp]').filter(has_text=seeded["name"])
     response_button.scroll_into_view_if_needed()
     checks.ok(response_button.evaluate("el => {const r=el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}"),

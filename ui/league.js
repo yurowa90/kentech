@@ -5494,7 +5494,6 @@
     L.mapResize = () => {
       if (!root.isConnected) return;
       syncMoney();
-      syncEndColumn(root.querySelector("#lg-panel"));
       requestAnimationFrame(syncViewInset);
     };
     window.addEventListener("resize", L.mapResize);
@@ -5767,22 +5766,6 @@
     clearTimeout(L.panelPressT);
     L.panelPressT = setTimeout(() => { if (L === session && session.panelDirty && session.panel) snapRenderPanel(); }, pressWait);
   }
-  function syncEndColumn(panel) {
-    const body = panel?.querySelector(".lg-pbody");
-    if (!body || panel.dataset.stage !== "end" || panel.dataset.tab !== "result") return;
-    const left = body.querySelector(".lg-end-left");
-    if (matchMedia("(min-width: 1200px)").matches) {
-      if (left) return;
-      const summary = body.querySelector("#lg-final-summary"), rank = body.querySelector("#lg-rank");
-      if (summary && rank) {
-        const column = document.createElement("div"); column.className = "lg-end-left";
-        summary.before(column); column.append(summary, rank);
-      }
-    } else if (left) {
-      const summary = left.querySelector("#lg-final-summary"), rank = left.querySelector("#lg-rank"), more = body.querySelector(".lg-end-more");
-      left.before(summary); if (more) more.before(rank); else body.append(rank); left.remove();
-    }
-  }
   function renderPanel() {
     if (L.away) return;
     const p = document.getElementById("lg-panel");
@@ -5892,7 +5875,6 @@
       // 세부 결과를 별도 열로 모으고, 좁은 화면의 요약 → 결정 → 궤적 순서를 보존한다.
       [...endBody.children].filter(el => !el.matches("#lg-final-summary, #lg-decisions, .lg-fx-end, #lg-rank")).forEach(el => more.append(el));
       endBody.append(more);
-      syncEndColumn(p);
     }
     p.querySelectorAll(".lg-promise-carry > p").forEach(line => { line.title = line.textContent; });
     if (tab === "result" && V?.phase === "end") KCP.fxEnd?.mount(p);

@@ -3702,7 +3702,7 @@
       const legendOverlap = ty + h > bottom;
       if (legendOverlap) bottom = V.H - 8;
       // 화면 아래도 부족하면 안내 경계보다 칸을 가리지 않는 위쪽 자리를 우선한다.
-      if (ty >= below && ty + h > bottom) ty = above;
+      if (ty >= below && ty + h > bottom) ty = Math.max(V.area.t, above);
       else ty = clamp(ty, top, Math.max(top, bottom - h));
       el.dataset.legendOverlap = String(legendOverlap);
     } else ty = clamp(ty, V.area.t, V.H - h - 8);
