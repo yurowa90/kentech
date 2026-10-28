@@ -75,7 +75,8 @@ for (const topic of ['uns', 'grid']) {
   for (const [key, values] of [['wind', [5, 20]], ['evening', [153, 47]], ['neighbor', [20, 0]]]) {
     for (const [i, value] of values.entries()) test(`S6 ${topic} ${key} ${i ? '다른' : '같은'} 방향`, () => {
       assert.ok(direction(note(topic, key, value, key === 'wind' ? true : undefined))
-        .endsWith(`${i ? '다른' : '같은'} 방향(게임 안 단순 비교)`));
+        // rev9 R5: 근거 부호×효과 부호를 K2/K3 예상 화살표에 반영.
+        .endsWith(`${{wind:'풍속',evening:'저녁 수요',neighbor:'이웃 정전'}[key]} ${value > months[1].evidenceValues[key] ? '↑' : '↓'} → ${topic === 'uns' ? '정전' : '바깥 계통에 기댄 전기'} ${i ? '↓' : '↑'} 쪽 예상 · 실제 ${topic === 'uns' ? '정전' : '바깥 계통에 기댄 전기'} ↑ → 근거가 가리킨 쪽과 ${i ? '반대' : '같음'}(게임 안 단순 비교)`));
     });
   }
 }
@@ -88,7 +89,8 @@ test('S6 작은 변화와 지난달 값 없음은 서로 다른 이유', () => {
 test('S6 현금 주제는 LNG만 기존 음의 효과, 다른 근거는 비교 제외', () => {
   S.econ.before ||= {}; S.econ.before[id] = { cash: S.econ.cities[id].cash - 10 };
   assert.ok(direction(note('cash', 'evening')).endsWith('이 근거는 이번 대상과 방향을 비교하지 않아요'));
-  assert.ok(direction(note('cash', 'fuel', 153)).endsWith('다른 방향(게임 안 단순 비교)'));
+  // rev9 R5: LNG의 현금 효과 −1은 K3(반대) 문장으로 검증.
+  assert.ok(direction(note('cash', 'fuel', 153)).endsWith('LNG 지수 ↑ → 현금 ↓ 쪽 예상 · 실제 현금 ↑ → 근거가 가리킨 쪽과 반대(게임 안 단순 비교)'));
 });
 function mission(askReason, resultNumbers = ['3.4']) {
   return { operatingPlan: {}, followingPlanChanged: false, followingPlanBasis: 'ready', resultNumbers,

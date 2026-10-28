@@ -6,6 +6,9 @@
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+let checks = 0;
+// 번호 검사에서도 첫 실패의 종료 코드를 유지하고 마지막 줄에 집계를 남긴다.
+process.on('exit', code => console.log(`assertions ${checks} failures ${code ? 1 : 0}`));
 const root = path.resolve(__dirname, '../../..');
 const refAt = process.argv.indexOf('--ref'), ref = refAt >= 0 ? process.argv[refAt + 1] : null;
 if (refAt >= 0 && !ref) throw new Error('--ref 뒤에 판본을 주세요');
@@ -30,6 +33,7 @@ const expose = {
     disasterSettlementOf: typeof disasterSettlementOf === 'function' ? disasterSettlementOf : null };`,
   league: `KCP.auditU = { speedsHTML, buildLeadHTML, techEffectText, techEurekaText,
     eventSourceHTML, evSize, evCards, cityHTML, groupCauseHTML,
+    REV9_COPY: typeof REV9_COPY === 'undefined' ? null : REV9_COPY,
     grantMoneyNote: typeof grantMoneyNote === 'function' ? grantMoneyNote : null,
     migrationReason, gridReliance, airNoteHTML,
     moneyHUD: (root, money, id) => { ${hudSync || 'throw Error("syncMoney 연결점 없음")'}; syncMoney(); },
@@ -46,10 +50,9 @@ for (const n of names) {
 const K = ctx.KCP, B = K.buildGame, D = K.ECON_DATA, T = K.TECH_DATA;
 const C = K.leagueCore, U = K.auditU, E = K.auditE, A = K.auditB;
 const plain = v => JSON.parse(JSON.stringify(v));
-let checks = 0;
-const eq = (a, b) => { assert.deepEqual(plain(a), plain(b)); checks++; };
-const near = (a, b) => { assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`); checks++; };
-const has = (s, rx) => { assert.match(s, rx); checks++; };
+const eq = (a, b) => { checks++; assert.deepEqual(plain(a), plain(b)); };
+const near = (a, b) => { checks++; assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`); };
+const has = (s, rx) => { checks++; assert.match(s, rx); };
 const loc = (file, needle) => {
   const i = sources[file].split('\n').findIndex(l => l.includes(needle));
   assert.ok(i >= 0, file + ': ' + needle);
@@ -245,12 +248,31 @@ for (const [key, weights] of Object.entries(D.params.groupW.v)) {
 }
 // G48~G50: 실제 월 정산 → 공개 상태 → 집단 막대. 목표/현재·건수·병원 분리.
 if (D.groupOwnKeys) {
+  // rev9-E E1: VM에서 참조만 노출한 화면 문구표로 기대를 조립한다. 렌더러는 재사용하지 않는다.
+  const copy = U.REV9_COPY, words = D.groupOwnCopy;
+  if (!copy && !ref) {
+    console.error('BLOCKED E1: REV9_COPY의 VM 참조가 없어 params·groupOwnCopy로 대조');
+    process.exitCode = 1;
+  }
+  const fill = (template, values) => template.replace(/\{([^{}]+)\}/g, (_, key) => values[key]);
+  const cap = D.params.complaintCap.v, scoreUnit = cap / D.params.complaintScale.v;
+  const complaint = (kind, fraction) => ({ kind, src: 'coal', score: fraction * scoreUnit });
   const variants = [
-    { list: [{ kind: 'siting', src: 'coal', score: 6 }], label: '민원(입지 1건)' },
-    { list: [{ kind: 'siting', src: 'coal', score: 6 }, { kind: 'smoke', src: 'coal', score: 4 }], label: '민원(2건 중 입지 1건)' },
-    { list: [{ kind: 'smoke', src: 'coal', score: 4 }], label: '민원(1건)' }
+    { list: [complaint('siting', .3)], capped: false },
+    { list: [complaint('siting', .3), complaint('smoke', .2)], capped: false },
+    { list: [complaint('siting', .6), complaint('smoke', .6)], capped: true },
+    { list: [complaint('smoke', .2)], capped: false },
+    { list: [complaint('siting', 1)], capped: true },
+    { list: [complaint('smoke', 1)], capped: true }
   ];
-  for (const { list, label } of variants) {
+  for (const { list, capped } of variants) {
+    const n = list.length, m = list.filter(c => c.kind === 'siting').length;
+    const values = { n, m, cap: cap.toLocaleString('ko-KR', { maximumFractionDigits: 0 }) };
+    const mixed = m > 0 && m < n;
+    // --ref의 옛 판본은 옛 표로 재현한다. 현재 작업판에 표가 없으면 위 BLOCKED를 남긴다.
+    const label = mixed && copy ? fill(copy[capped ? 'K8b' : 'K8a'], values) :
+      `민원(${fill(m === n ? words.sitingN : mixed ? words.mixedN : words.complaintN, values)})` +
+      (capped && copy ? fill(copy.K8cap, values) : '');
     const s = structuredClone(state), inputs = Object.fromEntries(ids.map(id => [id, {
       energy: { demMWh: 100, servedMWh: 100, unsPct: 0, hospH: 4, cpList: list }, policy: {}
     }]));
@@ -262,6 +284,7 @@ if (D.groupOwnKeys) {
     const html = U.groupCauseHTML(pub, 'senior', step.report, null);
     const rows = [...html.matchAll(/<div>([^<>]*?)<meter\b([^>]*)><\/meter>/g)];
     const own = pub.groupOwn.senior, applied = pub.groupOwnLag.senior;
+    eq(Math.abs(own.complaint) >= cap, capped);
     eq(html.includes(label), true);
     for (const term of ['complaint', 'hospital']) {
       const name = term === 'complaint' ? label : '병원 정전';

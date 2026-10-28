@@ -226,6 +226,10 @@
   };
   // 기존 출력 계수: 계산과 도움말이 같은 값을 읽는다.
   const TIDAL_FACTOR = 0.31, HYDRO_MEAN_FACTOR = 0.25;
+  // E3: 표시와 기존 계산이 같은 경계·가정을 읽는다. 기본 계산값은 그대로다.
+  const HYDRO_DRY_DAYS = 3, COMPLAINT_RUN_FRAC = 0.6;
+  const FORECAST_EVENING = { start: 17, end: 23 }; // end는 포함하지 않는다.
+  const MISSION_TARGETS = { outageShare: 0.005, hospitalHours: 0, complaints: 1, satisfaction: 60 };
   // 발전원: cls ren(변동), disp(급전), bat(저장). ok는 지을 수 있는 지형.
   const LAND4 = { beach: 1, plain: 1, hill: 1, forest: 1 };
   const BLD0 = {
@@ -250,7 +254,7 @@
   const TECHS = [
     { id: "bms", name: "배터리 상태 진단·고효율 변환", bundle: "저장·전력변환", need: 6, demo: 3, get eff() { return bmsEffectText(); }, get why() { return `잔량을 정확히 읽어 안전 여유를 줄이고, 충전·방전 손실을 줄여요. ${bmsEffectText()}. 도입 때 배터리마다 개조비 ${fmt(RS.retroBat, 1)}억`; }, grade: "M·G" },
     { id: "grid", name: "스마트 송전 운영", bundle: "전력망", need: 8, demo: 4, get eff() { return gridEffectText(); }, why: "선로 상태를 실시간으로 보고 손실이 적은 길로 보낸다", grade: "M·G" },
-    { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, eff: "배터리를 저녁 피크(17–22시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다", why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
+    { id: "fcst", name: "기상·수요 예측", bundle: "예측·진단", need: 6, demo: 2, get eff() { return `배터리를 저녁 피크(${FORECAST_EVENING.start}–${FORECAST_EVENING.end - 1}시)용으로 아껴 쓴다 · 리그: 사건 예보 범위가 좁아진다`; }, why: "예측은 날씨를 바꾸지 않는다 — 언제 쓸지 고르는 정보를 준다", grade: "M·G" }
   ];
   // 혼자 하기: 운영 기간(주) 안에서 연구가 어디까지 가는지. 시험 운전마다 처음부터(운영해도 연구가 쌓이지 않는다).
   function researchRun(st, weeks) {
@@ -316,10 +320,10 @@
   ];
   const costTarget = days => Math.round(PK.goals.costBase + PK.goals.costPerDay * days);
   const MISSIONS = [
-    { id: "outage", name: "정전 최소", icon: "bolt", goal: () => "못 보낸 전력 ≤ 0.5% · 병원 0시간" },
+    { id: "outage", name: "정전 최소", icon: "bolt", goal: () => `못 보낸 전력 ≤ ${+(MISSION_TARGETS.outageShare * 100).toFixed(2)}% · 병원 ${MISSION_TARGETS.hospitalHours}시간` },
     { id: "cost", name: "비용 최소", icon: "coin", goal: () => `총비용 ≤ ${PK.goals.costBase}억 + ${PK.goals.costPerDay}억×일수` },
     { id: "co2", name: "CO₂ 최소", icon: "co2", goal: () => `하루 평균 ≤ ${PK.goals.co2Day} t` },
-    { id: "complaint", name: "주민 민원 최소", icon: "alert", goal: () => "민원 ≤ 1건 · 최저 만족 ≥ 60" }
+    { id: "complaint", name: "주민 민원 최소", icon: "alert", goal: () => `민원 ≤ ${MISSION_TARGETS.complaints}건 · 최저 만족 ≥ ${MISSION_TARGETS.satisfaction}` }
   ];
   const TIPS0 = [
     "송전 손실은 거리에 비례해 쌓인다 — 발전소를 수요지 가까이?",
@@ -369,9 +373,9 @@
         day.coolF = 0.15 + clamp((day.tmax - M.hotTmax) * 0.025, 0, 0.1);
         day.winter = m === 11 || m <= 1;
         sunny = w === 0 ? sunny + 1 : 0;
-        day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= 3 ? 0.7 : 0.85;
+        day.flow = w === 2 ? 1.3 : w === 1 ? 1.0 : sunny >= HYDRO_DRY_DAYS ? 0.7 : 0.85;
         const sunnyStay = 0.45 + 0.55 * PW[m][0];
-        day.flowMean = PW[m][0] * (0.85 - 0.15 * sunnyStay ** 2) + PW[m][1] + PW[m][2] * 1.3;
+        day.flowMean = PW[m][0] * (0.85 - 0.15 * sunnyStay ** (HYDRO_DRY_DAYS - 1)) + PW[m][1] + PW[m][2] * 1.3;
         // 일사: 그 달 GHI × 성능비 0.8을 날씨 비율로 나눠 월평균을 맞춘다. 낮 길이는 위도·적위로.
         const dec = 23.44 * Math.sin(2 * Math.PI * (284 + doy + 1) / 365) * Math.PI / 180, lat = C.lat * Math.PI / 180;
         day.dayLen = (2 / 15) * Math.acos(clamp(-Math.tan(lat) * Math.tan(dec), -1, 1)) * 180 / Math.PI;
@@ -573,7 +577,7 @@
       const farm = ["farm", "livestock"].includes(W.kind);
       if (!receptors.includes(W.kind) && !farm) return;
       st.builds.forEach((B, bi) => {
-        const d = hexDist(B.i, W.tile), f = runFrac ? runFrac[bi] || 0 : 0.6;
+        const d = hexDist(B.i, W.tile), f = runFrac ? runFrac[bi] || 0 : COMPLAINT_RUN_FRAC;
         const add = (kind, pts) => items.push({ ti, kind, bi, src: B.t, pts: pts * (share && ["noise", "view"].includes(kind) && ["wind", "offshore", "solar"].includes(B.t) ? 0.5 : 1) });
         if (["coal", "lng", "smr"].includes(B.t)) {
           const weights = KCP.ECON_DATA.params.sitingWeights.v;
@@ -756,7 +760,7 @@
         if (!C.bat.length || !C.towns.length) return;
         const dcap = C.disp.reduce((a, u) => a + (u.D ? u.D.cap : 0), 0);
         let short = 0;
-        for (let h = 17; h < 23; h++) {
+        for (let h = FORECAST_EVENING.start; h < FORECAST_EVENING.end; h++) {
           const k = d * 24 + h, dm = C.towns.reduce((a, n) => a + demand(n.ti, h, wx, pol, fab2) + instLoad[n.ti], 0), rn = C.ren.reduce((a, g) => {
             const v = renOut(g, wx, h, k);
             return a + (curtail && BLD[g.kind] && BLD[g.kind].variable ? v * (1 - clamp(MODS.curtailP, 0, 1)) : v);
@@ -818,7 +822,7 @@
             const b = P.g, ti = P.l.ti;
             if (rem[ti] <= 1e-6 || b.chg > 0) continue;
             // 예측 도입 뒤: 낮(6–16시)에는 오늘 저녁 예상 부족분만큼 남겨 둔다.
-            const keep = fcst && h >= 6 && h < 17 && C.keep ? Math.max(b.floor, C.keep) : b.floor;
+            const keep = fcst && h >= 6 && h < FORECAST_EVENING.start && C.keep ? Math.max(b.floor, C.keep) : b.floor;
             const can = Math.min(storedMW(b) - b.dis, (b.soc - keep) * storedEff(b, bEff));
             if (can <= 1e-6) continue;
             const give = Math.min(can * P.eff, rem[ti]), sent = give / P.eff;
@@ -927,10 +931,10 @@
   function judge(st, R) {
     const target = costTarget(R.days), hosp = hospitals().reduce((a, ti) => a + R.town[ti].outH, 0);
     const all = {
-      outage: { ok: R.unsTotal <= 0.005 * R.tot.dem && hosp === 0, val: `못 보낸 전력 ${fmt(100 * R.unsTotal / Math.max(1, R.tot.dem), 1)}% · 병원 ${hosp}시간` },
+      outage: { ok: R.unsTotal <= MISSION_TARGETS.outageShare * R.tot.dem && hosp === MISSION_TARGETS.hospitalHours, val: `못 보낸 전력 ${fmt(100 * R.unsTotal / Math.max(1, R.tot.dem), 1)}% · 병원 ${hosp}시간` },
       cost: { ok: R.cost.total <= target, val: `총비용 ${fmt(R.cost.total, 1)}억 / 목표 ${target}억` },
       co2: { ok: R.co2 / R.days <= PK.goals.co2Day, val: `하루 ${fmt(R.co2 / R.days, 1)} t / 목표 ${PK.goals.co2Day} t` },
-      complaint: { ok: R.cp.issues <= 1 && Math.min(...R.sat) >= 60, val: `민원 ${R.cp.issues}건 · 최저 만족 ${Math.min(...R.sat)}` }
+      complaint: { ok: R.cp.issues <= MISSION_TARGETS.complaints && Math.min(...R.sat) >= MISSION_TARGETS.satisfaction, val: `민원 ${R.cp.issues}건 · 최저 만족 ${Math.min(...R.sat)}` }
     };
     return MISSIONS.map(m => ({ id: m.id, name: m.name, icon: m.icon, chosen: st.missions.includes(m.id), ...all[m.id] }));
   }
@@ -3577,11 +3581,16 @@
     const months = monthly > 0 ? Math.ceil((ahead + need) / monthly) : Infinity;
     const wait = installed && !own ? "이 설비 대기 순서 확인 필요" : need === 0 ? "이 설비 0달 대기" : blocked || !Number.isFinite(months) ? "이 설비 상한 확보까지 대기" : `이 설비 ${months}달 대기`;
     // 상한·처리량·대기 순서를 확정할 수 없을 때는 개월 수를 만들어 내지 않는다.
-    return { available, wait, waiting: need > 0, months: installed && !own || blocked || !Number.isFinite(months) ? null : need === 0 ? 0 : months };
+    return { available, ahead, monthly, blocked, wait, waiting: need > 0, months: installed && !own || blocked || !Number.isFinite(months) ? null : need === 0 ? 0 : months };
   }
   function gridAdvice(type, tile, grid, installed = false) {
+    const REV9_COPY = { K12: "이번 달 접속 가능 {available} MW · 앞선 대기 {ahead} MW · 월 {monthly} MW 처리로 {months}달 대기" };
+    const rev9Copy = (key, values = {}) => REV9_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
     const info = gridWaitInfo(type, tile, grid, installed);
-    return info ? `이번 달 접속 가능 ${fmt(info.available, 2)} MW · ${info.wait} · 상한 넘으면 ESS 필요` : "";
+    if (!info) return "";
+    if (!info.blocked && Number.isFinite(info.months) && info.months >= 2)
+      return rev9Copy("K12", { available: fmt(info.available, 2), ahead: fmt(info.ahead, 2), monthly: fmt(info.monthly, 2), months: info.months });
+    return `이번 달 접속 가능 ${fmt(info.available, 2)} MW · ${info.wait}${info.blocked || !Number.isFinite(info.months) ? " · 상한 넘으면 ESS 필요" : ""}`;
   }
   // HUD의 기존 정격 합계: 리그에서는 저장·수입·접속 대기·건설 대기를 제외한다.
   function plannedSupplyMW(nodes, grid, disabled) {
@@ -3617,7 +3626,7 @@
       const items = after.items.filter(x => x.bi === bi && x.kind !== "green" && x.pts > 0);
       const affected = new Set(items.map(x => `${x.ti}:${x.kind}`));
       const villages = new Set((siting ? items : after.list.filter(x => x.kind !== "green" && affected.has(`${x.ti}:${x.kind}`))).map(x => x.ti)).size;
-      notes.push(`이 칸에 지으면 ${siting ? "입지 민원" : "민원"} +${after.issues - before.issues}건(${siting ? "예상 · 가동과 무관" : "예상 · 가동 60% 가정, 실제 가동 시간에 따라 달라짐"}) · 영향 주변 시설·마을 ${villages}곳`);
+      notes.push(`이 칸에 지으면 ${siting ? "입지 민원" : "민원"} +${after.issues - before.issues}건(${siting ? "예상 · 가동과 무관" : `예상 · 가동 ${fmt(COMPLAINT_RUN_FRAC * 100)}% 가정, 실제 가동 시간에 따라 달라짐`}) · 영향 주변 시설·마을 ${villages}곳`);
     }
     if (siting) notes.push(KCP.ECON_DATA.thermalFacts.siting.text);
     if (S.opts.league) {
@@ -3676,6 +3685,7 @@
       (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => text === KCP.ECON_DATA?.thermalFacts?.siting.text ? `${esc(text.split(". ")[0])}. (자료·가정: 도구 옆 !)` : S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
       (S.sel === i && BLD[S.tool] && canPlace(S.tool, i).ok ? "<p>한 번 더 누르면 설치</p>" : "");
     el.hidden = false;
+    if (S.opts.league) { el.style.maxHeight = ""; el.style.overflowY = ""; el.style.pointerEvents = ""; el.style.touchAction = ""; }
     const [x, y] = tileTop(T);
     const w = el.offsetWidth, h = el.offsetHeight;
     let tx = x + V.S * 0.8, ty = y - h - V.S * 0.5;
@@ -3694,15 +3704,24 @@
         if (rect.width > 0 && rect.height > 0 && rect.left < canvas.left + tx + w && rect.right > canvas.left + tx) top = Math.max(top, rect.bottom - canvas.top + 8);
       }
       const keys = S.root.querySelector(".lg-map-keys")?.getBoundingClientRect();
-      let bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvas.top : V.H - 8);
+      let bottom = Math.min(V.area.b - 8, keys?.height > 0 ? keys.top - canvas.top : V.area.b - 8);
       // 회전·배율을 반영한 헥스 사각형 바깥에 여백을 둔다.
       const ys = topPoly(T).map(p => p[1]), above = Math.min(...ys) - h - 8, below = Math.max(...ys) + 8;
       ty = above;
       if (ty < top) ty = Math.max(top, below);
       const legendOverlap = ty + h > bottom;
-      if (legendOverlap) bottom = V.H - 8;
-      // 화면 아래도 부족하면 안내 경계보다 칸을 가리지 않는 위쪽 자리를 우선한다.
-      if (ty >= below && ty + h > bottom) ty = Math.max(V.area.t, above);
+      if (legendOverlap) bottom = V.area.b - 8;
+      if (h > bottom - top) {
+        // 독립 검토 m7: 남는 높이가 한 줄도 안 되면 빈 상자를 남기지 않는다.
+        if (bottom - top < 24) { el.hidden = true; return; }
+        ty = top;
+        el.style.maxHeight = `${bottom - top}px`;
+        el.style.overflowY = "auto";
+        // 독립 검토 M4: 말풍선은 평소 pointer-events: none이라, 넘칠 때만 스크롤 조작을 받는다.
+        // 재검토 major: 고른 칸과 가로로 겹치면 두 번째 탭(설치)·지도 끌기를 막으므로 그때는 켜지 않는다.
+        const xs = topPoly(T).map(p => p[0]);
+        if (tx + w <= Math.min(...xs) || tx >= Math.max(...xs)) { el.style.pointerEvents = "auto"; el.style.touchAction = "pan-y"; }
+      } else if (ty >= below && ty + h > bottom) ty = Math.max(top, above);
       else ty = clamp(ty, top, Math.max(top, bottom - h));
       el.dataset.legendOverlap = String(legendOverlap);
     } else ty = clamp(ty, V.area.t, V.H - h - 8);
@@ -3955,7 +3974,7 @@
     const model = C ? [
       `태양광: 월별 일사량(GHI) × 성능비 ${M.pvYield} × 날씨 가중치 / 월평균 날씨 가중치, 낮 길이는 위도 ${C.lat}°로 계산 · 맑음 ${M.wxSun[0]} · 흐림 ${M.wxSun[1]} · 비 ${M.wxSun[2]}`,
       `육상풍력: 지상 10 m 풍속 × ${C.hub_factor_land}(허브 높이) + 지형 보정, ${M.cutin} m/s 아래 0 · ${M.rated} m/s 정격 · ${M.cutout} m/s 넘으면 정지`,
-      `해상풍력 ${fmtSpec(BLD.offshore.mw)} MW(100 m 풍속) · 조력 ${fmtSpec(BLD.tidal.mw)} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 사흘째부터 더 줄어듦), 정격 상한`,
+      `해상풍력 ${fmtSpec(BLD.offshore.mw)} MW(100 m 풍속) · 조력 ${fmtSpec(BLD.tidal.mw)} MW × ${TIDAL_FACTOR} × |sin(2πt/${M.tidalPeriod}h)|(위상 보정 생략) · 소수력은 평균 출력 계수 ${HYDRO_MEAN_FACTOR} × 월 강수 보정 × 날씨별 유량 / 월평균 유량(비 오면 증가, 맑은 날 줄고 ${HYDRO_DRY_DAYS === 3 ? "사흘" : `${HYDRO_DRY_DAYS}일`}째부터 더 줄어듦), 정격 상한`,
       [...plants.map(s => `${s.fuel === "coal" ? "기존 석탄" : "기존 LNG"} ${fmt(s.cap || dispOf("lng").cap, 1)} MW(CO₂ ${dispOf(s.fuel === "coal" ? "coal" : "lng").co2} t/MWh)`), LG ? `${leagueImportText()}(CO₂ ${imp.co2} t/MWh)` : `외부 전력망 수입 총 ${fmt(imp.cap * SITES.filter(s => s.kind === "gridpt").length, 1)} MW, 연결점마다 ${fmt(imp.cap, 1)} MW(CO₂ ${imp.co2} t/MWh)`].join(" · "),
       `디젤 ${fmtSpec(BLD.diesel.mw)} MW(최소 ${diesel.min} MW, CO₂ ${diesel.co2}) · 바이오매스 ${fmtSpec(BLD.biomass.mw)} MW(CO₂ 총량에는 ${bio.co2}, 바이오 배출 ${bio.bioCo2} t/MWh는 별도 정보 — 축산 단지 옆은 연료비 싸짐)`,
       `송전 손실 ${fmt(100 * (PK.lossPerHex || M.lossPerHex), 1)}%/칸 · 선 ${fmt(lineUnit(), 1)}억/칸(하천·산 ×${stepMul({ t: "mount" })} · 바다·호수 ×${stepMul({ t: "sea" })}) · ${cityName()} 밖은 못 지남`,

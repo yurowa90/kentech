@@ -249,8 +249,9 @@ def result(checks, page, tested, label, grid=True):
         m = re.fullmatch(rf"{basis} Δ 비교 없음\(시험 기록 없음\) · 이번 달 합 ({NUMBER}) t", prod_change)
         checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 시험 생산 CO₂ 기록 없으면 비교 없음·월 합계")
     node = page.locator("#lg-s6-co2cons")
+    # rev9 R9(명세 rev9-fix/spec.md): 소비 CO₂ 하루 평균 줄은 정전·현금 주제 달에도 보인다. 아래 계통 전용 검산은 계통 주제만.
     if not grid:
-        checks.ok(node.count() == 0, label + " 정전 주제 S6 소비 CO₂ 줄 없음")
+        checks.ok(node.count() == 1 and node.is_visible(), label + " 정전 주제 S6 소비 CO₂ 줄 표시(rev9 R9)")
         capture(checks, page, label + "-uns-S6")
         return
     require(checks, node.count() == 1 and node.is_visible(), label + " S6 소비 CO₂ 줄 표시")
@@ -289,7 +290,7 @@ def result(checks, page, tested, label, grid=True):
     m = re.search(rf"이번 달 계통이 메운 전기가 평균 ({PER_DAY})이어서", starts[0] if starts else "")  # 총괄 10-23 아르곤 문구(UX 갈래)
     checks.ok(len(starts) == 3 and bool(m) and per_day_near(m[1], grid_per_day) and
               starts[1] == "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 " and
-              starts[2].startswith("남은 돈 ") and not any("정전" in x for x in starts),
+              starts[2].startswith("남은 돈(빚 한도 포함) ") and not any("정전" in x for x in starts),  # rev9 R14 K10b
               label + " S8 계통 하루 평균 칩·확인 칩·현금 칩(정전 0% 없음)")
     # 칩은 클릭할 때 textarea에 같은 문장을 넣는 실제 사용자 조작도 확인한다.
     buttons.nth(0).click()

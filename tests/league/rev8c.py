@@ -96,9 +96,12 @@ def mobile_copy(checks, page, label):
     checks.ok(data['visible'] and data['scroll'] <= data['client'] and
               1 <= data['lines'] <= 2 and not data['clipped'],
               f'{label} M7 S4 제목 말줄임 없음·두 줄 이내: {data}')
-    chips = page.locator('.lg-data-chip').all()
-    checks.ok(bool(chips) and any(chip.is_visible() and chip.evaluate(CHIP_JS) for chip in chips),
-              label + ' M7 가상 데이터 칩에 가상 두 글자 실제 표시')
+    # rev9 R1: 480px 이하 머리에 배지가 있을 때만 가상 글자를 접는다.
+    compact = page.viewport_size['width'] <= 480 and shown(page, '#lg-watch button')
+    chips = page.locator('#lg-bar .lg-data-chip').all()
+    checks.ok(bool(chips) and (all(not chip.evaluate(CHIP_JS) for chip in chips) if compact else
+              any(chip.is_visible() and chip.evaluate(CHIP_JS) for chip in chips)),
+              label + ' R1 배지 있는 모바일 머리만 가상 글자 접기')
     overflow(checks, page, label + ' S4')
 
 

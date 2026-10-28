@@ -1,5 +1,5 @@
 'use strict';
-// 기대값 출처: spec-C.md M1·M2·M3·M5·M5b·M6·M10 및 impl-C.md 확정 문구.
+// 기대값 출처: spec-C.md M1·M2·M3·M5·M5b·M6·M10, impl-C.md 및 rev9 R4.
 // --head는 git show만 사용한다. 기본 실행은 구현 병합 후 작업판 검증용이다.
 // 잡는 회귀: 월 길이에 뒤집히는 깜빡임, 교부세 용도 오안내, 음수 부호,
 // 표시 합계 불일치·원값 변형, 문턱/같음 정밀도, 현금 음수 위험 오분류.
@@ -394,8 +394,8 @@ test('M5 카드 표시 = 폭포 표시, 후보·최대 순서는 원값 기준',
   assert.equal(JSON.stringify(a), before);
 });
 
-// M5b: 전체 2.4의 5%=0.12→0.2, 전체 4의 5%=0.2로 실제/올림 동일.
-for (const [total, want] of [[2.4, '5%(0.12, 표시 눈금으로 올려 0.2)'], [4, '5%(0.2)']])
+// rev9 R4: 계통 실제값은 소수 1자리. 0.12→0.1과 올림 0.2를 함께 보인다.
+for (const [total, want] of [[2.4, '5%(0.1, 표시 눈금으로 올려 0.2)'], [4, '5%(0.2)']])
   test(`M5b 문턱 Δ=${total}`, () => {
     const { S, n } = setup({ phase: 'review' });
     n.outageFrozen = attribution([total - .05, .01, .01, .01, .01, .01]); n.outageOpened = true;
