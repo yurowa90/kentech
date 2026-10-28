@@ -752,7 +752,45 @@ for (const [label, carry, included] of [
 ]) contractCase(`V7 B 축약/${label}`, { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote: { outageLargest: { key: 'event', value: 10 }, missedCarry: carry } },
   included ? ['evening', 'grid', 'fuel'] : ['evening', 'grid', 'neighbor']);
 
-// V7 4차 minor 2: 첫 달 시험 기록의 재현 차이는 원인 카드가 아니다.
+// V7 E: 첫 달 시험 기록의 재현 차이는 원인 카드가 아니다.
+// A2에서도 연결이 있는 weather·trade로, 모든 몫이 5% 미만이면 저장된 largest를 잇지 않음을 지킨다.
+// 원인 없음 제외를 제거하면 4.99%의 후보 구성 또는 연결 꼬리표가 실패해야 한다. 정확히 5%는 연결한다.
+for (const [cause, evidenceKey, values, withoutWind, withConnection, withoutConnection, plainTag] of [
+  ['weather', 'evening', { grid: 60 }, ['evening', 'grid'],
+    ['evening', 'wind', 'grid'], ['wind', 'grid', 'fuel'], '지난달과 같음'],
+  ['trade', 'neighbor', { evening: 300, neighbor: 11 }, ['evening', 'neighbor'],
+    ['evening', 'wind', 'neighbor'], ['evening', 'wind', 'fuel'], '지난달보다 +1%p'],
+]) for (const target of ['uns', 'grid']) for (const sign of [1, -1])
+  for (const field of ['outageLargest', 'missedCarry']) for (const value of [4.99, 5])
+    for (const role of ['team', 'solo'])
+      test(`V7 E ${cause} ${value < 5 ? '원인 없음 연결 제외' : '5% 경계 연결'} trial/${target}/${sign}/${field}/${role}`, () => {
+        const largest = { key: cause, value: sign * value }, connects = value === 5;
+        const trial = sign > 0 ? 0 : 100;
+        const frozen = { basis: 'trial', target, round: 1, ...(target === 'grid' ? { unit: 'MWh/일' } : {}),
+          trial, actual: trial + sign * 100, total: sign * 100, replay: sign * (100 - value),
+          parts: ['choice', 'weather', 'event', 'trade'].map(key => ({ key, value: key === cause ? largest.value : 0 })) };
+        const oldNote = { missedBasis: 'trial', outageFrozen: frozen,
+          ...(field === 'outageLargest' ? { outageLargest: largest } : { missedCarry: { basis: 'trial', largest } }) };
+        assert.equal(frozen.replay + frozen.parts.reduce((sum, p) => sum + p.value, 0), frozen.total,
+          '재현 차이 + 네 몫 = Δ');
+        assert.ok(Math.abs(frozen.replay) > Math.abs(frozen.total) / 2, '재현 차이가 Δ 대부분인 첫 달 기록');
+        for (const wind of [false, 'wind']) {
+          const f = fixture(h, { role, oldNote, wind, cash: wind ? -1 : 0, previous: standard, values });
+          const v = assertCandidates(h, f), returned = copy(h.U.__evidenceCandidates(h.L.snap));
+          assert.deepEqual(v.keys, wind ? connects ? withConnection : withoutConnection : withoutWind,
+            '계약에서 직접 정한 2단계 포함·제외 후보');
+          assert.equal(v.focus.textContent.includes('지난달 가장 큰 몫('), connects, '화면의 연결 꼬리표 포함·제외');
+          assert.equal(returned.some(x => x.tag.includes('지난달 가장 큰 몫(')), connects, '반환 꼬리표도 같은 판정');
+          if (connects || !wind) {
+            const tag = connects ? `지난달 가장 큰 몫(${s7[cause]})과 이어짐` : plainTag;
+            assert.equal(returned.find(x => x.key === evidenceKey)?.tag, tag, `${evidenceKey} 반환 꼬리표`);
+            assert.equal(v.cards.find(c => cardKey(c) === evidenceKey)?.querySelector('.lg-s1-tag')?.textContent, tag,
+              `${evidenceKey} 화면 꼬리표`);
+          }
+        }
+      });
+
+// A2: choice 연결 제외는 원인 없음 경계와 별도로 유지한다.
 // 명세 A2: choice 최대는 5% 미만·경계 모두 2단계를 건너뛴다.
 for (const target of ['uns', 'grid']) for (const sign of [1, -1])
   for (const field of ['outageLargest', 'missedCarry']) for (const value of [4.99, 5])

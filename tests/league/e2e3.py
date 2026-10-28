@@ -81,8 +81,9 @@ with sync_playwright() as pw:
         if turns:
             check(P.locator('.lg-ask[data-question="lg-f-event"]').count() == 1, "event month uses lg-f-event")
             check(P.locator('.lg-ask [data-answer]').count() == 2, "event follow-up has revise / keep controls")
+            # spec-C §M3: 결과 장부는 도시 서랍의 기타 운영과 구별한다.
             check(all(word in P.inner_text('#lg-result-ledger') for word in
-                   ('달 초', '수입', '신규 투자', '운영비', '달 말', '총지출')), "monthly investment / operating cash-flow ledger shown")
+                   ('달 초', '수입', '신규 투자', '연료·운영비', '달 말', '총지출')), "monthly investment / operating cash-flow ledger shown")
         else:
             check(P.locator('.lg-ask, #lg-predict').count() == 0, "season results have no economic question / prediction cards")
             check("새 투자" in rt and "누적 투자" in rt, "cash-flow KPI shown")

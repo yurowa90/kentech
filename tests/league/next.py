@@ -481,10 +481,11 @@ def results(host, team, checks, fixture):
             precision = len(shown["text"].split(".")[1]) if "." in shown["text"] else 0
             checks.ok(abs(shown["value"] - ledger["invest"] - ledger["opex"]) <= 0.5 * 10 ** (-precision) + 1e-8,
                       "current-turn total spending = invest + opex")
+    # spec-C §M3: 결과 장부 이름 변경, 금액 검산은 유지한다.
     ledger_line = single_line(team, checks, r"기초\s*(?:잔액|현금)|달\s*초|장부", "ledger one line", ("투자", "운영"))
     if ledger_line:
         for key, term in [("open", r"(?:기초(?:\s*잔액|\s*현금)?|달\s*초)"), ("income", r"(?:지원금\s*[·+]?\s*)?수입"),
-                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"운영(?:비)?"), ("close", r"(?:기말(?:\s*잔액)?|달\s*말)")]:
+                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"연료·운영비"), ("close", r"(?:기말(?:\s*잔액)?|달\s*말)")]:
             match = re.search(term + r"\s*[:：]?\s*([−-]?\d[\d,]*(?:\.\d+)?)", ledger_line)
             checks.ok(bool(match), f"ledger line names numeric {key}")
             if match and key in ledger:

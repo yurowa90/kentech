@@ -1216,7 +1216,7 @@
     const value = budgetValue(S && S.st);
     // 교부세가 없는 달에는 빈 문자열: 돈 칸 title·지도 aria-label이 바꾸기 전 문구를 그대로 쓴다.
     if (typeof value === "number" || !(value.grant.left > 0)) return "";
-    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응, 남으면 보수비)` : "";
+    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억${KCP.league?.grantRepairTail?.() || ""}` : "";
     return `남은 돈 ${fmt(value.left, 1)}억 (빚 한도 포함)${grantNote}`;
   };
   const withinBudget = plan => {
@@ -2362,7 +2362,7 @@
         const shortage = actual.uns ?? (Number.isFinite(actual.dem) ? actual.dem * actual.unsPct / 100 : null);
         const average = Number.isFinite(shortage) && completedDays ? shortage / (completedDays * 24) : null;
         const villages = new Set((actual.cpList || []).filter(cp => cp.score > 0).map(cp => cp.near));
-        const text = (actual.faded ? `지난달(${actual.month || "–"}월) 실제` : `${actual.month || "–"}월 실제`) + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건 · 영향 마을 ${villages.size}곳`;
+        const text = (actual.faded ? `지난달(${actual.month || "–"}월) 실제` : `${actual.month || "–"}월 실제`) + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건${actual.cp > 0 ? ` · 영향 마을 ${villages.size}곳` : ""}`;
         if (summary.textContent !== text) summary.textContent = text;
       }
     }
@@ -2512,7 +2512,7 @@
       }
       if (mood === "rain") {
         // 폭풍보다 적고 느린 수직에 가까운 비. 움직임 줄이기에서는 정지한 6개만 남긴다.
-        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        ink.strokeStyle = "#f1f8ff"; ink.lineWidth = 2; ink.beginPath();
         for (let k = 0; k < (rm ? 6 : 36); k++) {
           const x = a.l + hash(k, 5, 71) * w;
           const y = a.t + (hash(k, 6, 71) * h + anim * 140) % Math.max(1, h);
@@ -3681,7 +3681,18 @@
     let tx = x + V.S * 0.8, ty = y - h - V.S * 0.5;
     if (tx + w > V.W - 8) tx = x - w - V.S * 0.8;
     tx = clamp(tx, 8, V.W - w - 8);
-    ty = clamp(ty, V.area.t, V.H - h - 8);
+    if (S.opts.league) {
+      // 안내 묶음·범례는 화면 좌표, 말풍선은 지도 캔버스 좌표를 쓴다.
+      const canvasTop = S.canvas.getBoundingClientRect().top;
+      const guidanceBottom = parseFloat(getComputedStyle(S.root).getPropertyValue("--lg-guidance-bottom")) || 0;
+      const top = Math.max(V.area.t, guidanceBottom - canvasTop);
+      const keys = S.root.querySelector(".lg-map-keys")?.getBoundingClientRect();
+      const bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvasTop : V.H - 8);
+      // 위 경계에 걸리면 칸 아래로 뒤집고, 공간이 부족하면 안내 아래끝을 우선한다.
+      if (ty < top) ty = y + V.S * 0.5;
+      ty = clamp(ty, top, Math.max(top, bottom - h));
+      el.dataset.legendOverlap = String(bottom - top < h);
+    } else ty = clamp(ty, V.area.t, V.H - h - 8);
     el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
   }
   function hideTip() { const el = $("#bd-tip"); if (el) el.hidden = true; }

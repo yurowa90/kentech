@@ -62,7 +62,8 @@
   #bd-root.lg-team-map:has(.lg-fx-end) > :not(#lg-panel) { display: none !important; }
   #bd-root.lg-team-map #lg-panel:has(.lg-fx-end) { display: block !important; position: static !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; overflow: visible !important; background: #fff; color: #111; border: 0; }
   #lg-panel:has(.lg-fx-end) .lg-pbody { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; }
-  #lg-panel:has(.lg-fx-end) > :not(.lg-pbody), #lg-panel:has(.lg-fx-end) .lg-pbody > :not(#lg-final-summary):not(.lg-fx-end):not(#lg-rank) { display: none !important; }
+  #lg-panel:has(.lg-fx-end) > :not(.lg-pbody), #lg-panel:has(.lg-fx-end) .lg-pbody > :not(#lg-final-summary):not(.lg-fx-end):not(#lg-rank):not(.lg-end-left) { display: none !important; }
+  #lg-panel:has(.lg-fx-end) .lg-end-left { display: contents !important; }
   .lg-fx-end { color: #111; background: #fff; border-color: #666; break-inside: avoid; opacity: 1 !important; transform: none !important; }
   .lg-fx-strip { overflow: visible; }
   .lg-fx-strip ol { width: auto; flex-wrap: wrap; }
@@ -1066,6 +1067,8 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 }
 
 .lg-map-keys { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: calc(100vw - 16px); pointer-events: none; }
+/* 안내와 범례 사이가 말풍선보다 좁을 때만, 떠 있는 말풍선(z 5)을 범례보다 앞에 둔다. */
+#bd-root.lg-team-map:has(#bd-tip[data-legend-overlap="true"]:not([hidden])) .lg-map-keys { z-index: 4; }
 .lg-team-map .lg-map-keys > :is(.lg-town-key, .lg-lens-grid) { position: static; top: auto; bottom: auto; box-sizing: border-box; margin: 0; }
 .lg-team-map .bd-subtools .bd-tool-c { display: block; }
 .lg-team-map .bd-subtools .bd-tool-n small { display: block; font-size: 11px; white-space: normal; }
@@ -1364,7 +1367,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map #lg-panel #lg-predict > .lg-field {
     grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
   }
-  .lg-team-map #lg-panel .lg-promise-direction { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel .lg-promise-direction { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   .lg-team-map #lg-panel #lg-predict select { width: 100%; height: 44px; }
   .lg-team-map #lg-panel #lg-predict > .lg-promise-confidence {
     grid-column: 2; grid-row: 3; display: grid; align-self: end; gap: 4px;
@@ -1439,8 +1442,18 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-flash-down { animation: fx-hud-down 1s ease-out; }
 @keyframes fx-toast-in { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
 /* 정전·배출은 올라가면 위험, 내려가면 개선이다. */
-@keyframes fx-hud-up { 0%, 25% { background: var(--ui-danger); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-danger); } }
-@keyframes fx-hud-down { 0%, 25% { background: var(--ui-mint); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-mint); } }
+@keyframes fx-hud-up { 0%, 100% { background: #dc7890; color: #101820; box-shadow: 0 0 0 2px #dc7890; } }
+@keyframes fx-hud-down { 0%, 100% { background: #7be3b4; color: #101820; box-shadow: 0 0 0 2px #7be3b4; } }
+/* 라벨의 기존 톤 색도 함께 바꿔 밝음·어두움 모두 대비를 지킨다. */
+#bd-hud .fx-flash-up .v2-cap-k,
+#bd-hud .fx-flash-up .v2-cap-v { animation: fx-hud-up-text 1s ease-out; }
+#bd-hud .fx-flash-down .v2-cap-k,
+#bd-hud .fx-flash-down .v2-cap-v { animation: fx-hud-down-text 1s ease-out; }
+@keyframes fx-hud-up-text { 0%, 100% { color: #101820; } }
+@keyframes fx-hud-down-text { 0%, 100% { color: #101820; } }
+@media (prefers-reduced-motion: reduce) {
+  #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v) { animation: none; }
+}
 .bd-replaying #bd-run { box-sizing: border-box; pointer-events: none; bottom: calc(var(--bd-dock, 100px) + 8px); border-radius: 14px; }
 .bd-replaying #bd-skip { pointer-events: auto; border-color: var(--ui-gold); color: var(--ui-gold); }
 .bd-replaying #bd-run-tip { color: var(--ui-muted); }
@@ -1465,6 +1478,7 @@ html.v2-still :is(.fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-turn-
 html.v2-still .fx-turn-front, .fx-turn-card[data-still="true"] .fx-turn-front { display: none; }
 html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
+html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v) { animation: none; }
 
 /* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
 /* 안내 묶음은 build.js가 잡는 지도 정보 시작선(--lg-map-info-top: 다음 달 이유 띠 아래)부터 — 띠와 겹치던 결함. */
@@ -1572,9 +1586,10 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* D-86: 리그에서는 머리 띠의 '가상 데이터' 칩(! 설명)이 같은 뜻을 맡는다. 건설 HUD의 옛 '가상 자료' 표지를 겹쳐 두지 않는다. */
 .bd-league #bd-virtual { display: none; }
-/* 폰에서는 상태 줄의 행동 칸('근거 고르기' 등)을 지키려고 칩 글자를 감추고 '!' 원만 남긴다. 이름은 단추의 aria-label('가상 데이터')로 읽힌다. */
+/* 폰에서도 가상 표지는 남기고 긴 꼬리만 줄인다. */
 @media (max-width: 480px) {
-  .lg-data-chip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lg-data-chip > span { flex: 0 0 auto; padding-inline: 3px; white-space: nowrap; }
+  .lg-data-chip-long { display: none; }
 }
 
 /* dl 보조 설명을 dd 안에 두되 숫자와 글의 크기·행을 구분한다. */
@@ -1715,6 +1730,7 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   width: auto; max-width: none; max-height: none; box-sizing: border-box;
 }
 .lg-team-map #lg-panel .lg-end-more { min-width: 0; }
+.lg-team-map #lg-panel .lg-end-left { display: contents; }
 @media (min-width: 761px) {
   .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 20px; align-items: start;
@@ -1725,6 +1741,13 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   .lg-team-map #lg-panel[data-stage="end"] #lg-rank { grid-column: 1; grid-row: 2; }
   .lg-team-map #lg-panel[data-stage="end"] .lg-fx-end { grid-column: 1; grid-row: 3; }
   .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-column: 2; grid-row: 2 / 4; }
+}
+@media (min-width: 1200px) {
+  /* 같은 행의 긴 결정 기록이 왼쪽 요약과 순위 사이를 벌리지 않게 묶는다. */
+  .lg-team-map #lg-panel[data-stage="end"] .lg-end-left {
+    display: flex; flex-direction: column; gap: 14px; min-width: 0; grid-column: 1; grid-row: 1 / 3; align-self: start;
+  }
+  .lg-team-map #lg-panel[data-stage="end"] .lg-end-left > * { margin: 0; min-width: 0; }
 }
 
 /* 축의 100점 폭과 막대 폭을 맞추고 끝 점수 숫자의 여백은 별도로 확보한다. */

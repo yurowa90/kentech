@@ -477,12 +477,25 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   eq(rendered.map(r => r.key), ['previous', ...causes, 'actual'], '폭포 분해 순서');
   const expectedRows = { previous: expected.base, // D-80: C-4, 대상별 출발/도착.
     ...Object.fromEntries(expected.parts.map(p => [p.key, p.value])), actual: expected.actual }; // D-80: C-1·2.
-  rendered.forEach(r => { near(r.raw, expectedRows[r.key], `${r.key} 독립 기대값 vs DOM 원시값`); near(r.visible, Number(r.raw.toFixed(target === 'grid' ? 1 : 2)), `${r.key} 독립 표시 반올림`); }); // D-80: 오차를 넓히지 않고 한 자리 표시값을 정확히 검증.
+  const digits = target === 'grid' ? 1 : 2, scale = 10 ** digits;
+  rendered.forEach(r => {
+    near(r.raw, expectedRows[r.key], `${r.key} 독립 기대값 vs DOM 원시값`);
+    if (causes.includes(r.key)) {
+      const floor = Math.floor(expectedRows[r.key] * scale), ticks = Math.round(r.visible * scale);
+      ok(ticks === floor || ticks === floor + 1, `${r.key} 표시값은 원값의 내림 또는 내림+1 눈금`); // spec-C §M5: 몫은 최대 나머지로 배분, 개별 반올림 기대 폐기.
+    } else near(r.visible, Number(r.raw.toFixed(digits)), `${r.key} 출발·도착 표시 반올림`); // spec-C §M5: 배분은 몫에만 적용.
+  });
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g))
-    eq(m[3], unitNumber(a, +m[2], causes.includes(m[1]), !causes.includes(m[1])), // D-80: C-4.
-      `${m[1]} 소수 둘째 자리·유니코드 마이너스·단위 붙임`); // D-80: C-1·2·4·5 대상별 검사.
+    eq(m[3], unitNumber(a, rendered.find(r => r.key === m[1]).visible, causes.includes(m[1]), !causes.includes(m[1])),
+      `${m[1]} 대상별 소수 자릿수·유니코드 마이너스·단위 붙임`); // spec-C §M5: 배분된 표시값에도 기존 숫자 형식 엄격 비교 유지.
   near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.raw, 0), expected.actual, '폭포 원시 합계 1e-9'); // D-80: 단위 전환에도 합계 정밀도 유지.
-  near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.visible, 0), Object.entries(expectedRows).filter(([k]) => k !== 'actual').reduce((n, [,v]) => n + Number(v.toFixed(target === 'grid' ? 1 : 2)), 0), '표시 합계 = 각 독립 반올림값의 합'); // D-80: 한 자리 반올림도 허용 오차 확대 없음.
+  const displayedParts = rendered.filter(r => causes.includes(r.key));
+  near(displayedParts.reduce((sum, r) => sum + r.visible, 0), Number((expected.actual - expected.base).toFixed(digits)), '표시 몫 합계 = 표시 Δ'); // spec-C §M5: 출발값이 아닌 몫의 합을 표시 Δ와 대조.
+  for (const awarded of displayedParts) for (const unawarded of displayedParts) {
+    const fraction = r => expectedRows[r.key] * scale - Math.floor(expectedRows[r.key] * scale);
+    const award = r => Math.round(r.visible * scale) - Math.floor(expectedRows[r.key] * scale);
+    if (award(awarded) > award(unawarded)) ok(fraction(awarded) >= fraction(unawarded), `${awarded.key}/${unawarded.key} 큰 나머지부터 배분`); // spec-C §M5: 합만 맞추는 임의 조정을 검출.
+  }
   ok(html.includes('약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)'), '판정·분해 기준 안내');
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
   eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= (target === 'grid' ? .05 : .005), '대상별 재현 설명 표시 문턱'); // D-82: 계통 표시 반 눈금 0.05 MWh/일, 정전 유지.

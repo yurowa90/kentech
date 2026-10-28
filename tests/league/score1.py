@@ -165,7 +165,14 @@ def grant(checks, page, before, label, width):
       return C.grantOf(V,C.regionOf(V.region),L.team,KCP.buildGame).left;
     }""")
     require(checks, value > 0, label + ' F1 자연 교부세 달 확보')
-    text = f'이번 달 특별교부세 {value:g}억(새 설비·선로·재난 대응, 남으면 보수비)'
+    # spec-C §M2: 우리 도시의 당월 교부세 사건에 repairParam이 있을 때만 보수비 꼬리.
+    repair = page.evaluate('''() => {
+      const L=KCP.league.state(), V=L.S||L.snap, C=KCP.leagueCore, R=C.regionOf(V.region);
+      return (V.events||[]).some(ev => ev.round===V.round &&
+        C.eventDef(R,ev.id)?.repairParam && C.grantAmount({...V,events:[ev]},R,L.team,V.round)>0);
+    }''')
+    tail = '(새 설비·선로·재난 대응, 남으면 보수비)' if repair else '(새 설비·선로·재난 대응, 남으면 사라져요)'
+    text = f'이번 달 특별교부세 {value:g}억{tail}'
     chip = page.locator('[data-cap="budget"] [data-grant-chip]')
     if width <= 760:
         after = page.locator('#lg-bar').bounding_box()

@@ -170,7 +170,7 @@ test('T F4 all eight coach scene prefixes', () => {
   const context = {
     L:{coach:{round:1,step:0,builds:0},snap:{round:1,phase:'plan'}}, BG:B,
     monthNote:() => ({n:{}}), planIssueCounts:() => ({unlinked:0,unlinkedNames:[],waiting:0}),
-    coachSteps:ctx.coachSteps,
+    coachSteps:ctx.coachSteps, performance, // r2 3절 2: 단계 표시 시각(1,500ms) 계산에 필요한 전역
     document:{getElementById:id => id === 'lg-coach' ? element : null, querySelector:() => null,querySelectorAll:() => []}
   };
   vm.createContext(context); vm.runInContext(source.slice(start,end),context);
