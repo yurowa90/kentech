@@ -1383,7 +1383,14 @@
     const order = parts.map((p, i) => ({ i, remainder: p.value * scale - ticks[i] }))
       .sort((x, y) => y.remainder - x.remainder || x.i - y.i);
     for (const { i } of order) { if (!left) break; ticks[i]++; left--; }
-    return new Map(parts.map((p, i) => [p.key, ticks[i] / scale || 0]));
+    const display = new Map(parts.map((p, i) => [p.key, ticks[i] / scale || 0]));
+    const { tied } = outagePartRanking(a);
+    if (tied.length) {
+      const largest = Math.abs(display.get(tied[0]));
+      // 카드·폭포의 배분 표시가 '공동 가장 큼/가장 큼' 판정과 어긋나면 각자 반올림한다.
+      if (parts.some(p => tied.includes(p.key) ? Math.abs(display.get(p.key)) !== largest : Math.abs(display.get(p.key)) >= largest)) return new Map();
+    }
+    return display;
   }
   function outageShareThresholdText(value, unit) {
     const actual = Number(value.toPrecision(12)).toLocaleString("ko-KR", { maximumFractionDigits: 12 });

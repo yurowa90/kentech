@@ -287,34 +287,97 @@ function shownParts(a) {
     assert.ok(m, text); return Number(m[1].replace('−', '-').replaceAll(',', ''));
   });
 }
+function rankingMatchesDisplay(a, displayed, tied) {
+  if (!tied.length) return true;
+  const size = Math.abs(displayed[a.parts.findIndex(p => p.key === tied[0])]);
+  return a.parts.every((p, i) => tied.includes(p.key)
+    ? Math.abs(displayed[i]) === size : Math.abs(displayed[i]) < size);
+}
+function checkDisplayedRanking(a, displayed, tied) {
+  if (!tied.length) return;
+  const size = Math.abs(displayed[a.parts.findIndex(p => p.key === tied[0])]);
+  for (const [i, p] of a.parts.entries()) {
+    if (tied.includes(p.key)) assert.equal(Math.abs(displayed[i]), size, `(a) tied ${p.key}의 표시 절댓값 일치`);
+    else assert.ok(Math.abs(displayed[i]) < size, `(b) tied 밖 ${p.key}의 표시 절댓값 < tied ${size}: ${displayed[i]}`);
+  }
+}
 function checkAllocation(a) {
   const before = JSON.stringify(a), scale = a.target === 'grid' ? 10 : 100;
   const digits = a.target === 'grid' ? 1 : 2;
-  const displayed = shownParts(a).map(v => Math.round(v * scale));
+  const displayed = shownParts(a).map(v => Math.round(v * scale) + 0);
   const want = Math.round(Number((a.actual - a.trial).toFixed(digits)) * scale) + 0; // spec-C §M5: 표시 Δ의 0과 -0은 같은 표시.
-  assert.equal(displayed.reduce((x, y) => x + y, 0), want, '표시 몫 합 = 표시 Δ');
   const floors = a.parts.map(p => Math.floor(p.value * scale));
   const fractions = a.parts.map((p, i) => p.value * scale - floors[i]);
-  const awards = displayed.map((v, i) => v - floors[i]);
-  assert.ok(awards.every(v => v === 0 || v === 1), '각 몫은 인접한 표시 눈금');
-  for (let i = 0; i < awards.length; i++) for (let j = 0; j < awards.length; j++)
-    if (awards[i] > awards[j]) assert.ok(fractions[i] + 1e-9 >= fractions[j], '큰 나머지가 먼저 배분됨');
+  // spec-C §M5·C6: 배분이 최대 몫 판정과 모순되면 그 달 전체를 각자 반올림한다.
+  // 실제 표시를 보고 합계 검사를 생략하지 않고, 원값에서 배분 후보를 독립 계산한다.
+  const candidate = floors.slice(), remaining = want - floors.reduce((x, y) => x + y, 0);
+  const order = fractions.map((_, i) => i).sort((i, j) => fractions[j] - fractions[i] || i - j);
+  assert.ok(remaining >= 0 && remaining <= order.length, '배분할 표시 눈금 범위');
+  for (const i of order.slice(0, remaining)) candidate[i]++;
+  const tied = Array.from(api('outagePartRanking')(a).tied);
+  checkDisplayedRanking(a, displayed, tied);
+  if (!rankingMatchesDisplay(a, candidate, tied)) {
+    const rounded = a.parts.map(p => Math.round(Number(p.value.toFixed(digits)) * scale) + 0);
+    assert.deepEqual(displayed, rounded, '판정과 모순되면 모든 몫을 각자 반올림');
+  } else {
+    assert.equal(displayed.reduce((x, y) => x + y, 0), want, '모순이 없는 사례: 표시 몫 합 = 표시 Δ');
+    const awards = displayed.map((v, i) => v - floors[i]);
+    assert.ok(awards.every(v => v === 0 || v === 1), '각 몫은 인접한 표시 눈금');
+    for (let i = 0; i < awards.length; i++) for (let j = 0; j < awards.length; j++)
+      if (awards[i] > awards[j]) assert.ok(fractions[i] + 1e-9 >= fractions[j], '큰 나머지가 먼저 배분됨');
+  }
   assert.equal(JSON.stringify(a), before, '저장 원값·parts 순서 불변');
   return displayed.map(v => v / scale);
 }
-// M5: 단순 개별 반올림은 0.06×3→0.3으로 틀린다. 음수·혼합·동률도 확인한다.
+// M5·C6: 음수·혼합·동률에서 합계 배분 또는 판정 일치를 위한 각자 반올림을 확인한다.
 for (const values of [[.06, .06, .06], [-.06, -.06, -.06], [1.24, -.17, .06, -.12, .01, .02]])
   for (const target of ['grid', 'uns']) test(`M5 ${target} 고정 ${values}`, () => checkAllocation(attribution(values, target)));
-test('M5 고정 씨앗 무작위 1,000건 최대 나머지·원값 순서', () => {
+test('M5 고정 씨앗 무작위 1,000건 모두 (a)(b)·조건부 합계·원값 순서', () => {
   let seed = 0x8c2026;
   const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
   const errors = [];
   for (let i = 0; i < 1000; i++) {
     const values = keys.map(() => (random() - .5) * 20);
-    try { checkAllocation(attribution(values, i % 2 ? 'grid' : 'uns', 100)); }
+    const a = attribution(values, i % 2 ? 'grid' : 'uns', 100), before = JSON.stringify(a);
+    try { checkAllocation(a); }
+    catch (e) { errors.push(`사례 ${i}: ${e.message}`); }
+    try { assert.equal(JSON.stringify(a), before, '표시 처리 전후 원값 불변'); }
     catch (e) { errors.push(`사례 ${i}: ${e.message}`); }
   }
-  assert.equal(errors.length, 0, `1,000건 중 ${errors.length} 실패; ${errors.slice(0, 3).join('; ')}`);
+  assert.equal(errors.length, 0, `1,000건 검사 중 ${errors.length}개 단언 실패; ${errors.slice(0, 3).join('; ')}`);
+});
+for (const [values, expected, tied] of [
+  [[.524, .521, .003, 0, 0, 0], [.52, .52, 0, 0, 0, 0], ['choice', 'weather']],
+  [[.5251, .5211, .006, 0, 0, 0], [.53, .52, .01, 0, 0, 0], ['choice']],
+  [[-.524, .5235, .103, .103, .103, 0], [-.52, .52, .1, .1, .1, 0], ['choice', 'weather']]
+]) test(`M5 C6 uns 각자 반올림 ${values}`, () => {
+  const a = attribution(values, 'uns'), before = JSON.stringify(a);
+  assert.deepEqual(Array.from(api('outagePartRanking')(a).tied).sort(), tied.slice().sort());
+  assert.deepEqual(shownParts(a), expected, '그 달 모든 몫은 각자 반올림');
+  checkAllocation(a);
+  assert.equal(JSON.stringify(a), before, '원값·parts 순서 불변');
+});
+test('M5 C6 공동 가장 큼 꼬리표·판정 숫자 = 폭포 표시', () => {
+  const { S, n } = setup({ phase: 'review', topic: 'uns' });
+  const a = attribution([.524, .521, .003, 0, 0, 0], 'uns');
+  n.outageFrozen = a; n.outageOpened = true; n.missed = 'weather';
+  const before = JSON.stringify(a), shown = shownParts(a);
+  const root = htmlTree(api('outageCardsHTML')(S, S.results.at(-1), id, n));
+  const cards = root.querySelectorAll('[data-missed]');
+  assert.deepEqual(cards.filter(c => c.querySelector('[data-out-tag="largest"]')?.textContent === '공동 가장 큼')
+    .map(c => c.dataset.missed).sort(), ['choice', 'weather']);
+  const verdict = root.querySelector('#lg-outage-verdict');
+  assert.ok(verdict, '판정 문장 존재');
+  for (const key of ['choice', 'weather']) {
+    const card = cards.find(c => c.dataset.missed === key);
+    const token = card.querySelector('.lg-out-size').textContent;
+    assert.equal(Number(token.match(/[+−-]?\d[\d,.]*/)[0].replace('−', '-')), shown[keys.indexOf(key)]);
+    assert.equal(shown[keys.indexOf(key)], .52);
+    const name = card.querySelector('strong').textContent;
+    assert.ok(verdict.textContent.includes(`${name} ${token}`), `판정 문장도 ${name} ${token}`);
+  }
+  assert.match(verdict.textContent, /가장 큰 것\(크기 같음 2개\)/);
+  assert.equal(JSON.stringify(a), before);
 });
 test('M5 카드 표시 = 폭포 표시, 후보·최대 순서는 원값 기준', () => {
   const { S, n } = setup({ phase: 'review' });

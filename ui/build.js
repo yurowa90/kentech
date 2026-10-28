@@ -3512,13 +3512,13 @@
       const [x, y] = tileTop(T, 0);
       el.hidden = false;
       const w = el.offsetWidth, h = el.offsetHeight;
-      if (w > V.area.r - V.area.l - 8 || h > V.area.b - V.area.t - 4) { el.hidden = true; return; }
+      if (S.opts.league && (w > V.area.r - V.area.l - 8 || h > V.area.b - V.area.t - 4)) { el.hidden = true; return; }
       // 자기 칸이 지도 영역(서랍·막대 밖) 밖이면 가장자리에 떨어져 붙이지 않고 숨긴다(검토 minor 5).
-      if (x < V.area.l || x > V.area.r || y < V.area.t || y > V.area.b) { el.hidden = true; return; }
-      const bx = clamp(x - w / 2, V.area.l + 4, V.area.r - w - 4);
+      if (S.opts.league && (x < V.area.l || x > V.area.r || y < V.area.t || y > V.area.b)) { el.hidden = true; return; }
+      const bx = S.opts.league ? clamp(x - w / 2, V.area.l + 4, V.area.r - w - 4) : clamp(x - w / 2, 4, V.W - w - 4);
       let r = null;
       for (const dy of [0, -(h + 4), h + 4 + V.S * 0.6, -2 * (h + 4)]) {
-        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.area.b - h - 4), w, h };
+        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, (S.opts.league ? V.area.b : V.H) - h - 4), w, h };
         if (!targets.some(t => hit(t, c)) && !placed.some(p => hit(p, c))) { r = c; break; }
       }
       if (!r) { el.hidden = true; return; }
@@ -3683,15 +3683,28 @@
     tx = clamp(tx, 8, V.W - w - 8);
     if (S.opts.league) {
       // 안내 묶음·범례는 화면 좌표, 말풍선은 지도 캔버스 좌표를 쓴다.
-      const canvasTop = S.canvas.getBoundingClientRect().top;
-      const guidanceBottom = parseFloat(getComputedStyle(S.root).getPropertyValue("--lg-guidance-bottom")) || 0;
-      const top = Math.max(V.area.t, guidanceBottom - canvasTop);
+      const canvas = S.canvas.getBoundingClientRect(), guidance = S.root.querySelector(".lg-map-guidance");
+      const boxes = [...(guidance?.children || [])].flatMap(box => box.id === "lg-plan-issues" ? [...box.children] : [box]);
+      const reminder = S.root.querySelector("#lg-plan-reminder");
+      if (reminder && !guidance?.contains(reminder)) boxes.push(reminder);
+      let top = V.area.t;
+      for (const box of boxes) {
+        if (box.hidden || !box.getClientRects().length) continue;
+        const rect = box.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && rect.left < canvas.left + tx + w && rect.right > canvas.left + tx) top = Math.max(top, rect.bottom - canvas.top + 8);
+      }
       const keys = S.root.querySelector(".lg-map-keys")?.getBoundingClientRect();
-      const bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvasTop : V.H - 8);
-      // 위 경계에 걸리면 칸 아래로 뒤집고, 공간이 부족하면 안내 아래끝을 우선한다.
-      if (ty < top) ty = y + V.S * 0.5;
-      ty = clamp(ty, top, Math.max(top, bottom - h));
-      el.dataset.legendOverlap = String(bottom - top < h);
+      let bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvas.top : V.H - 8);
+      // 회전·배율을 반영한 헥스 사각형 바깥에 여백을 둔다.
+      const ys = topPoly(T).map(p => p[1]), above = Math.min(...ys) - h - 8, below = Math.max(...ys) + 8;
+      ty = above;
+      if (ty < top) ty = Math.max(top, below);
+      const legendOverlap = ty + h > bottom;
+      if (legendOverlap) bottom = V.H - 8;
+      // 화면 아래도 부족하면 안내 경계보다 칸을 가리지 않는 위쪽 자리를 우선한다.
+      if (ty >= below && ty + h > bottom) ty = above;
+      else ty = clamp(ty, top, Math.max(top, bottom - h));
+      el.dataset.legendOverlap = String(legendOverlap);
     } else ty = clamp(ty, V.area.t, V.H - h - 8);
     el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
   }

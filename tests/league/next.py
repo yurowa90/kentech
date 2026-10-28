@@ -514,10 +514,28 @@ def results(host, team, checks, fixture):
     checks.ok(text_present(team, r"공동\s*보너스"), "shared bonus visible")
     single_line(team, checks, r"자리\s*탓|송전\s*손실|미연결", "placement explanation one line")
     cause = team.locator('#lg-result-causes').inner_text()
-    co2 = team.locator('#lg-result-deltas > div').nth(2).inner_text()
-    checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause) and
-              not re.search(r'\d+\.\d+\s*t', co2),
-              'D-A11 지지율 원인 한 자리·음수 − 표시, CO₂와 Δ 정수 표시')
+    checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause),
+              'D-A11 지지율 원인 한 자리·음수 − 표시')
+    # spec-C §M1: 정전·현금도 S6 생산 CO₂와 Δ는 소수 1자리 t/일, 월 합계만 정수 t다.
+    co2 = team.locator('#lg-result-deltas > div').filter(has_text='생산 CO₂(이번 달)')
+    token = r'[+−-]?\d[\d,]*(?:\.\d)?'
+    daily = re.fullmatch(rf'({token}) t/일', co2.locator('dd').inner_text())
+    change = co2.locator('small').inner_text()
+    monthly = re.search(r'이번 달 합 ([\d,]+) t(?:\)|$)', change)
+    delta = re.search(rf'Δ ({token}) t/일(?:\(|$)', change)
+    previous = next((r for r in state['results'] if r['round'] == result['round'] - 1), None)
+    actual = result['team'][fixture['team']]['co2Prod'] / result['days']
+    days = state['rounds'][result['round'] - 1]['mdays']
+    checks.ok(bool(daily) and abs(float(daily[1].replace(',', '').replace('−', '-')) - actual) <= .05 + 1e-7 and
+              bool(monthly) and abs(float(monthly[1].replace(',', '')) - actual * days) <= .5 + 1e-7,
+              'M1 S6 생산 CO₂ 하루 평균 t/일·보조 월 합계 t')
+    if previous:
+        expected_delta = actual - previous['team'][fixture['team']]['co2Prod'] / previous['days']
+        checks.ok(bool(delta) and abs(float(delta[1].replace(',', '').replace('−', '-')) - expected_delta) <= .05 + 1e-7,
+                  'M1 S6 생산 CO₂ 지난달 대비 Δ도 하루 평균 t/일')
+    else:
+        checks.ok(bool(delta) or 'Δ 비교 없음(시험 기록 없음)' in change,
+                  'M1 S6 첫 달 생산 CO₂는 시험 대비 Δ t/일 또는 기록 없음')
     no_overflow(team, checks, "result")
     close_panel(team)
 
