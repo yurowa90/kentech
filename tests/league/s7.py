@@ -23,7 +23,7 @@ import calendar  # D-80: 계약 A, 월 일수 독립 계산.
 import math
 import re
 import sys
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR
 
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode, start_solo
@@ -52,6 +52,28 @@ def part_min(a):  # D-80: C-5, 독립 문턱 식.
 def rounded_share(value, a):  # D-80: C-4, 허용 오차 확대 없이 표시 반올림값과 대조.
     step = ".1" if a.get("target") == "grid" else ".01"  # D-80: C-1·2·4·5 대상별 검사.
     return float(Decimal(str(value)).quantize(Decimal(step), rounding=ROUND_HALF_UP))  # D-80: C-1·2·4·5 대상별 검사.
+
+
+# spec-C §M5: 원값·카드 순서는 유지하고 표시 눈금만 최대 나머지로 배분한다.
+def display_shares(a):
+    scale = Decimal(10 if a.get("target") == "grid" else 100)
+    values = {p["key"]: Decimal(str(p["value"])) * scale for p in a["parts"]}
+    replay = a.get("replay", 0)
+    if not a.get("replayOutsideSum") and abs(replay) >= (.05 if a.get("target") == "grid" else .005):
+        values = {"replay": Decimal(str(replay)) * scale, **values}
+    floors = {k: int(v.to_integral_value(rounding=ROUND_FLOOR)) for k, v in values.items()}
+    delta = a["actual"] - a.get("trial", a.get("base", 0))
+    target = int(Decimal(str(rounded_share(delta, a))) * scale)
+    remainder = target - sum(floors.values())
+    assert 0 <= remainder <= len(values), "표시 Δ와 분해 원값 합 불일치"
+    ranked = sorted(values, key=lambda k: values[k] - floors[k], reverse=True)
+    for k in ranked[:remainder]:
+        floors[k] += 1
+    return {k: float(Decimal(v) / scale) for k, v in floors.items()}
+
+
+def displayed_share(value, a, key):
+    return display_shares(a).get(key, rounded_share(value, a))
 
 
 def share_pattern(a):  # D-80: target 없는 옛 기록은 %p.
@@ -234,7 +256,7 @@ def promise(page, trial, expected, *, hit=False, topic="uns", baseline=None):  #
     page.locator("#lg-ready").click()
     pass_issue_check(page)
     page.locator('[data-evidence="grid"]').click()
-    select = page.locator('#lg-predict [data-pred]')  # D-80: 정전 0인 계획은 grid 선택지만 존재한다.
+    select = page.locator('#lg-predict [data-pred]')  # 명세 A3: 정전·계통 모두 0이면 cash, 나머지는 주제 규칙을 따른다.
     screen_topic = select.get_attribute("data-pred")  # D-80: 호출자의 주제 가정보다 실제 화면 주제를 따른다.
     assert screen_topic in ("uns", "cash", "grid"), f"알 수 없는 약속 주제: {screen_topic}"  # D-80: 누락·중복도 실패.
     assert topic != "cash" or screen_topic == "cash", f"현금 약속을 요구했으나 화면 주제는 {screen_topic}"  # D-80: cash 검사를 다른 주제로 우회하지 않는다.
@@ -507,8 +529,9 @@ def clue_and_evidence(checks, page, a, label):
     names = MONTHLY_NAMES if a.get("basis") == "monthly" else NAMES
     # 구현 표와 같음(회귀 고정). 모든 짝이 독립 명세에서 나왔다는 뜻은 아니다.
     # 지시서의 grid→progress/fuel/풍력 없음/evening→choice는 Node 32에서 개별 단언한다.
+    # 명세 A2: 접속 여유→내 선택은 같은 단계, 진행은 직접 연결.
     links = {"evening": {"choice": "stage", "weather": "direct", "event": "direct", "growth": "direct"},
-             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "direct", "progress": "direct"},
+             "wind": {"weather": "direct", "event": "direct"}, "grid": {"choice": "stage", "progress": "direct"},
              "fuel": {"event": "indirect", "growth": "indirect"}, "neighbor": {"progress": "indirect", "trade": "direct"}}
     notes = device_data(page).get("interview", {}).get("months", {})
     note = current_note(page)
@@ -560,6 +583,10 @@ def clue_and_evidence(checks, page, a, label):
     neutral = bool(direct and not evidence_sign)
     ending = f"고른 근거가 가장 큰 몫({names[largest['key']]})과 같은 이야기예요." if largest else ""
     checks.ok(bool(ending and text.endswith(ending)) == neutral, f"{label} 직접 연결·부호 0은 중립 마무리")
+    # 명세 A2: 접속 여유·내 선택 최대는 중립 칭찬 대신 다음 근거 안내.
+    if key == "grid" and largest and largest["key"] == "choice":
+        checks.ok("같은 이야기" not in text and "같은 단계" in text and
+                  re.search(r"다음에는 .+도 근거로 살펴봐요", text), f"{label} A2 같은 단계·다음 근거")
     if neutral or opposite:
         checks.ok("다음에는" not in text and "살펴봐요" not in text, f"{label} 이미 고른 직접 근거의 재검토 권유 없음")
 
@@ -669,7 +696,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         match = VALUE.search(c.locator(".lg-out-size").inner_text())  # D-80: C-1·2·4·5 대상별 검사.
         raw = c.get_attribute("data-out-value")
         checks.ok(match is not None and share_pattern(current_attribution(page)).fullmatch(c.locator('.lg-out-size').inner_text()) is not None and raw not in (None, "") and  # D-80: C-1·2·4·5 대상별 검사.
-                  abs(float(match[1].replace("−", "-").replace(",", "")) - rounded_share(float(raw), current_attribution(page))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+                  abs(float(match[1].replace("−", "-").replace(",", "")) - displayed_share(float(raw), current_attribution(page), c.get_attribute('data-missed'))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} 열린 카드 %p와 속성 크기 일치 [I22]")
     checks.ok(page.locator('[data-out-tag="picked"]').inner_text() == "내가 고름" and
               page.locator(f'[data-missed="{picked}"] [data-out-tag="picked"]').count() == 1,
@@ -687,7 +714,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {key} 화면 수치 한 개")
         visible[key] = float(matches[0].replace("−", "-").replace(",", ""))
-        checks.ok(abs(visible[key] - rounded_share(values[key], current_attribution(page))) <= 1e-9, f"{label} {key} 표시 반올림")  # D-80: C-1·2·4·5 대상별 검사.
+        checks.ok(abs(visible[key] - displayed_share(values[key], current_attribution(page), key)) <= 1e-9, f"{label} {key} 표시 반올림")  # D-80: C-1·2·4·5 대상별 검사.
         number_format(checks, row, key, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
@@ -719,8 +746,8 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
     checks.ok(abs(sum(v for k, v in values.items() if k != "actual") + (replay if "replay" not in values else 0) - values["actual"]) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 생략 재현 복원 뒤 폭포 원시 합계 1e-9")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
-    checks.ok(abs(sum(v for k, v in visible.items() if k != "actual") - sum(rounded_share(v, current_attribution(page)) for k,v in values.items() if k != "actual")) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
-              f"{label} 화면 합계 = 각 원시값의 독립 반올림 합계")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
+    checks.ok(abs(sum(v for k, v in visible.items() if k not in ("actual", "trial")) - rounded_share(values["actual"] - values["trial"], current_attribution(page))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} spec-C M5 표시 몫 합계 = 표시 Δ")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
     largest = max(NAMES, key=lambda k: abs(values[k]))
     top = sorted((k for k in NAMES if abs(values[k]) >= part_min(current_attribution(page))), key=lambda k: abs(values[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
@@ -899,7 +926,9 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
     checks.ok("시험 1주 대비" not in root.text_content(), f"{label} 시험 대비 분해 안내 폐기")
     page.evaluate("() => { const d = document.getElementById('lg-month-details'); if (d) d.open = true; }")  # D-80 UX 접힘(cc4b9d6): 펼친 뒤 읽는다.
     comparison = page.locator('#lg-trial-compare').inner_text()
-    checks.ok('원인 카드는 지난달 실제 → 이번 달 실제의 정전 변화를 나눠요.' in comparison and
+    # spec-C §M5c·impl-C 확정 문구: 약속 주제가 계통이면 계통 전기 변화로 설명한다.
+    subject = '바깥 계통에 기댄 전기' if expected['topic'] == 'grid' else '정전'
+    checks.ok(f'원인 카드는 지난달 실제 → 이번 달 실제의 {subject} 변화를 나눠요.' in comparison and
               '위 시험 / 실제 차이와는 기준이 달라요.' in comparison,
               f"{label} 시험 비교 절도 월간 원인 카드와 기준 차이를 설명")
     cards = page.locator('#lg-outage-cards [data-missed]')
@@ -982,14 +1011,14 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {k} 표시 숫자 1개")
         visible[k] = float(matches[0].replace('−', '-').replace(',', ''))
-        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - rounded_share(raw[k], a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - displayed_share(raw[k], a, k)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} {k} API/DOM 원시값·반올림")
         number_format(checks, row, k, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
-    checks.ok(abs(sum(v for k,v in visible.items() if k != 'actual') - sum(rounded_share(v, a) for k,v in expected_values.items() if k != 'actual')) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
-              f"{label} 화면 합계 = 독립 반올림 합계")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
+    checks.ok(abs(sum(v for k,v in visible.items() if k not in ('actual', 'previous')) - rounded_share(actual - baseline, a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+              f"{label} spec-C M5 표시 몫 합계 = 표시 Δ")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
     waterfall = page.locator('#lg-outage-waterfall')
     aria = waterfall.get_attribute('aria-label') or ''
     aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]

@@ -481,10 +481,11 @@ def results(host, team, checks, fixture):
             precision = len(shown["text"].split(".")[1]) if "." in shown["text"] else 0
             checks.ok(abs(shown["value"] - ledger["invest"] - ledger["opex"]) <= 0.5 * 10 ** (-precision) + 1e-8,
                       "current-turn total spending = invest + opex")
+    # spec-C §M3: 결과 장부 이름 변경, 금액 검산은 유지한다.
     ledger_line = single_line(team, checks, r"기초\s*(?:잔액|현금)|달\s*초|장부", "ledger one line", ("투자", "운영"))
     if ledger_line:
         for key, term in [("open", r"(?:기초(?:\s*잔액|\s*현금)?|달\s*초)"), ("income", r"(?:지원금\s*[·+]?\s*)?수입"),
-                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"운영(?:비)?"), ("close", r"(?:기말(?:\s*잔액)?|달\s*말)")]:
+                          ("invest", r"(?:신규\s*)?투자"), ("opex", r"연료·운영비"), ("close", r"(?:기말(?:\s*잔액)?|달\s*말)")]:
             match = re.search(term + r"\s*[:：]?\s*([−-]?\d[\d,]*(?:\.\d+)?)", ledger_line)
             checks.ok(bool(match), f"ledger line names numeric {key}")
             if match and key in ledger:
@@ -513,10 +514,28 @@ def results(host, team, checks, fixture):
     checks.ok(text_present(team, r"공동\s*보너스"), "shared bonus visible")
     single_line(team, checks, r"자리\s*탓|송전\s*손실|미연결", "placement explanation one line")
     cause = team.locator('#lg-result-causes').inner_text()
-    co2 = team.locator('#lg-result-deltas > div').nth(2).inner_text()
-    checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause) and
-              not re.search(r'\d+\.\d+\s*t', co2),
-              'D-A11 지지율 원인 한 자리·음수 − 표시, CO₂와 Δ 정수 표시')
+    checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause),
+              'D-A11 지지율 원인 한 자리·음수 − 표시')
+    # spec-C §M1: 정전·현금도 S6 생산 CO₂와 Δ는 소수 1자리 t/일, 월 합계만 정수 t다.
+    co2 = team.locator('#lg-result-deltas > div').filter(has_text='생산 CO₂(이번 달)')
+    token = r'[+−-]?\d[\d,]*(?:\.\d)?'
+    daily = re.fullmatch(rf'({token}) t/일', co2.locator('dd').inner_text())
+    change = co2.locator('small').inner_text()
+    monthly = re.search(r'이번 달 합 ([\d,]+) t(?:\)|$)', change)
+    delta = re.search(rf'Δ ({token}) t/일(?:\(|$)', change)
+    previous = next((r for r in state['results'] if r['round'] == result['round'] - 1), None)
+    actual = result['team'][fixture['team']]['co2Prod'] / result['days']
+    days = state['rounds'][result['round'] - 1]['mdays']
+    checks.ok(bool(daily) and abs(float(daily[1].replace(',', '').replace('−', '-')) - actual) <= .05 + 1e-7 and
+              bool(monthly) and abs(float(monthly[1].replace(',', '')) - actual * days) <= .5 + 1e-7,
+              'M1 S6 생산 CO₂ 하루 평균 t/일·보조 월 합계 t')
+    if previous:
+        expected_delta = actual - previous['team'][fixture['team']]['co2Prod'] / previous['days']
+        checks.ok(bool(delta) and abs(float(delta[1].replace(',', '').replace('−', '-')) - expected_delta) <= .05 + 1e-7,
+                  'M1 S6 생산 CO₂ 지난달 대비 Δ도 하루 평균 t/일')
+    else:
+        checks.ok(bool(delta) or 'Δ 비교 없음(시험 기록 없음)' in change,
+                  'M1 S6 첫 달 생산 CO₂는 시험 대비 Δ t/일 또는 기록 없음')
     no_overflow(team, checks, "result")
     close_panel(team)
 
@@ -619,7 +638,8 @@ def event_gate_and_journal(host, team, checks, fixture):
       const L=KCP.league.state(), S=L.S||L.snap;
       return (S.events||[]).some(e=>e.id===ev && e.round===round) && !S.teams[L.team].crit;
     }""", arg=[seeded["event"], seeded["round"]])
-    panel(team, r"이웃")
+    # rev8 4절: 사건 서랍 이름 변경을 반영하고 옛 '이웃·거래' 이름도 허용한다.
+    panel(team, r"(?:사건|이웃)·거래")
     response_button = team.locator('#lg-panel [data-resp]').filter(has_text=seeded["name"])
     response_button.scroll_into_view_if_needed()
     checks.ok(response_button.evaluate("el => {const r=el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}"),

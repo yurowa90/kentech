@@ -50,7 +50,7 @@ const evidenceCases = [
   { key: 'wind', text: '평균 풍속', wind: true, direct: ['weather', 'event'] },
   { key: 'wind', text: '평균 풍속', wind: false, direct: [] },
   { key: 'wind', text: '평균 풍속', direct: [] }, // 접속 정보 없는 옛 기록도 직접 효과 없음.
-  { key: 'grid', text: '접속 여유', direct: ['choice', 'progress'] },
+  { key: 'grid', text: '접속 여유', direct: ['progress'] }, // 명세 A2: choice는 같은 단계.
   { key: 'fuel', text: 'LNG 연료 값', direct: [] },
   { key: 'neighbor', text: '이웃 정전', direct: ['trade'] }
 ];
@@ -88,6 +88,16 @@ function valueText(value, target) {
   const body = target === 'grid' ? Math.abs(rounded).toLocaleString('ko-KR',
     { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : Math.abs(rounded).toFixed(2);
   return `${rounded < 0 ? '−' : rounded > 0 ? '+' : ''}${body}${target === 'grid' ? ' MWh/일' : '%p'}`; // D-82: 합성 기록도 계약의 하루 평균 단위로 표시를 독립 계산.
+}
+function displayedPartText(html, a, key) {
+  const row = html.match(new RegExp(`<div\\b[^>]*data-out-step="${key}"[^>]*>([\\s\\S]*?)<\\/div>`))?.[1] || '';
+  const text = textOf(row.match(/<b>([^<]*)<\/b>/)?.[1] || '');
+  const value = Number(text.match(/^[+−-]?\d[\d,.]*/)?.[0].replace('−', '-').replaceAll(',', ''));
+  const scale = a.target === 'grid' ? 10 : 100, ticks = Math.round(value * scale);
+  const floor = Math.floor(a.parts.find(p => p.key === key).value * scale);
+  assert.ok(ticks === floor || ticks === floor + 1, `${key} 표시값은 원값의 내림 또는 내림+1 눈금`); // spec-C §M5: 독립 반올림 대신 배분 가능한 두 눈금 검증.
+  assert.equal(text, valueText(value, a.target), `${key} 표시 자릿수·부호·단위`); // spec-C §M5: 배분 이후에도 숫자 형식은 그대로.
+  return text;
 }
 function reset() { session.outCache = {}; session.outFailures = {}; session.outShownPending = null; }
 function select() { B.selectPack(C.teamDef(R, id).pack, 'league'); }
@@ -410,7 +420,7 @@ for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달
     check(`20 D-82 ${basis}/${sign}/${row.choice} 표시 반올림 동점`, () => { // D-82: 화면과 저장 판정의 일치.
       const a = partRecord(f, basis, 'grid', 0, { ...allZero, choice: sign * row.choice, event: -sign * row.event }); // D-82: 두 몫만 있는 독립 입력.
       const html = opened(f, a, evidenceCases[0], 'event'), first = firstVerdict(html); // D-82: 원시값이 작은 event를 선택.
-      assert.ok(first.includes(valueText(-sign * row.event, 'grid')), '선택값의 표시 반올림'); // D-82: 소수 첫째 자리·부호·하루 단위.
+      assert.ok(first.includes(displayedPartText(html, a, 'event')), '선택값은 폭포와 같은 배분 표시'); // spec-C §M5: 카드·폭포 값은 최대 나머지 표시, 동점 판정은 아래 원값 계약 유지.
       assert.ok(first.endsWith(row.tied ? ' · 크기가 같은 가장 큰 몫 중 하나예요' : ' · 몫은 있지만 가장 크지 않았어요'), '표시 눈금에서만 동점 판정'); // D-82: 원시값 비교 회귀 방지.
       const tagged = [...html.matchAll(/<button\b[^>]*data-missed="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)].filter(m => m[2].includes('data-out-tag="largest"')).map(m => m[1]); // D-82: 카드의 공동 최대 표식도 같은 기준.
       assert.deepEqual(tagged, row.tied ? ['choice', 'event'] : ['choice'], '반올림 동점 카드 표식'); // D-82: 첫 카드만 최대가 되는 회귀 방지.
@@ -443,8 +453,14 @@ function thresholdBasis(a) {
   const delta = a.total ?? a.actual - (a.trial ?? a.base);
   const limit = ceilText(cardMin(a), a.target);
   const magnitude = valueText(Math.abs(delta), a.target).replace(/^\+/, '');
+  const threshold = param('outageCardShareMin') * Math.abs(delta);
+  const actual = threshold.toLocaleString('ko-KR', { maximumFractionDigits:
+    threshold > 0 ? Math.min(12, Math.max(0, 11 - Math.floor(Math.log10(threshold)))) : 12 });
+  const ceiling = Number(limit.replace(/ MWh\/일|%p|,/g, ''));
+  const share = Number(actual.replaceAll(',', '')) === ceiling ?
+    `5%(${limit})` : `5%(${actual}, 표시 눈금으로 올려 ${limit})`; // spec-C §M5b: 실제 문턱·올림값을 함께, 같으면 기존 단위 포함 한 값.
   return Number.isFinite(delta) && param('outageCardShareMin') * Math.abs(delta) > minPart(a)
-    ? `차이 ${magnitude}의 5%(${limit})` : `카드 최소 크기(${limit})`;
+    ? `차이 ${magnitude}의 ${share}` : `카드 최소 크기(${limit})`; // spec-C §M5b: 비율 문턱에만 실제·올림 설명 추가, 최소 크기 문구 유지.
 }
 
 // V7 A: 분해 입력은 저장 경계에서 합성하고, 기대 후보·문장은 계약에서 직접 정한다.
@@ -742,9 +758,7 @@ for (const target of ['grid', 'uns']) {
       assert.ok(text.includes(mode === '접속 대기' ? `접속 대기 12 MW(효과 ${expected} 이하)` :
         mode === '원인 없음' ? `네 원인의 몫이 모두 이번 ${thresholdBasis(a)} 이하라, 바뀐 조건 하나하나는` :
           `네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요`), `${mode}/${threshold}: ${text}`);
-      const weatherRow = html.match(/<div\b[^>]*data-out-step="weather"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
-      const displayedPart = textOf(weatherRow.match(/<b>([^<]*)<\/b>/)?.[1] || '');
-      assert.equal(displayedPart, valueText(below, target), '문턱 미만인 날씨 몫의 실제 화면 반올림');
+      const displayedPart = displayedPartText(html, a, 'weather'); // spec-C §M5: 날씨도 독립 반올림 대신 배분 눈금·형식 검증.
       const limitId = mode === '접속 대기' ? 'lg-outage-grid-small' : 'lg-outage-single';
       const paragraph = textOf(html.match(new RegExp(`<p[^>]*id="${limitId}"[^>]*>([\\s\\S]*?)<\\/p>`))?.[1] || '');
       const displayedLimit = paragraph.match(/([\d,.]+)(?: MWh\/일|%p)\)? 이하/)?.[1];
@@ -863,5 +877,15 @@ for (const basis of ['trial', 'monthly']) for (const target of ['grid', 'uns']) 
     assert.ok(!textOf(html).includes('차이 −'), '차이는 부호 없는 절댓값');
   });
 }
+// 명세 A2: 접속 여유·내 선택 최대는 같은 단계와 다음 근거 안내만 남긴다.
+check('A2 접속 여유→내 선택 최대의 S7 꼬리', () => {
+  const a = partRecord(n1f, 'monthly', 'uns', 10, { ...n1parts, choice: 8, event: 1 });
+  const n = { topic: 'uns', evidence: { key: 'grid', text: '접속 여유', value: 3.65 },
+    pred: { uns: 'up' }, outageOpened: true, outageFrozen: a, missed: 'choice' };
+  const text = textOf(evidenceBlock(M.outageCardsHTML(n1f.V, n1f.res, id, n)));
+  assert.ok(text.includes('같은 단계'));
+  assert.ok(!text.includes('같은 이야기'));
+  assert.match(text, /다음에는 .+도 근거로 살펴봐요/);
+});
 console.log(`V5 S7: ${checks} checks, ${failures.length} failures`);
 process.exitCode = failures.length ? 1 : 0;

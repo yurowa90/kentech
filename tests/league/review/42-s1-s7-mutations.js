@@ -20,7 +20,7 @@ const cases = [
   { name: 'T 최소 크기 동률을 비율 쪽으로', harness: '40-v5-s7.js', regression: 'T S7 부호·기준 문구 trial/grid/equal',
     mutate: s => replaceOnce(s, 'params("outageCardShareMin") * Math.abs(difference) > outageMinPart(a)', 'params("outageCardShareMin") * Math.abs(difference) >= outageMinPart(a)') },
   { name: 'N2 문턱만 반올림으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
-    mutate: s => replaceOnce(s, 'return outageValue(rounded < magnitude ? rounded + 1 / scale : rounded, unit);', 'return outageValue(rounded, unit);') },
+    mutate: s => replaceOnce(s, 'return outageValue(rounded + epsilon < magnitude ? rounded + 1 / scale : rounded, unit);', 'return outageValue(rounded, unit);') }, // spec-C §M5b: epsilon 추가 후에도 문턱 올림 제거 변이 유지.
   { name: 'N2 문장만 미만으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
     mutate: s => s.replaceAll(' 이하라', ' 미만이라') },
   { name: 'N1 S6 비교를 클릭 값·옛 지난달 값으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N1 S6·S7 S1 값끼리 비교',
@@ -34,7 +34,7 @@ const cases = [
   { name: 'N1 덧붙임 줄 같음 조건 반대로', harness: '41-v5-s1.js', regression: 'V8 N1 S4 시작 3.65 → 지금 7.65/team',
     mutate: s => replaceOnce(s, 'fmt(start, 2) === fmt(nowValue, 2)', 'fmt(start, 2) !== fmt(nowValue, 2)') },
   { name: 'N2 이하를 미만·문턱 올림을 반올림으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
-    mutate: s => replaceOnce(s, 'return outageValue(rounded < magnitude ? rounded + 1 / scale : rounded, unit);',
+    mutate: s => replaceOnce(s, 'return outageValue(rounded + epsilon < magnitude ? rounded + 1 / scale : rounded, unit);', // spec-C §M5b: 같은 올림 제거 연결점을 복합 변이에도 적용.
       'return outageValue(rounded, unit);').replaceAll(' 이하라', ' 미만이라').replaceAll(' 이하)</p>', ' 미만)</p>') },
   { name: 'N6 지난달 값 없는 후보를 세 장까지 채움으로 복귀', harness: '41-v5-s1.js', regression: 'V8 N6 두 장이면 지난달 값 없는 세 번째는 채우지 않음/team',
     mutate: s => replaceOnce(s, 'if (!Number.isFinite(item.before)) { missing.push(item); continue; }', '') },
@@ -44,7 +44,7 @@ const cases = [
   { name: '풍력 조건 제거', harness: '41-v5-s1.js', regression: '계약 1·3·5 풍력 없으면',
     mutate: s => replaceOnce(s, 'const options = allOptions.filter(x => x.key !== "wind" || hasWind);', 'const options = allOptions;') },
   { name: 'LNG 조건 제거', harness: '41-v5-s1.js', regression: '계약 4 uns/outageFrozen/growth 미만/현금 0',
-    mutate: s => replaceOnce(s, 'const includeFuel = growthCandidate || V.econ.cities[L.team].cash < 0;', 'const includeFuel = true;') },
+    mutate: s => replaceOnce(s, 'const includeFuel = growthCandidate || V.econ.cities[L.team].cash < 0 ||', 'const includeFuel = true ||') }, // spec-A §A3: D-91 조건이 더해진 HEAD에서도 기존 LNG 조건 제거 변이 유지.
   { name: '5단계를 고정 순서로 복귀', harness: '41-v5-s1.js', regression: '계약 5 남은 자리 변화율 순서가 고정 순서와 다름',
     mutate: s => replaceOnce(s,
       'const remaining = [...changed, ...options.filter(x => !Number.isFinite(x.before))];', 'const remaining = options;') },
@@ -91,7 +91,7 @@ const cases = [
     mutate: s => replaceOnce(s,
       'const frozenPicked = !!a && (a === n.outageFrozen || !!n.outageFrozen && OUTAGE_CLUE_SOURCE.get(a) === n.outageFrozen) && !!selected;',
       'const frozenPicked = a === n.outageFrozen && !!selected;') },
-  { name: 'S1 원인 없음의 지난달 연결 제외 제거', harness: '41-v5-s1.js', regression: 'V7 E 원인 없음 연결 제외 trial/uns/1/outageLargest/team',
+  { name: 'S1 원인 없음의 지난달 연결 제외 제거', harness: '41-v5-s1.js', regression: 'V7 E weather 원인 없음 연결 제외 trial/uns/1/outageLargest/team',
     mutate: s => replaceOnce(s,
       'const largest = old && outageNoCause(old) ? null : old?.outageLargest || old?.missedCarry?.largest;',
       'const largest = old?.outageLargest || old?.missedCarry?.largest;') },

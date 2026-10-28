@@ -228,7 +228,7 @@ def open_panel(page, name):
     if button.get_attribute("aria-expanded") != "true":
         button.click()
     # 서랍 종류·제목·본문이 함께 그려진 뒤 검사한다.
-    title = {"deal": "이웃·거래", "result": "결과", "journal": "일지", "city": "도시",
+    title = {"deal": "사건·거래", "result": "결과", "journal": "일지", "city": "도시",
              "rank": "순위", "tech": "연구", "help": "도움말"}[name]
     page.wait_for_function("""([name, title]) => {
       const panel = document.querySelector('#lg-panel');
@@ -506,7 +506,9 @@ def u_plan_contract(checks, team, host, tid, label):
     team.locator('#bd-help').focus(); team.locator('#bd-help').press('Enter')
     wait_text(team, '#lg-help', '순위')
     checks.ok(wait_shown(team, '#lg-help') and all(word in team.locator('#lg-help').inner_text()
-              for word in ('배치', '송전', '시험 운전', '준비', '이웃·거래', '지역 지도', '연구', '결과', '일지', '도시', '순위')),
+              for word in ('배치', '송전', '시험 운전', '준비', '사건·거래',
+                           '사건을 보고 대응, 전기값, 연계선을 정해요.',  # 명세 B4 도움말 설명
+                           '지역 지도', '연구', '결과', '일지', '도시', '순위')),
               f'{label} U1 리그 전용 도움말·네 단계·막대 설명')
     team.locator('#lg-panel').press('Escape')
     wait_ui(team, "() => document.querySelector('#bd-help') === document.activeElement")

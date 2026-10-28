@@ -548,7 +548,8 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
         missed: cause, evidence: { key, value: 100 + change, text: '가상 근거' } });
       const text = html.match(/<p>내 예측이 놓친 것: ([\s\S]*?)<\/p>/)?.[1] || '';
       const links = key === 'wind' ? { weather: connected && !legacy ? 'direct' : 'indirect', event: connected && !legacy ? 'direct' : 'indirect' } :
-        key === 'grid' ? { choice: 'direct' } : { choice: 'stage', weather: 'direct', event: 'direct' };
+        key === 'grid' ? { choice: 'stage' } // 명세 A2: 시험 기준 내 선택도 같은 단계.
+        : { choice: 'stage', weather: 'direct', event: 'direct' };
       const direct = links[cause] === 'direct', label = `${city}/${legacy ? '옛 기록' : '새 기록'}/${key}→${cause}/${sign}/${change}`;
       for (const [kind, prefix] of [['direct', '직접 연결 — '], ['stage', '같은 단계와 연결 — '], ['indirect', '간접 연결 — ']]) {
         const linked = parts.filter(p => links[p.key] === kind);
@@ -561,6 +562,8 @@ for (const city of ['pyeongtaek', 'hwaseong']) {
         false, `${label}: 시험 기준은 월간 변화로 반대 방향 판정하지 않음`);
       equal(text.endsWith(`고른 근거가 가장 큰 몫(${names[cause]})과 같은 이야기예요.`),
         direct, `${label}: 직접 연결이면 중립 마무리`);
+      // 명세 A2: grid→choice는 중립 칭찬 없이 다음 근거를 권한다.
+      if (key === 'grid' && cause === 'choice') ok(!text.includes('같은 이야기') && /다음에는 .+도 근거로 살펴봐요/.test(text), `${label}: A2 다음 근거`);
       if (direct) ok(!/다음에는 .*살펴봐요/.test(text), `${label}: 이미 고른 직접 근거의 재검토 권유 없음`);
     }
 }

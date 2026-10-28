@@ -244,7 +244,7 @@ def close_panel(team):
 
 
 def panels(report, team, session):
-    for name, title in (("result", "결과"), ("city", "도시"), ("deal", "이웃·거래")):
+    for name, title in (("result", "결과"), ("city", "도시"), ("deal", "사건·거래")):
         def sample():
             close_panel(team)
             wait_unfolded(team, timeout=WAIT)

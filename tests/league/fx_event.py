@@ -156,7 +156,7 @@ DOM_JS = r"""(() => {
     // fx-turn place()가 피하는 요소 전부(#bd-hud·#bd-mapbar·#lg-map-result·.lg-map-guidance·#lg-plan-issues 포함).
     // 이 요소가 늦게 나타나 카드가 다시 놓이는 것은 배치 변화이지 움직임이 아니다(명세 W4 '움직임 줄이기').
     '.lg-bar, #lg-panel, #bd-dock, #bd-root, #bd-drawer, .bd-layers, #bd-hud, #bd-mapbar, ' +
-    '#lg-map-result, .lg-map-guidance, #lg-plan-issues, #bd-subtools, [data-issue], #lg-issue-check, #lg-coach')].map(el => {
+    '#lg-map-result, .lg-map-guidance, #lg-plan-issues, #bd-subtools, [data-issue], #lg-issue-check, #lg-coach, .lg-map-keys')].map(el => {
       // 크기뿐 아니라 위쪽 위치(y)도 본다: #lg-map-result처럼 크기는 그대로인데 위치가 늦게 자리 잡는 요소가 있다.
       const {y, width, height} = rect(el);
       return {key:el.id || el.getAttribute('data-issue') || '.' + el.classList[0],
@@ -360,15 +360,17 @@ def geometry(checks, page, label, mobile, cards=None):
               f'{label} 카드가 뷰포트 안의 양수 크기: {details}')
     # 기존 W4 대체 배치. W4c 모바일 결과는 자동 띠에서 별도로 교차 0을
     # 검사하고, 이 함수는 사용자 펼치기 뒤에만 호출한다(W4c 3절).
-    # 막대·도구·문제 칩·코치는 계속 금지한다.
+    # 명세 D1: 폭 761 이상은 data-over=true여도 열린 서랍 겹침을 허용하지 않는다.
+    # 390의 사용자 펼치기 대체 배치와 막대·도구·문제 칩·코치 단언은 유지한다.
+    wide = page.viewport_size['width'] >= 761
     collisions = []
     for c in visible:
         blocked = [key for key in c['overlaps']
-                   if not (key == 'lg-panel' and c['layerOver'] == 'true')]
+                   if not (not wide and key == 'lg-panel' and c['layerOver'] == 'true')]
         if blocked:
             collisions.append((c['title'], blocked))
     checks.ok(bool(visible) and not collisions,
-              f'{label} 막대·열린 서랍(data-over=true 제외)·도구·문제·코치 '
+              f'{label} 막대·열린 서랍(760px 이하 펼치기 data-over=true만 제외)·도구·문제·코치 '
               f'겹침 0: {collisions}; 카드 {details}')
     if mobile:
         checks.ok(len(visible) == 1, f'{label} 390px 카드 한 장씩: {details}')

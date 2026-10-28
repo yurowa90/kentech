@@ -246,7 +246,7 @@ test('S6 기준 37.62의 경계: 요약·접힘 제목 −1.9 유지, 상세 −
     const html = api.promiseResultHTML(S, n);
     const summary = html.match(/id="lg-promise-summary"[^>]*>(.*?) <button/s)[1];
     assert.ok(summary.includes('하루 평균 −1.9 MWh/일') && summary.includes(verdict));
-    assert.ok(summary.includes(`지난달 대비 ${verdict === '예상과 같음' ? '같음(±1.9 안, ' : '줄어듦('}하루 평균 −1.9 MWh/일 변화)`)); // 총괄 10-23 아르곤 문구(UX 갈래)
+    assert.ok(summary.includes(`지난달 대비 ${verdict === '예상과 같음' ? '같음(±1.88 안, ' : '줄어듦('}하루 평균 −1.9 MWh/일 변화)`)); // spec-C §M6: 같음 범위는 판정 계산과 같은 소수 둘째 자리.
     assert.doesNotMatch(summary, /판정 계산|같음' 범위/);
     assert.ok(api.promiseVerdictShort(api.promiseComparison(S, n), n).includes('하루 평균 Δ −1.9 MWh/일'));
     assert.ok(html.includes(`<p data-compare="grid">${summary}</p><p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${detailed} MWh/일, '같음' 범위 ±1.88 MWh/일(기준 하루 평균 37.62의 5%와 0.05 중 큰 값)</p>`));
@@ -303,18 +303,18 @@ test('S6 계통 주제 CO₂: 31→28일 하루 평균 같으면 Δ 0, 월 합�
   // co2Prod=140/7=20 t/일, 총량은 140×31/7과 140×28/7.
   assert.equal(JSON.stringify([S, [...storage]]), before);
 });
-test('S6 CO₂ 단위는 현재 달 대신 해당 결과 달의 약속 주제를 따름', () => {
+test('S6 CO₂는 현재 달·해당 결과 달의 약속 주제와 무관하게 하루 평균', () => {
   note('uns');
   assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음) · 이번 달 합 620 t</small>');
   months[1] = { topic: 'uns', confirmed: true }; note();
-  assert.equal(co2Cell(S.results[0]), '<dd>620t</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음)</small>');
+  assert.equal(co2Cell(S.results[0]), '<dd>20 t/일</dd><small>시험 1주 대비 Δ 비교 없음(시험 기록 없음) · 이번 달 합 620 t</small>'); // spec-C §M1: 정전 주제도 하루 평균, 월 합계는 보조.
 });
 test('다음 달 계획 단계에서 약속 없는 지난 결과의 CO₂ 칸은 현재 달 주제로 다시 고르지 않음', () => {
-  // 독립 검토 minor 2: plan 단계 promiseTopic은 현재 달 조건으로 다시 계산하므로 지난 결과에는 저장 주제만 쓴다.
+  // spec-C §M1: 계획 단계·지난 약속 유무와 무관하게 해당 결과 기간의 하루 평균을 쓴다.
   const old = [S.phase, S.round, months[1], months[2], months[3]];
   try {
     S.phase = 'plan'; S.round = 3; months[1] = { topic: 'grid', confirmed: true }; months[2] = {}; months[3] = { topic: 'grid', confirmed: true };
-    assert.equal(co2Cell(), '<dd>560t</dd><small>지난달 대비 Δ −60t</small>');
+    assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>'); // spec-C §M1: 약속 없는 지난 결과도 하루 평균 Δ.
     months[2] = { topic: 'grid', confirmed: true };
     assert.equal(co2Cell(), '<dd>20 t/일</dd><small>지난달 대비 Δ 0 t/일(이번 달 합 560 t)</small>');
   } finally { [S.phase, S.round, months[1], months[2], months[3]] = old; }
@@ -331,10 +331,10 @@ test('S6 계통 주제 CO₂ 감소 Δ −0.1 t/일, 정전 시간 칸 유지', 
   assert.equal(co2Cell(), '<dd>19.9 t/일</dd><small>지난달 대비 Δ −0.1 t/일(이번 달 합 557 t)</small>');
   assert.match(api.resultHTML(S, S.results[1]), /<dt>정전 시간\(이번 달\)<\/dt><dd>28시간<\/dd>/);
 });
-test('S6 정전·현금 주제와 약속 없는 달 CO₂는 기존 월 합계 t', () => {
+test('S6 정전·현금 주제와 약속 없는 달 CO₂는 하루 평균 t/일', () => {
   for (const topic of ['uns', 'cash', null]) {
     if (topic) note(topic); else delete months[S.round];
-    assert.equal(co2Cell(), '<dd>557t</dd><small>지난달 대비 Δ −63t</small>');
+    assert.equal(co2Cell(), '<dd>19.9 t/일</dd><small>지난달 대비 Δ −0.1 t/일(이번 달 합 557 t)</small>'); // spec-C §M1: 모든 주제의 값·Δ는 하루 평균, 월 합계는 보조.
   }
 });
 
@@ -368,7 +368,7 @@ for (const days of [7, 30]) for (const topic of ['uns', 'grid']) for (const lega
     // 2/7×31 − (days/7)/days×31 = 31/7 → 4.4시간.
     assert.ok(cells.find(m => m[1].startsWith('정전 시간'))[2].includes('Δ +4.4시간'));
     const co2 = cells.find(m => m[1].startsWith('생산'))[2];
-    assert.ok(co2.includes(legacy ? '비교 없음(시험 기록 없음)' : topic === 'grid' ? 'Δ +2 t/일' : 'Δ +62t'), co2);
+    assert.ok(co2.includes(legacy ? '비교 없음(시험 기록 없음)' : 'Δ +2 t/일'), co2); // spec-C §M1: 정전·계통 모두 생산 10−8=+2 t/일.
     assert.ok(!co2.includes('9999'), '시험 소비 배출을 생산 기준에 섞지 않음');
   });
 }

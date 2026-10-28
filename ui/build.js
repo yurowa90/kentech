@@ -1216,7 +1216,7 @@
     const value = budgetValue(S && S.st);
     // 교부세가 없는 달에는 빈 문자열: 돈 칸 title·지도 aria-label이 바꾸기 전 문구를 그대로 쓴다.
     if (typeof value === "number" || !(value.grant.left > 0)) return "";
-    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억(새 설비·선로·재난 대응, 남으면 보수비)` : "";
+    const grantNote = value.grant.left > 0 ? ` · 이번 달 특별교부세 ${fmt(value.grant.left, 1)}억${KCP.league?.grantRepairTail?.() || ""}` : "";
     return `남은 돈 ${fmt(value.left, 1)}억 (빚 한도 포함)${grantNote}`;
   };
   const withinBudget = plan => {
@@ -2362,7 +2362,7 @@
         const shortage = actual.uns ?? (Number.isFinite(actual.dem) ? actual.dem * actual.unsPct / 100 : null);
         const average = Number.isFinite(shortage) && completedDays ? shortage / (completedDays * 24) : null;
         const villages = new Set((actual.cpList || []).filter(cp => cp.score > 0).map(cp => cp.near));
-        const text = (actual.faded ? `지난달(${actual.month || "–"}월) 실제` : `${actual.month || "–"}월 실제`) + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건 · 영향 마을 ${villages.size}곳`;
+        const text = (actual.faded ? `지난달(${actual.month || "–"}월) 실제` : `${actual.month || "–"}월 실제`) + ` · 정전 ${fmt(actual.unsPct, 2)}%${average == null ? "" : ` · 평균 부족 ${fmt(average, 2)} MW`} · 민원 ${fmt(actual.cp)}건${actual.cp > 0 ? ` · 영향 마을 ${villages.size}곳` : ""}`;
         if (summary.textContent !== text) summary.textContent = text;
       }
     }
@@ -2512,7 +2512,7 @@
       }
       if (mood === "rain") {
         // 폭풍보다 적고 느린 수직에 가까운 비. 움직임 줄이기에서는 정지한 6개만 남긴다.
-        ink.strokeStyle = "#a2c9e5"; ink.lineWidth = 1; ink.beginPath();
+        ink.strokeStyle = "#f1f8ff"; ink.lineWidth = 2; ink.beginPath();
         for (let k = 0; k < (rm ? 6 : 36); k++) {
           const x = a.l + hash(k, 5, 71) * w;
           const y = a.t + (hash(k, 6, 71) * h + anim * 140) % Math.max(1, h);
@@ -3448,15 +3448,62 @@
     const list = SITES.map((W, si) => ({ W, si })).filter(({ W }) => !PK.climate || MAJOR[W.kind] && !(W.kind === "hospital" && PK.climate));
     box.innerHTML = list.map(({ W, si }) => `<div class="bd-banner" data-si="${si}" data-kind="${W.kind}"><span class="bd-bn-code">${esc(W.code || W.id)}</span><span class="bd-bn-name">${esc(W.name)}</span>${W.note ? `<span class="bd-bn-note">${esc(W.note)}</span>` : ""}<span class="bd-bn-val num" data-bv></span></div>`).join("");
     S.banners = Array.from(box.children);
+    delete box.dataset.coachMarks;
+    coachMarks(S.coachMarks || []);
     S.bannerKey = "";
   }
+  // 코치가 알려 준 칸·자료 이름만 받는다. 지도 계산·그리기는 기존 이름표 경로를 그대로 쓴다.
+  function coachMarks(marks) {
+    if (!S) return;
+    const box = $("#bd-banners");
+    if (!box) return;
+    const list = marks.filter(mark => TILES[mark.tile] && typeof mark.text === "string")
+      .map(({ tile, text }) => ({ tile, text }));
+    const key = JSON.stringify(list);
+    if (box.dataset.coachMarks === key) return;
+    box.dataset.coachMarks = key;
+    S.coachMarks = list;
+    box.querySelectorAll(".bd-coach-mark").forEach(el => el.remove());
+    S.coachLabels = list.map(mark => {
+      const el = document.createElement("div"); el.className = "bd-coach-mark";
+      el.textContent = mark.text;
+      // 불투명 바탕과 흰 글자(대비 15.7): 밝음·어두움 모두 같은 가독성. 클릭은 지도로 통과한다.
+      el.style.cssText = "position:absolute;left:0;top:0;box-sizing:border-box;padding:5px 8px;border:2px solid #ffe29a;border-radius:8px;background:#102533;color:#fff;font:700 13px/1.35 sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
+      box.append(el);
+      return el;
+    });
+    S.bannerKey = "";
+    placeBanners(); request();
+  }
+  KCP.buildGame.coachMarks = coachMarks;
   function placeBanners() {
     if (!S.banners) return;
-    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot}`;
+    const key = `${V.ox.toFixed(1)},${V.oy.toFixed(1)},${V.S.toFixed(2)},${V.rot},${V.W},${V.H},${V.area.l},${V.area.t},${V.area.r},${V.area.b}`;
     if (S.bannerKey === key) return;
     S.bannerKey = key;
     const placed = [];
     const hit = (a, b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
+    const targets = (S.coachMarks || []).map(mark => {
+      const [x, y] = tileTop(TILES[mark.tile], 0);
+      return { x: x - V.S * 0.6, y: y - V.S * 0.6, w: V.S * 1.2, h: V.S * 1.2 };
+    });
+    // 코치 표지를 먼저 배치한다. 두 대상 칸과 먼저 놓인 코치 표지를 일반 이름표가 가리지 않는다.
+    (S.coachLabels || []).forEach((el, i) => {
+      const [x, y] = tileTop(TILES[S.coachMarks[i].tile], 0);
+      el.style.maxWidth = `${Math.max(0, V.W - 8)}px`;
+      const w = el.offsetWidth, h = el.offsetHeight, gap = V.S * 0.6 + 6;
+      // 코치 표지는 지도 영역(V.area: 서랍·아래 막대를 뺀 곳) 안에서만 자른다(검토 minor 8).
+      const rect = (bx, by) => ({ x: clamp(bx, V.area.l + 4, Math.max(V.area.l + 4, V.area.r - w - 4)),
+        y: clamp(by, V.area.t, Math.max(V.area.t, V.area.b - h - 4)), w, h });
+      const options = [rect(x + gap, y - h / 2), rect(x - gap - w, y - h / 2),
+        rect(x - w / 2, y - gap - h), rect(x - w / 2, y + gap)];
+      // 가장자리에서도 두 이름이 겹치지 않도록 앞 표지의 위·아래 자리까지 후보로 쓴다.
+      placed.forEach(p => options.push(rect(x - w / 2, p.y - h - 4), rect(x - w / 2, p.y + p.h + 4)));
+      const free = r => !placed.some(p => hit(p, r));
+      const r = options.find(r => free(r) && !targets.some(t => hit(t, r))) || options.find(free) || options[0];
+      placed.push(r);
+      el.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
+    });
     S.banners.forEach(el => {
       const W = SITES[+el.dataset.si];
       if (!W) return;
@@ -3465,11 +3512,14 @@
       const [x, y] = tileTop(T, 0);
       el.hidden = false;
       const w = el.offsetWidth, h = el.offsetHeight;
-      const bx = clamp(x - w / 2, 4, V.W - w - 4);
+      if (S.opts.league && (w > V.area.r - V.area.l - 8 || h > V.area.b - V.area.t - 4)) { el.hidden = true; return; }
+      // 자기 칸이 지도 영역(서랍·막대 밖) 밖이면 가장자리에 떨어져 붙이지 않고 숨긴다(검토 minor 5).
+      if (S.opts.league && (x < V.area.l || x > V.area.r || y < V.area.t || y > V.area.b)) { el.hidden = true; return; }
+      const bx = S.opts.league ? clamp(x - w / 2, V.area.l + 4, V.area.r - w - 4) : clamp(x - w / 2, 4, V.W - w - 4);
       let r = null;
       for (const dy of [0, -(h + 4), h + 4 + V.S * 0.6, -2 * (h + 4)]) {
-        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, V.H - h - 4), w, h };
-        if (!placed.some(p => hit(p, c))) { r = c; break; }
+        const c = { x: bx, y: clamp(y - V.S * lift - h - 8 + dy, V.area.t, (S.opts.league ? V.area.b : V.H) - h - 4), w, h };
+        if (!targets.some(t => hit(t, c)) && !placed.some(p => hit(p, c))) { r = c; break; }
       }
       if (!r) { el.hidden = true; return; }
       placed.push(r);
@@ -3631,7 +3681,31 @@
     let tx = x + V.S * 0.8, ty = y - h - V.S * 0.5;
     if (tx + w > V.W - 8) tx = x - w - V.S * 0.8;
     tx = clamp(tx, 8, V.W - w - 8);
-    ty = clamp(ty, V.area.t, V.H - h - 8);
+    if (S.opts.league) {
+      // 안내 묶음·범례는 화면 좌표, 말풍선은 지도 캔버스 좌표를 쓴다.
+      const canvas = S.canvas.getBoundingClientRect(), guidance = S.root.querySelector(".lg-map-guidance");
+      const boxes = [...(guidance?.children || [])].flatMap(box => box.id === "lg-plan-issues" ? [...box.children] : [box]);
+      const reminder = S.root.querySelector("#lg-plan-reminder");
+      if (reminder && !guidance?.contains(reminder)) boxes.push(reminder);
+      let top = V.area.t;
+      for (const box of boxes) {
+        if (box.hidden || !box.getClientRects().length) continue;
+        const rect = box.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && rect.left < canvas.left + tx + w && rect.right > canvas.left + tx) top = Math.max(top, rect.bottom - canvas.top + 8);
+      }
+      const keys = S.root.querySelector(".lg-map-keys")?.getBoundingClientRect();
+      let bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvas.top : V.H - 8);
+      // 회전·배율을 반영한 헥스 사각형 바깥에 여백을 둔다.
+      const ys = topPoly(T).map(p => p[1]), above = Math.min(...ys) - h - 8, below = Math.max(...ys) + 8;
+      ty = above;
+      if (ty < top) ty = Math.max(top, below);
+      const legendOverlap = ty + h > bottom;
+      if (legendOverlap) bottom = V.H - 8;
+      // 화면 아래도 부족하면 안내 경계보다 칸을 가리지 않는 위쪽 자리를 우선한다.
+      if (ty >= below && ty + h > bottom) ty = Math.max(V.area.t, above);
+      else ty = clamp(ty, top, Math.max(top, bottom - h));
+      el.dataset.legendOverlap = String(legendOverlap);
+    } else ty = clamp(ty, V.area.t, V.H - h - 8);
     el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
   }
   function hideTip() { const el = $("#bd-tip"); if (el) el.hidden = true; }

@@ -227,32 +227,27 @@ def result(checks, page, tested, label, grid=True):
     open_panel(page, "result")
     r = current["team"][player]
     previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
-    # 10-21 후속: 생산 CO₂ 칸도 계통 약속만 t/일. 달력으로 월 합계와 각 달의 하루 평균을 따로 검산한다.
+    basis = ("시험 1주 대비" if tested["days"] == 7 else f"시험 {tested['days']}일 대비") if tested else "시험 1주 대비"
+    # spec-C §M1: 정전·현금 주제도 생산 CO₂와 Δ는 하루 평균 t/일, 월 합계는 보조다.
     prod = page.locator("#lg-result-deltas > div").filter(has_text="생산 CO₂(이번 달)")
     prod_total = r["co2Prod"] * month_days(current) / current["days"]
     prod_value, prod_change = prod.locator("dd").inner_text(), prod.locator("small").inner_text()
-    if grid:
-        m = re.fullmatch(rf"({NUMBER}) t/일", prod_value)
-        checks.ok(bool(m) and near(m[1], prod_total / month_days(current), 1), label + " S6 생산 CO₂ 하루 평균 먼저")
-        if previous:
-            old_total = previous["team"][player]["co2Prod"] * month_days(previous) / previous["days"]
-            m = re.fullmatch(rf"지난달 대비 Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
-            checks.ok(bool(m) and near(m[1], prod_total / month_days(current) - old_total / month_days(previous), 1) and
-                      near(m[2], prod_total, 0) and (value(m[1]) == 0 or m[1].lstrip().startswith(("+", "−", "-"))),
-                      label + " S6 생산 CO₂ Δ t/일·월 합계 독립 검산")
-        else:
-            basis = "시험 1주 대비" if tested["days"] == 7 else f"시험 {tested['days']}일 대비"
-            if "co2Prod" in tested:
-                m = re.fullmatch(rf"{basis} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
-                checks.ok(bool(m) and near(m[1], r["co2Prod"] / current["days"] - tested["co2Prod"] / tested["days"], 1) and
-                          near(m[2], prod_total, 0), label + " S6 첫 달 시험 생산 CO₂ 하루 평균 비교·월 합계")
-            else:
-                m = re.fullmatch(rf"{basis} Δ 비교 없음\(시험 기록 없음\) · 이번 달 합 ({NUMBER}) t", prod_change)
-                checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 옛 시험 생산 CO₂ 비교 없음")
+    m = re.fullmatch(rf"({NUMBER}) t/일", prod_value)
+    checks.ok(bool(m) and near(m[1], r["co2Prod"] / current["days"], 1),
+              label + " S6 생산 CO₂ 하루 평균 먼저(모든 주제)")
+    if previous:
+        old_per_day = previous["team"][player]["co2Prod"] / previous["days"]
+        m = re.fullmatch(rf"지난달 대비 Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
+        checks.ok(bool(m) and near(m[1], r["co2Prod"] / current["days"] - old_per_day, 1) and
+                  near(m[2], prod_total, 0) and (value(m[1]) == 0 or m[1].lstrip().startswith(("+", "−", "-"))),
+                  label + " S6 생산 CO₂ Δ t/일·월 합계 독립 검산(모든 주제)")
+    elif tested and "co2Prod" in tested:
+        m = re.fullmatch(rf"{basis} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", prod_change)
+        checks.ok(bool(m) and near(m[1], r["co2Prod"] / current["days"] - tested["co2Prod"] / tested["days"], 1) and
+                  near(m[2], prod_total, 0), label + " S6 첫 달 시험 생산 CO₂ 하루 평균 비교·월 합계")
     else:
-        m = re.fullmatch(rf"({NUMBER})t", prod_value)
-        checks.ok(bool(m) and near(m[1], prod_total, 0) and "t/일" not in prod_change,
-                  label + " 정전 주제 S6 생산 CO₂ 월 합계 유지")
+        m = re.fullmatch(rf"{basis} Δ 비교 없음\(시험 기록 없음\) · 이번 달 합 ({NUMBER}) t", prod_change)
+        checks.ok(bool(m) and near(m[1], prod_total, 0), label + " S6 시험 생산 CO₂ 기록 없으면 비교 없음·월 합계")
     node = page.locator("#lg-s6-co2cons")
     if not grid:
         checks.ok(node.count() == 0, label + " 정전 주제 S6 소비 CO₂ 줄 없음")

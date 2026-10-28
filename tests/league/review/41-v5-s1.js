@@ -18,7 +18,8 @@ const promiseNames = { ...labels, fuel: 'LNG 지수' };
 const units = { evening: ' MW', wind: ' m/s', grid: ' MW', fuel: '', neighbor: '%' };
 const s7 = { weather: '날씨·운전 기간', event: '사건·대응', progress: '접속·공사·기술 진행',
   choice: '내 선택', trade: '이웃 거래', growth: '도시 성장·연료 값' };
-const linked = { weather: 'evening', progress: 'grid', choice: 'grid', trade: 'neighbor', growth: 'fuel' };
+// 명세 A2: S1 2단계에서 choice→grid를 잇지 않는다. progress는 유지.
+const linked = { weather: 'evening', progress: 'grid', trade: 'neighbor', growth: 'fuel' };
 const escape = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const decode = s => s.replace(/&(?:amp|lt|gt|quot|#39|#x27);/g,
   x => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#x27;': "'" }[x]));
@@ -506,7 +507,8 @@ test('1 §1·5 교부세 달: 안내·D-90 폭염 도움말 외 서랍 HTML = 9c
   const tip = `<div class="lg-info-line"><p>${escape(E.text)}</p><details class="lg-info" data-fold="event-disaster-heatwave_peak"><summary class="lg-info-btn" data-info-key="event-disaster-heatwave_peak" aria-label="설명 보기: ${escape(E.name)}">!</summary><div class="lg-info-pop" role="note">${escape([E.why, heat, limitation].join(' '))}</div></details></div>`;
   assert.equal(current.html.split(tip).length - 1, 1, '승인된 폭염 설명·접근성 속성·접힘 키를 가진 블록 정확히 하나');
   assert.ok(!baseline.html.includes('event-disaster-heatwave_peak'), '변경 전 폭염 도움말 없음');
-  const normalized = current.html.replace(tip, `<span>${escape(E.text)}</span>`).replace(grantNotice, '');
+  // 명세 rev8 B4: 서랍 제목 '이웃·거래' → '사건·거래'. 제목 한 곳만 기준판 이름으로 되돌려 나머지 바이트를 비교한다.
+  const normalized = current.html.replace(tip, `<span>${escape(E.text)}</span>`).replace(grantNotice, '').replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
   assert.deepEqual(Buffer.from(normalized, 'utf8'), Buffer.from(baseline.html, 'utf8'),
     '사건 자료·교부세 안내·승인 폭염 도움말 외 개행·공백 포함 전체 UTF-8 바이트 동일');
 });
@@ -517,6 +519,8 @@ test('1 §1·5 교부세 0 달: 서랍 HTML 바이트 동일성 유지', () => {
     a.L.snap.events = [{ id: 'evening_peak_tropical_night', round: a.L.snap.round }];
   }
   const current = normalizeEventSources(eventDrawerHTML(h)), baseline = normalizeEventSources(eventDrawerHTML(old));
+  // 명세 rev8 B4: 서랍 제목 이름만 기준판으로 되돌린다(그 밖의 바이트는 정규화하지 않음).
+  current.html = current.html.replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
   assert.equal(h.C.grantAmount(h.L.snap, h.R, h.L.team), 0, '열대야는 교부 대상 아님');
   assert.equal(current.blocks.length, 1, '사건 없는 서랍과 비교하지 않음');
   assert.ok(!current.html.includes('특별교부세'), '교부세 0 달 안내 없음');
@@ -599,7 +603,7 @@ for (const previous of [undefined, { ...standard, wind: 0 }, standard])
 for (const wind of ['wind', 'offshore'])
   contractCase(`계약 3 ${wind} 하나면 계절 대표값`, { wind, previous: standard,
     values: { evening: 300 }, oldNote: { outageLargest: { key: 'choice' } } },
-  ['evening', 'wind', 'grid'], { wind: '계절 대표값' });
+  ['evening', 'wind'], { wind: '계절 대표값' }); // 명세 A2: choice로 grid를 추가하지 않는다.
 for (const target of ['uns', 'grid']) for (const field of ['outageFrozen', 'missedCarry'])
   for (const above of [false, true]) for (const cash of [0, -1]) {
     const threshold = target === 'grid' ? 5 : .05;
@@ -644,9 +648,10 @@ contractCase('V7 G a 3단계 풍속을 남기고 변화 0 후보 제외',
 contractCase('V7 G b 하나만 남으면 건너뛴 순서로 한 장 보충',
   { previous: standard, values: { neighbor: 30 } }, ['evening', 'neighbor'],
   { evening: '지난달과 같음', neighbor: '지난달보다 +20%p' });
-contractCase('V7 G c 변화 0이어도 2단계 연결 근거 보존',
+// 명세 A2: choice 최대여도 grid는 5단계 최소 후보 보충으로만 들어온다.
+contractCase('A2 choice 최대·변화 0 grid는 최소 후보 보충',
   { previous: standard, values: { evening: 300 }, oldNote: { outageLargest: { key: 'choice' } } },
-  ['evening', 'grid'], { grid: '지난달 가장 큰 몫(내 선택)과 이어짐' });
+  ['evening', 'grid'], { grid: '지난달과 같음' });
 contractCase('V7 G d 모든 변화율 0인 1단계 선발 보존',
   { wind: 'wind', cash: -1, previous: standard }, ['evening', 'wind', 'fuel'],
   { evening: '지난달과 같음', wind: '계절 대표값', fuel: '국제 지수' });
@@ -747,13 +752,52 @@ for (const [label, carry, included] of [
 ]) contractCase(`V7 B 축약/${label}`, { previous: standard, values: { evening: 300, grid: 22, neighbor: 11 }, oldNote: { outageLargest: { key: 'event', value: 10 }, missedCarry: carry } },
   included ? ['evening', 'grid', 'fuel'] : ['evening', 'grid', 'neighbor']);
 
-// V7 4차 minor 2: 첫 달 시험 기록의 재현 차이는 원인 카드가 아니다.
-// 저장된 largest가 있어도 모든 몫이 5% 미만이면 2단계를 건너뛴다. 정확히 5%는 연결한다.
+// V7 E: 첫 달 시험 기록의 재현 차이는 원인 카드가 아니다.
+// A2에서도 연결이 있는 weather·trade로, 모든 몫이 5% 미만이면 저장된 largest를 잇지 않음을 지킨다.
+// 원인 없음 제외를 제거하면 4.99%의 후보 구성 또는 연결 꼬리표가 실패해야 한다. 정확히 5%는 연결한다.
+for (const [cause, evidenceKey, values, withoutWind, withConnection, withoutConnection, plainTag] of [
+  ['weather', 'evening', { grid: 60 }, ['evening', 'grid'],
+    ['evening', 'wind', 'grid'], ['wind', 'grid', 'fuel'], '지난달과 같음'],
+  ['trade', 'neighbor', { evening: 300, neighbor: 11 }, ['evening', 'neighbor'],
+    ['evening', 'wind', 'neighbor'], ['evening', 'wind', 'fuel'], '지난달보다 +1%p'],
+]) for (const target of ['uns', 'grid']) for (const sign of [1, -1])
+  for (const field of ['outageLargest', 'missedCarry']) for (const value of [4.99, 5])
+    for (const role of ['team', 'solo'])
+      test(`V7 E ${cause} ${value < 5 ? '원인 없음 연결 제외' : '5% 경계 연결'} trial/${target}/${sign}/${field}/${role}`, () => {
+        const largest = { key: cause, value: sign * value }, connects = value === 5;
+        const trial = sign > 0 ? 0 : 100;
+        const frozen = { basis: 'trial', target, round: 1, ...(target === 'grid' ? { unit: 'MWh/일' } : {}),
+          trial, actual: trial + sign * 100, total: sign * 100, replay: sign * (100 - value),
+          parts: ['choice', 'weather', 'event', 'trade'].map(key => ({ key, value: key === cause ? largest.value : 0 })) };
+        const oldNote = { missedBasis: 'trial', outageFrozen: frozen,
+          ...(field === 'outageLargest' ? { outageLargest: largest } : { missedCarry: { basis: 'trial', largest } }) };
+        assert.equal(frozen.replay + frozen.parts.reduce((sum, p) => sum + p.value, 0), frozen.total,
+          '재현 차이 + 네 몫 = Δ');
+        assert.ok(Math.abs(frozen.replay) > Math.abs(frozen.total) / 2, '재현 차이가 Δ 대부분인 첫 달 기록');
+        for (const wind of [false, 'wind']) {
+          const f = fixture(h, { role, oldNote, wind, cash: wind ? -1 : 0, previous: standard, values });
+          const v = assertCandidates(h, f), returned = copy(h.U.__evidenceCandidates(h.L.snap));
+          assert.deepEqual(v.keys, wind ? connects ? withConnection : withoutConnection : withoutWind,
+            '계약에서 직접 정한 2단계 포함·제외 후보');
+          assert.equal(v.focus.textContent.includes('지난달 가장 큰 몫('), connects, '화면의 연결 꼬리표 포함·제외');
+          assert.equal(returned.some(x => x.tag.includes('지난달 가장 큰 몫(')), connects, '반환 꼬리표도 같은 판정');
+          if (connects || !wind) {
+            const tag = connects ? `지난달 가장 큰 몫(${s7[cause]})과 이어짐` : plainTag;
+            assert.equal(returned.find(x => x.key === evidenceKey)?.tag, tag, `${evidenceKey} 반환 꼬리표`);
+            assert.equal(v.cards.find(c => cardKey(c) === evidenceKey)?.querySelector('.lg-s1-tag')?.textContent, tag,
+              `${evidenceKey} 화면 꼬리표`);
+          }
+        }
+      });
+
+// A2: choice 연결 제외는 원인 없음 경계와 별도로 유지한다.
+// 명세 A2: choice 최대는 5% 미만·경계 모두 2단계를 건너뛴다.
 for (const target of ['uns', 'grid']) for (const sign of [1, -1])
   for (const field of ['outageLargest', 'missedCarry']) for (const value of [4.99, 5])
     for (const role of ['team', 'solo'])
-      test(`V7 E ${value < 5 ? '원인 없음 연결 제외' : '5% 경계 연결'} trial/${target}/${sign}/${field}/${role}`, () => {
-        const largest = { key: 'choice', value: sign * value }, connects = value === 5;
+      test(`A2 choice 연결 제외 ${value}% trial/${target}/${sign}/${field}/${role}`, () => {
+        // 명세 A2: 5% 경계여도 choice의 S1 연결은 없다.
+        const largest = { key: 'choice', value: sign * value };
         const trial = sign > 0 ? 0 : 100;
         const frozen = { basis: 'trial', target, round: 1, ...(target === 'grid' ? { unit: 'MWh/일' } : {}),
           trial, actual: trial + sign * 100, total: sign * 100, replay: sign * (100 - value),
@@ -768,12 +812,12 @@ for (const target of ['uns', 'grid']) for (const sign of [1, -1])
           const f = fixture(h, { role, oldNote, wind, cash: wind ? -1 : 0,
             previous: standard, values: { evening: 300 } });
           const v = assertCandidates(h, f), returned = copy(h.U.__evidenceCandidates(h.L.snap));
-          assert.deepEqual(v.keys, wind ? connects ? ['evening', 'wind', 'grid'] : ['evening', 'wind', 'fuel'] :
+          assert.deepEqual(v.keys, wind ? ['evening', 'wind', 'fuel'] :
             ['evening', 'grid'], '계약에서 직접 정한 2단계 포함·제외 후보(연결 없으면 grid만 보충)');
-          assert.equal(v.focus.textContent.includes('지난달 가장 큰 몫('), connects, '화면의 연결 꼬리표 포함·제외');
-          assert.equal(returned.some(x => x.tag.includes('지난달 가장 큰 몫(')), connects, '반환 꼬리표도 같은 판정');
-          if (connects || !wind) {
-            const tag = connects ? '지난달 가장 큰 몫(내 선택)과 이어짐' : '지난달과 같음';
+          assert.equal(v.focus.textContent.includes('지난달 가장 큰 몫('), false, '화면의 연결 꼬리표 포함·제외');
+          assert.equal(returned.some(x => x.tag.includes('지난달 가장 큰 몫(')), false, '반환 꼬리표도 같은 판정');
+          if (!wind) {
+            const tag = '지난달과 같음'; // 명세 A2: choice 연결 꼬리표 없음.
             assert.equal(returned.find(x => x.key === 'grid')?.tag, tag, 'grid 반환 꼬리표');
             assert.equal(v.cards.find(c => cardKey(c) === 'grid')?.querySelector('.lg-s1-tag')?.textContent, tag,
               'grid 화면 꼬리표');
@@ -851,7 +895,7 @@ for (const role of ['team', 'solo']) for (const pick of ['wind', 'fuel'])
 test('S1 계약 1~6 독립 기대값 검산·고정 순서', () => {
   const examples = [
     [{ first: true }, [['evening', 5], ['grid', 5]]],
-    [{ wind: 'wind', previous: standard, values: { neighbor: 30 }, oldNote: { missedBasis: 'monthly', outageLargest: { key: 'choice' } } }, [['wind', 3], ['grid', 2], ['neighbor', 1]]],
+    [{ wind: 'wind', previous: standard, values: { neighbor: 30 }, oldNote: { missedBasis: 'monthly', outageLargest: { key: 'choice' } } }, [['wind', 3], ['neighbor', 1]]], // 명세 A2: grid 연결 없이 이미 후보 두 개.
     [{ values: { wind: null, fuel: null } }, [['evening', 5], ['grid', 5]]],
     [{ previous: standard, values: { wind: null, fuel: null, grid: 100 } }, [['evening', 5], ['grid', 1]]],
     [{ values: { wind: null, fuel: null, neighbor: null } }, [['evening', 5], ['grid', 5]]],
@@ -865,10 +909,11 @@ test('S1 계약 1~6 독립 기대값 검산·고정 순서', () => {
 for (const basis of ['monthly', 'trial']) for (const cause of Object.keys(linked)) for (const field of ['outageLargest', 'missedCarry'])
   cases.push([`규칙2 ${basis}/${field}/${cause}`, { oldNote: field === 'outageLargest' ?
     { missedBasis: basis, outageLargest: { key: cause } } : { missedCarry: { basis, largest: { key: cause } } } }]);
-for (const field of ['outageLargest', 'missedCarry'])
-  cases.push([`지난달 가장 큰 몫 event/${field}: 규칙2 건너뜀`, {
+// 명세 A2: event와 choice 모두 2단계 연결 없음.
+for (const cause of ['event', 'choice']) for (const field of ['outageLargest', 'missedCarry'])
+  cases.push([`지난달 가장 큰 몫 ${cause}/${field}: 규칙2 건너뜀`, {
     previous: standard, values: { grid: 60 }, oldNote: field === 'outageLargest' ?
-      { outageLargest: { key: 'event' } } : { missedCarry: { largest: { key: 'event' } } },
+      { outageLargest: { key: cause } } : { missedCarry: { largest: { key: cause } } },
   }]);
 for (const [label, opt] of cases) {
   test(`2·3 §2·3 ${label}`, () => { const f = fixture(h, opt); assertCandidates(h, f); });

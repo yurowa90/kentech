@@ -119,6 +119,7 @@ function buildMoney(h, S, legacyLeft) {
 function buildDescriptionContract(h, which, withGrant) {
   const S = setup(h, { over: false, general: 50, events: withGrant ? ['heatwave_peak'] : [] });
   const actual = buildMoney(h, S);
+  // spec-C §M2: 이 고정 사례의 heatwave_peak에는 repairParam이 있어 기존 꼬리를 유지한다.
   const description = '남은 돈 50.0억 (빚 한도 포함) · 이번 달 특별교부세 10.0억(새 설비·선로·재난 대응, 남으면 보수비)';
   if (which === 'title') a.equal(actual.title, withGrant ? description : '50억', 'build refreshHUD 돈 값 title');
   else a.ok(actual.aria.endsWith(`${withGrant ? description : '예산 잔액 50.0억'}.`), 'build updateAria 지도 예산 문구');

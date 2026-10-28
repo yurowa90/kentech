@@ -931,6 +931,8 @@ section#lg-missed.lg-outage { display: block; }
 #lg-final-causes p { margin: 6px 0; }
 #lg-panel details > summary::after { content: "▸"; margin-left: auto; padding-left: 8px; }
 #lg-panel details[open] > summary::after { content: "▾"; }
+/* '!' 설명 단추(.lg-info)는 접힘 표시를 달지 않는다(8차 녹화 A: 원 안의 '!'가 밀리고 ▸가 붙던 결함). */
+#lg-panel details.lg-info > summary.lg-info-btn::after { content: none; }
 
 /* H-U: 밝음·어두움의 작은 글자와 새 정책·반문 표시. */
 .lg-badge { color: #15222c; }
@@ -1027,7 +1029,7 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
 .lg-team-map #bd-mapbar { z-index: 28; }
 .lg-lens-key { display: none; position: absolute; left: 0; top: var(--lg-lens-key-top, 48px); width: 280px; padding: 5px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; pointer-events: none; }
-/* 마을 모양 범례: 지도 아래쪽 왼쪽, 도크 바로 위. 사건 카드 층(z 35)보다 아래이고 fx-turn 배치의 장애물이 아니라 카드 자리를 줄이지 않는다. */
+/* 마을 모양 범례: 지도 아래쪽 왼쪽, 도크 바로 위. 데스크톱 사건 덱은 이 범례 바로 위에 놓는다. */
 .lg-town-key { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box; margin: 0; padding: 5px 8px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); font-size: 12px; overflow-wrap: anywhere; word-break: keep-all; pointer-events: none; }
 .lg-lenses:focus-within .lg-lens-key, .lg-lenses:hover .lg-lens-key { display: block; }
 .lg-lenses [data-lens="complaints"][aria-pressed="true"] { background: #f0a9e9; color: #172633; }
@@ -1064,6 +1066,8 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 }
 
 .lg-map-keys { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: calc(100vw - 16px); pointer-events: none; }
+/* 안내와 범례 사이가 말풍선보다 좁을 때만, 떠 있는 말풍선(z 5)을 범례보다 앞에 둔다. */
+#bd-root.lg-team-map:has(#bd-tip[data-legend-overlap="true"]:not([hidden])) .lg-map-keys { z-index: 4; }
 .lg-team-map .lg-map-keys > :is(.lg-town-key, .lg-lens-grid) { position: static; top: auto; bottom: auto; box-sizing: border-box; margin: 0; }
 .lg-team-map .bd-subtools .bd-tool-c { display: block; }
 .lg-team-map .bd-subtools .bd-tool-n small { display: block; font-size: 11px; white-space: normal; }
@@ -1167,6 +1171,7 @@ html.bd-drawer-open #lg-plan-reminder,
 .lg-team-map #lg-bar .lg-actions > :first-child { margin-left: 0; }
 .lg-team-map #lg-bar #lg-ready {
   grid-column: 2; grid-row: 2; position: static; width: 112px; min-width: 112px; height: 44px; margin: 0; box-shadow: none;
+  white-space: nowrap; word-break: keep-all; font-size: 14px; padding-inline: 4px;
   background: var(--ui-panel); color: var(--ui-text); border-color: var(--ui-border);
 }
 .lg-team-map[data-promise-open="true"] #lg-bar #lg-ready {
@@ -1357,10 +1362,11 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   .lg-team-map #lg-panel #lg-promise-baseline { grid-row: 4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* D-82 결정 1·화면 지시서: 계통의 하루 평균·보조 월 합계는 폰에서도 잘리지 않게 줄바꿈한다. */
   .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-grid-baseline { white-space: normal; overflow-wrap: anywhere; }
+  .lg-team-map #lg-panel #lg-promise-baseline.lg-promise-cash-baseline { white-space: normal; overflow-wrap: anywhere; }
   .lg-team-map #lg-panel #lg-predict > .lg-field {
     grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); align-self: end; margin: 0;
   }
-  .lg-team-map #lg-panel .lg-promise-direction { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lg-team-map #lg-panel .lg-promise-direction { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   .lg-team-map #lg-panel #lg-predict select { width: 100%; height: 44px; }
   .lg-team-map #lg-panel #lg-predict > .lg-promise-confidence {
     grid-column: 2; grid-row: 3; display: grid; align-self: end; gap: 4px;
@@ -1435,8 +1441,18 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .fx-flash-down { animation: fx-hud-down 1s ease-out; }
 @keyframes fx-toast-in { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
 /* 정전·배출은 올라가면 위험, 내려가면 개선이다. */
-@keyframes fx-hud-up { 0%, 25% { background: var(--ui-danger); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-danger); } }
-@keyframes fx-hud-down { 0%, 25% { background: var(--ui-mint); color: var(--ui-panel); box-shadow: 0 0 0 2px var(--ui-mint); } }
+@keyframes fx-hud-up { 0%, 100% { background: #dc7890; color: #101820; box-shadow: 0 0 0 2px #dc7890; } }
+@keyframes fx-hud-down { 0%, 100% { background: #7be3b4; color: #101820; box-shadow: 0 0 0 2px #7be3b4; } }
+/* 라벨의 기존 톤 색도 함께 바꿔 밝음·어두움 모두 대비를 지킨다. */
+#bd-hud .fx-flash-up .v2-cap-k,
+#bd-hud .fx-flash-up .v2-cap-v { animation: fx-hud-up-text 1s ease-out; }
+#bd-hud .fx-flash-down .v2-cap-k,
+#bd-hud .fx-flash-down .v2-cap-v { animation: fx-hud-down-text 1s ease-out; }
+@keyframes fx-hud-up-text { 0%, 100% { color: #101820; } }
+@keyframes fx-hud-down-text { 0%, 100% { color: #101820; } }
+@media (prefers-reduced-motion: reduce) {
+  #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v) { animation: none; }
+}
 .bd-replaying #bd-run { box-sizing: border-box; pointer-events: none; bottom: calc(var(--bd-dock, 100px) + 8px); border-radius: 14px; }
 .bd-replaying #bd-skip { pointer-events: auto; border-color: var(--ui-gold); color: var(--ui-gold); }
 .bd-replaying #bd-run-tip { color: var(--ui-muted); }
@@ -1461,6 +1477,7 @@ html.v2-still :is(.fx-turn-card[data-forecast="true"], .fx-turn-rotor, .fx-turn-
 html.v2-still .fx-turn-front, .fx-turn-card[data-still="true"] .fx-turn-front { display: none; }
 html.v2-still .fx-flash-up { outline: 2px solid var(--ui-danger); }
 html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
+html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v) { animation: none; }
 
 /* U3·U5: 지도 머리 아래에 문제 칩과 코치를 순서대로 쌓는다. */
 /* 안내 묶음은 build.js가 잡는 지도 정보 시작선(--lg-map-info-top: 다음 달 이유 띠 아래)부터 — 띠와 겹치던 결함. */
@@ -1473,6 +1490,7 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 #lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
 #lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
+.lg-team-map[data-coach-line="true"] .lg-map-keys { display: none; }
 #lg-issue-check { position: fixed; z-index: 48; top: var(--lg-mapbar-bottom, 210px); left: 8px; right: 8px; max-width: 540px; max-height: calc(100dvh - var(--lg-mapbar-bottom, 210px) - 8px); overflow-y: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); }
 #lg-issue-check h3 { margin: 0; }
 #lg-issue-check button, #lg-coach-again { min-width: 44px; min-height: 44px; }
@@ -1567,9 +1585,10 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* D-86: 리그에서는 머리 띠의 '가상 데이터' 칩(! 설명)이 같은 뜻을 맡는다. 건설 HUD의 옛 '가상 자료' 표지를 겹쳐 두지 않는다. */
 .bd-league #bd-virtual { display: none; }
-/* 폰에서는 상태 줄의 행동 칸('근거 고르기' 등)을 지키려고 칩 글자를 감추고 '!' 원만 남긴다. 이름은 단추의 aria-label('가상 데이터')로 읽힌다. */
+/* 폰에서도 가상 표지는 남기고 긴 꼬리만 줄인다. */
 @media (max-width: 480px) {
-  .lg-data-chip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lg-data-chip > span { flex: 0 0 auto; padding-inline: 3px; white-space: nowrap; }
+  .lg-data-chip-long { display: none; }
 }
 
 /* dl 보조 설명을 dd 안에 두되 숫자와 글의 크기·행을 구분한다. */
@@ -1721,6 +1740,15 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
   .lg-team-map #lg-panel[data-stage="end"] .lg-fx-end { grid-column: 1; grid-row: 3; }
   .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-column: 2; grid-row: 2 / 4; }
 }
+@media (min-width: 1200px) {
+  /* DOM 순서를 유지하고, 긴 결정 기록의 초과 높이는 2행에서만 받는다. */
+  .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
+    grid-template-rows: auto 1fr auto auto;
+  }
+  .lg-team-map #lg-panel[data-stage="end"] #lg-decisions { grid-row: 1 / 3; }
+  .lg-team-map #lg-panel[data-stage="end"] #lg-rank { align-self: start; }
+  .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-row: 3 / 5; }
+}
 
 /* 축의 100점 폭과 막대 폭을 맞추고 끝 점수 숫자의 여백은 별도로 확보한다. */
 #lg-rank-chart { --rank-label: 100px; --rank-value: 52px; min-width: 0; margin: 12px 0 18px; color: var(--ink); font-size: 12px; }
@@ -1755,9 +1783,21 @@ html.v2-still .fx-flash-down { outline: 2px solid var(--ui-mint); }
 
 /* S4 근거 칩: 좁은 칩에서 말줄임이 'S1에서 고름' 표시를 가리지 않게 표시를 다음 줄에 둔다. */
 #lg-evidence [data-evidence] .lg-s1-mark { display: block; margin: 2px 0 0; white-space: nowrap; }
-/* 휴대폰 막대의 '약속하고 준비'가 112px 단추 안에서 두 줄로 꺾이지 않게 한다. */
+/* 휴대폰 탐색은 전폭으로 줄바꿈하고 주 동작은 별도 행에 둔다. 한 줄 준비 문구가 일지를 가리지 않는다. */
 @media (max-width: 760px) {
-  .lg-team-map #lg-bar #lg-ready { white-space: nowrap; font-size: 14px; letter-spacing: -.02em; padding-inline: 4px; }
+  /* 줄 수는 그대로 둔다(econui U1: 서랍을 닫으면 지도 60% 이상). 준비는 상태 줄 오른쪽, 탐색은 둘째 줄 전폭(검토 major 3). */
+  .lg-team-map #lg-bar:not(.lg-awaybar) { grid-template-rows: 44px auto; }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-status { grid-column: 1; }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions {
+    grid-column: 1 / -1; flex-wrap: wrap; gap: 4px; overflow: visible;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  .lg-team-map #lg-bar:not(.lg-awaybar) .lg-actions > button { min-width: 44px; min-height: 44px; }
+  .lg-team-map #lg-bar #lg-ready { grid-row: 1; grid-column: 2; white-space: nowrap; font-size: 14px; letter-spacing: -.02em; padding-inline: 4px; }
+}
+/* 224폭 viewBox의 12px 눈금은 최대 15px까지만 확대한다. 390 표시는 유지한다. */
+@media (min-width: 761px) {
+  .lg-fx-chart svg { max-width: 280px; margin-inline: auto; }
 }
 /* 태블릿·데스크톱: 운영 띠를 한 줄(이름표·운영일·날씨 | 건너뛰기·그래프 열기)과 얇은 진행 막대로 줄여
    작은 지도(1024×768 등)에서도 지도 아래 1/4 지점을 덮지 않게 한다. */

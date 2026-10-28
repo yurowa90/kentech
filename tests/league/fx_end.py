@@ -702,13 +702,16 @@ def crosscheck(checks, page, rows, label):
         div = page.locator('#lg-result-deltas > div').filter(
             has=page.get_by_text(heading, exact=True))
         dd_text = div.locator('dd').inner_text()
-        if key == 'co2' and re.search(r't/일\s*$', dd_text):
-            # D-82 결정 1 후속(총괄 10-21): 계통 주제 달은 CO₂ 칸이 t/일 먼저, 월 합계는 보조
-            # '이번 달 합 N t'로 옮겼다. 월 합계를 읽어 그 달 일수로 나눈다.
+        if key == 'co2':
+            # spec-C §M1: 모든 주제의 S6 생산 CO₂는 하루 평균 t/일, 월 합계는 보조다.
+            daily = re.fullmatch(rf'({NUMBER})\s+t/일', dd_text)
+            daily_value = number(dd_text, 't/일') if daily else None
+            checks.ok(bool(daily) and near(rows[key]['last'], daily_value, METRICS[key][2], 1),
+                      label + ' CO₂ 마지막 aria = 같은 화면 S6 하루 평균 t/일')
             total = re.search(r'이번 달 합\s*([\d,.\-−]+)\s*t', div.locator('small').inner_text())
             shown_value = number(total.group(0), 't') if total else None
         else:
-            shown_value = number(dd_text, 't' if key == 'co2' else METRICS[key][1])
+            shown_value = number(dd_text, METRICS[key][1])
         if key == 'co2':
             days = public['V']['rounds'][public['V']['round'] - 1]['mdays']
             # 월 합계 표시의 반올림 오차도 일수로 나눈다. 그래프는 소수 1자리다.
