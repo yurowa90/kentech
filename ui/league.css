@@ -1598,7 +1598,7 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   .lg-team-map #lg-bar #lg-watch:has(button) { flex: 1 1 0; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   .lg-team-map #lg-bar #lg-watch::-webkit-scrollbar { display: none; }
   .lg-team-map #lg-bar #lg-watch button { flex: 0 0 auto; max-width: none; overflow: visible; text-overflow: clip; }
-  .lg-team-map #lg-bar .lg-timer:empty { display: none; }
+  .lg-team-map #lg-bar:has(#lg-watch button) .lg-timer:empty { display: none; }
 }
 
 /* dl 보조 설명을 dd 안에 두되 숫자와 글의 크기·행을 구분한다. */

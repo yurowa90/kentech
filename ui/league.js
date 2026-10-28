@@ -115,8 +115,8 @@
         if (typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches) info.open = true;
       });
       // 펼치며 단추가 다음 줄로 이동해도 호버가 즉시 풀리지 않도록 관련 행을 이탈 경계로 삼는다.
-      // rev9: 줄 묶음이 없는 '!'(예: 결과 서랍 '바깥 계통')도 펼친 설명을 품는 부모를 경계로 삼아, 열림→밀림→이탈→닫힘이 되풀이되지 않게 한다.
-      const hoverArea = info.closest(".lg-info-line, .lg-data-chip, [data-grid-fill]") || info.parentElement || info;
+      // rev9: 결과 서랍 '바깥 계통' 줄의 '!'는 그 줄을 경계로 삼아 열림→밀림→이탈→닫힘이 되풀이되지 않게 한다(큰 부모로 넓히지 않음, 재검토 minor).
+      const hoverArea = info.closest(".lg-info-line, .lg-data-chip, [data-grid-fill], #lg-no-supply-cause") || info;
       hoverArea.addEventListener("pointerleave", () => {
         if (typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches && !info.dataset.pinned) info.open = false;
       });
@@ -692,7 +692,10 @@
     } else if (advance && now - state.stepAt >= 1500 && state.step < 7 && (done[state.step] || state.doneSeen[state.step])) {
       state.step++; state.stepAt = now;
     }
-    const [task, action, selector] = coachSteps(issues, n)[state.step];
+    let [task, action, selector] = coachSteps(issues, n)[state.step];
+    // rev9 R2(재검토 minor): 결과 단계에서 약속(5/8)이 1.5초 남는 동안에는 '준비'(=다음 달 단추)를 가리키지 않는다.
+    const reviewPromise = review && state.step === 4;
+    if (reviewPromise) selector = "#lg-promise-summary";
     el.dataset.step = String(state.step + 1);
     const scenes = ["근거 하나", "자리 판단", "자리 판단", "시험 1주", "약속", "예측 대 실제", "원인 하나", "다음 달"];
     const taskEl = el.querySelector("#lg-coach-task"), text = `${scenes[state.step]} · ${state.step + 1}/8 ${task}`;
@@ -701,7 +704,7 @@
     actionEl.textContent = action;
     const hide = selector === "#lg-ready" && !!ready?.getClientRects().length && !ready.disabled;
     if (hide && document.activeElement === actionEl) ready.focus({ preventScroll: true }); // 초점 유실 방지(검토 minor 7)
-    actionEl.hidden = hide;
+    actionEl.hidden = hide || reviewPromise;
     const root = document.getElementById("bd-root");
     const lineTarget = root && state.step === 2 ? coachLineTarget() : null;
     if (root) root.dataset.coachLine = String(!!lineTarget);
@@ -722,7 +725,7 @@
         if (first && ls.end == null) BG.focusTiles(ls.start === line.facility.i ? [line.town.tile] : [line.facility.i], { onlyIfHidden: true });
       }
     } else if (state.step === 2) state.focusKey = null;
-    if (state.step === 4 && !target) target = document.getElementById("lg-ready");
+    if (state.step === 4 && !target && !reviewPromise) target = document.getElementById("lg-ready");
     target?.classList.add("lg-coach-target");
   }
   function coachAction() {
@@ -1901,7 +1904,7 @@
     // rev9 R15(독립 검토 M3): 장부 '신규 투자'에는 철거 회수·이번 달 연계선 몫도 들어간다. 그런 달에는 같은 숫자를 보장할 수 없어 꼬리를 붙이지 않는다(null).
     const kept = new Set([...(st?.builds || []).map(b => C.itemKey("b", b)), ...(st?.lines || []).map(l => C.itemKey("l", l))]);
     if ((team.base || []).some(item => !kept.has(item.k))) return null;
-    if ((V.ties || []).some(t => [t.a, t.b].includes(L.team) && (t.st !== "built" || t.round === V.round))) return null;
+    if ((V.ties || []).some(t => [t.a, t.b].includes(L.team) && t.st === "built" && t.round === V.round)) return null;
     // capex는 기존 자산도 합치므로 월초 자산을 먼저 뺀다. 큰 결정용 newBuildCost는 선로를 세지 않는다.
     // 장부 invest에는 이 건설비 외에 새 연계선·철거 회수·실증비도 반영될 수 있다.
     return C.capexOf(BG, R(), L.team, { ...st, builds, lines });

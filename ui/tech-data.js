@@ -102,14 +102,21 @@
   ];
   // 효과 계수는 그대로 둔다. scale은 효과 증가/감소 폭을 현실 비교 폭으로 나눈 표시값(G).
   // tandem 기준은 ECON-TECH와 ECON-DATA의 일반 모듈 22% → 상용 탠덤 26.9%다.
+  // E3: 비교 원자료를 표시 문장과 표시용 배속 계산이 함께 읽는다(엔진 효과와 별개).
+  const comparisonReferences = {
+    scable: { multiplier: 5 }, tandem: { from: 22, to: 26.9, unit: "%" },
+    nbat: { increase: .4 }, h2store: { range: [.3, .4], midpoint: .35 },
+    h2mix: { reduction: .12, grade: "M" }, ccu: { capture: .9 }
+  };
+  const referencePercent = x => +(x * 100).toFixed(2);
   const comparisons = {
     hvdc: { v: null, baseline: "현실 비교값 없음 · 국내 사례의 목적은 계통 제약 해소", reference: null },
-    scable: { v: (params.scableCap.v - 1) / (5 - 1), baseline: "송전 용량 증가폭: 기존의 5배", reference: { multiplier: 5 } },
-    tandem: { v: (params.tandemOutput.v - 1) / (26.9 / 22 - 1), baseline: "모듈 효율 증가폭: 일반 22% → 탠덤 26.9%", reference: { from: 22, to: 26.9, unit: "%" } },
-    nbat: { v: (params.nbatCapacity.v - 1) / .4, baseline: "셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요)", reference: { increase: .4 } },
-    h2store: { v: params.h2Efficiency.v / .35, baseline: "왕복 효율 30~40%의 가운데 값 35%", reference: { range: [.3, .4], midpoint: .35 } },
-    h2mix: { v: (1 - params.h2Co2.v) / .12, baseline: "수소 30 vol% 혼소의 열량 환산 CO₂ 감소 12%(M)", reference: { reduction: .12, grade: "M" } },
-    ccu: { v: (1 - params.ccuCo2.v) / .9, baseline: "포집률 상단 90%", reference: { capture: .9 } }
+    scable: { v: (params.scableCap.v - 1) / (comparisonReferences.scable.multiplier - 1), baseline: `송전 용량 증가폭: 기존의 ${comparisonReferences.scable.multiplier}배`, reference: comparisonReferences.scable },
+    tandem: { v: (params.tandemOutput.v - 1) / (comparisonReferences.tandem.to / comparisonReferences.tandem.from - 1), baseline: `모듈 효율 증가폭: 일반 ${comparisonReferences.tandem.from}${comparisonReferences.tandem.unit} → 탠덤 ${comparisonReferences.tandem.to}${comparisonReferences.tandem.unit}`, reference: comparisonReferences.tandem },
+    nbat: { v: (params.nbatCapacity.v - 1) / comparisonReferences.nbat.increase, baseline: `셀 에너지 밀도 증가폭 ${referencePercent(comparisonReferences.nbat.increase)}%(팩 용량과 직접 같지 않아요)`, reference: comparisonReferences.nbat },
+    h2store: { v: params.h2Efficiency.v / comparisonReferences.h2store.midpoint, baseline: `왕복 효율 ${comparisonReferences.h2store.range.map(referencePercent).join("~")}%의 가운데 값 ${referencePercent(comparisonReferences.h2store.midpoint)}%`, reference: comparisonReferences.h2store },
+    h2mix: { v: (1 - params.h2Co2.v) / comparisonReferences.h2mix.reduction, baseline: `수소 30 vol% 혼소의 열량 환산 CO₂ 감소 ${referencePercent(comparisonReferences.h2mix.reduction)}%(${comparisonReferences.h2mix.grade})`, reference: comparisonReferences.h2mix },
+    ccu: { v: (1 - params.ccuCo2.v) / comparisonReferences.ccu.capture, baseline: `포집률 상단 ${referencePercent(comparisonReferences.ccu.capture)}%`, reference: comparisonReferences.ccu }
   };
   cards.forEach(c => { c.scale = { v: null, baseline: null, reference: null, grade: "G", ...comparisons[c.id] }; });
   // 외부 자료는 기존 조사 기록에서 옮긴다. 연도가 없는 자료는 추정하지 않는다.

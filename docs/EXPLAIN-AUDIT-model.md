@@ -1,23 +1,23 @@
 # 학생에게 보이는 모형 설명 전수 대조 — 품질 축 E
 
-2026-10-25 기준판 `186e1824d24486e96a1acbd2c539fae5067ba542`(D-87 포함)의 351항목을 유지하고, 2026-10-26 `wip/q8-score3`의 `d8a072d` 작업 파일에서 D-90·집단 전용 항 8개를 후속 대조했다. 기존 표 전체를 새로 수동 감사했다는 뜻은 아니다.
+2026-10-28 기준판 **`137e0a91d0ccf3a5ff7c57c2ebff003ce8aab10f` + rev9-E E3·E4 작업 변경**. 10-25 `186e182`의 351항목과 10-26 `d8a072d` 작업 파일에서 추가한 D-90·집단 전용 항 8개를 유지했다. 이번에는 직접 기재 14행 및 rev8(`19d4b17`·`9001423`·`6628ef9`)·rev9(`137e0a9`)에서 바뀐 설명을 후속 대조했다. 기존 359항목 전체를 새로 수동 감사했다는 뜻은 아니다.
 
-**기존 343 + D-87 8 + 이번 후속 8 = 359항목. 기존 불일치 25건은 해소됐고, 독립 검토가 찾은 V60도 수정됐다. 이번 추가 8항목의 불일치는 0건이며, 현재 대조표의 남은 불일치 합계도 0건이다.** `e-audit-probe.js`는 현재 작업 파일에서 952단언/실패0. 수치 직접 기재 18행 중 D02·D05·D06·D07을 자료에서 읽도록 바꿔 14행이 남는다. 평점 충족을 선언하지 않는다.
+**기존 343 + D-87 8 + 이번 후속 8 = 359항목. 기존 불일치 25건은 해소됐고, 독립 검토가 찾은 V60도 수정됐다. 이번 추가 8항목의 불일치는 0건이며, 현재 대조표의 남은 불일치 합계도 0건이다.** `56-e-audit.js`(기존 `e-audit-probe.js` 진입 경로 유지)는 현재 작업 파일에서 **1009단언/실패0**. 수치 직접 기재 14행 중 11행을 자료·공유 상수에서 읽도록 바꿔 **3행(S18·S40·B16)이 남는다**. 평점 충족을 선언하지 않는다.
 
 | 범주 | 기존 항목 | D-87 추가 | 이번 후속 | 현재 항목 | 10-21 불일치 | 해소 | 남음(현재 불일치) | 현재 수치 직접 기재 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 배속표 | 41 | 2 | 0 | 43 | 0 | 0 | 0 | 2 |
 | 점수식 | 12 | 0 | 0 | 12 | 0 | 0 | 0 | 0 |
-| 원인 분해 | 94 | 3 | 2 | 99 | 11 | 11 | 0 | 6 |
+| 원인 분해 | 94 | 3 | 2 | 99 | 11 | 11 | 0 | 1 |
 | 공기 주석 | 12 | 1 | 0 | 13 | 3 | 3 | 0 | 0 |
 | 사건 출처 | 63 | 1 | 3 | 67 | 4 | 4 | 0 | 0 |
-| 기술 카드 효과 | 74 | 0 | 0 | 74 | 6 | 6 | 0 | 6 |
+| 기술 카드 효과 | 74 | 0 | 0 | 74 | 6 | 6 | 0 | 0 |
 | 집단 만족 이유 | 47 | 1 | 3 | 51 | 1 | 1 | 0 | 0 |
-| 합계 | 343 | 8 | 8 | 359 | 25 | 25 | 0 | 14 |
+| 합계 | 343 | 8 | 8 | 359 | 25 | 25 | 0 | 3 |
 
 항목은 반복 출력 횟수가 아닌 설명 템플릿 기준이다. 동일 `thermalFacts.text`의 반복 출력 경로는 한 행에 묶었다. D07은 석탄·LNG·SMR 배치 때(`ui/build.js:3452` siting 대상 세 전원 공통) 계산하는 민원 건수·영향 시설 수를 따로 센다. B05·B06·B09·B19·B20·B26은 별도 표와 전수 표에 각각 표시하되 합계에서는 한 번만 센다.
 
-`docs/QUALITY-model.md` §3 E행은 W1 42항목과 과거 기술 eff 오류를 근거로 한 이전 평가다. 독립 채점 `/Users/yurosung/Projects/kentech-wt/_briefs/score1/model.md` E는 a29a3e2에서 343표가 갱신되지 않은 점과 #build 여섯 항목의 미확인을 지적했다. 기준판 대조는 186e182에서 수행했고 이번 후속은 위 작업 파일을 읽었다. QUALITY 문서·평점은 수정하지 않았다. 사건 why는 저장소 자료→표시와 게임 효과의 구분을 대조했다. 외부 관측값·출처 원문의 사실성·URL 생존은 네트워크 금지로 재검증하지 않았다.
+`docs/QUALITY-model.md` §3 E행은 W1 42항목과 과거 기술 eff 오류를 근거로 한 이전 평가다. 독립 채점 `/Users/yurosung/Projects/kentech-wt/_briefs/score1/model.md` E는 a29a3e2에서 343표가 갱신되지 않은 점과 #build 여섯 항목의 미확인을 지적했다. 최초 대조는 186e182에서 수행했고, 현재 기준판 후속 대조는 위 137e0a9 + E 변경을 읽었다. QUALITY 문서·평점은 수정하지 않았다. 사건 why는 저장소 자료→표시와 게임 효과의 구분을 대조했다. 외부 관측값·출처 원문의 사실성·URL 생존은 네트워크 금지로 재검증하지 않았다.
 
 ## 남은 불일치와 수정 분류
 
@@ -27,7 +27,7 @@
 | (b) 문장 뜻 변경 — 아르곤 문구 필요 | 0 | 현재 남은 의미 불일치 없음 |
 | (c) 계산이 틀림 — 엔진 변경 | 0 | 기준판 351항목 및 이번 추가 8항목에서 확인한 계산 불일치 없음 |
 
-이번 후속은 thermalFacts의 세 문장을 자료 기반 getter로 바꾸었고 기본 문장의 바이트 동일성을 확인했다. 계수·등급·계산 엔진은 바꾸지 않았다. 브라우저 실기나 외부 원문 검증은 수행하지 않았다.
+10-26 후속은 thermalFacts의 세 문장을 자료 기반 getter로 바꾸었다. 이번 E3는 build의 기존 경계·가동 가정을 공유 상수로 추출하고 기술 비교 문장·표시용 비율의 원자료를 합쳤다. 기본 계산값·효과 계수·등급·저장·전송 형식은 유지했다. 수정 금지인 econ 계열·league-core·league-net은 변경하지 않았다. 브라우저 실기나 외부 원문 검증은 수행하지 않았다.
 
 ## 10-21 불일치 25건의 해소 근거
 
@@ -38,7 +38,7 @@
 | B01 | ui/build.js:3760 | 배터리 각92.2%·왕복약85%, BMS 뒤 각93.3%·왕복약87% → M.batEff=.922, 왕복 .850084; BMS .933, 왕복 .870489 | 해소(6812f43) |
 | B02 | ui/build.js:3748 | 도시 태양광 GHI×성능비0.92×날씨 가중치/월평균 날씨 가중치 → day.eDay=GHI×M.pvYield×wxSun[w]/ew | 해소(6812f43) |
 | B04 | ui/build.js:3750 | 조력2MW×0.31×&#124;sin(2πt/12.42h)&#124;, 위상 보정 생략 → renOut0=2×TIDAL_FACTOR(.31)×abs(sin(2π(k+3)/12.42)); 위상 생략을 문장에 명시 | 해소(6812f43) |
-| B05 | ui/build.js:3750 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 → 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, 사흘째 .7, 비1.3 | 해소(6812f43) |
+| B05 | ui/build.js:3977 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 → 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, 사흘째 .7, 비1.3 | 해소(6812f43) |
 | B06 | ui/build.js:3751 | 기존 발전소의 연료·용량; 자유수입 총상한/연결점별 상한; 리그 직접수입 없음 → 평택 LNG9.5MW, 자유수입 총2.5/5점=.5MW/점. 당진 석탄26.1MW, 총1.5/3점=.5. 리그 직접0, 월운영 계통상한 수요50% | 해소(6812f43) |
 | B09 | ui/build.js:3754 | 자유: 싼 급전원부터 / 리그: 재생→배터리→도시급전원→이웃거래→자동계통수입 → simulate C.DL은 mc 정렬(석탄·SMR 포함); core는 이웃거래·가격대체 후 gridSupply; 고정 LNG우선 순서 아님 | 해소(6812f43) |
 | B10 | ui/build.js:3746 | 자유 1MW≈실제100MW / 리그 1MW≈실제230MW → 자유 PK.scale / 리그 region.mwScale, H03·H04와 일치 | 해소(6812f43) |
@@ -65,7 +65,7 @@
 
 | ID | 현재 위치 | 화면 문장 | 계산 값·대조 | 상태 |
 |---|---|---|---|---|
-| B05 | ui/build.js:3750 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 | 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, 사흘째 .7, 비1.3 | 해소(6812f43) |
+| B05 | ui/build.js:3977 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 | 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, 사흘째 .7, 비1.3 | 해소(6812f43) |
 | B06 | ui/build.js:3751 | 기존 발전소의 연료·용량; 자유수입 총상한/연결점별 상한; 리그 직접수입 없음 | 평택 LNG9.5MW, 자유수입 총2.5/5점=.5MW/점. 당진 석탄26.1MW, 총1.5/3점=.5. 리그 직접0, 월운영 계통상한 수요50% | 해소(6812f43) |
 | B09 | ui/build.js:3754 | 자유: 싼 급전원부터 / 리그: 재생→배터리→도시급전원→이웃거래→자동계통수입 | simulate C.DL은 mc 정렬(석탄·SMR 포함); core는 이웃거래·가격대체 후 gridSupply; 고정 LNG우선 순서 아님 | 해소(6812f43) |
 | B19 | ui/build.js:302 | 탄소세: 섬 디젤×1.5 / 도시 디젤×1.3125 | 섬(.01+.005)/.01=1.5; 도시(.016+.005)/.016=1.3125. 국제 fuelMul도 반영 | 해소(6812f43) |
@@ -74,21 +74,29 @@
 
 ## 직접 기재·근사 표시의 현재 상태
 
-이전 수치 직접 기재 81행 중 67행은 계산 자료/헬퍼를 읽도록 바뀌었고 **14행이 남는다**: S18·S40·B05·B16·B22·B25·B27·B33·T62~T67. D-87에서 추가된 4행(D02·D05·D06·D07)은 이번 후속에서 해소했다. 석탄 설명의 SMR 기간은 `TECH_DATA.params.smrTurns`, PM 비율은 `params.pmNewFuelW/pmFuelW`, 도구·배치 안내의 반경은 `params.sitingWeights.length−1`을 읽는다. 기본값에서 세 text의 UTF-8 바이트가 작업 시작판과 동일하며, probe는 8달·50%/60%·4칸 변형과 실제 출력 경로를 검사한다. 외부 관측 숫자·연도는 이전처럼 직접 기재 집계에서 제외했다.
+이전 수치 직접 기재 81행 중 67행을 해소한 뒤 남았던 **14행 중 이번 E3에서 11행을 해소하고 3행을 유지**했다. D-87 추가 4행(D02·D05·D06·D07)은 10-26에 별도 해소했다. 외부 관측값·연도·단위 정의는 기존 표 규칙대로 제외한다. 현재 기본값 불일치와 향후 자료 변경 시의 동기화 한계를 구별한다.
 
-| ID | 현재 맞는 값 / 남은 직접 기재 | 후속 방향(현재 불일치와 별개) |
-|---|---|---|
-| S18 | reviewEvery=12는 읽지만 비교4년·48달·×4는 고정 | (a) 비교 임기와 reviewEvery에서 배수 생성 |
-| S40 | 실증1달/턴. 진척4.35·연구소3억은 자료를 읽음 | (a) 단계 기간을 공유할 때 문구도 같은 값 읽기 |
-| B05 | 맑음 사흘째 감소. 평균계수.25는 공유 상수 | (a) sunny>=3 경계와 문구의 사흘을 공유 |
-| B16 | 풍속2배→약8배. 정격 전 구간 근사 | 현재 근사 표시는 있음. 구간 한정을 더하려면 (b) 문구 검토 |
-| B22·B25 | 미공급≤.5%·병원0시간 / 민원≤1·만족≥60 | (a) 미션 판정·표시 기준 공유 |
-| B27 | 디젤·바이오 사전 민원 가동60% 가정 | (a) 기본 runFrac=.6과 표시 공유 |
-| B33 | 예측 기술 저녁17–22시 | (a) 저장 예약 시간대와 표시 공유 |
-| T62~T67 | 비교 기준5배·22→26.9%·40%·35%·12%·90%와 계산 분모 중복 | (a) reference 객체와 문장/비율 생성 경로 합치기 |
-| D02 | 해소: 석탄 설명과 표가 smrTurns를 읽음 | 8달 변형 시 문장·표 추종 |
-| D05 | 해소: pmNewFuelW/pmFuelW의 백분율로 문장 생성 | 50%·60% 변형 시 도구 설명 추종 |
-| D06·D07 | 해소: 공통 siting.text가 sitingWeights.length−1을 읽음 | 4칸 변형 시 두 반경 표현과 도구 설명 추종 |
+| ID | 이번 처리·공유 원장 | 기본 문구 UTF-8 전/후 | 남은 직접 기재·제외 근거 |
+|---|---|---|---|
+| S18 | 유지: `reviewEvery`는 params에서 읽음 | 같음 | 임기 4년·48달·×4는 `league-core.econView` 공개 설명에 있음. 비교 임기 공유값이 없고 core 수정 금지. `speedsHTML`은 원래부터 짧은 ‘주민 평가 간격: 12달’만 출력함 |
+| S40 | 유지: 진척·운영비는 기존 params/RS에서 읽음 | 같음 | 리그 실증 1달/턴은 core의 단계 전환 규칙이며 기간 공유값이 없음. build의 자유모드 `demoLeft=1`과 리그 기간은 별개이므로 연결하지 않음 |
+| B05 | `HYDRO_DRY_DAYS`를 weather의 `sunny >=`·월평균 유량 정규화 지수(`기간−1`)·도움말이 공유 | 같음 | 3일은 기존 ‘사흘’ 표기를 유지하며 다른 값은 ‘n일’로 표시 |
+| B16 | 유지: ‘풍속이 2배면 풍력 출력은 약 8배(v³).’ | 같음 | 2는 비교 예시의 입력값, 8은 세제곱 결과. 같은 입력값을 쓰는 엔진 공유값이 없어 표시용 상수를 새로 만들지 않음. 정격 포화·cutin 보정 때문에 구간 한정 필요성도 유지 |
+| B22 | `MISSION_TARGETS.outageShare/hospitalHours`를 goal·judge가 공유 | 같음 | 기본 0.5%·0시간 유지 |
+| B25 | `MISSION_TARGETS.complaints/satisfaction`을 goal·judge가 공유 | 같음 | 기본 1건·60점 유지 |
+| B27 | `COMPLAINT_RUN_FRAC`를 complaints 기본 가동률·placementAdvice가 공유 | 같음 | 기본 60% 유지; 실제 운전율이 주어지면 그 값을 사용 |
+| B33 | `FORECAST_EVENING.start/end`를 저장 예약 계산·예약 해제·eff가 공유 | 같음 | 계산 구간 [17,23), 화면 17–22시 유지 |
+| T62 | `comparisonReferences.scable.multiplier`를 baseline·scale.v가 공유 | 같음 | 외부 비교값 5배를 게임 연계선 배수와 구별 |
+| T63 | `comparisonReferences.tandem.from/to/unit`를 baseline·scale.v가 공유 | 같음 | 외부 모듈 효율 22→26.9% 유지 |
+| T64 | `comparisonReferences.nbat.increase`를 baseline·scale.v가 공유 | 같음 | 외부 셀 에너지 밀도 증가 40%; 팩 용량과 구별 |
+| T65 | `comparisonReferences.h2store.range/midpoint`에서 baseline, midpoint에서 scale.v 생성 | 같음 | 외부 비교 범위 30~40%·가운데 값 35% 유지 |
+| T66 | `comparisonReferences.h2mix.reduction/grade`를 baseline·scale.v가 공유 | 같음 | 남은 ‘30 vol%’는 NIST 물성 기반 열량 환산(M)의 외부 비교 조건(`params.h2Co2.note` 근거). 게임 혼소량·효과 계수가 아니므로 집계 제외 |
+| T67 | `comparisonReferences.ccu.capture`를 baseline·scale.v가 공유 | 같음 | 외부 포집률 상단 90% 유지 |
+| D02 | 기존 해소: `TECH_DATA.params.smrTurns` | 이번 E3 수정 없음 | 기존 probe의 8달 변형 추종 |
+| D05 | 기존 해소: `pmNewFuelW/pmFuelW` | 이번 E3 수정 없음 | 기존 probe의 50%·60% 변형 추종 |
+| D06·D07 | 기존 해소: `sitingWeights.length−1` | 이번 E3 수정 없음 | 기존 probe의 4칸 변형 추종 |
+
+바이트 비교 명령: `node /Users/yurosung/Projects/kentech-wt/_briefs/lanes/q8/rev9-fix/rev9-e-byte-check.js /Users/yurosung/Projects/kentech-wt/rev8-fix --mutations`. `git show 137e0a9`와 현재 파일을 각각 Node VM에 적재해 **14/14행 같음**을 확인했다. B05는 실제 도움말 전체, S40은 실제 연구 서랍 전체를 비교하므로 주변 문장도 포함한다. 13 지도/모드의 날씨·가동 민원·미션 24경계·자유모드 연구 및 기술 scale 객체가 같고, 예측 기술 도입 전/후 두 7일 급전 결과도 기준판과 같았다. 공유값 13개 변형에서 실제 표시 추종을 확인했다. 스크립트는 저장소 밖에 보관했다. 스크립트 사본은 저장소 밖 작업 기록 폴더에 둔다.
 
 D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 근거 문장이다. 기본값은 일치하지만 `thermalFacts`와 `params.thermalMW/thermalCapex`가 자동 동기화되지는 않는다. 조사 변형에서 `thermalCapex.coal=2000`으로 바꾸면 건설비는15.072464억으로 변하고 건설비 !의1809달러 문장은 그대로였다. 기본값 불일치로 세지 않고 (a) 개선 대상으로 남긴다. 원자료를 바꾸는 편집이라면 출처 문장도 검토해야 한다.
 
@@ -119,7 +127,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | S15 | ui/league.js:369 | 게임 1달 ≈ 현실 약 4.4달 | eduSpeed=4.4; 이주 관성만 가속, 1년 전체 모사 아님 | 예 | 근사 표시 있음 | 소스 대조 |
 | S16 | ui/league-core.js:506 | 주민·기업 이동 시간 ×4.4: 수업 안에서 변화 관찰 | 0.009×4.4=0.0396(주민), 0.005×4.4=0.022(기업); econ.js | 예 | 일치 | 33·42 + probe 공개 items |
 | S17 | ui/league-core.js:507 | 지지율 회복 시간 ×4: 회복 시간을 4배 압축 | approvalMemoryReal=.038 × eduMemory=4 = .152; 회복 시간 압축, 평가 주기와 구별 | 예 | 일치 | 33·42 + probe 공개 items |
-| S18 | ui/league-core.js:508 | 주민 평가는 12턴마다: 현실 임기 4년(48달)을 ×4 압축 | reviewEvery=12; 임기48달/12=4. 비교 문장의4년·48달·×4는 직접 기재 | 아니오 | 일치 | 33·42 + probe 공개 items |
+| S18 | ui/league-core.js:536 | 주민 평가는 12턴마다: 현실 임기 4년(48달)을 ×4 압축 | reviewEvery=12; 임기48달/12=4. 비교4년·48달·×4는 직접 기재 유지(core 수정 금지·비교 임기 공유값 없음) | 아니오 | 일치 | 33·42 + probe 공개 items |
 | S19 | ui/league-core.js:509 | 대기 영향 ×4(교육용·집단 만족만, 이주에는 ×1) | air=80−4×29×PM 증분; 이주는 ×1; econ.js | 예 | 일치 | 33·42 + probe 공개 items |
 | S20 | ui/league-core.js:510 | CBAM 효과 ×5: 교육용 확대 | cbamPhase×0.046×0.154×5; econ.js | 예 | 일치 | 33·42 + probe 공개 items |
 | S21 | ui/league-core.js:511 | 재생 접속 속도 ×27: 수업 기간 안에 접속 | 0.00375×27=0.10125; league-core.js 접속 증가식 | 예 | 일치 | 33·42 + probe 공개 items |
@@ -141,7 +149,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | S37 | ui/league.js:381 | 인허가까지 약 10년 | buildLeadKorea.windPermitYears=10 | 예 | 근사 표시 있음 | 38 + probe 출력 |
 | S38 | ui/league.js:381 | 계획·인허가부터 5~15년 | buildLeadKorea.gridYears=[5,15] | 예 | 일치 | 38 + probe 출력 |
 | S39 | ui/league.js:381 | SMR만 12달, 다른 설비는 즉시 건설·접속 대기 | SMR readyRound=startRound+12; hostLimited 재생은 접속 대기, 신규 석탄·LNG는 공사 대기 없음. 일반 문장의 접속은 배선 필요까지 포괄 | 예 | 일치 | 38 + probe 출력 |
-| S40 | ui/build.js:3668 | 리그 한 달 4.35주 진척·실증 1달; 연구소 3억/달 | roundSteps=4.35, RS.labOpexR=3; 실증1달/턴 후 도입. 실증 기간1은 단계 규칙 직접 표기 | 아니오 | 일치 | 소스 대조 |
+| S40 | ui/build.js:3893 | 리그 한 달 4.35주 진척·실증 1달; 연구소 3억/달 | roundSteps=4.35, RS.labOpexR=3; 실증1달/턴 후 도입. 기간1은 core 단계 규칙 직접 표기 유지(공유 기간값 없음) | 아니오 | 일치 | 소스 대조 |
 | S41 | ui/build.js:3661 | 혼자: 대학 4주 뒤, 연구소 0.3억/주 | RS.uniPrepW=4, labOpexW=.3; researchRun 주차 루프 | 예 | 일치 | 소스 대조 |
 
 ### 점수식
@@ -169,7 +177,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | B02 | ui/build.js:3748 | 도시 태양광 GHI×성능비0.92×날씨 가중치/월평균 날씨 가중치 | day.eDay=GHI×M.pvYield×wxSun[w]/ew | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
 | B03 | ui/build.js:3749 | 육상풍력3미만0·12정격·25초과정지 | M.cutin/rated/cutout=3/12/25; 보간식 (v³−3³)/(12³−3³) | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
 | B04 | ui/build.js:3750 | 조력2MW×0.31×&#124;sin(2πt/12.42h)&#124;, 위상 보정 생략 | renOut0=2×TIDAL_FACTOR(.31)×abs(sin(2π(k+3)/12.42)); 위상 생략을 문장에 명시 | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
-| B05 | ui/build.js:3750 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 | 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, 사흘째 .7, 비1.3 | 아니오 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
+| B05 | ui/build.js:3977 | 소수력 평균계수0.25×월강수보정×날씨유량/월평균유량, 맑은 날 사흘째부터 더 감소, 정격 상한 | 정격×min(1,.25×(0.5+0.5×월강수/연평균강수)×flow/flowMean); 맑음 첫·둘째 .85, HYDRO_DRY_DAYS=3부터 .7, 비1.3 | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 + E3 바이트 동일·공유값 변형 |
 | B06 | ui/build.js:3751 | 기존 발전소의 연료·용량; 자유수입 총상한/연결점별 상한; 리그 직접수입 없음 | 평택 LNG9.5MW, 자유수입 총2.5/5점=.5MW/점. 당진 석탄26.1MW, 총1.5/3점=.5. 리그 직접0, 월운영 계통상한 수요50% | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
 | B07 | ui/build.js:3752 | 디젤3MW(최소1, CO₂ .75)·바이오2MW(총량0, 별도 바이오배출 .1) | BLD.mw와 dispOf min/co2/bioCo2 읽음 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
 | B08 | ui/build.js:3753 | 송전손실 .5%/칸·선2억/칸·하천산×2·바다호수×3 | PK.lossPerHex=.005; lineUnit=2; stepMul 2/3 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
@@ -180,24 +188,24 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | B13 | ui/build.js:3759 | 연습섬 디젤3MW(최소1)·CO₂.75·연료 .01억/MWh | BLD.diesel.mw와 dispOf(diesel) 읽음 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
 | B14 | ui/build.js:3760 | 배터리4MW/16MWh·바닥10%; 효율 B01 참조 | BLD.battery.mw, M.batMWh/socFloor 읽음 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
 | B15 | ui/build.js:3761 | 연습섬 손실1.5%/칸·선 .5억/칸·산×2·바다×3 | PK.lossPerHex 또는 M.lossPerHex; lineUnit·stepMul 읽음 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
-| B16 | ui/build.js:321 | 풍속2배면 출력 약8배 | 도시 cutin 보정·정격포화·정지, 섬 min 포화. ‘약’은 있으나 구간 한정 필요 | 아니오 | 근사 표시 있음 | 소스 대조 |
+| B16 | ui/build.js:330 | 풍속2배면 출력 약8배 | 도시 cutin 보정·정격포화·정지, 섬 min 포화. ‘약’은 있으나 구간 한정 필요 | 아니오 | 근사 표시 있음 | 소스 대조 |
 | B17 | ui/build.js:323 | 전력량=전력×시간 | simulate 1시간 시간단계 누산 | 해당 없음 | 일치 | 소스 대조 |
 | B18 | ui/build.js:329 | 흐린 날 태양광은 맑은 날의 절반 미만(값이 바뀌면 비율 표시) | TIPS0 함수에서 M.wxSun[1]/M.wxSun[0]=.45 계산 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
 | B19 | ui/build.js:302 | 탄소세: 섬 디젤×1.5 / 도시 디젤×1.3125 | 섬(.01+.005)/.01=1.5; 도시(.016+.005)/.016=1.3125. 국제 fuelMul도 반영 | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
 | B20 | ui/build.js:305 | 수요반응 계약·피크감축·일 정책비 일반.05/VPP.025억 | M.drCost=.05×(VPP drCost=.5)=.025; 피크는 peakDemand(off)−peakDemand(on) | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
 | B21 | ui/build.js:309 | 이익공유 .1억/일 | M.shareCost=.1을 읽음 | 예 | 일치 | probe 13모드 실제 출력·값 + 소스 |
-| B22 | ui/build.js:314·923 | 정전 미션 ≤.5%·병원0시간 | unsTotal&lt;=.005×dem AND hosp===0 | 아니오 | 일치 | 소스 대조 |
+| B22 | ui/build.js:323 | 정전 미션 ≤.5%·병원0시간 | MISSION_TARGETS: unsTotal&lt;=outageShare(.005)×dem AND hosp===hospitalHours(0) | 예 | 일치 | 소스 대조 + E3 바이트 동일·공유값 변형 |
 | B23 | ui/build.js:315·924 | 비용 미션 목표 | PK.goals로 계산; R.cost.total과 비교 | 예 | 일치 | 소스 대조 |
 | B24 | ui/build.js:316·925 | CO₂ 미션 하루평균 이하 | PK.goals.co2Day; 도시 생산CO₂와 별도 bio 정보 항목 | 예 | 일치 | 소스 대조 |
-| B25 | ui/build.js:317·926 | 민원≤1·최저만족≥60 | R.cp.issues&lt;=1 AND min(R.sat)&gt;=60 | 아니오 | 일치 | 소스 대조 |
+| B25 | ui/build.js:326 | 민원≤1·최저만족≥60 | MISSION_TARGETS: R.cp.issues&lt;=complaints(1) AND min(R.sat)&gt;=satisfaction(60) | 예 | 일치 | 소스 대조 + E3 바이트 동일·공유값 변형 |
 | B26 | ui/build.js:3626 | 평택 공장5→10MW / 다른5도시 공장 증설 수요 정의 없음 | 평택 dem.base=5/fab2=10; 다른5도시 fab2 없음. 자유모드 버튼은 남지만 잘못된5→10 숫자는 제거 | 예 | 해소(6812f43) | probe 13모드 실제 출력·값 + 소스 |
-| B27 | ui/build.js:3459 | 디젤·바이오 사전민원은 가동60% 가정 / 신규 화력·SMR은 가동과 무관 | complaints(st,null)의 f=.6; 신규 coal/lng/smr는 runFrac 미사용(D07) | 아니오 | 근사 표시 있음 | probe 13모드 실제 출력·값 + 소스 |
+| B27 | ui/build.js:3629 | 디젤·바이오 사전민원은 가동60% 가정 / 신규 화력·SMR은 가동과 무관 | complaints(st,null)의 f=COMPLAINT_RUN_FRAC(.6); 신규 coal/lng/smr는 runFrac 미사용(D07) | 예 | 근사 표시 있음 | probe 13모드 실제 출력·값 + 소스 + E3 바이트 동일·공유값 변형 |
 | B28 | ui/build.js:3467 | 일사배수·숲정리2억 | 타일 sun과 CLEAR_COST=2 | 예 | 일치 | 소스 대조 |
 | B29 | ui/build.js:3468 | 예상송전손실 최단거리 | 실제 전선 경로와 다름 명시; 최소 효율 .4 | 예 | 근사 표시 있음 | 소스 대조 |
 | B30 | ui/build.js:3480 | 대표월 풍속이3 미만이면 거의 발전 안 함 | M.cutin=3은 순간 풍속 기준. 시간별 변동은 가능, ‘거의’로 완화 | 예 | 근사 표시 있음 | 소스 대조 |
 | B31 | ui/build.js:3482 | 축산옆 바이오 연료 감소 | biomassFuel=.012, dispOf.fuel=.02 | 예 | 일치 | 소스 대조 |
 | B32 | ui/build.js:3267 | 설비/피크 정의 | PLAIN_DAY.m+1=7월을 읽음; 통전 설비 정격합/최대수요, 기관부하 제외 | 예 | 일치 | 소스 대조 |
-| B33 | ui/build.js:3666 | 건설 연구 grid·bms·fcst 효과 | gridEffectText/bmsEffectText 읽음; fcst의17–22시 문구는 직접 기재 | 아니오 | 일치 | 소스 대조 |
+| B33 | ui/build.js:257 | 건설 연구 grid·bms·fcst 효과 | gridEffectText/bmsEffectText 읽음; fcst 표시·저장 예약 계산은 FORECAST_EVENING={start:17,end:23} 공유 | 예 | 일치 | 소스 대조 + E3 바이트 동일·공유값 변형 |
 | B34 | ui/build.js:999 | 배터리1대12억의 값어치 | BLD.battery.cost=12(차세대15는 별도) | 예 | 일치 | 소스 대조 |
 | B35 | ui/build.js:3707 | 총비용=건설+연료+정책+연구 | simulate R.cost.total; 리그 시험은 지도 전체 투자라고 표시 | 예 | 일치 | 소스 대조 |
 | B36 | ui/build.js:961·964·968 | 뉴스 버린MWh·수입%·송전손실% | 결과값에서 읽으며 관측 통계가 아닌 모형 결과 | 예 | 일치 | 소스 대조 |
@@ -220,7 +228,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | C02 | ui/league.js:1607 | 도시 지지율 원인 상위 3개 | econ.js; causeCount=3, 단순 가중 차이를 엔진 보고에서 읽음 | 예 | 근사 표시 있음 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C03 | ui/league.js:1715 | 끝 화면 보고된 달별 기여 합·누락 달 제외 | finalCausesHTML sums; 전체 delta와 합 다를 수 있다고 명시 | 예 | 근사 표시 있음 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C04 | ui/league.js:2829 | 정전 시간 정의 | outageHourMinMW=.005, outageHourShare=.02를 표시/판정이 함께 읽음; days×24 상한 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
-| C05 | ui/league.js:3649 | 대표7일×월배수; 계통주제 생산CO₂는 t/일 우선·월합 보조 | 월일수/res.days; 계통주제 생산CO₂=r.co2Prod×mul/days, 그외 월t | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
+| C05 | ui/league.js:1883 | 대표7일×월배수; 모든 주제 ‘생산 CO₂(이번 달)’ t/일·월합 보조 | 월일수/res.days; 모든 주제 생산CO₂=r.co2Prod×mul/days, 소비CO₂ 하루평균 줄은 판정 다음(정전도 생겼어요 줄이 있으면 그 뒤) | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C06 | ui/league.js:2852 | 시험/실제 월 환산·기간 다르면 시험 추정 | 시험 gridFill 포함, 이웃 거래 없음; 비용 fuel+policy만 비교 | 예 | 근사 표시 있음 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C07 | ui/league.js:3611 | CO₂ 선택·계절수요·일수 몫 | co2Attribution 2회 동일 계획 비교; calendar=전월 생산×일수차/대표일수 | 예 | 근사 표시 있음 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C08 | ui/league.js:3623 | 이주 편익·부담 추정 | resTax=.00003, taxStep=.25, svcCost=.00003, svcStep=.25; 고령 추가비는 이 근사에서 제외 | 예 | 근사 표시 있음 | 29-r3·31·34·36 관련 계산 + 소스 |
@@ -231,7 +239,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | C13 | ui/league.js:2934 | 끝 순위 계통 달 합·1년 평균 | gridTotal; 24/36달에서 연평균 표시, 기록 누락 달 제외 | 예 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
 | C14 | ui/league.js:2955 | 계통약속/S6/S7 하루평균 MWh/일 우선 | 31일310→28일280MWh: 월Δ−30, 하루10→10·deltaPerDay=0. D-82 적용(2452286·9c56325·d72c7f8) | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C15 | ui/league.js:3607 | S7 계산 순서에 따라 몫 달라지는 추정 | outageAttribution/Monthly; 순차 반사실, 총차 보존 | 해당 없음 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
-| C16 | ui/league.js:3473 | S7 폭포: 기준+재현+원인→실제 | outageWaterfallHTML; monthly replayOutsideSum=true면 합 밖 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
+| C16 | ui/league.js:3853 | S7 폭포: 기준+재현+원인→실제 | outageWaterfallHTML; monthly replayOutsideSum=true면 합 밖. 표시 합을 최대 나머지로 배분하되 최대/공동최대 판정과 달라지면 개별 반올림; 요약·근거 숫자도 같은 표시값 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C17 | ui/league.js:3606 | 재현 차이는 원인 후보 제외 | stored 조건 손실 진단; 분해 합 밖 표시 분기 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C18 | ui/league.js:2990 | 계통 상한·할증 단서 | outageGridClue reads gridImportShare/Markup; gridSupply와 동일 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C19 | ui/league.js:3008 | 평균 풍속(연결된 육상/해상만) | climate wind10×hub 혹은 wind100; 시간 배수 평균, 위치 보정 제외라고 표시 | 예 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
@@ -239,11 +247,11 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | C21 | ui/league.js:3008 | 하루 재생 공급 변화 | 분모0이면 MWh/일 절대값, 양쪽0이면 공급 없음 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C22 | ui/league.js:3008 | 무더위 일수/비율·28℃ 초과 | M.hotTmax=28℃초과; 기간 다르면 hotDays/days×100 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C23 | ui/league.js:3008 | 단서 순서는 평균 수요·재생 절댓값 | 순서 결정용 근사; 원인 몫은 별도 순차 재계산 | 해당 없음 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
-| C24 | ui/league.js:3551 | 원인 카드 최대 세 개·가장 큼/공동 최대 | 최대3개; 정전최소.05%p; 계통 max(tolPerDay/10,.05MWh/일); 표시 자릿수 공동최대, 판정상수 params 읽음 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
-| C25 | ui/league.js:3509 | 내 예측이 놓친 것·직접 연결 | 근거 종류→단계 연결표; 풍력은 통전 조건 필요 | 해당 없음 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
+| C24 | ui/league.js:3934 | 원인 카드 최대 세 개·가장 큼/공동 최대; 생략은 표시 눈금에서 올린 문턱 ‘이하’ | 최대3개; 정전최소.05%p; 계통 max(tolPerDay/10,.05MWh/일); 표시 자릿수 공동최대, 판정상수 params 읽음 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
+| C25 | ui/league.js:1841 | 내 예측이 놓친 것·직접 연결 | 근거 종류→단계 연결표; 풍력은 통전 조건 필요 | 해당 없음 | 근사 표시 있음 | 30·32·37·39·40 관련 계산 + 소스 |
 | C26 | ui/league.js:332 | 접속 대기·버린 재생 전기 | grid entries allocation; 월/대표기간 변환, solarMul 사건은 별도 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
 | C27 | ui/league.js:332 | 출력제어 사건 태양광 감소 | 현재 .75, x=1일 때 −25%; VPP curtailP×.8과 별개 | 예 | 일치 | 30·32·37·39·40 관련 계산 + 소스 |
-| C28 | ui/league.js:3679 | 장부 달 초+수입−투자−운영=달 말 | r.ledger 동일; 이미 월 값이므로 재환산 안 함 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
+| C28 | ui/league.js:4079 | 장부 ‘달 초 + 수입 − 신규 투자 − 연료·운영비 = 달 말’; 도시 서랍 ‘기타 운영’ | r.ledger 동일; 이미 월 값이므로 재환산 안 함 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C29 | ui/league.js:392 | 채무 주의25%·위기40% | 현재 .55/2.2=.25, .88/2.2=.4; engine debtCrisisRatio=.4 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C30 | ui/econ.js:632; ui/league.js:448 | 국가 지원금: 지급 월마다 연액의1/4 | subsidyPayMonths=[1,4,7,10]; 연액/payMonths.length; 설명도 같은 자료 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
 | C31 | ui/econ.js:641 | 국제 사건 이름·기간·설명 | intlStep started의 dur/text, 900 이상은 기간표시 생략 | 예 | 일치 | 29-r3·31·34·36 관련 계산 + 소스 |
@@ -410,12 +418,12 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | T59 | ui/tech-data.js:167; ui/league.js:742 | vpp 유레카: 수요반응 정책 3달 운영 | core.eurekaMet(ui/league-core.js:274~): rs.drMonths&gt;=3 | 예 | 일치 | 10·33·34·42 + probe 값/출력 |
 | T60 | ui/tech-data.js:167; ui/league.js:742 | re100 유레카: 재생 비중 30% 이상 운영 | core.eurekaMet(ui/league-core.js:274~): renPct&gt;=30 | 예 | 일치 | 10·33·34·42 + probe 값/출력 |
 | T61 | ui/tech-data.js:105; ui/league.js:753 | hvdc 교육용 배속·비교 기준: 현실 비교값 없음 · 국내 사례의 목적은 계통 제약 해소 | scale.v=null; 비교 원자료 null; 증가폭 비율은 엔진 효과와 별도 | 해당 없음 | 근사 표시 있음 | probe scale + 소스 |
-| T62 | ui/tech-data.js:105; ui/league.js:753 | scable 교육용 배속·비교 기준: 송전 용량 증가폭: 기존의 5배 | scale.v=0.125; 비교 원자료 {"multiplier":5}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
-| T63 | ui/tech-data.js:105; ui/league.js:753 | tandem 교육용 배속·비교 기준: 모듈 효율 증가폭: 일반 22% → 탠덤 26.9% | scale.v=0.8979591836734695; 비교 원자료 {"from":22,"to":26.9,"unit":"%"}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
-| T64 | ui/tech-data.js:105; ui/league.js:753 | nbat 교육용 배속·비교 기준: 셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요) | scale.v=0.625; 비교 원자료 {"increase":0.4}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
-| T65 | ui/tech-data.js:105; ui/league.js:753 | h2store 교육용 배속·비교 기준: 왕복 효율 30~40%의 가운데 값 35% | scale.v=1; 비교 원자료 {"range":[0.3,0.4],"midpoint":0.35}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
-| T66 | ui/tech-data.js:105; ui/league.js:753 | h2mix 교육용 배속·비교 기준: 수소 30 vol% 혼소의 열량 환산 CO₂ 감소 12%(M) | scale.v=1; 비교 원자료 {"reduction":0.12,"grade":"M"}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
-| T67 | ui/tech-data.js:105; ui/league.js:753 | ccu 교육용 배속·비교 기준: 포집률 상단 90% | scale.v=0.6666666666666666; 비교 원자료 {"capture":0.9}; 증가폭 비율은 엔진 효과와 별도 | 아니오 | 근사 표시 있음 | probe scale + 소스 |
+| T62 | ui/tech-data.js:112 | scable 교육용 배속·비교 기준: 송전 용량 증가폭: 기존의 5배 | scale.v=0.125; 비교 원자료 {"multiplier":5}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
+| T63 | ui/tech-data.js:112 | tandem 교육용 배속·비교 기준: 모듈 효율 증가폭: 일반 22% → 탠덤 26.9% | scale.v=0.8979591836734695; 비교 원자료 {"from":22,"to":26.9,"unit":"%"}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
+| T64 | ui/tech-data.js:112 | nbat 교육용 배속·비교 기준: 셀 에너지 밀도 증가폭 40%(팩 용량과 직접 같지 않아요) | scale.v=0.625; 비교 원자료 {"increase":0.4}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
+| T65 | ui/tech-data.js:112 | h2store 교육용 배속·비교 기준: 왕복 효율 30~40%의 가운데 값 35% | scale.v=1; 비교 원자료 {"range":[0.3,0.4],"midpoint":0.35}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
+| T66 | ui/tech-data.js:112 | h2mix 교육용 배속·비교 기준: 수소 30 vol% 혼소의 열량 환산 CO₂ 감소 12%(M) | scale.v=1; 비교 원자료 {"reduction":0.12,"grade":"M"}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
+| T67 | ui/tech-data.js:112 | ccu 교육용 배속·비교 기준: 포집률 상단 90% | scale.v=0.6666666666666666; 비교 원자료 {"capture":0.9}; baseline·비율 분모는 comparisonReferences 공유; 비율은 엔진 효과와 별도 | 예 | 근사 표시 있음 | probe scale + 소스 + E3 바이트 동일·공유값 변형 |
 | T68 | ui/tech-data.js:18; ui/league.js:764 | HVDC 출처 note: 용량×1.5·현실 비교값 없음 | hvdcCap=1.5, loss=.01(기본과 같음), note 직접 출력 | 예 | 일치 | 소스 대조 |
 | T69 | ui/tech-data.js:163; ui/league.js:3727 | 예측·VPP 있으면 폭염 피해 줄음 | fcst 저장 예약; vpp는 demandMul=1+.12×.7=1.084; fcst는 수요 자체를 줄이지 않음 | 해당 없음 | 일치 | 소스 대조 |
 | T70 | ui/tech-data.js:163; ui/league.js:3727 | 초전도 있으면 태풍 연계선 단절 막음 | core: 태풍 단독 원인·해당 선 끝 도입 시 shield | 해당 없음 | 일치 | 소스 대조 |
@@ -446,7 +454,7 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | G16 | ui/league.js:667; ui/econ.js:544 | out 집단 기여 이름·점수 | outMin=.5,outMax=1.2 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
 | G17 | ui/league.js:667; ui/econ.js:544 | ren 집단 기여 이름·점수 | reTarget=50, renS .15 지연 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
 | G18 | ui/league.js:667; ui/econ.js:544 | co2 집단 기여 이름·점수 | carbonScore(C,data) | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
-| G19 | ui/league.js:667; ui/econ.js:544 | 지지율 전체 변화 이유 | approvalChangeCause(causes[0]); 집단 비중×회복(.152)/하락(1)×기여차 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
+| G19 | ui/league.js:844 | 지지율 전체 변화 이유; ‘민원(입지 m개 포함)이 깎는 몫: 지금 now%p · 다 반영되면 final%p’(혼합) | approvalChangeCause(causes[0]); 집단 비중×회복(.152)/하락(1)×기여차. 민원 몫은 Σ(shares[g]×groupOwnLag[g].complaint)와 Σ(shares[g]×groupOwn[g].complaint)를 구별하며 이미 반영된 지지 민감도를 다시 곱하지 않음 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
 | G20 | ui/league.js:667; ui/econ.js:544 | 최저 만족 집단 불만 | lowestGroupDissatisfaction; 월 변화와 별개, 모형 추정 | 예 | 근사 표시 있음 | 29-r3·34 + probe 가중합/원인키 + 소스 |
 | G21 | ui/league.js:667; ui/econ.js:544 | 집단 비중·만족 | groupKeys 6개 각각 c.groups[k], share, 0~100 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
 | G22 | ui/league.js:667; ui/econ.js:544 | 지지율 평가선 | approvalRelative=(현재−시작)−참가도시 평균변화; approvalDrop=10 | 예 | 일치 | 29-r3·34 + probe 가중합/원인키 + 소스 |
@@ -501,8 +509,41 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | D12 | 원인 분해 | ui/econ-data.js disasterFacts.repair; ui/league.js cityHTML | 보수비 !: 사건 달에 한 번, 크기에 비례, 대응은 호우 보수비만 감소, 금액은 G | repairOf는 월별 사건의 repairParam×x를 합산. 호우 inspect ×.8, 폭염 dr은 보수비 불변. fiscal.exp.repair를 도시 세출과 !에 표시 | 예 | 일치 | probe D12: 크기1/2·대응 비교·공개 상태→도시 세출 ! |
 | D13 | 원인 분해 | ui/econ-data.js disasterFacts.grant; ui/league.js syncMoney·grantMoneyNote·evCards | 남은 특별교부세 n억: 새 설비·선로·재난 대응→월말 재난 보수비 우선→잔액 소멸; 돈 칩·사건 안내 | grantOf의 left를 돈 칩·!에 표시. disasterSettlementOf.repairUsed=min(left,교부대상 보수비), expired=left−repairUsed. 호우 카드도 사용 순서·소멸 안내 | 예 | 일치 | probe D13: 실제 HUD 클로저·사건 카드·정산 대조 |
 | G48 | 집단 만족 이유 | ui/econ-data.js groupOwnCopy; ui/league.js groupCauseHTML | 민원 막대 최종 반영 n점 · 현재 반영 m점, 낭독도 같은 값 | 월 정산 groupOwn(지연 전 목표)·groupOwnLag(현재 groupContrib 반올림)를 구분. 목표0·잔여−1.52점도 표시 | 예 | 일치 | probe G48: 실제 monthStep→publicView→renderer, 회복 지연·0목표 |
-| G49 | 집단 만족 이유 | ui/econ-data.js groupOwnCopy; ui/econ.js groupTargets; ui/league.js groupCauseHTML | 민원(입지 n건) / 민원(n건 중 입지 m건) / 민원(n건) | 집단별 complaintGroups 해당 cpList 길이와 siting 부분집합. 만족 목표 감점·민원 건수는 별개 | 예 | 일치 | probe G49: 입지1·혼합2중1·일반1건, 세 실제 월 정산 |
+| G49 | 집단 만족 이유 | ui/econ-data.js groupOwnCopy; ui/econ.js groupTargets; ui/league.js groupCauseHTML | 민원(입지 n건) / 민원 요인 n개 중 입지 m개 · 상한 cap점[에 걸림] / 민원(n건); 입지만·일반은 상한에 걸리면 ‘ · 상한 cap점에 걸림’ 추가 | 집단별 complaintGroups 해당 cpList 길이와 siting 부분집합. cap=params.complaintCap(20); 혼합은 REV9_COPY K8a/K8b, 입지만·일반은 groupOwnCopy 및 K8cap. 만족 목표 감점·민원 건수는 별개 | 예 | 일치 | 56 probe G49: 입지1·혼합2중1·일반1건 및 상한 도달, 실제 월 정산·문구표 조립 |
 | G50 | 집단 만족 이유 | ui/econ.js groupTargets; ui/league.js groupCauseHTML | 전력 신뢰와 병원 정전을 별도 막대로 표시 | 공통 rel에서 w.rel×hospRel/Σw를 빼고 병원 전용 항에 한 번 넣음. 노년은 seniorHosp×min(1,hospH/hospPenHours) 추가. 총량 유지 | 예 | 일치 | probe G50: 실제 공개 hospRel·공통 막대·병원 전용 항 산술 대조 |
+
+## rev8·rev9 현재 화면 문구 대조 (2026-10-28)
+
+아래는 기존 ID에 연결한 후속 문구·조건 대조다. UI 배치만 바뀐 9001423·6628ef9의 이름표·끝 화면 DOM/격자 변경은 설명 항목 수를 늘리지 않는다. 19d4b17의 민원 혼합 문구는 137e0a9의 K8로 대체됐으며, 사용하지 않는 REV8_COPY.M9Mixed를 현재 화면으로 기록하지 않는다.
+
+| 기존 ID/경로 | 현재 화면 문장(변수는 중괄호) | 현재 계산·조건/근거 |
+|---|---|---|
+| G49 / groupCauseHTML | 민원 요인 {n}개 중 입지 {m}개 · 상한 {cap}점 / 민원 요인 {n}개 중 입지 {m}개 · 상한 {cap}점에 걸림 | REV9_COPY K8a/K8b; 목표 민원 감점 절댓값≥complaintCap이면 ‘에 걸림’. 입지만·일반은 기존 건수 문구에 K8cap. 56 probe 실제 출력 |
+| G19 / complaintImpactText | 민원(입지 {m}개)이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p / 민원(입지 {m}개 포함)이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p / 민원이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p | K7a/b/c, now=Σ(shares×groupOwnLag.complaint), final=Σ(shares×groupOwn.complaint); 건수가 아닌 %p. 55-rev9 |
+| C05 / S6 | 생산 CO₂(이번 달) {n} t/일 / 소비 CO₂(이웃·계통에서 받은 전기 포함) 하루 평균 {n} t/일 | 모든 주제에서 일평균 우선·이번 달 합 보조. 소비 배출에는 계통 수입 포함. 9001423·137e0a9, 55-rev9 |
+| C14·C25 / promiseResultHTML | {근거} {근거화살표} → {대상} {예상화살표} 쪽 예상 · 실제 {대상} {실제화살표} → 근거가 가리킨 쪽과 같음(게임 안 단순 비교) / …반대(게임 안 단순 비교) / 실제 {대상} '같음' 범위 안 → 근거 쪽으로 안 움직임(게임 안 단순 비교) | K2/K3/K4. 근거 변화 방향과 부호를 곱한 예상 방향 구별. 현금·계통·정전 대상별 사용. 55-rev9 |
+| C14 / 현금 판정 | 판정 계산: 운영 전 대비 Δ {Δ}억 · '같음' 범위 ±{tol}억 미만(게임 비교 기준) | K5, tol=promiseSameDelta를 소수 둘째 자리 표시. 운영 전 현금과 월말 실제 현금 비교. 55-rev9 |
+| C16·C24 / S7 | 5%({실제}, 표시 눈금으로 올려 {올림}) / 5%({값}) | 실제 문턱과 올림 문턱을 구별. 생략 안내는 같은 표시 눈금으로 ‘이하’; 총합·최대 판정과 표시의 관계는 위 C16. 19d4b17·9001423·137e0a9, 55-rev9 |
+| C28 / 장부·지원금 | 사건 지원금(특별교부세 포함) / 기타 운영 / 연료·운영비 / 보수비에 쓴 교부세 {n}억 (보수비 전체 {m}억) | 지원금 수입·일반 운영비·월 운영비를 해당 표에 구별. 보수비 없는 사건은 ‘남으면 사라져요’; 전체 보수비>0일 때만 전체 금액 괄호. 19d4b17, 56 probe D12 |
+| C26 / gridAdvice | 이번 달 접속 가능 {available} MW · 앞선 대기 {ahead} MW · 월 {monthly} MW 처리로 {months}달 대기 | 대기≥2달이고 상한·처리량으로 기간 확정 가능할 때. 확정 불가 시 기존 대기 설명. 137e0a9, 55-rev9 |
+| D09~D11 / 시험 안내 | 시험에는 호우 때 줄어드는 태양광 출력과 월말 공공시설 보수비도 들어 있지 않아요. / 시험에는 월말 공공시설 보수비가 들어 있지 않아요. 우리 도시엔 태양광이 없어 호우로 출력이 줄지는 않아요. | K13a/b; 일반 태양광 보유 여부에 따라 안내 분기. 폭염은 LNG·일반 태양광 보유분만 출력 감소 설명. 55-rev9 |
+
+## 현재 기준판에서 실행한 검증 (2026-10-28)
+
+실행 환경: macOS workspace-write 셸, Node `v24.21.0`, pnpm `11.25.0`. package.json·lockfile·Node 버전 지정 파일 없음. 브라우저·네트워크·커밋은 요청에 따라 실행하지 않았다. 기존 E1·E2 검사 파일 변경은 다른 세션 소유이며 이번 작업에서 수정하지 않았다.
+
+| 명령 | 결과 |
+|---|---|
+| `node --check ui/build.js` | 종료 0 |
+| `node --check ui/tech-data.js` | 종료 0 |
+| `node tests/league/review/56-e-audit.js` | 1009단언 / 실패 0, 지도/모드 13·기술 15·사건 17·집단 6 |
+| `node tests/league/review/33-model-explanations.js` | 50검사 / 실패 0 |
+| `node tests/league/review/34-model-copy.js` | 174검사 / 실패 0 |
+| `node tests/league/review/55-rev9.js` | 38단언 / 실패 0 |
+| `node tests/league/review/42-explain-model.js` (추가 관련 검사) | 415단언 / 실패 0 |
+| 저장소 밖 바이트 비교·공유값 변형 스크립트 | 14/14행 같음, 13변형 표시 추종, 13모드 계산·미션 24경계 및 7일 예측 급전 결과 동일 |
+
+아래 10-25 검증 기록은 당시 실행 결과를 보존한다. 현재 실행 결과·현재 소스 해시는 이 절과 아래 현재 기준 소스 해시를 따른다. 화면 배치·터치·브라우저 실기와 외부 출처 원문은 미검증이며 Node VM 문자열 대조와 구별한다.
 
 ## 기준판에서 실행한 검증 (2026-10-25 기록)
 
@@ -546,24 +587,24 @@ probe는 10-25 독립 검토 반영 뒤 **기본이 현재 작업 파일**이고
 - minor: V60이 석탄 연료비 상승을 빠뜨림(`league-core.js:904` coal fuelMul^0.6) → 아르곤 문구 'LNG 연료비가 가장 크게 오르고 디젤·석탄도 올라요'로 고치고 probe 단언 추가. 이 행은 처음 판에서 '일치'로 잘못 판정했던 것이라 신규 불일치 1건·해소 1건으로 센다.
 - 참고: T07의 20MWh는 명판 용량이며 리그 실제 저장 상한(essCap 0.9)은 표에 덧붙임.
 
-## 판본과 동시 작업
+## 판본과 동시 작업 — 과거 이력 및 현재 기준
 
 검사·대조 시작 HEAD는186e182였다. 문서 작성 중 다른 작업의 **eb1f88758a6fedd3be3fbc0b94b38034ed8fbaa0**이 들어왔다. 차이는 `ui/econ-data.js:219`의 한국 공사기간 O* 사유와 `ui/league-data.js:81`의 탈석탄 출처 추가·등급 O 승격·gradeNote 두 줄뿐이다. 계산값·why·text·행수는 바뀌지 않았다. 이 커밋은 이번 감사가 작성하거나 되돌린 것이 아니다.
 
-기준을 섞지 않도록 표·해시는 **186e182**로 유지하고, 최종 probe는 Git에서 그 소스를 직접 읽어831/0을 확인했다. 186e182의 탈석탄 사건 등급은 O*이며 eb1f887의 O 승격은 이번 전수 표의 기준 밖이다. 문서·probe 외 기존 파일을 고치지 않았다.
+당시에는 표·해시를 186e182로 유지하고 보강 전 probe 831/0을 기록했다. 현재는 **137e0a9 + E 변경**으로 기준판·해시·문구 열을 갱신했다. 탈석탄 사건의 등급 O 승격도 현재 자료에 포함되며 외부 원문 사실성을 새로 검증한 것은 아니다. 현재 probe는 56번 진입점에서 작업 파일을 읽어 1009/0을 확인했다.
 
-## 기준 소스 해시(186e182)
+## 현재 기준 소스 해시(137e0a9 + E 변경)
 
 | 파일 | SHA-256 |
 |---|---|
 | ui/build-maps.js | 33a54aed6c537fc5624f172bcd7223f922fe31e5d9f8600e7f5020b81b3e7d04 |
-| ui/tech-data.js | 5616c35e2bebdcb138d7afea32227db6a5efb6ec193508297e3968459dcff660 |
-| ui/build.js | c7c78b76bba6e167fc4494bee1cd3b5d6f174f1ac36848f9c3270caed24e94a8 |
-| ui/econ-data.js | 24a384cc273bf4eb97a34fb474be2e33e2c2dfbdd00094071f6ec48daa442bf1 |
-| ui/econ.js | 8c9b69ab2c89982642a1f7bd394048592d95bd60996321c5d4ff27ce13b2403a |
-| ui/league-data.js | daa52f25ebeda6d7a5bdbc966b9b9a1964e76b78f1dd0e8ee478c87db91473e0 |
-| ui/league-core.js | b63a4ab08d206bd79a62e3643f4b8d0ff3a62330ca2bfea4647b264d04d16691 |
-| ui/league.js | 2f46e85fbf411823f1cdf36f2ad595d65d9a333699f5a8c5e98cd6f88c01efe7 |
+| ui/tech-data.js | 29779bfcad364d607db8478f72b390fdacea37d7294a492fc892c37b1f83ba7d |
+| ui/build.js | 2117f2204ef7a03ab636962ae41d690ff9259e687f09ee2a9631027bcbd861c9 |
+| ui/econ-data.js | cb4d9ef9b28cdf9bed1de8f42e058058556acea90607732eb2ea02bfb8eb7d85 |
+| ui/econ.js | 07d8760da006deac93d2b5e7878eb2d1657e4ba428a86ab5272688f1a375bf4a |
+| ui/league-data.js | e5094ea280cc11134159ca93bd8d790b6c0352218bc232a5e54cc26b6ee8854e |
+| ui/league-core.js | 9dcdccbbdda9e31af912ee672b0a30e795d034657699f50d200cf1d973a55797 |
+| ui/league.js | 733d447e7521da83722df2a4fbaff18447929b3e39df4cad1c6716290e7135c3 |
 
 ## 이전 판 — 2026-10-21 원문 보존
 
@@ -1148,12 +1189,12 @@ probe는 10-25 독립 검토 반영 뒤 **기본이 현재 작업 파일**이고
 |---|---|
 | ui/build-maps.js | 894a732e45d6c2087a7d51e30a29ab33e801ca8844e5b9bbeb0fc779a6ccc1b7 |
 | ui/tech-data.js | 8ff4ffc3c5218f16c64df2b393ba78c0456ab7637ea13520188221dc4460d7e1 |
-| ui/build.js | cb2791cf2ff021b69c29ba67420ee4ba77fbd882d80ce353d21096fac12ba854 |
+| ui/build.js | 2117f2204ef7a03ab636962ae41d690ff9259e687f09ee2a9631027bcbd861c9 |
 | ui/econ-data.js | af20f6f26df08d10fbc135ef7547bbbc9f1d8a113daa0d14023cf407378a9ef1 |
 | ui/econ.js | 9bdb56b706b55e7a2be115bf5bc4a73bb97d64adc03f9c716d398cf56985c66e |
 | ui/league-data.js | a06e018370f7c9ea6f76ad6197da1519258caffab0d917b57de5ac2bc0982583 |
 | ui/league-core.js | 26769d1f86d9b975f11caa01eddeeac4e20e0893ae2b91fe2e2ef525cc52f99e |
-| ui/league.js | aa4d694b600fbea0d6a1041434156b9a49f18f8db62ae8cfca6db04b2c8a7e4a |
+| ui/league.js | 733d447e7521da83722df2a4fbaff18447929b3e39df4cad1c6716290e7135c3 |
 
 ## 재현용 VM 검산(파일 생성 없음)
 
