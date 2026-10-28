@@ -93,7 +93,7 @@ test('S8 확정된 계통 주제는 하루 평균 1.1 MWh/일 칩·현금 칩 �
   const html = api.reasonStartsHTML(S);
   assert.ok(html.includes('이번 달 계통이 메운 전기가 평균 1.1 MWh/일이어서 ')); // 총괄 10-23 아르곤 문구(UX 갈래)
   assert.ok(html.includes('다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 '));
-  assert.ok(html.includes('남은 돈 ') && !html.includes('정전'));
+  assert.ok(html.includes('남은 돈(빚 한도 포함) ') && !html.includes('정전')); // rev9 R14 K10b
 });
 test('S8 계통 값 누락이면 정전 칩 유지', () => {
   const r = S.results[1].team[id], old = r.isolated; delete r.isolated;
@@ -112,9 +112,9 @@ test('S8 계통 하루 평균은 소수 한 자리까지 표시', () => {
   try { assert.ok(api.reasonStartsHTML(S).includes('이번 달 계통이 메운 전기가 평균 1.2 MWh/일이어서 ')); } // 총괄 10-23 아르곤 문구(UX 갈래)
   finally { r.isolated = old; }
 });
-test('정전 주제 S6에는 소비 CO₂ 한 줄 없음·S8 정전 칩 유지', () => {
+test('정전 주제 S6에도 소비 CO₂ 한 줄(rev9 R9)·S8 정전 칩 유지', () => {
   const n = note('uns');
-  assert.ok(!api.promiseResultHTML(S, n).includes('lg-s6-co2cons'));
+  assert.ok(api.promiseResultHTML(S, n).includes('lg-s6-co2cons')); // rev9 R9: 모든 주제
   assert.ok(api.reasonStartsHTML(S).includes('이번 달 정전 0%라서 '));
 });
 // D-82 결정 1·화면 지시서: 음수·소수 변화도 월 길이와 분리해 표시한다.

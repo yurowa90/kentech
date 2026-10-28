@@ -1,5 +1,5 @@
 'use strict';
-// 기대값 출처: _briefs/lanes/q8/rev8-fix/spec-A.md A1~A6만.
+// 기대값 출처: rev8-fix/spec-A.md A1~A6 및 rev9-fix/spec.md R14·R15·R18.
 // 잡는 회귀: choice 직접 칭찬/연결, 0·0의 grid 주제, 현금 기준 누락,
 // 불가능한 down 저장, 0에서 감소를 요구하는 칩, 폭염 감산·교부세 누락.
 // 41/32번 VM 방식. 원본 ui/** 수정 없음. 브라우저·네트워크 실행 없음.
@@ -8,6 +8,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
 const ROOT = path.resolve(__dirname, '../../..');
+// rev9 R14: --head는 동시 수정 중인 ui 작업판을 읽지 않는 검증 경로.
+const { execFileSync } = require('node:child_process');
+const readUI = name => process.argv.includes('--head')
+  ? execFileSync('git', ['show', `HEAD:ui/${name}.js`], { cwd: ROOT, encoding: 'utf8' })
+  : fs.readFileSync(name === 'league' && process.argv[2] || path.join(ROOT, `ui/${name}.js`), 'utf8');
 const copy = x => x === undefined ? undefined : structuredClone(x);
 const decode = s => String(s).replace(/&(?:amp|lt|gt|quot|#39|#x27);/g,
   x => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#x27;': "'" }[x]));
@@ -95,8 +100,8 @@ ctx.window = ctx;
 let bootError;
 try {
   for (const name of ['build-maps', 'tech-data', 'build', 'econ-data', 'econ', 'league-data', 'league-core'])
-    vm.runInContext(fs.readFileSync(path.join(ROOT, `ui/${name}.js`), 'utf8'), ctx, { filename: name });
-  const source = fs.readFileSync(process.argv[2] || path.join(ROOT, 'ui/league.js'), 'utf8');
+    vm.runInContext(readUI(name), ctx, { filename: name });
+  const source = readUI('league');
   console.log('implementation sha256 ' + require('node:crypto').createHash('sha256').update(source).digest('hex'));
   if (source.split('let L = null;').length !== 2 || source.split('KCP.league = {').length !== 2)
     blocked('기준판 VM 연결점이 없어 화면 함수 실행 불가');
@@ -255,7 +260,8 @@ for (const [before, after] of [[-10.04, -7.81], [3.2, 1.09], [3.2, 3.2]])
   test(`A1 현금 기준·판정 ${before}→${after}`, () => {
     const { S, n } = setup({ cash: before, note: { evidence: { key: 'fuel', text: 'LNG 지수', value: 100 }, pred: { cash: after > before ? 'up' : after < before ? 'down' : 'same' } } });
     const baseline = element(api('predictionHTML')(S), '#lg-promise-baseline').textContent;
-    assert.deepEqual(cashTokens(baseline), [cashText(before)]);
+    // rev9 R15: C1 뒤 건설비 꼬리는 별도 숫자이므로 기준 현금만 첫 토큰으로 검사.
+    assert.equal(cashTokens(baseline)[0], cashText(before));
     for (const word of ['빚 한도', '남은 돈']) assert.ok(baseline.includes(word));
     assert.ok(!baseline.includes(`+${cashText(before)}`));
     if (before < 0) assert.ok(!baseline.includes('-10.04'));
@@ -278,11 +284,17 @@ for (const row of [{ topic: 'cash', cash: -7.81, before: -10.04 },
   test(`A4 S8 ${row.topic} 칩`, () => {
     const { S } = setup({ ...row, phase: 'review' });
     if (row.before !== undefined) S.econ.before[id].cash = row.before;
+    // rev9 R14: 공개 left가 빠진 합성 상태는 쓰지 않는다.
+    S.teams[id].left = 12.34;
     const chips = htmlTree(api('reasonStartsHTML')(S)).querySelectorAll('[data-reason-start]');
     assert.equal(chips.length, 3);
     assert.ok(!chips[1].textContent.includes('줄어드는지'));
     assert.ok(chips.every(x => x.getAttribute('data-reason-start').endsWith(' ')), '입력으로 돌아가는 칩 끝 공백');
-    assert.ok(chips[2].textContent.includes('남은 돈'));
+    // rev9 R14: 셋째 칩과 입력값은 K10a/K10b의 주제별 문구·끝 공백까지 일치.
+    const third = row.topic === 'cash' ? `월말 현금 ${cashText(row.cash)}이라 ` :
+      `남은 돈(빚 한도 포함) ${S.teams[id].left.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}억이라 `;
+    assert.equal(chips[2].textContent, third);
+    assert.equal(chips[2].getAttribute('data-reason-start'), third);
     if (row.topic === 'cash') {
       assert.ok(chips[0].textContent.includes('+2.23억'));
       assert.ok(chips[1].textContent.includes('월말 현금'));
@@ -416,7 +428,9 @@ test('A6 S3 폭염 예보 안내에는 확정 감산 숫자 없음', () => {
 });
 for (const repair of [0, 2.35]) test(`A6 끝 화면 교부세·보수비 ${repair}`, () => {
   const { S, months } = setup({ phase: 'end', round: 7 });
-  const grant = { awarded: 10.12, planUsed: 3.21, repairUsed: repair ? 1.23 : 0, expired: repair ? 5.68 : 6.91 };
+  // rev9 R18: C13/C13NoRepair는 S6의 fmt(2), 정수에 .00을 강제하지 않는다.
+  const grantText = v => `${v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('ko-KR', {maximumFractionDigits:2})}억`;
+  const grant = { awarded: 10, planUsed: 3.2, repairUsed: repair ? 1.23 : 0, expired: repair ? 5.68 : 6.91 };
   S.results = [{ ...S.rounds[6], round: 7, days: 7, events: [{ id: 'heatwave_peak', round: 7, x: 1.6 }],
     team: { [id]: { disasterGrant: grant, cost: { repair } } } }];
   months[7] = {}; // 약속 없는 달도 결과 교부세 줄이 있어야 한다.
@@ -425,12 +439,12 @@ for (const repair of [0, 2.35]) test(`A6 끝 화면 교부세·보수비 ${repai
   assert.equal(rows.length, 1, '교부세가 있는 달당 한 줄');
   const text = rows[0].textContent;
   const amounts = repair ? [grant.awarded, grant.planUsed, grant.repairUsed, grant.expired, repair] : [grant.awarded, grant.planUsed, grant.expired];
-  assert.deepEqual(cashTokens(text), amounts.map(cashText), '지급·계획·보수·소멸·전체 보수비 순서와 숫자');
+  assert.deepEqual(text.match(/[+−-]?\d[\d,]*(?:\.\d{1,2})?억/g), amounts.map(grantText), '지급·계획·보수·소멸·전체 보수비 순서와 숫자');
   assert.ok(text.includes(C.eventDef(C.regionOf(S.region), 'heatwave_peak').name), '사건 이름');
-  for (const field of ['awarded', 'planUsed', 'expired']) assert.ok(text.includes(cashText(grant[field])), `${field} 숫자`);
+  for (const field of ['awarded', 'planUsed', 'expired']) assert.ok(text.includes(grantText(grant[field])), `${field} 숫자`);
   if (repair) {
     assert.ok(text.includes('보수비'));
-    assert.ok(text.includes(cashText(grant.repairUsed)) && text.includes(cashText(repair)));
+    assert.ok(text.includes(grantText(grant.repairUsed)) && text.includes(grantText(repair)));
   } else assert.ok(!text.includes('보수비'), '보수비 0 구절 생략');
 });
 console.log(`assertions ${assertions} failures ${failures}`);

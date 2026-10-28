@@ -158,7 +158,7 @@ function inspect(h, E, report, label, out, options = {}) {
       out.check(tag + '/target-sum', () => near(bars.reduce((n, b) => n + b.value, 0), target.tg[group], .1));
       for (const key of OWN) {
         const found = bars.filter(b => b.label === LABELS[key] || b.label?.startsWith(LABELS[key] + '(') ||
-          key === 'complaint' && /^민원 항목 \d+개\(입지 \d+개\)$/.test(b.label)); // spec-C §M9: 혼합 민원의 전체 라벨도 민원 막대로 찾는다.
+          key === 'complaint' && /^민원 요인 \d+개 중 입지 \d+개 · 상한 \d+(?:\.\d+)?점(?:에 걸림)?$/.test(b.label)); // rev9 R12: K8a/K8b 혼합 민원 라벨도 민원 막대로 찾는다.
         const value = expected[key] || 0, lag = expectedLag[key] || 0;
         out.check(tag + '/bar/' + key, () => {
           assert.equal(found.length, value === 0 && lag === 0 ? 0 : 1, key + ' 막대 개수');
@@ -172,8 +172,10 @@ function inspect(h, E, report, label, out, options = {}) {
             let termLabel = LABELS[key];
             if (key === 'complaint' && expected.complaintN) {
               const n = expected.complaintN, m = expected.sitingN;
-              termLabel = m && m !== n ? `민원 항목 ${n}개(입지 ${m}개)` :
-                `${termLabel}(${m === n ? words.sitingN.replace('{n}', m) : words.complaintN.replace('{n}', n)})`; // spec-C §M9: 혼합만 확정 문구, 입지만·입지 없음은 기존 꼴.
+              // rev9 R12: 상한은 params, 걸림은 원값 절댓값으로 독립 판정.
+              const cap = D.params.complaintCap.v, capped = Math.abs(value) >= cap - 1e-9;
+              termLabel = m && m !== n ? `민원 요인 ${n}개 중 입지 ${m}개 · 상한 ${cap}점${capped ? '에 걸림' : ''}` :
+                `${termLabel}(${m === n ? words.sitingN.replace('{n}', m) : words.complaintN.replace('{n}', n)}${capped ? ` · 상한 ${cap}점에 걸림` : ''})`;
             }
             assert.equal(found[0].text, escape(`${termLabel} ${words.target} ${value.toFixed(2)}점 · ${words.applied} ${lag.toFixed(2)}점`)); // spec-C §M9: 전체 라벨·목표·현재 점수 엄격 비교 유지.
           }
@@ -187,7 +189,7 @@ function inspect(h, E, report, label, out, options = {}) {
       if (published?.complaint) out.check(tag + '/count-label', () => {
         const affected = target.energy.cpList.filter(cp => (D.params.complaintGroups.v[cp.kind] || []).includes(group));
         const siting = affected.filter(cp => cp.kind === 'siting').length;
-        const bar = bars.find(b => /^(?:민원\(|민원 항목 \d+개\(입지 )/.test(b.label)); // spec-C §M9: 기존·혼합 라벨 모두 검색.
+        const bar = bars.find(b => /^(?:민원\(|민원 요인 \d+개 중 입지 )/.test(b.label)); // rev9 R12: 기존·K8 혼합 라벨 모두 검색.
         assert.ok(bar, '민원 막대 없음');
         assert.equal(Number(bar.label.match(/(\d+)(?:건|개)/)?.[1]), affected.length, '집단별 민원 건수 라벨'); // spec-C §M9: 혼합은 개, 나머지는 건.
         if (siting) assert.equal(Number(bar.label.match(/입지(?: 민원)?\s+(\d+)(?:건|개)/)?.[1]), siting, '입지 민원 건수 라벨'); // spec-C §M9: 두 꼴의 입지 수를 동일하게 검산.
@@ -352,7 +354,7 @@ function reproduction(h, out) {
     h.session.team = 'pyeongtaek';
     out.check('reproduction/' + group + '/bar-number', () => {
       const bar = barsFrom(K.__groupHTML48(cities.pyeongtaek, group, S.econRep, null), K.ECON_DATA)
-        .find(b => /^(?:민원\(|민원 항목 \d+개\(입지 )/.test(b.label)); // spec-C §M9: 재현 검사도 두 꼴의 민원 막대 검색.
+        .find(b => /^(?:민원\(|민원 요인 \d+개 중 입지 )/.test(b.label)); // rev9 R12: 재현 검사도 기존·K8 라벨 검색.
       assert.ok(bar); near(bar.value, rounded(target)); near(bar.applied, rounded(applied));
       assert.match(bar.label, /입지(?: 민원)?\s+1건/);
     });

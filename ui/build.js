@@ -3577,11 +3577,16 @@
     const months = monthly > 0 ? Math.ceil((ahead + need) / monthly) : Infinity;
     const wait = installed && !own ? "이 설비 대기 순서 확인 필요" : need === 0 ? "이 설비 0달 대기" : blocked || !Number.isFinite(months) ? "이 설비 상한 확보까지 대기" : `이 설비 ${months}달 대기`;
     // 상한·처리량·대기 순서를 확정할 수 없을 때는 개월 수를 만들어 내지 않는다.
-    return { available, wait, waiting: need > 0, months: installed && !own || blocked || !Number.isFinite(months) ? null : need === 0 ? 0 : months };
+    return { available, ahead, monthly, blocked, wait, waiting: need > 0, months: installed && !own || blocked || !Number.isFinite(months) ? null : need === 0 ? 0 : months };
   }
   function gridAdvice(type, tile, grid, installed = false) {
+    const REV9_COPY = { K12: "이번 달 접속 가능 {available} MW · 앞선 대기 {ahead} MW · 월 {monthly} MW 처리로 {months}달 대기" };
+    const rev9Copy = (key, values = {}) => REV9_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
     const info = gridWaitInfo(type, tile, grid, installed);
-    return info ? `이번 달 접속 가능 ${fmt(info.available, 2)} MW · ${info.wait} · 상한 넘으면 ESS 필요` : "";
+    if (!info) return "";
+    if (!info.blocked && Number.isFinite(info.months) && info.months >= 2)
+      return rev9Copy("K12", { available: fmt(info.available, 2), ahead: fmt(info.ahead, 2), monthly: fmt(info.monthly, 2), months: info.months });
+    return `이번 달 접속 가능 ${fmt(info.available, 2)} MW · ${info.wait}${info.blocked || !Number.isFinite(info.months) ? " · 상한 넘으면 ESS 필요" : ""}`;
   }
   // HUD의 기존 정격 합계: 리그에서는 저장·수입·접속 대기·건설 대기를 제외한다.
   function plannedSupplyMW(nodes, grid, disabled) {
@@ -3676,6 +3681,7 @@
       (advice.length ? `<p class="bd-note" id="bd-placement-advice">${advice.map(text => text === KCP.ECON_DATA?.thermalFacts?.siting.text ? `${esc(text.split(". ")[0])}. (자료·가정: 도구 옆 !)` : S.opts.league && text.startsWith("일사 배수") ? `<strong>${esc(text)}</strong>` : esc(text)).join("<br>")}</p>` : "") +
       (S.sel === i && BLD[S.tool] && canPlace(S.tool, i).ok ? "<p>한 번 더 누르면 설치</p>" : "");
     el.hidden = false;
+    if (S.opts.league) { el.style.maxHeight = ""; el.style.overflowY = ""; el.style.pointerEvents = ""; el.style.touchAction = ""; }
     const [x, y] = tileTop(T);
     const w = el.offsetWidth, h = el.offsetHeight;
     let tx = x + V.S * 0.8, ty = y - h - V.S * 0.5;
@@ -3694,15 +3700,22 @@
         if (rect.width > 0 && rect.height > 0 && rect.left < canvas.left + tx + w && rect.right > canvas.left + tx) top = Math.max(top, rect.bottom - canvas.top + 8);
       }
       const keys = S.root.querySelector(".lg-map-keys")?.getBoundingClientRect();
-      let bottom = Math.min(V.H - 8, keys?.height > 0 ? keys.top - canvas.top : V.H - 8);
+      let bottom = Math.min(V.area.b - 8, keys?.height > 0 ? keys.top - canvas.top : V.area.b - 8);
       // 회전·배율을 반영한 헥스 사각형 바깥에 여백을 둔다.
       const ys = topPoly(T).map(p => p[1]), above = Math.min(...ys) - h - 8, below = Math.max(...ys) + 8;
       ty = above;
       if (ty < top) ty = Math.max(top, below);
       const legendOverlap = ty + h > bottom;
-      if (legendOverlap) bottom = V.H - 8;
-      // 화면 아래도 부족하면 안내 경계보다 칸을 가리지 않는 위쪽 자리를 우선한다.
-      if (ty >= below && ty + h > bottom) ty = Math.max(V.area.t, above);
+      if (legendOverlap) bottom = V.area.b - 8;
+      if (h > bottom - top) {
+        // 독립 검토 m7: 남는 높이가 한 줄도 안 되면 빈 상자를 남기지 않는다.
+        if (bottom - top < 24) { el.hidden = true; return; }
+        ty = top;
+        el.style.maxHeight = `${bottom - top}px`;
+        el.style.overflowY = "auto";
+        // 독립 검토 M4: 말풍선은 평소 pointer-events: none이라, 넘칠 때만 스크롤 조작을 받는다.
+        el.style.pointerEvents = "auto"; el.style.touchAction = "pan-y";
+      } else if (ty >= below && ty + h > bottom) ty = Math.max(top, above);
       else ty = clamp(ty, top, Math.max(top, bottom - h));
       el.dataset.legendOverlap = String(legendOverlap);
     } else ty = clamp(ty, V.area.t, V.H - h - 8);

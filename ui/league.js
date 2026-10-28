@@ -53,6 +53,27 @@
     M10CashReason: "현금 음수"
   };
   const rev8Copy = (key, values = {}) => REV8_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
+  const REV9_COPY = {
+    K1: "이번 달 건설비 {capex}억은 아직 안 빠지고 월말에 빠져요",
+    K2: "{근거} {근거화살표} → {대상} {예상화살표} 쪽 예상 · 실제 {대상} {실제화살표} → 근거가 가리킨 쪽과 같음(게임 안 단순 비교)",
+    K3: "{근거} {근거화살표} → {대상} {예상화살표} 쪽 예상 · 실제 {대상} {실제화살표} → 근거가 가리킨 쪽과 반대(게임 안 단순 비교)",
+    K4: "{근거} {근거화살표} → {대상} {예상화살표} 쪽 예상 · 실제 {대상} '같음' 범위 안 → 근거 쪽으로 안 움직임(게임 안 단순 비교)",
+    K5: "판정 계산: 운영 전 대비 Δ {Δ}억 · '같음' 범위 ±{tol}억 미만(게임 비교 기준)",
+    K6: "(달 일수 {before}→{after}일)",
+    K7a: "민원(입지 {m}개)이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p",
+    K7b: "민원(입지 {m}개 포함)이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p",
+    K7c: "민원이 깎는 몫: 지금 {now}%p · 다 반영되면 {final}%p",
+    K8a: "민원 요인 {n}개 중 입지 {m}개 · 상한 {cap}점",
+    K8b: "민원 요인 {n}개 중 입지 {m}개 · 상한 {cap}점에 걸림",
+    K8cap: " · 상한 {cap}점에 걸림",
+    K9: "고른 '줄 것'을 지웠어요. 방향을 다시 골라 주세요.",
+    K10a: "월말 현금 {n}억이라 ",
+    K10b: "남은 돈(빚 한도 포함) {n}억이라 ",
+    K11: "이번 달 실제 ({m}월)",
+    K13a: "시험에는 호우 때 줄어드는 태양광 출력과 월말 공공시설 보수비도 들어 있지 않아요.",
+    K13b: "시험에는 월말 공공시설 보수비가 들어 있지 않아요. 우리 도시엔 태양광이 없어 호우로 출력이 줄지는 않아요."
+  };
+  const rev9Copy = (key, values = {}) => REV9_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
   const JQ = [
     { k: "why", q: "우리 도시는 무엇을, 왜 지었나요?" },
     { k: "nb", q: "우리 선택이 이웃 도시에 준 영향은?" },
@@ -94,7 +115,8 @@
         if (typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches) info.open = true;
       });
       // 펼치며 단추가 다음 줄로 이동해도 호버가 즉시 풀리지 않도록 관련 행을 이탈 경계로 삼는다.
-      const hoverArea = info.closest(".lg-info-line, .lg-data-chip, [data-grid-fill]") || info;
+      // rev9: 줄 묶음이 없는 '!'(예: 결과 서랍 '바깥 계통')도 펼친 설명을 품는 부모를 경계로 삼아, 열림→밀림→이탈→닫힘이 되풀이되지 않게 한다.
+      const hoverArea = info.closest(".lg-info-line, .lg-data-chip, [data-grid-fill]") || info.parentElement || info;
       hoverArea.addEventListener("pointerleave", () => {
         if (typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches && !info.dataset.pinned) info.open = false;
       });
@@ -653,15 +675,21 @@
     if (!state || !el || L.away) return;
     if (state.round !== L.snap?.round) { closeCoach(); return; }
     const now = performance.now();
+    const review = ["review", "end"].includes(L.snap?.phase);
     // 첫 표시·건너뛰기·지도 재부착 때도 현재 단계가 화면에 나온 때부터 센다.
     if (el.dataset.step !== String(state.step + 1)) state.stepAt = now;
     const { n } = monthNote(), issues = planIssueCounts(), count = BG.current()?.builds.length || 0;
-    const review = ["review", "end"].includes(L.snap?.phase);
     const done = [L.panel === "deal", count > state.builds, count >= 1 && issues.unlinked === 0,
       !!document.querySelector("#bd-again")?.getClientRects().length, n.confirmed || review,
       review && coachReplayDone() && state.ack[5], review && coachReplayDone() && state.ack[6]];
+    state.doneSeen ||= {};
+    if (done[state.step]) state.doneSeen[state.step] = true;
     // 완료 확인 뒤에도 1.5초는 보여 주고, 한 확인 주기에 한 단계만 전진한다.
-    if (advance && now - state.stepAt >= 1500 && state.step < 7 && done[state.step]) {
+    if (review && state.step < 4) {
+      // rev9 R2: 결과 단계에서는 끝내지 않은 계획 단계(사건 보기·화력·송전선·시험)를 가리키지 않고 바로 6/8로 간다.
+      // 약속(5/8)은 결과 단계에서 완료로 바뀌므로 아래 규칙대로 1.5초 보인 뒤 넘어간다(rev8c R2(a)).
+      state.step = 5; state.stepAt = now;
+    } else if (advance && now - state.stepAt >= 1500 && state.step < 7 && (done[state.step] || state.doneSeen[state.step])) {
       state.step++; state.stepAt = now;
     }
     const [task, action, selector] = coachSteps(issues, n)[state.step];
@@ -813,6 +841,16 @@
     const left = V && C.grantOf(V, R(), id, BG).left;
     return left > 0 ? ` · 이번 달 특별교부세 ${fmt(left, 1)}억${grantRepairTail(V, id)}` : "";
   }
+  function complaintImpactText(c) {
+    const groups = Object.keys(c.shares || {});
+    const now = groups.reduce((sum, g) => sum + c.shares[g] * (c.groupOwnLag?.[g]?.complaint || 0), 0);
+    const final = groups.reduce((sum, g) => sum + c.shares[g] * (c.groupOwn?.[g]?.complaint || 0), 0);
+    if (Math.abs(now) < .005 && Math.abs(final) < .005) return "";
+    const complaints = groups.map(g => c.groupOwn?.[g] || {}).filter(own => own.complaintN > 0);
+    const m = Math.max(0, ...complaints.map(own => own.sitingN || 0));
+    const key = !m ? "K7c" : complaints.every(own => own.sitingN === own.complaintN) ? "K7a" : "K7b";
+    return rev9Copy(key, { m, now: signed(now, 2), final: signed(final, 2) });
+  }
   function cityHTML(V) {
     const E = V.econ, c = E.cities[L.team], rep = E.report, f = rep?.fiscal[L.team], g = rep?.groups[L.team];
     const h = c.hist, prev = E.before?.[L.team], dp = rep?.cities[L.team]?.dPop || 0, di = rep?.cities[L.team]?.dInd || 0;
@@ -822,6 +860,7 @@
     const grid = c.grid || V.grid?.[L.team];
     const grantNote = grantMoneyNote(V, L.team), moneyNote = grantNote ? ` (빚 한도 포함)${grantNote}` : "";
     const moneyDescription = `남은 돈 ${fmt(V.teams[L.team].left, 1)}억${moneyNote}`;
+    const complaintImpact = complaintImpactText(c);
     const revenues = { subsidy: "재정지원금", resTax: "주민세", indTax: "산업세", facility: `지역자원시설세(${gradeWords("O·M·G")})`, tariff: "전기요금 차익", trade: "전력 판매", royalty: "기술 사용료", bonus: rev8Copy("M2Revenue"), salvage: "철거 회수" };
     const expenses = { capex: "건설", fuel: "연료", opex: rev8Copy("M3Opex"), repair: "보수비", service: "공공서비스", incentive: "유치 보조", interest: "이자", trade: "전력 구매", polChange: "정책 변경", policy: "시위 중 정책 변경" };
     const money = (title, vals, names) => `<h4>${title}</h4><dl class="lg-money">${Object.keys(names).filter(k => Object.hasOwn(vals || {}, k) && !(["facility", "repair"].includes(k) && !vals[k])).map(k => `<div><dt>${esc(names[k] || k)}</dt><dd${k === "repair" ? ' class="lg-info-line"' : ""}>${esc(signed(vals[k], 2).replace(/^\+/, ""))}억${k === "repair" ? infoTip("city-repair", esc(KCP.ECON_DATA.disasterFacts.repair.text), { label: names[k] }) : ""}</dd></div>`).join("")}</dl>`;
@@ -829,7 +868,7 @@
       ${(L.doc?.maps[L.doc.map] || V.teams[L.team].plan)?.fab2 ? `<p id="lg-fab2-active">반도체 증설 시나리오 적용 중</p>` : ""}
       <div class="lg-info-line"><p class="lg-left"${grantNote ? ` title="${esc(moneyDescription)}"` : ""}>남은 돈 <b data-money="left">${esc(fmt(V.teams[L.team].left, 1))}억</b>${esc(moneyNote)}</p><p class="lg-hint">남은 돈에는 지방채 한도(빚)를 포함해요. 억 = 게임 단위</p>${infoTip("city-money", "예약·지원금·연계선 정산을 반영해요. 실제 시 예산이 아니에요.", { label: "남은 돈 단위" })}</div><p class="lg-hint">${ASSUMPTIONS}</p><dl class="lg-kpi"><div><dt>주민</dt><dd>${esc(fmt(c.pop))}명</dd><small>지난달 ${esc(signed(dp))}명</small></div><div><dt>종사자</dt><dd>${esc(fmt(c.ind))}명</dd><small>지난달 ${esc(signed(di))}명</small></div><div><dt>현금</dt><dd>${esc(fmt(c.cash, 1))}억</dd><small>지방채 한도 ${esc(fmt(c.debtCap, 1))}억</small></div><div><dt>지지율</dt><dd>${esc(fmt(c.approval, 1))}%</dd>${prev ? `<small>지난달 ${esc(signed(c.approval - prev.approval, 1))}%p</small>` : ""}<small>다음 평가 ${esc(fmt(remaining))}달 뒤</small>${infoTip("city-approval-rule", `통과: 참가 도시 평균 지지율 변화 대비 −${esc(fmt(params("approvalDrop"), 1))}%p 이내`, { label: "지지율" })}</div></dl>
       ${tipBox("city-power-definition", "설비/피크", `<p id="lg-power-def" class="lg-hint">${esc(POWER_CHIP_DEF)}</p>`)}${recalHTML(rep, L.team, true)}${trendHTML(V, L.team)}<section id="lg-grid" aria-label="재생 접속과 출력제어"><dl><div><dt>재생 접속 여유(남은/전체)</dt><dd>${esc(fmt(grid?.headroomMW, 1))} / ${esc(fmt(grid?.hostMW, 1))} MW</dd></div><div><dt>접속 대기</dt><dd data-waiting="${grid?.waitingMW > 0}">${esc(fmt(grid?.waitingMW, 1))} MW</dd></div></dl>${curtailHTML(V, V.results.at(-1), L.team, undefined, true)}<div class="lg-info-line"><p class="lg-hint"><span class="tag-mine">${esc(gradeWords("G"))} · 접속·출력제어</span> <span class="tag-official">충전 상한 ${esc(fmt(params("essCap") * 100))}% · ${esc(gradeWords(KCP.ECON_DATA.params.essCap.grade))}(2020.2)</span></p>${infoTip("city-grid-ess", "재생 설비는 지어도 전력망 접속 여유가 있어야 발전해요. ESS와 연계선이 여유를 늘립니다. 충전 상한 출처: 2020.2 안전대책(산업부 2022 보도설명자료)", { label: "접속과 ESS 출처" })}</div></section>
-      ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(gradeWords(g.whyGrade))}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(gradeWords(g?.lowestGroupDissatisfaction?.whyGrade))}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
+      ${g ? `<p id="lg-approval-why">이번 달 지지율 변화 이유(${esc(gradeWords(g.whyGrade))}): ${esc(whyText(g) || "표시할 만큼 큰 변화 없음")}${complaintImpact ? ` · ${esc(complaintImpact)}` : ""}</p>` : ""}<h4>집단 만족</h4>${groups.map(k => `<div class="lg-grp" data-g="${esc(k)}"><button type="button" data-group="${esc(k)}" aria-expanded="${L.group === k}">${esc(KCP.ECON_DATA.groups[k].name)} · 비중 ${esc(fmt(c.shares[k] * 100, 1))}% · 만족 ${esc(fmt(c.groups[k], 1))}점</button><meter min="0" max="100" value="${esc(c.groups[k])}" aria-label="${esc(KCP.ECON_DATA.groups[k].name)} 만족"></meter>${k === low && g?.lowestGroupDissatisfaction?.group === k ? `<p class="lg-why">이 집단의 불만 이유(${esc(gradeWords(g?.lowestGroupDissatisfaction?.whyGrade))}): ${g.lowestGroupDissatisfaction.key ? `${esc(PART_NAMES[g.lowestGroupDissatisfaction.key] || g.lowestGroupDissatisfaction.key)} · 만족도 부족 ${esc(fmt(g.lowestGroupDissatisfaction.deficit, 1))}점` : "현재 별도 불만 요인 없음"}</p>` : ""}${L.group === k ? groupCauseHTML(c, k, rep, prev) : ""}</div>`).join("")}
       <div class="lg-info-line lg-air-note"><span class="tag-mine">공기 · ${esc(gradeWords(airNeighbours().some(x => x.grade !== "G") ? "M·G·P" : "M·G"))}</span><p class="lg-hint">전체 대기질이나 관측 농도는 아니에요.</p>${infoTip("city-air", airNoteHTML(), { label: "공기 추정" })}</div>
       <section id="lg-econpol"><h4>정책 <span class="tag-mine">${esc(gradeWords("G"))}</span></h4>${[["taxRes", "주민 세율", "세입↑ / 주민 매력↓"], ["taxInd", "산업 세율", "세입↑ / 기업 매력↓"], ["service", "공공서비스", "생활 만족↑ / 지출↑"], ["incentive", "기업 유치 보조", "기업 매력↑ / 지출↑"]].map(([k, name, help]) => `<label class="lg-policy"><span>${name} <output>${esc(fmt(pol[k] || 0, 1))}${k === "incentive" ? "억/달" : "단계"}</output></span><input type="range" data-pol="${k}" min="${k === "incentive" ? 0 : -2}" max="${k === "incentive" ? 20 : 2}" step="1" value="${esc(pol[k] || 0)}" ${open ? "" : "disabled"}><small>얻는 것 / 잃는 것: ${help}</small></label>`).join("")}<label class="lg-policy lg-re100"><span><input type="checkbox" data-pol="re100" ${pol.re100 ? "checked" : ""} ${open && techResearch(V, L.team).adopted?.includes("re100") ? "" : "disabled"}>RE100 산단 지정</span><small>${techResearch(V, L.team).adopted?.includes("re100") ? `재생 전기 비중을 산업 평가에 더 반영해요(${gradeWords("G")}).` : "🔒 RE100 산단 도입 후 선택"}</small></label></section>
       <section id="lg-fiscal"><h4>지난달 돈</h4>${f ? `${money("세입", f.rev, revenues)}${money("세출", f.exp, expenses)}<p>운영 수지(건설 제외) ${esc(signed(f.revTotal - f.expTotal + f.exp.capex, 2))}억</p><div class="lg-info-line"><p class="lg-hint">연료 ${esc(fmt((V.results.at(-1)?.team[L.team]?.cost.fuel || 0) * (rep.weekMul || 1), 2))}억(전기요금 차익에 이미 반영)</p>${infoTip("city-fuel-note", `총 전기 매출(참고) ${esc(fmt(f.tariffGross, 2))}억`, { label: "연료·총 전기 매출(참고)" })}</div>` : `<p class="lg-hint">첫 운영 뒤에 표시돼요.</p>`}</section>
@@ -852,9 +891,11 @@
     const ownBars = ownKeys.filter(k => (Number.isFinite(own[k]) && own[k] !== 0) || (Number.isFinite(ownLag[k]) && ownLag[k] !== 0)).map(k => {
       let label = PART_NAMES[k] || k;
       if (k === "complaint" && own.complaintN) {
+        const cap = params("complaintCap"), capped = Math.abs(own.complaint || 0) >= cap - 1e-9;
         const count = own.sitingN === own.complaintN ? copy.sitingN.replace("{n}", own.sitingN) :
-          own.sitingN ? rev8Copy("M9Mixed", { n: own.complaintN, m: own.sitingN }) : copy.complaintN.replace("{n}", own.complaintN);
+          own.sitingN ? rev9Copy(capped ? "K8b" : "K8a", { n: own.complaintN, m: own.sitingN, cap: fmt(cap) }) : copy.complaintN.replace("{n}", own.complaintN);
         label = own.sitingN && own.sitingN !== own.complaintN ? count : `${label}(${count})`;
+        if (capped && (!own.sitingN || own.sitingN === own.complaintN)) label += rev9Copy("K8cap", { cap: fmt(cap) });
       }
       return { key: k, value: own[k] || 0, applied: ownLag[k] || 0, label, own: true };
     });
@@ -1393,7 +1434,7 @@
     return display;
   }
   function outageShareThresholdText(value, unit) {
-    const actual = Number(value.toPrecision(12)).toLocaleString("ko-KR", { maximumFractionDigits: 12 });
+    const actual = fmt(value, unit === "MWh/일" || unit === "MWh" ? 1 : 2);
     const rounded = outageLimitText(value, unit);
     const same = Number(actual.replaceAll(",", "")) === Number(rounded.replace(unit, "").trim().replaceAll(",", ""));
     return rev8Copy(same ? "M5bSame" : "M5b", { 실제: actual, 올림: rounded, 값: rounded });
@@ -1582,6 +1623,7 @@
     const months = d.interview.months;
     // 확정 시점이 없는 옛 false/미리보기 값은 믿지 않는다. 다음 달 운영 기록이 있으면 복원한다.
     Object.entries(months).forEach(([rd, note]) => {
+      if (Number(rd) !== V.round) delete note.downCleared;
       if (legacyLearningNote(note)) return;
       delete note.followingPlanConfirmedChanged;
       if (!["ready", "result"].includes(note.followingPlanBasis)) {
@@ -1701,11 +1743,13 @@
     if (!needsLoop(V)) return "";
     if (!n.evidence && !n.confirmed && n.s1Pick) chooseEvidence(V, d, n, n.s1Pick);
     const topic = promiseTopic(V, n), downBlocked = promiseDownBlocked(V, n, topic);
-    if (!n.confirmed && downBlocked && n.pred?.[topic] === "down") { delete n.pred[topic]; putData(d); }
+    if (!n.confirmed && downBlocked && n.pred?.[topic] === "down") { delete n.pred[topic]; n.downCleared = true; putData(d); }
     const complete = promiseComplete(V, n);
     const comparison = outageBaseline(V, { ...curRound(), round: V.round }, n);
     const grid = topic === "grid" ? promiseGridBaseline(V) : null;
-    const baseline = topic === "cash" ? rev8Copy("C1", { cash: cashText(V.econ.cities[L.team].cash) }) : `비교 기준: ${topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
+    const capex = topic === "cash" ? newPlanCost(V) : 0;
+    const baseline = topic === "cash" ? rev8Copy("C1", { cash: cashText(V.econ.cities[L.team].cash) }) +
+      (capex >= .005 ? ` · ${rev9Copy("K1", { capex: cashText(capex) })}` : "") : `비교 기준: ${topic === "grid" ? Number.isFinite(grid.perDay) ? `${grid.label} · 하루 평균 ${perDayText(grid.perDay)}(${grid.base.kind === "last" ? `지난달 ${grid.days}일 합` : `이번 달 ${grid.days}일이면 약`} ${fmt(grid.mwh, 1)} MWh · ${fmt(grid.cost, 2)}억)` : "기준 없음" : `${comparison.label} · 정전 ${Number.isFinite(comparison.value) ? `${fmt(comparison.value, 2)}%` : "시험 기록 없음"}`}`;
     const directionLabel = `2. 이번 달 ${topic === "cash" ? "현금(월말 잔액)" : topic === "grid" ? "바깥 계통에 기댄 전기" : "정전"} 방향`;
     return `<div class="lg-promise-carry">${previousChangeHTML(V)}${missedCarryHTML(V)}</div><section id="lg-predict" class="lg-pred lg-sec"><div class="lg-promise-heading"><h3>기준 먼저 · 하루 전 약속</h3><h4>1. 근거 하나</h4></div><div id="lg-evidence" class="lg-acts">${evidenceOptions(V).map(now => {
       const x = evidenceAtStart(now, n);
@@ -1717,7 +1761,8 @@
       <p id="lg-promise-baseline" class="lg-hint${topic === "grid" ? " lg-promise-grid-baseline" : topic === "cash" ? " lg-promise-cash-baseline" : ""}" title="${esc(baseline)}">${esc(baseline)}</p>
       ${topic === "grid" ? `<p class="lg-hint">${matchingTrial(V, { ...curRound(), round: V.round }, L.team) ? "시험에서" : "지난달에"} 정전이 없어서, 이번 달은 부족한 전기를 바깥 계통이 얼마나 메웠는지로 약속해요.</p>` : ""}
       ${topic === "cash" ? `<p id="lg-promise-cash-why" class="lg-hint">${esc(rev8Copy(V.econ.cities[L.team].cash < 0 ? "C4" : "C3", { 기준: V.results.some(x => x.round === V.round - 1) ? "지난달" : "시험" }))}</p>` : ""}
-      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"${downBlocked ? ' aria-describedby="lg-promise-down-why"' : ""}><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}${v === "down" && downBlocked ? " disabled" : ""}>${label}</option>`).join("")}</select></label>
+      <label class="lg-field"><span class="lg-promise-direction" title="${esc(directionLabel)}">${esc(directionLabel)}</span><select data-pred="${topic}"${downBlocked || n.downCleared ? ` aria-describedby="${[n.downCleared ? "lg-promise-down-cleared" : "", downBlocked ? "lg-promise-down-why" : ""].filter(Boolean).join(" ")}"` : ""}><option value="">선택해요</option>${Object.entries(DIRECTION_NAMES).map(([v, label]) => `<option value="${v}" ${n.pred?.[topic] === v ? "selected" : ""}${v === "down" && downBlocked ? " disabled" : ""}>${label}</option>`).join("")}</select></label>
+      ${n.downCleared ? `<p id="lg-promise-down-cleared" class="lg-hint" role="status" aria-live="polite">${esc(rev9Copy("K9"))}</p>` : ""}
       ${downBlocked ? `<p id="lg-promise-down-why" class="lg-hint">${esc(rev8Copy("C5"))}</p>` : ""}
       <div class="lg-promise-confidence"><h4>3. 확신</h4><div class="lg-acts">${Object.entries(CONFIDENCE).map(([key, [label]]) => `<button type="button" class="v2-btn" data-confidence="${key}" aria-pressed="${n.confidence === key}">${label}</button>`).join("")}</div></div>
       ${L.awaitReady ? `<div class="lg-promise-actions"><p id="lg-promise-remaining">${complete ? "준비할 수 있어요" : `남은 단계: ${!n.evidence ? "근거" : !n.pred?.[topic] ? "방향" : "확신"}`}</p><button class="v2-btn primary" type="button" id="lg-ready-confirm" ${complete ? "" : "disabled"}>약속하고 준비</button>${freeExperiment() ? '<button class="v2-btn" type="button" id="lg-predict-skip" aria-label="자유 실험 · 건너뛰고 준비">건너뛰고 준비</button>' : ""}</div>` : ""}</section>${tipBox("promise-rules", "약속 비교 기준 자세히", `<p class="lg-hint">약속은 이 기기에만 남아요.</p><p id="lg-evidence-grid-basis" class="lg-hint">${EVIDENCE_GRID_BASIS}</p><p class="lg-hint">${predictionRule(topic)}</p>`).replace("<details ", '<details id="lg-promise-rules" ')}${needsExplanation(V) ? `<label class="lg-jq">이번 결정의 기준(선택)<textarea data-note="decision" rows="2" maxlength="1000">${esc(n.decision || "")}</textarea></label>` : ""}${planFollowupHTML(V)}${promiseHistoryHTML(V)}${calibrationHTML()}`;
@@ -1808,22 +1853,29 @@
     const evidenceDir = Number.isFinite(previousValue) && Number.isFinite(evidenceValue) && effect.sign && Math.abs(change) >= threshold ? (change * effect.sign > 0 ? "up" : "down") : null;
     const evidenceText = !effect.sign ? effect.reason : !Number.isFinite(previousValue) ? "지난달 값이 없어 비교하지 않아요"
       : !Number.isFinite(evidenceValue) ? "근거 값이 없어 비교하지 않아요" : !evidenceDir ? "근거 변화가 비교 눈금보다 작아 비교하지 않아요"
-      : actual ? evidenceDir === actual ? "같은 방향(게임 안 단순 비교)" : "다른 방향(게임 안 단순 비교)" : "결과의 비교 기준이 없어 비교하지 않아요";
+      : actual ? rev9Copy(actual === "same" ? "K4" : evidenceDir === actual ? "K2" : "K3", {
+        근거: n.evidence.key === "wind" ? "풍속" : EVIDENCE_NAMES[n.evidence.key], 근거화살표: change > 0 ? "↑" : "↓",
+        대상: topic === "cash" ? "현금" : topic === "grid" ? "바깥 계통에 기댄 전기" : "정전",
+        예상화살표: evidenceDir === "up" ? "↑" : "↓", 실제화살표: actual === "up" ? "↑" : "↓"
+      }) : "결과의 비교 기준이 없어 비교하지 않아요";
     const verdict = esc(promiseVerdictText(compared, n));
+    const cashCalc = topic === "cash" && compared.delta != null
+      ? `<p id="lg-promise-cash-calc" class="lg-hint">${esc(rev9Copy("K5", { Δ: cashText(compared.delta, true), tol: fmt(params("promiseSameDelta"), 2) }))}</p>` : "";
     // 표시 1자리가 같아도 판정이 갈리는 경계에서 학생이 판정을 의심하지 않게 상세에 계산값을 보인다.
     const gridCalc = topic === "grid" && compared.grid.deltaPerDay != null
       ? `<p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${esc(signed(compared.grid.deltaPerDay, 2))} MWh/일, '같음' 범위 ±${esc(fmt(compared.grid.tolPerDay, 2))} MWh/일(기준 하루 평균 ${esc(fmt(compared.grid.base.perDay, 2))}의 ${esc(fmt(GRID_SAME_SHARE_PER_DAY * 100))}%와 ${esc(fmt(GRID_SAME_MWH_PER_DAY, 2))} 중 큰 값)</p>` : "";
     // D-82 결정 2: 공개 소비 배출과 기존 시험 기록만 읽는다. trial.co2는 gridFill 뒤의 소비 기준이다.
     // D-82 결정 1: 비교는 각 기간의 하루 평균(t/일), 월 합계는 보조로 표시한다.
     let co2cons = "";
-    if (topic === "grid") {
+    if (result) {
       const period = resultPeriod(V, result), total = Number.isFinite(r?.co2Cons) ? r.co2Cons * period.mul : null;
       const current = total == null ? null : total / period.days;
       const previous = V.results.find(x => x.round === result.round - 1), p = previous?.team[L.team];
       // 약속 때 남긴 시험 사본(n.trial.co2)을 먼저 쓴다. 옛 기록에는 없어서, 그때만 일수·계통량이 같은 기존 시험 기록을 쓴다.
       const saved = !previous && Number.isFinite(n.trial?.co2) && n.trial.days > 0 ? n.trial : null;
-      const trial = saved || (!previous && compared.grid.base.kind === "trial" ? matchingTrial(V, result, L.team) : null);
-      const sameTrial = trial && (saved || !n.trial || n.trial.days === trial.days && n.trial.gridMWh === trial.gridMWh);
+      const trial = saved || (!previous && (topic !== "grid" || compared.grid.base.kind === "trial") ? matchingTrial(V, result, L.team) : null);
+      const sameTrial = trial && (saved || !n.trial || n.trial.days === trial.days && n.trial.gridMWh === trial.gridMWh &&
+        (topic === "grid" || n.trial.unsPct == null || n.trial.unsPct === trial.unsPct));
       const base = previous ? Number.isFinite(p?.co2Cons) ? p.co2Cons * resultPeriod(V, previous).mul / resultPeriod(V, previous).days : null
         : sameTrial && Number.isFinite(trial.co2) ? trial.co2 / trial.days : null;
       const change = current != null && base != null ? `${previous ? "지난달 대비" : trialBaselineLabel(trial)} Δ ${signed(current - base, 1)} t/일`
@@ -1832,7 +1884,27 @@
     }
     const alsoOutage = topic === "grid" && r?.unsPct >= ZERO_OUTAGE_PCT ? `<p class="lg-hint" id="lg-promise-also-outage">이번 달은 정전도 생겼어요(${esc(fmt(r.unsPct, 2))}%)</p>` : "";
     const outage = (topic === "uns" || topic === "grid") && (hit === false || n.outageOpened || n.outageSingleShown) ? outageCardsHTML(V, result, L.team, n) : "";
-    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${co2cons}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec" tabindex="-1"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p>${evidenceNowHTML(n, "s6")}<p data-compare="${topic}">${verdict}</p>${gridCalc}<p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${esc(evidenceText)}</p>${tipBox("promise-result-rules", "근거·예측 판정 기준", `<p class="lg-hint">${EVIDENCE_RULE}</p><p class="lg-hint">${predictionRule(topic)}</p>`)}${reviewOrder ? "" : outage}${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
+    return `<p id="lg-promise-summary" class="lg-promise-summary">${verdict} <button class="v2-btn" type="button" data-promise-details>예측 자세히</button></p>${alsoOutage}${co2cons}${reviewOrder ? outage : ""}<section id="lg-promise-result" class="lg-pred lg-sec" tabindex="-1"><h3>예측 대 실제</h3><p>근거: ${esc(n.evidence.text)} · 확신 ${esc(CONFIDENCE[n.confidence]?.[0] || "미선택")}</p>${evidenceNowHTML(n, "s6")}<p data-compare="${topic}">${verdict}</p>${cashCalc}${gridCalc}<p id="lg-evidence-direction">고른 근거도 같은 쪽으로 움직였나요: ${esc(evidenceText)}</p>${tipBox("promise-result-rules", "근거·예측 판정 기준", `<p class="lg-hint">${EVIDENCE_RULE}</p><p class="lg-hint">${predictionRule(topic)}</p>`)}${reviewOrder ? "" : outage}${needsReviewLoop(n) ? `<label class="lg-radio lg-compared"><span><input type="checkbox" data-compared ${n.compared ? "checked" : ""}>예측과 실제를 비교했어요</span></label>` : ""}${calibrationHTML()}</section>`;
+  }
+  function newPlanCost(V, st = BG.current()) {
+    const team = V.teams[L.team], base = new Set((team.base || []).map(item => item.k));
+    const approved = new Map((team.plan?.builds || []).map(b => [C.itemKey("b", b), b]));
+    const mass = C.techOf(V, L.team).includes("mass");
+    const builds = (st?.builds || []).filter(b => !base.has(C.itemKey("b", b))).map(b => {
+      const existing = approved.get(C.itemKey("b", b));
+      const paidCost = Number.isFinite(existing?.paidCost) ? existing.paidCost : !existing && mass &&
+        ["solar", "roof", "tandem", "tandem_roof", "battery", "nbat"].includes(b.t)
+        ? Math.round(C.capexOf(BG, R(), L.team, { builds: [b], lines: [] }) * KCP.TECH_DATA.params.massCost.v * 100) / 100 : undefined;
+      return Number.isFinite(paidCost) ? { ...b, paidCost } : b;
+    });
+    const lines = (st?.lines || []).filter(line => !base.has(C.itemKey("l", line)));
+    // rev9 R15(독립 검토 M3): 장부 '신규 투자'에는 철거 회수·이번 달 연계선 몫도 들어간다. 그런 달에는 같은 숫자를 보장할 수 없어 꼬리를 붙이지 않는다(null).
+    const kept = new Set([...(st?.builds || []).map(b => C.itemKey("b", b)), ...(st?.lines || []).map(l => C.itemKey("l", l))]);
+    if ((team.base || []).some(item => !kept.has(item.k))) return null;
+    if ((V.ties || []).some(t => [t.a, t.b].includes(L.team) && (t.st !== "built" || t.round === V.round))) return null;
+    // capex는 기존 자산도 합치므로 월초 자산을 먼저 뺀다. 큰 결정용 newBuildCost는 선로를 세지 않는다.
+    // 장부 invest에는 이 건설비 외에 새 연계선·철거 회수·실증비도 반영될 수 있다.
+    return C.capexOf(BG, R(), L.team, { ...st, builds, lines });
   }
   function newBuildCost(V, st = BG.current()) {
     const base = new Set((V.teams[L.team].base || []).map(b => b.k));
@@ -1902,7 +1974,7 @@
     const n = tdata().interview?.months?.[V.round] || {}, topic = promiseTopic(V, n), grid = topic === "grid" ? gridReliance(V, result, L.team) : null;
     const starts = [...(topic === "cash" ? [rev8Copy("C6", { Δ: cashText(promiseComparison(V, n).delta, true) }), rev8Copy("C7")]
       : Number.isFinite(grid?.perDay) ? [`이번 달 계통이 메운 전기가 평균 ${perDayText(grid.perDay)}이어서 `, grid.perDay < GRID_DISPLAY_MIN_PER_DAY ? rev8Copy("C9") : "다음 달 시험에서 계통이 메운 전기가 줄어드는지 확인하고 "]
-      : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, r.unsPct < ZERO_OUTAGE_PCT ? rev8Copy("C8") : `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), `남은 돈 ${fmt(left, 1)}억이라 `];
+      : [`이번 달 정전 ${fmt(r.unsPct, 2)}%라서 `, r.unsPct < ZERO_OUTAGE_PCT ? rev8Copy("C8") : `다음 달 시험에서 정전 ${fmt(r.unsPct, 2)}%가 줄어드는지 확인하고 `]), rev9Copy(topic === "cash" ? "K10a" : "K10b", { n: topic === "cash" ? cashText(V.econ.cities[L.team].cash) : fmt(left, 1) })];
     return `<div class="lg-acts lg-reason-starts" aria-label="이유 문장 시작">${starts.map(text => `<button class="v2-btn" type="button" data-reason-start="${esc(text)}">${esc(text)}</button>`).join("")}</div>`;
   }
   function resultInterviewHTML(V, reviewOrder = false) {
@@ -1971,8 +2043,8 @@
       const copy = own ? null : months[t]?.grantCopy, grant = own?.disasterGrant || copy, repair = own ? own.cost?.repair : copy?.repair;
       const events = grant ? ((own ? res.events : copy.events) || []).map(ev => C.eventDef(R(), typeof ev === "string" ? ev : ev.id)).filter(E => E?.grant && C.hits(R(), E, L.team)).map(E => E.name).join(" · ") : "";
       const grantText = grant ? rev8Copy(repair > 0 ? "C13" : "C13NoRepair", {
-        월: monthName(V, t), 사건: events || "재난", awarded: cashText(grant.awarded), planUsed: cashText(grant.planUsed),
-        repairUsed: cashText(grant.repairUsed), expired: cashText(grant.expired), repair: cashText(repair)
+        월: monthName(V, t), 사건: events || "재난", awarded: fmt(grant.awarded, 2), planUsed: fmt(grant.planUsed, 2),
+        repairUsed: fmt(grant.repairUsed, 2), expired: fmt(grant.expired, 2), repair: fmt(repair, 2)
       }) : "";
       return (parts.length ? `<li data-decision-month="${t}">${esc(monthName(V, t))} · ${esc(parts.reduce((text, part) => text + (text ? part.startsWith("판정 ") ? " → " : " · " : "") + part, ""))}</li>` : "") +
         (grantText ? `<li data-grant-month="${t}">${esc(grantText)}</li>` : "");
@@ -2318,7 +2390,9 @@
     }
     if (note) { n[note.dataset.note] = note.value.slice(0, 1000); putData(d); updateMission(); return true; }
     if (pred) {
-      n.topic = pred.dataset.pred; n.pred = {}; n.pred[n.topic] = pred.value; n.confirmed = false; putData(d);
+      n.topic = pred.dataset.pred; n.pred = {}; n.pred[n.topic] = pred.value; n.confirmed = false;
+      if (pred.value) { delete n.downCleared; document.getElementById("lg-promise-down-cleared")?.remove(); }
+      putData(d);
       const complete = promiseComplete(L.snap, n), b = document.getElementById("lg-ready-confirm");
       if (b) b.disabled = !complete;
       const remaining = document.getElementById("lg-promise-remaining");
@@ -3012,10 +3086,11 @@
     const goal = { uns: V.goals.unsPct, co2: V.goals.co2Plan ?? V.goals.co2 * (rd.mdays || rd.days) / rd.days };
     const lastGoal = region?.goal || (res ? { uns: V.goals.unsPct, co2: V.goals.co2 * resultPeriod(V, res).mul } : null);
     const planning = ["lobby", "plan"].includes(V.phase), shownGoal = planning ? goal : lastGoal || goal;
+    const actualLabel = planning ? "지난달 실제" : rev9Copy("K11", { m: res?.month ?? rd.month });
     const bar = (label, value, target, unit, digits) => {
       if (!Number.isFinite(value) || !Number.isFinite(target)) return "";
       const scale = Math.max(target * 2, value, 1), width = Math.min(100, 100 * value / scale), marker = 100 * target / scale;
-      return `<div class="lg-goalbar" data-bad="${value > target}"><span>${label}</span><div role="meter" aria-label="${label} · 지난달 운영 / 목표" aria-valuemin="0" aria-valuemax="${scale}" aria-valuenow="${value}" aria-valuetext="${fmt(value, digits)}${unit} / 목표 ${fmt(target, digits)}${unit}"><i style="width:${width}%"></i><em style="left:${marker}%"></em></div><b>${value > target ? "▲ " : ""}${esc(fmt(value, digits))}${unit}</b></div>`;
+      return `<div class="lg-goalbar" data-bad="${value > target}"><span>${label}</span><div role="meter" aria-label="${esc(label)} · ${esc(planning ? "지난달 운영" : actualLabel)} / 목표" aria-valuemin="0" aria-valuemax="${scale}" aria-valuenow="${value}" aria-valuetext="${fmt(value, digits)}${unit} / 목표 ${fmt(target, digits)}${unit}"><i style="width:${width}%"></i><em style="left:${marker}%"></em></div><b>${value > target ? "▲ " : ""}${esc(fmt(value, digits))}${unit}</b></div>`;
     };
     return `<div class="lg-host-board" aria-label="프로젝터 핵심 현황">
       <div class="lg-command-room lg-proj-key"><small>방 코드</small><b id="lg-roomcode">${esc(displayRoom(L.room))}</b></div>
@@ -3023,8 +3098,8 @@
       <div class="lg-command-time lg-proj-key"><small>남은 시간</small><b id="lg-host-time"></b></div>
       <div class="lg-command-ready lg-proj-key"${showReady ? ' id="lg-host-ready"' : ""}><small>${showReady ? "준비" : "진행"}</small><b>${showReady ? `${teams.length - unready.length}<small>/${teams.length}팀</small>` : V.phase === "end" ? "리그 종료" : "운영 완료"}</b>${showReady ? `<span class="lg-ready-pips" aria-hidden="true">${teams.map(t => `<i data-ready="${!!V.teams[t.id].ready}"></i>`).join("")}</span>` : ""}</div>
     </div><div class="lg-command-goals"><small>지역 공동목표</small><div id="lg-host-goals">
-      <div class="lg-goal-chip"><span>정전 목표 ≤ ${esc(fmt(shownGoal.uns, 2))}%</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.unsPct, 2))}%` : " · 첫 운영 전"}</span>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) : ""}</div>
-      <div class="lg-goal-chip" aria-label="CO₂ 목표와 지난달 실제"><span>${planning ? "이번 달 CO₂ 목표" : "목표 CO₂"} ≤ ${esc(fmt(shownGoal.co2))} t</span><span>지난달 실제${region ? ` (${esc(res.month)}월) ${esc(fmt(region.co2))} t` : " · 첫 운영 전"}</span>${region ? bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}</div>
+      <div class="lg-goal-chip"><span>정전 목표 ≤ ${esc(fmt(shownGoal.uns, 2))}%</span><span>${esc(actualLabel)}${region ? `${planning ? ` (${esc(res.month)}월)` : ""} ${esc(fmt(region.unsPct, 2))}%` : " · 첫 운영 전"}</span>${region ? bar("정전", region.unsPct, lastGoal.uns, "%", 2) : ""}</div>
+      <div class="lg-goal-chip" aria-label="CO₂ 목표와 ${esc(actualLabel)}"><span>${planning ? "이번 달 CO₂ 목표" : "목표 CO₂"} ≤ ${esc(fmt(shownGoal.co2))} t</span><span>${esc(actualLabel)}${region ? `${planning ? ` (${esc(res.month)}월)` : ""} ${esc(fmt(region.co2))} t` : " · 첫 운영 전"}</span>${region ? bar("CO₂", region.co2, lastGoal.co2, " t", 0) : ""}</div>
       ${planning ? `<small class="lg-goal-note">${V.phase === "lobby" ? "첫 달 목표 · " : ""}계획 시작 때 확정 · 기준: ${esc(V.goals.co2Basis)}</small>` : ""}
     </div></div>`;
   }
@@ -3801,6 +3876,7 @@
   }
   function outageEvidenceSummary(n, a) {
     const links = outageEvidenceLinks(n, a), names = outageNames(a);
+    const display = outageDisplayValues(a);
     if (!n.evidence?.text) return "고른 근거 없음";
     // 거의 0인 몫은 '외 n개'에 세지 않는다. 요약만 읽어도 근거의 효과로 오해하지 않게 '직접 연결 몫'이라고 밝힌다.
     const direct = a.parts.filter(p => links[p.key] === "direct")
@@ -3810,16 +3886,17 @@
     const counted = direct.filter(p => Math.abs(p.value) >= outageCardMin(a));
     if (!counted.length) return `${evidence} · 직접 연결 몫은 거의 0`;
     const largest = counted[0];
-    return `${evidence} · 직접 연결 몫 ${names[largest.key]} ${outageValue(largest.value, outageUnit(a), true)}${counted.length > 1 ? ` 외 ${counted.length - 1}개` : ""}`;
+    return `${evidence} · 직접 연결 몫 ${names[largest.key]} ${outageValue(display.get(largest.key) ?? largest.value, outageUnit(a), true)}${counted.length > 1 ? ` 외 ${counted.length - 1}개` : ""}`;
   }
   function outageEvidenceText(n, a, largest) {
     const monthly = a.basis === "monthly", names = outageNames(a);
+    const display = outageDisplayValues(a);
     const links = outageEvidenceLinks(n, a);
     const linked = a.parts.filter(p => links[p.key]);
     let text;
     if (linked.length) text = `고른 근거 ‘${n.evidence.text}’와 관련된 몫: ${["direct", "stage", "indirect"].map(kind => {
       const parts = linked.filter(p => links[p.key] === kind);
-      return parts.length ? `${kind === "stage" ? "같은 단계와 연결" : `${kind === "direct" ? "직접" : "간접"} 연결`} — ${parts.map(p => `${names[p.key]} ${outageValue(p.value, outageUnit(a), true)}`).join(" / ")}` : "";
+      return parts.length ? `${kind === "stage" ? "같은 단계와 연결" : `${kind === "direct" ? "직접" : "간접"} 연결`} — ${parts.map(p => `${names[p.key]} ${outageValue(display.get(p.key) ?? p.value, outageUnit(a), true)}`).join(" / ")}` : "";
     }).filter(Boolean).join("; ")}. ${linked.every(p => Math.abs(p.value) < outageCardMin(a)) ? "이 몫들은 이번 차이에 거의 기여하지 않았어요. " : ""}근거 하나만의 인과 효과는 아니에요.${linked.some(p => links[p.key] === "indirect") ? ` 간접 연결은 이 근거가 ${a.target === "grid" ? "바깥 계통에 기댄 전기를" : "정전을"} 바꿨다는 뜻이 아니에요.` : ""}`;
     else text = `고른 근거 ‘${n.evidence?.text || "미선택"}’만의 ${a.target === "grid" ? "계통 의존 효과" : "정전 효과"}는 따로 계산하지 않았어요. ${a.parts.map(p => names[p.key]).join(" / ")}가 함께 작용해요.`;
     // S6과 같은 방향 규칙. 접속 여유는 새 접속 처리 전 값이므로 진행 몫과 방향을 비교하지 않는다.
@@ -3984,14 +4061,16 @@
     // 대신 계통 보충 전 raw.co2(이 도시 설비의 생산 배출)를 co2Prod로 따로 저장한 새 시험 기록만 생산 기준으로 비교한다.
     // core.run의 co2Prod는 자체 생산 + 판매 추가 발전 - 절감 배출이고, 시험에는 거래가 없어 자체 생산과 같은 기준이다. 옛 기록은 '비교 없음'.
     const co2 = productionCo2Daily(V, res, id, n);
+    const previousDays = previous ? resultPeriod(V, previous).days : null;
+    const outageDayTail = p && previousDays !== days ? rev9Copy("K6", { before: previousDays, after: days }) : "";
     // 생산 CO₂는 깜빡임과 같은 하루 평균으로 읽고 월 합계는 보조로 둔다.
     const deltas = [["정전(이번 달)", r.unsPct, comparison.value, "%", "%p", comparison.label, 2],
-      ["정전 시간(이번 달)", r.outH * mul, p ? p.outH * pm : trial?.outH * tm, "시간", "시간", firstBasis, 1],
+      ["정전 시간(이번 달)", r.outH * mul, p ? p.outH * pm : trial?.outH * tm, "시간", "시간", firstBasis, 1, "", outageDayTail],
       ["생산 CO₂(이번 달)", co2.value, co2.before, " t/일", " t/일", firstBasis, 1, `이번 달 합 ${fmt(r.co2Prod * mul)} t`]];
     const ledger = r.ledger;
     const complaintsNow = withCityPack(id, () => BG.complaints(BG.sanitize(L.doc?.maps[L.doc.map] || V.teams[id].plan || {}, 1e9), null).issues);
-    return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><div class="lg-info-line"><p class="lg-hint">운영 기간·정전 시간</p>${infoTip("result-period", `<p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>`, { label: "운영 기간·정전 시간" })}</div>
-      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision, total = ""]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis.startsWith("시험 ") ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}${total ? Number.isFinite(prev) ? `(${esc(total)})` : ` · ${esc(total)}` : ""}</small></div>`).join("")}${gridFillHTML(V, res, id)}</dl>
+    return `<section id="lg-result" class="lg-sec"><h3 id="lg-result-heading">${esc(resultHeading(V, res))}</h3><div class="lg-info-line"><p class="lg-hint">운영 기간</p>${infoTip("result-period", `<p class="lg-hint">${esc(teamName(id))} · ${esc(res.year)}년 · 대표 ${esc(res.days)}일 × ${esc(fmt(mul, 3))} → 월 ${esc(days)}일 · CO₂는 생산 기준</p>`, { label: "운영 기간" })}</div><p id="lg-result-outage-def" class="lg-hint">${esc(outageHoursDef(days))}</p>
+      <dl id="lg-result-deltas" class="lg-result-deltas">${deltas.map(([label, value, prev, unit, du, basis, precision, total = "", tail = ""]) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(value, precision))}${unit}</dd><small>${esc(basis)} Δ ${Number.isFinite(prev) ? `${esc(signed(value - prev, precision))}${du}` : basis.startsWith("시험 ") ? "비교 없음(시험 기록 없음)" : "비교 없음(첫 결과)"}${tail ? ` ${esc(tail)}` : ""}${total ? Number.isFinite(prev) ? `(${esc(total)})` : ` · ${esc(total)}` : ""}</small></div>`).join("")}${gridFillHTML(V, res, id)}</dl>
       ${resultHeatHTML(V, res, id, n)}
       ${outageDamageHTML(V, res, id)}
       ${Number.isFinite(rep?.cities?.[id]?.bioCo2) && rep.cities[id].bioCo2 > 0 ? `<p id="lg-result-bio-co2">${esc(bioCo2Text(rep.cities[id].bioCo2))}</p>` : ""}
@@ -5012,6 +5091,11 @@
     if (evs.some(({ ev }) => ev.id === "heatwave_peak")) {
       notes.push(`${rev8Copy("C10")} ${KCP.ECON_DATA.disasterFacts.heat.text} ${KCP.ECON_DATA.disasterFacts.heat.limitation}`);
     }
+    if (evs.some(({ ev }) => ev.id === "heavy_rain")) {
+      const plan = (id === L.team ? BG.current() : null) || V.teams[id].plan;
+      const hasSolar = (plan?.builds || []).some(b => ["solar", "roof", "tandem", "tandem_roof"].includes(b.t));
+      notes.push(rev9Copy(hasSolar ? "K13a" : "K13b"));
+    }
     // 원문 문자열은 기존 기록·검산용으로 유지하고, 표시할 때만 보충 설명을 접는다.
     const noteDetails = notes.map(text => {
       // 폭염 감산: 시험에 없다는 문장은 보이고, 근거·한계 설명은 '!' 안에 둔다(검토 minor 7).
@@ -5672,6 +5756,7 @@
     if (active && !active.closest("#lg-panel") && active !== document.body) L.panelTrigger = active;
     BG.closeDrawer?.();
     L.panelFolded = false; L.panel = tab;
+    if (tab === "deal" && L.coach?.step === 0) { L.coach.doneSeen ||= {}; L.coach.doneSeen[0] = true; }
     const p = document.getElementById("lg-panel"); if (!p) return;
     p.hidden = false; renderPanel(); syncResultMapSpace();
     document.querySelectorAll(".lg-bar [data-panel]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.panel === tab)));
@@ -5881,7 +5966,8 @@
     const panelBody = p.querySelector(".lg-pbody"), promiseActions = p.querySelector(".lg-promise-actions");
     if (promiseActions && !L.panelFolded) p.append(promiseActions);
     syncResultMapSpace();
-    const summary = p.querySelector("#lg-promise-summary");
+    const summary = p.querySelector("#lg-promise-summary"), cashCalc = p.querySelector("#lg-promise-cash-calc");
+    const evidenceDirection = p.querySelector("#lg-evidence-direction"), outageDef = p.querySelector("#lg-result-outage-def");
     if (reviewOrder) {
       // 숫자 → 판정 → 원인 카드 → 결정을 먼저 두고, 상세의 기존 열림 상태는 보존한다.
       const deltas = p.querySelector("#lg-result-deltas"), heat = p.querySelector("#lg-result-heat"), outage = p.querySelector("#lg-missed");
@@ -5908,11 +5994,13 @@
       const sections = [p.querySelector("#lg-result"), p.querySelector("#lg-promise-result")].filter(Boolean);
       const monthDetails = document.createElement("details"); monthDetails.id = "lg-month-details"; monthDetails.className = "lg-sec";
       const monthSummary = document.createElement("summary"), n = monthNote().n;
-      monthSummary.innerHTML = esc(`이번 달 자세히 · ${summary ? promiseVerdictShort(promiseComparison(V, n), n) : "정전 시간 정의·피해 추정"}`);
+      monthSummary.innerHTML = esc(`이번 달 자세히 · ${summary ? promiseVerdictShort(promiseComparison(V, n), n) : "피해 추정"}`);
       monthDetails.append(monthSummary, ...sections);
-      panelBody.prepend(...[heading, techNews, deltas, heat, summary, outage, decision.childElementCount ? decision : null, sections.length ? monthDetails : null].filter(Boolean));
+      // rev9 R8: 정전 시간 정의는 접지 않되, 판정·소비 CO₂·원인 카드의 첫 화면 자리(D-82 결정 2, S7)를 밀지 않게 '자세히' 접힘 바로 위에 둔다.
+      panelBody.prepend(...[heading, techNews, deltas, heat, summary, outage, decision.childElementCount ? decision : null, outageDef, sections.length ? monthDetails : null].filter(Boolean));
       if (shortcut) summary.insertAdjacentHTML("afterend", shortcut);
     } else if (summary && V?.phase !== "end") panelBody.prepend(summary);
+    else if (summary) p.querySelector("#lg-last-month")?.before(summary);
     if (tab === "result" && V?.results?.length) {
       const res = V.results.at(-1), note = tdata().interview?.months?.[res.round];
       const cause = noSupplyCause(res.team[L.team]?.unsPct, note?.planIssues);
@@ -5933,6 +6021,17 @@
       const co2Info = p.querySelector('[data-fold="result-co2-consumption"]');
       (alsoOutage?.isConnected ? alsoOutage : summary).after(co2cons);
       if (co2Info) co2cons.after(co2Info);
+    }
+    // rev9 R5·R6: 판정 줄 → (정전도 생겼어요) → 소비 CO₂ 순서(D-80 B-3a·D-82 결정 2)를 지키고 그 뒤에 둔다.
+    if (summary?.isConnected) {
+      const tail = [p.querySelector('[data-fold="result-co2-consumption"]'), co2cons, alsoOutage, summary].find(el => el?.isConnected);
+      if (cashCalc) tail.after(cashCalc);
+      if (evidenceDirection) (cashCalc?.isConnected ? cashCalc : tail).after(evidenceDirection);
+    }
+    // rev9 R8: 끝 화면은 요약·결정 순서 계약(6628ef9)을 지키도록 지난달 결과 접힘 바로 앞(.lg-end-more 안)에 둔다.
+    if (outageDef?.closest("details")) {
+      const lastMonth = V.phase === "end" ? p.querySelector("#lg-last-month") : null;
+      if (lastMonth) lastMonth.before(outageDef); else panelBody.prepend(outageDef);
     }
     closedWide.forEach(id => { const el = p.querySelector(`details[id="${id}"]`); if (el) el.open = false; });
     openedDetails.forEach(([key, value]) => { [...p.querySelectorAll(`details[${key}]`)].filter(el => el.getAttribute(key) === value).forEach(el => { el.open = true; }); });

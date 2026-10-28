@@ -454,8 +454,8 @@ function thresholdBasis(a) {
   const limit = ceilText(cardMin(a), a.target);
   const magnitude = valueText(Math.abs(delta), a.target).replace(/^\+/, '');
   const threshold = param('outageCardShareMin') * Math.abs(delta);
-  const actual = threshold.toLocaleString('ko-KR', { maximumFractionDigits:
-    threshold > 0 ? Math.min(12, Math.max(0, 11 - Math.floor(Math.log10(threshold)))) : 12 });
+  // rev9 R4: 실제 문턱도 표시 눈금(계통 1자리·정전 2자리)을 쓴다.
+  const actual = threshold.toLocaleString('ko-KR', { maximumFractionDigits: a.target === 'grid' ? 1 : 2 });
   const ceiling = Number(limit.replace(/ MWh\/일|%p|,/g, ''));
   const share = Number(actual.replaceAll(',', '')) === ceiling ?
     `5%(${limit})` : `5%(${actual}, 표시 눈금으로 올려 ${limit})`; // spec-C §M5b: 실제 문턱·올림값을 함께, 같으면 기존 단위 포함 한 값.
@@ -712,7 +712,12 @@ for (const row of [
   storage.set(teamKey, JSON.stringify({ interview: { months: { [n1f.res.round - 1]: row.before, [n1f.res.round]: n } } }));
   const before = clone(n);
   const s6 = textOf(U.__promiseResultHTML(n1f.V, n)), s7 = textOf(evidenceBlock(M.outageCardsHTML(n1f.V, n1f.res, id, n)));
-  assert.ok(s6.includes('고른 근거도 같은 쪽으로 움직였나요: ' + (row.reason || (row.same ? '같은' : '다른') + ' 방향(게임 안 단순 비교)')), s6);
+  // rev9 R5: S1 값 비교의 부호를 유지하며 K2/K3의 근거·예상·실제를 모두 검사.
+  const keyName = {evening:'저녁 수요',neighbor:'이웃 정전'}[row.key];
+  const beforeValue = row.before.s1EvidenceValues?.[row.key] ?? row.before.evidenceValues?.[row.key] ?? row.before.evidence?.value;
+  const arrow = (row.start ?? row.click) > beforeValue ? '↑' : '↓';
+  const expectedDirection = row.reason || `${keyName} ${arrow} → 정전 ${arrow} 쪽 예상 · 실제 정전 ↑ → 근거가 가리킨 쪽과 ${row.same ? '같음' : '반대'}(게임 안 단순 비교)`;
+  assert.ok(s6.includes('고른 근거도 같은 쪽으로 움직였나요: ' + expectedDirection), s6);
   const tail = row.reason ? `고른 근거가 가장 큰 몫(${names('monthly')[cause]})과 같은 이야기예요.` :
     row.same ? '고른 근거는 이번 차이의 가장 큰 몫과도 이어져요.' : '고른 근거가 가리키는 방향과 가장 큰 몫의 부호는 반대예요. 이 근거만으로 이번 차이의 방향을 설명하기는 어려워요.';
   // LNG는 간접 연결이므로 방향 판정 대신 다음 근거 안내를 유지한다.
