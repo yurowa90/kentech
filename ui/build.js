@@ -1344,6 +1344,9 @@
     try { return S.opts.leagueGrid(st); }
     finally { if (PK.id !== pack) selectPack(pack, "league"); }
   }
+  function cityOutageHours(res) {
+    return res.hrDem.reduce((hours, dem, k) => hours + (dem - res.hrSup[k] > outageCut(dem) ? 1 : 0), 0);
+  }
   function rememberTrial(res, st, round, gridMWh = 0, co2Prod = null) {
     const scope = S?.opts.trialScope || "", key = JSON.stringify([scope, res.map]);
     const trial = {
@@ -1351,7 +1354,7 @@
       season: res.season, days: res.days, seed: res.seed,
       unsPct: res.tot.dem > 0 ? 100 * res.unsTotal / res.tot.dem : 0,
       // outH는 도시 전체 부족 시간(최대 days×24), outTotal은 수요지별 정전 시간의 합이다.
-      outH: res.hrDem.reduce((hours, dem, k) => hours + (dem - res.hrSup[k] > outageCut(dem) ? 1 : 0), 0),
+      outH: cityOutageHours(res),
       outTotal: res.outTotal, co2: res.co2, cost: res.cost.total,
       capex: res.cost.capex, opex: res.cost.total - res.cost.capex,
       loss: res.tot.loss, idle: res.tot.idle,
@@ -1438,8 +1441,10 @@
     if (!S?.alive) return;
     if (S.dirtyLayout) layout();
     if (onlyIfHidden && (!isTouchUI() || touchZoom() <= V.zoom + 1e-9)) {
-      const a = { ...V.area }, guidance = S.root.querySelector(".lg-map-guidance");
-      if (guidance && !guidance.hidden && guidance.getClientRects().length) a.t = Math.max(a.t, guidance.getBoundingClientRect().bottom + 8);
+      const a = { ...V.area };
+      S.root.querySelectorAll(".lg-map-guidance, #lg-coach").forEach(el => {
+        if (!el.hidden && el.getClientRects().length) a.t = Math.max(a.t, el.getBoundingClientRect().bottom + 8);
+      });
       const inside = tiles.filter(i => TILES[i]).every(i => { const [x, y] = tileTop(TILES[i]); return x >= a.l + 24 && x <= a.r - 24 && y >= a.t + 24 && y <= a.b - 24; });
       if (inside) return;
     }
@@ -1450,8 +1455,10 @@
     fitView();
     const points = tiles.filter(i => TILES[i]).map(i => tileTop(TILES[i]));
     if (points.length) {
-      const a = { ...V.area }, guidance = S.root.querySelector(".lg-map-guidance");
-      if (guidance && !guidance.hidden && guidance.getClientRects().length) a.t = Math.max(a.t, guidance.getBoundingClientRect().bottom + 8);
+      const a = { ...V.area };
+      S.root.querySelectorAll(".lg-map-guidance, #lg-coach").forEach(el => {
+        if (!el.hidden && el.getClientRects().length) a.t = Math.max(a.t, el.getBoundingClientRect().bottom + 8);
+      });
       const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
       const l = Math.min(...xs), r = Math.max(...xs), t = Math.min(...ys), b = Math.max(...ys);
       const fits = r - l <= a.r - a.l - 48 && b - t <= a.b - a.t - 48;
@@ -3412,7 +3419,8 @@
       set("cp", `${R.res.cp.issues}건`, R.res.cp.issues > 1 ? "danger" : "");
     } else if (res) {
       set("time", `${res.days}일 끝`);
-      set("power", `정전 ${res.outTotal}h`, res.outTotal > 0 ? "danger" : "");
+      const outH = LG ? cityOutageHours(res) : res.outTotal;
+      set("power", `정전 ${outH}h`, outH > 0 ? "danger" : "");
       set("co2", `${fmt(res.co2)} t`);
       set("cp", `${res.cp.issues}건`, res.cp.issues > 1 ? "danger" : "");
     } else {

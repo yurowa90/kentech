@@ -55,8 +55,11 @@ HEADER_JS = r"""() => {
   const box=e=>{
     const r=e.getBoundingClientRect(), b={l:Math.max(0,r.left),r:Math.min(innerWidth,r.right),
       t:Math.max(0,r.top),b:Math.min(innerHeight,r.bottom)};
-    for(let p=e.parentElement;p;p=p.parentElement) {
+    // rev10 총괄 수정: position:fixed 요소는 (transform·filter·contain 없는) 조상의 overflow에 잘리지 않는다.
+    let fixed=getComputedStyle(e).position==='fixed';
+    for(let p=e.parentElement;p&&!fixed;p=p.parentElement) {
       const s=getComputedStyle(p),q=p.getBoundingClientRect();
+      if(s.position==='fixed') fixed=true;
       const sx=p.offsetWidth ? q.width/p.offsetWidth : 1,sy=p.offsetHeight ? q.height/p.offsetHeight : 1;
       const l=q.left+p.clientLeft*sx,t=q.top+p.clientTop*sy;
       if(/^(auto|scroll|hidden|clip|overlay)$/.test(s.overflowX)) {
@@ -76,7 +79,10 @@ HEADER_JS = r"""() => {
   const collisions=badges.flatMap(b=>peers.filter(p=>overlap(box(b),box(p)))
     .map(p=>({badge:b.textContent,peer:p.id||p.className,a:box(b),b:box(p)})));
   const chip=document.querySelector('#lg-bar .lg-data-chip > span');
-  return {badges:badges.map(e=>({text:e.textContent,scroll:e.scrollWidth,client:e.clientWidth})),collisions,
+  // rev10 R4: 조상에 잘린 부분도 실패다. 잘린 가시 영역만 비교해서 통과시키지 않는다.
+  return {badges:badges.map(e=>{const r=e.getBoundingClientRect(),v=box(e);return {
+    text:e.textContent,scroll:e.scrollWidth,client:e.clientWidth,w:r.width,h:r.height,
+    whole:r.left>=v.l&&r.right<=v.r&&r.top>=v.t&&r.bottom<=v.b};}),collisions,
     chipVisible:visible(chip),team:[...document.querySelectorAll('#lg-bar .lg-bteam')]
       .map(e=>({text:e.textContent,scroll:e.scrollWidth,client:e.clientWidth}))};
 }"""
@@ -85,7 +91,8 @@ HEADER_JS = r"""() => {
 def header(checks, page, label):
     data = page.evaluate(HEADER_JS)
     if data['badges']:
-        checks.ok(all(b['scroll'] <= b['client'] + 1 for b in data['badges']),
+        # rev10 R4: 오차 없이 scrollWidth ≤ clientWidth, 터치 크기와 조상 잘림 검사.
+        checks.ok(all(b['scroll'] <= b['client'] and b['whole'] and b['w'] >= 44 and b['h'] >= 44 for b in data['badges']),
                   f'{label} R1 배지마다 말줄임 없음: {data["badges"]}')
         checks.ok(not data['collisions'], f'{label} R1 다른 머리 요소와 겹침 없음: {data["collisions"]}')
         checks.ok(not data['chipVisible'], label + ' R1 배지 있는 달 가상 글자 접기')

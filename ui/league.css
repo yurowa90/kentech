@@ -1025,6 +1025,9 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 #lg-watch { position: static; display: flex; min-width: 0; gap: 3px; }
 #lg-watch > span { display: none; }
 #lg-watch button { max-width: 88px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* rev10: 배지는 '이번 달 볼 것' 글자와 같은 12px(#lg-watch > span)을 물려받는다. 1280에서 14px이면 '근거 고르기'가 88px 상한에 말줄임된다. */
+#lg-watch #lg-watch-inline { display: contents; }
+#lg-outage-card-clues { display: none; }
 .lg-team-map #bd-mapnote { display: none; }
 .lg-lenses { border: 0; padding: 0; background: transparent; position: relative; }
 .lg-team-map #bd-mapbar { z-index: 28; }
@@ -1589,8 +1592,8 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
 @media (max-width: 480px) {
   .lg-data-chip > span { flex: 0 0 auto; padding-inline: 3px; white-space: nowrap; }
   .lg-data-chip-long { display: none; }
-  /* rev9 R1: 배지가 있는 달에는 '가상' 글자를 접고(! 낭독 이름 유지), 단계 글자를 숨기고 접속 칩을 색 점으로 줄여
-     배지 자리를 만든다. 머리 줄 수는 그대로(econui U1: 서랍을 닫으면 지도 60% 이상). 넘치는 배지는 잘리지 않고 옆으로 민다. */
+  /* 배지가 있는 달에는 '가상' 글자를 접고(! 낭독 이름 유지), 단계 글자를 숨기고 접속 칩을 색 점으로 줄인다.
+     넘치는 배지는 rev10의 +n 목록에서 같은 동작으로 연다. */
   .lg-team-map #lg-bar:has(#lg-watch button) .lg-data-chip > span { display: none; }
   .lg-team-map #lg-bar:has(#lg-watch button) .lg-bphase { display: none; }
   .lg-team-map #lg-bar:has(#lg-watch button) .lg-bteam { flex: 0 0 auto; }
@@ -1599,6 +1602,19 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   .lg-team-map #lg-bar #lg-watch::-webkit-scrollbar { display: none; }
   .lg-team-map #lg-bar #lg-watch button { flex: 0 0 auto; max-width: none; overflow: visible; text-overflow: clip; }
   .lg-team-map #lg-bar:has(#lg-watch button) .lg-timer:empty { display: none; }
+}
+
+/* rev10: 실제 폭으로 접은 배지는 머리 아래에 펼친다. 머리·페이지의 가로 스크롤은 만들지 않는다. */
+@media (max-width: 760px) {
+  .lg-team-map #lg-bar:has(#lg-watch-more[aria-expanded="true"]) { z-index: 47; }
+  .lg-team-map #lg-bar #lg-watch:has(button) { overflow: visible; gap: 3px; }
+  .lg-team-map #lg-bar #lg-watch button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; min-height: 44px; max-width: none; white-space: nowrap; overflow: visible; text-overflow: clip; }
+  .lg-team-map #lg-watch #lg-watch-more-list { position: fixed; z-index: 1; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px; box-sizing: border-box; padding: 8px; overflow-y: auto; white-space: normal; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-panel); }
+  .lg-team-map #lg-watch #lg-watch-more { padding-inline: 4px; }
+}
+@media (max-width: 480px) {
+  #lg-panel #lg-outage-cards[data-repeated-clues="true"] .lg-out-clue { display: none; }
+  #lg-outage-card-clues { display: block; }
 }
 
 /* dl 보조 설명을 dd 안에 두되 숫자와 글의 크기·행을 구분한다. */

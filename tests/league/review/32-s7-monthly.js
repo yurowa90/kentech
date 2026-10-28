@@ -1,5 +1,6 @@
 'use strict';
 const weatherShort = require('./v8-weather-contract');
+const displayContract = require('./rev10-display-contract'); // rev10 R7
 // 기준: ../_briefs/lanes/league/V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix3.md + V3B-s7.md(영상 3차), 여섯 단계·호출 상한·0.005%p 재현 문턱. // D-80: C-1·2·4·5 대상별 검사.
 // 예상값은 S7 반환값/사본/호출 로그가 아니라 운영 직전 상태와 build/core 모델로 만든다.
 // 잡는 회귀: 시험 기준 회귀, 단계 교환/입력 조기 변경, 재현의 합계/후보 혼입,
@@ -73,6 +74,15 @@ function near(a, b, label, tolerance = 1e-9) {
 const shownHigh = value => Number.isFinite(value) && Math.round(value * 100) >= 500;
 const noCauseLabel = (before, after) => shownHigh(before) && shownHigh(after) ?
   '차이 원인 없음(정전 자체는 큼)' : '뚜렷한 원인 없음';
+// rev10 R5: 이 fixture의 운영 당시 계획에서 독립적으로 미연결 수를 센다.
+function highOutageCopy(V, res) {
+  B.selectPack(C.teamDef(R, id).pack, 'league');
+  const plan = V.teams[id].plan;
+  const n = plan ? B.network(B.sanitize(clone(plan),1e9)).nodes
+    .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length : 0;
+  return n ? `설비·접속 상태를 살펴봐요. 이번 달 '전선에 안 닿은 설비'가 ${n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 봐요` :
+    '지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
+}
 function studentWords(html, label) {
   const text = html.replace(/<[^>]*>/g, ''); // #lg-missed 전체, 접힌 상세 포함
   ok(!text.includes('S7') && !text.includes('(G)'), `${label}: 학생 영역 내부 표기 미노출`);
@@ -480,22 +490,19 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   const digits = target === 'grid' ? 1 : 2, scale = 10 ** digits;
   rendered.forEach(r => {
     near(r.raw, expectedRows[r.key], `${r.key} 독립 기대값 vs DOM 원시값`);
-    if (causes.includes(r.key)) {
-      const floor = Math.floor(expectedRows[r.key] * scale), ticks = Math.round(r.visible * scale);
-      ok(ticks === floor || ticks === floor + 1, `${r.key} 표시값은 원값의 내림 또는 내림+1 눈금`); // spec-C §M5: 몫은 최대 나머지로 배분, 개별 반올림 기대 폐기.
-    } else near(r.visible, Number(r.raw.toFixed(digits)), `${r.key} 출발·도착 표시 반올림`); // spec-C §M5: 배분은 몫에만 적용.
+    // rev10 R7: 원시 기대 몫으로 명세의 배분값을 계산. 동점 보호는 각자 반올림.
+    near(r.visible, displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).get(r.key)
+      ?? Number(expectedRows[r.key].toFixed(digits)), `${r.key} 명세 표시 배분/각자 반올림`);
   });
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g))
     eq(m[3], unitNumber(a, rendered.find(r => r.key === m[1]).visible, causes.includes(m[1]), !causes.includes(m[1])),
       `${m[1]} 대상별 소수 자릿수·유니코드 마이너스·단위 붙임`); // spec-C §M5: 배분된 표시값에도 기존 숫자 형식 엄격 비교 유지.
   near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.raw, 0), expected.actual, '폭포 원시 합계 1e-9'); // D-80: 단위 전환에도 합계 정밀도 유지.
   const displayedParts = rendered.filter(r => causes.includes(r.key));
-  near(displayedParts.reduce((sum, r) => sum + r.visible, 0), Number((expected.actual - expected.base).toFixed(digits)), '표시 몫 합계 = 표시 Δ'); // spec-C §M5: 출발값이 아닌 몫의 합을 표시 Δ와 대조.
-  for (const awarded of displayedParts) for (const unawarded of displayedParts) {
-    const fraction = r => expectedRows[r.key] * scale - Math.floor(expectedRows[r.key] * scale);
-    const award = r => Math.round(r.visible * scale) - Math.floor(expectedRows[r.key] * scale);
-    if (award(awarded) > award(unawarded)) ok(fraction(awarded) >= fraction(unawarded), `${awarded.key}/${unawarded.key} 큰 나머지부터 배분`); // spec-C §M5: 합만 맞추는 임의 조정을 검출.
-  }
+  // rev10 R7: 배분 맵이 있을 때 표시 출발 + 표시 몫 합 = 표시 실제.
+  if (displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).size)
+    eq(Math.round(Number(expected.base.toFixed(digits))*scale)+displayedParts.reduce((sum,r)=>sum+Math.round(r.visible*scale),0),
+      Math.round(Number(expected.actual.toFixed(digits))*scale), '표시 시작 + 표시 몫 = 표시 실제');
   ok(html.includes('약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)'), '판정·분해 기준 안내');
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
   eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= (target === 'grid' ? .05 : .005), '대상별 재현 설명 표시 문턱'); // D-82: 계통 표시 반 눈금 0.05 MWh/일, 정전 유지.
@@ -812,8 +819,7 @@ test('월간 높은 정전 차이 원인 없음·고르기 생략', () => {
   near(second.res.team[id].unsPct, filledEmpty, '이번 달 계통 반영 정전');
   ok(html.includes(`지난달 ${number(filledEmpty)}% → 이번 달 ${number(filledEmpty)}%로 거의 같아요`),
     '월간 요약 숫자 = 독립 계산, 시험 → 실제로 되돌아가지 않음');
-  ok(html.includes('정전 자체는 큼') && html.includes('지금 설비·접속이 수요를 못 따라가는 상태') &&
-    html.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), '월간 높은 정전 부족·재점검 안내');
+  ok(html.includes('정전 자체는 큼') && html.includes(highOutageCopy(second.V, second.res)) /* rev10 R5 */, '월간 높은 정전 부족·재점검 안내');
   ok(!html.includes('data-missed=') && !html.includes('data-out-tag="largest"'), '큰 보정으로 카드/최대 만들지 않음');
   ok(!teamData().interview.months[2].outageLargest, '최대 몫 기기 기록 없음');
 
@@ -887,8 +893,8 @@ test('월간 높은 정전 5% 경계·표시 반올림', () => {
       ok(html.includes('data-single="true"') && html.includes(noCauseLabel(before, after)), `${label}: 경계 기록 문구`);
       ok(html.includes(`지난달 ${number(before)}% → 이번 달 ${number(after)}%로 거의 같아요`), `${label}: 두 달 숫자 인용`);
       eq(html.includes('정전 자체는 큼'), high, `${label}: 두 표시값 모두 5.00% 이상`);
-      eq(html.includes('지금 설비·접속이 수요를 못 따라가는 상태'), actualHigh, `${label}: 실제 표시값 기준 설비·접속 안내`);
-      eq(html.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), actualHigh, `${label}: 실제 표시값 기준 재점검 안내`);
+      eq(html.includes(highOutageCopy(second.V, second.res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 설비·접속 안내`);
+      eq(html.includes(highOutageCopy(second.V, second.res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 재점검 안내`);
       eq(html.includes('지난달에도 정전이 컸으니'), high, `${label}: 높은 기준값 전제`);
       eq(html.includes('이번 달 변화보다'), actualHigh, `${label}: 작은 차이일 때만 비교`);
       ok(!session.outShownPending.largest && !html.includes('data-out-tag="largest"'), `${label}: 최대 몫 없음`);
@@ -1315,7 +1321,7 @@ for (const side of ['neighbor', 'own']) test(`${side} 연계선 접속점 전선
       } else {
         ok(part('choice') > .05, '우리 전선 단절의 유의미한 접속 감소는 ①');
         near(part('progress'), 0, '우리 전선 단절을 자연 진행 감소로 넘기지 않음');
-        ok(a.clues.choice.includes('접속 감소') && a.clues.choice.includes('전선 변경'),
+        ok(a.clues.choice.includes('접속 감소') && a.clues.choice.includes(`전선 ${previous.model.plan.lines.length} → ${current.model.plan.lines.length}개`) /* rev10 R6 */,
           '우리 전선 단절은 선택의 접속 감소·전선 변경 단서');
         ok(!a.clues.progress.includes('이웃 연계선'), '우리 전선 단절을 이웃 단절로 꾸미지 않음');
       }

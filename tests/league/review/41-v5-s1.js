@@ -1078,7 +1078,14 @@ test('10 §4 카드 달 배지 고르기 전·후', () => {
 test('10 §4·5 대응 사건 달 배지 = 9c14549', () => {
   const badge = a => { fixture(a, { event: 'response' }); const watch = new Element('span', { id: 'lg-watch' });
     a.nodes.set('lg-watch', watch); api(a, 'renderBar')(); return watch.innerHTML; };
-  assert.equal(badge(h), badge(old), '배지 바이트 동일');
+  // rev10 R4(검토 반영, 총괄 수정): +n 접기로 #lg-watch 안 감싸개·속성이 늘어 바이트 비교는 불가능하다.
+  // 계약(배지 단추의 글자·순서·여는 서랍)을 9c14549와 비교한다.
+  const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+    .filter(m => !/lg-watch-more/.test(m[1]))
+    .map(m => [m[2].replace(/<[^>]*>/g, '').trim(), (m[1].match(/data-hud-panel="([^"]*)"/) || [])[1] || null]);
+  const now = buttons(badge(h)), then = buttons(badge(old));
+  assert.ok(then.length > 0, '옛 배지 단추 있음');
+  assert.deepEqual(now, then, '배지 단추 글자·순서·서랍 동일');
 });
 test('11 §3·5 이웃 이름 XSS 이스케이프', () => {
   fixture(h, { previous: standard, values: { neighbor: 30 } });

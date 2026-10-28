@@ -62,14 +62,27 @@ def display_shares(a):
     if not a.get("replayOutsideSum") and abs(replay) >= (.05 if a.get("target") == "grid" else .005):
         values = {"replay": Decimal(str(replay)) * scale, **values}
     floors = {k: int(v.to_integral_value(rounding=ROUND_FLOOR)) for k, v in values.items()}
-    delta = a["actual"] - a.get("trial", a.get("base", 0))
-    target = int(Decimal(str(rounded_share(delta, a))) * scale)
+    # rev10 R7: 표시 시작/실제를 따로 반올림한 차가 목표다. 혼합 부호와 동점 보호 포함.
+    target = int((Decimal(str(rounded_share(a["actual"], a))) -
+                  Decimal(str(rounded_share(a.get("trial", a.get("base", 0)), a)))) * scale)
     remainder = target - sum(floors.values())
-    assert 0 <= remainder <= len(values), "표시 Δ와 분해 원값 합 불일치"
+    # rev10 검토 M1(총괄 수정): 음수 나머지는 각자 반올림(빈 맵)으로 둔다.
+    if remainder < 0 or remainder > len(values):
+        return {}
     ranked = sorted(values, key=lambda k: values[k] - floors[k], reverse=True)
     for k in ranked[:remainder]:
         floors[k] += 1
-    return {k: float(Decimal(v) / scale) for k, v in floors.items()}
+    result = {k: float(Decimal(v) / scale) for k, v in floors.items()}
+    parts = a["parts"]
+    threshold = max(part_min(a), .05 * abs(a.get("total", a["actual"] - a.get("trial", a.get("base", 0)))))
+    largest = max((abs(p["value"]) for p in parts), default=0)
+    tied = [p["key"] for p in parts if abs(p["value"]) >= threshold and
+            abs(rounded_share(abs(p["value"]), a)) == abs(rounded_share(largest, a))]
+    if tied:
+        top = abs(result[tied[0]])
+        if any((abs(result[k]) != top if k in tied else abs(result[k]) >= top) for k in result):
+            return {}
+    return result
 
 
 def displayed_share(value, a, key):
@@ -166,10 +179,22 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
               f"{label} 요약 두 숫자 = 독립 비교값(소수 둘째 자리)")
     checks.ok(expected_label in text and ("정전 자체는 큼" in text) == high,
               f"{label} 두 표시값 모두 ≥5.00%일 때만 높은 정전 기록")
+    # rev10 R5: 현재 지도 대신 저장된 운영 사본의 미연결 설비 수를 읽는다.
+    # rev10 총괄 수정: KCP.league.state()에는 interview가 없다. 혼자 하기는 저장본(1초 디바운스 뒤)의 interview를 읽는다.
+    page.wait_for_timeout(1300)
+    n = page.evaluate("""() => {
+      const L=KCP.league.state(), V=L.snap||L.S, d=L.role==='solo'?JSON.parse(localStorage.getItem('kcp-league-solo-v1')||'{}').interview:
+        JSON.parse(localStorage.getItem(`kcp-league-s7-v1:${L.room}:${L.team}`)||'{}');
+      const p=d?.outageSnapshots?.[V.round]?.plan || d?.months?.[V.round]?.operatingPlan;
+      if(!p) return 0;
+      return KCP.buildGame.network(KCP.buildGame.sanitize(p,1e9)).nodes
+        .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length;
+    }""")
+    hint = (f"설비·접속 상태를 살펴봐요. 이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 봐요"
+            if n else "지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요")
     checks.ok((("바뀐 조건 하나하나는" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
-              ("지금 설비·접속이 수요를 못 따라가는 상태" in summary) == actual_high and
-              ("1주 시험과 자리 판단(접속 여유)에서 다시 봐요" in summary) == actual_high,
-              f"{label} 차이 설명·높은 정전의 설비·접속 부족·재점검 안내")
+              (hint in summary) == actual_high,  # rev10 R5: N2/원래 문장의 조건별 기대.
+              f"{label} 차이 설명·높은 정전의 설비·접속 부족·재점검 안내" + ("" if (hint in summary) == actual_high else f" (n={n}, 높음={actual_high}, 요약 끝={summary[-160:]})"))
     saved_name = "지난달 사본" if monthly else "시험"
     replay_detail = f"차이의 대부분은 재현 차이(저장된 {saved_name}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요"
     checks.ok((replay_detail in summary) == replay_dominates, f"{label} 재현 차이가 대부분일 때 원인 분해 한계")
@@ -301,7 +326,9 @@ def promise_result(checks, page, expected, label):  # D-80: 주제별 S6 판정�
     verdict = "예상과 같음" if expected["hit"] else "예상과 다름"  # D-80: 틀리기/맞히기 양쪽 확인.
     checks.ok(verdict in compare and expected["basis"] in compare, f"{label} {topic} 화면 판정·비교 기준 일치")  # D-80: B-3.
     unit = "MWh/일" if topic == "grid" else "%p" if topic == "uns" else "억"  # D-82 결정 1·화면 지시서: 판정과 같은 일평균 단위.
-    match = re.search(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare)  # D-82 결정 1·화면 지시서: 첫 MWh/일 차이를 검사, 월 합계와 혼동 금지.
+    # rev10 R2: 같음 문장의 ±tol을 Δ로 오인하지 않도록 마지막 %p 수치를 읽는다.
+    matches = list(re.finditer(r"([+−-]?\d[\d,]*(?:\.\d+)?)\s*" + re.escape(unit), compare))
+    match = matches[-1] if topic == "uns" and matches else matches[0] if matches else None  # D-82 결정 1·화면 지시서: 첫 MWh/일 차이를 검사, 월 합계와 혼동 금지.
     step = (".01" if expected["grid_digits"] == 2 else ".1") if topic == "grid" else ".01"  # D-80: 화면 표시 자릿수만 반영한다.
     displayed = Decimal.from_float(expected["delta"]).quantize(Decimal(step), rounding=ROUND_HALF_UP)  # D-80: 이진 실수의 표시 반올림값과 대조, 허용 오차 확대 없음.
     checks.ok(match is not None and Decimal(match[1].replace("−", "-").replace(",", "")) == displayed,  # D-80: B-3 수치.
@@ -519,7 +546,14 @@ def clue_and_evidence(checks, page, a, label):
               f"{label} 공급량 정의·부호 없는 단서 순서 안내")
     weather_card = page.locator('[data-missed="weather"] .lg-out-clue')
     if weather_card.count():
-        checks.ok(weather_card.inner_text() == short, f"{label} 날씨 카드 = 검산된 짧은 단서 API")
+        # rev10 R1: 좁은 화면의 중복 단서만 숨길 수 있다. 원문은 별도 보이는 영역에 남아야 한다.
+        duplicate = (page.viewport_size['width'] <= 480 and not weather_card.is_visible() and
+                     page.locator('#lg-missed').evaluate("""(root,text)=>{
+                       const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+                       while(walk.nextNode()) {const n=walk.currentNode;
+                         if(n.textContent.includes(text)&&n.parentElement.checkVisibility({visibilityProperty:true})) return true;}
+                       return false;}""", short))
+        checks.ok(duplicate or (weather_card.is_visible() and weather_card.inner_text() == short), f"{label} 날씨 카드 = 검산된 짧은 단서 API")
     more = page.locator("#lg-outage-more")
     required(checks, more.count() == 1, f"{label} #lg-outage-more 상세 단서 DOM 누락 또는 중복")
     checks.ok(full in more.text_content(),
@@ -746,8 +780,12 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
     checks.ok(abs(sum(v for k, v in values.items() if k != "actual") + (replay if "replay" not in values else 0) - values["actual"]) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 생략 재현 복원 뒤 폭포 원시 합계 1e-9")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
-    checks.ok(abs(sum(v for k, v in visible.items() if k not in ("actual", "trial")) - rounded_share(values["actual"] - values["trial"], current_attribution(page))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
-              f"{label} spec-C M5 표시 몫 합계 = 표시 Δ")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
+    # rev10 R7: 배분 맵이 있는 경우만 합 항등식. 빈 맵은 위의 각자 반올림 검사로 확인한다.
+    if display_shares(current_attribution(page)):
+        scale = 10 if current_attribution(page).get("target") == "grid" else 100
+        checks.ok(round(visible["trial"] * scale) + sum(round(v * scale) for k,v in visible.items()
+                  if k not in ("actual", "trial")) == round(visible["actual"] * scale),
+                  f"{label} 표시 시작 + 표시 몫 = 표시 실제")
     largest = max(NAMES, key=lambda k: abs(values[k]))
     top = sorted((k for k in NAMES if abs(values[k]) >= part_min(current_attribution(page))), key=lambda k: abs(values[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
@@ -1017,8 +1055,12 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
-    checks.ok(abs(sum(v for k,v in visible.items() if k not in ('actual', 'previous')) - rounded_share(actual - baseline, a)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
-              f"{label} spec-C M5 표시 몫 합계 = 표시 Δ")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
+    # rev10 R7: 끝점을 각각 표시한 값으로 합을 검사한다(원시 Δ 반올림 금지).
+    if display_shares(a):
+        scale = 10 if a.get("target") == "grid" else 100
+        checks.ok(round(visible['previous'] * scale) + sum(round(v * scale) for k,v in visible.items()
+                  if k not in ('actual', 'previous')) == round(visible['actual'] * scale),
+                  f"{label} 표시 시작 + 표시 몫 = 표시 실제")
     waterfall = page.locator('#lg-outage-waterfall')
     aria = waterfall.get_attribute('aria-label') or ''
     aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]

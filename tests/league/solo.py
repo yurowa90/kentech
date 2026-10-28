@@ -319,7 +319,8 @@ def play(checks, page, base, label):
                 top = page.locator('#lg-result-deltas > div').first.inner_text()
                 prediction = page.locator('#lg-promise-result [data-compare="uns"]').inner_text()
                 def shown_delta(text):
-                    match = re.search(r'시험 1주 대비(?: Δ)?\s*([+−-]?\d+(?:\.\d+)?)%p', text)
+                    # rev10 R2: S6는 판정 낱말·같음 범위 뒤 괄호 안에 Δ를 둔다.
+                    match = re.search(r'시험 1주 대비(?: Δ)?\s*(?:(?:같음|늘어남|줄어듦)\((?:±[\d.]+%p 안, )?)?([+−-]?\d+(?:\.\d+)?)%p', text)
                     return float(match.group(1).replace('−', '-')) if match else None
                 checks.ok('시험 1주 대비' in top and '시험 1주 대비' in prediction and
                           shown_delta(top) == shown_delta(prediction) == expected,
