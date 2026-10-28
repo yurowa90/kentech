@@ -8,6 +8,7 @@
 //   대장 대응표로 값·등급·출처를 단언하므로, 41번이 통과하면 근거 등급 계수 전부가 값으로 단언된다.
 // 실행: node tests/league/review/q8-model-audit.js
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
+const assert = require("node:assert/strict");
 const ROOT = path.resolve(__dirname, "../../..");
 const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
 const ctx = vm.createContext({ console });
@@ -17,8 +18,15 @@ const P = ctx.KCP.ECON_DATA.params;
 const evidenceTests = ["tests/league/recal.js", "tests/league/review/39-evidence-params.js", "tests/league/review/41-evidence-all.js"]
   .filter(f => fs.existsSync(path.join(ROOT, f)));
 const text = evidenceTests.map(read).join("\n");
-const idRef = v => (Array.isArray(v.refs) && v.refs.some(r => /^[A-Z]\d+$/.test(r))) || /\[[A-Z]\d+\]/.test(v.note || "");
+const idRef = v => (Array.isArray(v.refs) && v.refs.some(r => /^(?:[A-Z]\d+|D\d+-R\d+)$/.test(r))) || /\[(?:[A-Z]\d+|D\d+-R\d+)\]/.test(v.note || "");
 const sectionRef = v => /REF \d/.test(v.note || "");
+// 절 번호·결정 번호와 출처 번호를 구분한다. refs와 note 양쪽 경로를 검사한다.
+for (const id of ["P61", "D90-R1", "D90-R2", "D87-R04"])
+  for (const v of [{ refs: [id] }, { note: `[${id}]` }]) assert.ok(idRef(v), id);
+for (const id of ["D-90", "REF 19.1", "D90-R", "D87-R04-extra"])
+  for (const v of [{ refs: [id] }, { note: `[${id}]` }]) assert.ok(!idRef(v), id);
+for (const key of ["heatLngSlope", "heatPvSlope", "thermalMW", "thermalCapex", "pmNewFuelW"])
+  assert.ok(idRef(P[key]), `${key}: 출처 번호로 분류`);
 const named = k => [k, k.replace(/^tech_/, "")].some(n => new RegExp(`(^|[^A-Za-z0-9_$])${n}($|[^A-Za-z0-9_$])`).test(text));
 
 const grades = {}, evidence = [], noRef = [], sectionOnly = [], notNamed = [];

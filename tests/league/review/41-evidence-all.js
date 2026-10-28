@@ -29,9 +29,9 @@ const expected = {
   heatLngSlope: [.226 / 30, 'M', '19.1', ['D90-R1']],
   heatPvSlope: [.004165, 'P', '19.1', ['D90-R2']],
   // REF §18: 출처 ID는 새 대장의 D87-Rxx 표기다. params는 REF 절을 참조한다.
-  thermalMW: [{ lng: 561, coal: 1040 }, 'O*', '18.1', [], ['D87-R04']],
-  thermalCapex: [{ lng: 1275, coal: 1809 }, 'P', '18.1', [], ['D87-R01']],
-  pmNewFuelW: [newPM, 'M', '18.2', [], ['D87-R02', 'D87-R03']],
+  thermalMW: [{ lng: 561, coal: 1040 }, 'O*', '18.1', ['D87-R04']],
+  thermalCapex: [{ lng: 1275, coal: 1809 }, 'P', '18.1', ['D87-R01']],
+  pmNewFuelW: [newPM, 'M', '18.2', ['D87-R02', 'D87-R03']],
   aiVollMul: [5, 'M', '5.8', ['L35', 'P37', 'S18', 'P15', 'P38']],
   curtailLossReal: [.018, 'M', '8.14', ['X25']],
   connPerMonthReal: [.00375, 'M', '8.12', ['S22', 'S21']],

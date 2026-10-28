@@ -31,11 +31,11 @@
     // D-87 1단계 사실 자료. text는 화면 문장(사실 범위 확인본)이며 도구 '!'·배치 안내·시작 전 안내·공사 기간 표가 읽는다.
     thermalFacts: {
       coalScenario: { hypothetical: true, phaseoutTargetYear: 2040, grade: "G", targetGrade: "O", sourceDate: "2025-11-19", sourceScope: "title", sources: ["docs/DECISIONS.md#d-87", "https://www.korea.kr/briefing/pressReleaseView.do?newsId=156729173"], text: "정부(기후에너지환경부, 2025년 11월 19일 설명자료) 목표는 2040년까지 석탄발전 폐지예요. 비용·오염을 비교하게 계획에 없는 새 건설을 가정해 열어 둬요." },
-      coalBuild: { realMW: 1040, start: "2018-03", end: "2022-11", months: 56, status: "commercial-operation", gameTurns: 0, grade: "O*→M", gameGrade: "G", sources: ["https://www.fnnews.com/news/202201190510250033", "https://www.gem.wiki/Anin_power_station"], text: "강릉안인 석탄 1호기(1,040MW) 2018년 3월 착공·2022년 11월 상업운전(약 56개월). 게임에선 석탄도 짓자마자 가동해요(공사 기간은 SMR 12달만)." },
+      coalBuild: { realMW: 1040, start: "2018-03", end: "2022-11", months: 56, status: "commercial-operation", gameTurns: 0, grade: "O*→M", gameGrade: "G", sources: ["https://www.fnnews.com/news/202201190510250033", "https://www.gem.wiki/Anin_power_station"], get text() { return `강릉안인 석탄 1호기(1,040MW) 2018년 3월 착공·2022년 11월 상업운전(약 56개월). 게임에선 석탄도 짓자마자 가동해요(공사 기간은 SMR ${KCP.TECH_DATA.params.smrTurns.v}달만).`; } },
       lngBuild: { realMW: 561, start: "2022-11", end: "2025-06", months: 31, status: "planned", gameTurns: 0, grade: "O*→M", gameGrade: "G", sources: ["https://www.etoday.co.kr/news/view/2190657"], text: "음성 LNG 1호기(561MW)는 2022년 11월 본공사 시작, 2025년 6월 준공 예정(계획, 약 31개월)이나 게임에선 즉시 가동해요." },
       capex: { year: 2023, unit: "USD/kW", lng: 1275, coal: 1809, grade: "P", table: 3, sources: ["https://doi.org/10.1016/j.esr.2025.101897"], text: "2023년 한국 발전원별 건설비 연구(Moon·Baik·Park, 2025)의 kW당 건설비(LNG 1,275달러, 석탄 1,809달러)를 게임 돈 눈금으로 바꿨어요(바꾸는 비율은 게임 가정)." },
-      pm: { unit: "kg/MWh", coalReference: 0.120, coalNew: 0.044, lngReference: 0.015, lngNew: 0.007, grade: "O", sources: ["https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/b281ee97263e31eaea236d024aa06765", "https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/794ac2b49ba21d4909dbc16f75d7a39f"], text: "산업통상자원부 자료(2017년 기준) 1MWh당 초미세먼지는 석탄 평균 0.120kg·새 석탄 사례 0.044kg, LNG 평균 0.015kg·새 LNG 사례 0.007kg(환산한 값, 동네 공기 농도 아님)이에요. 게임은 새 석탄·LNG를 각 평균의 약 37%·약 47%로 가정해요." },
-      siting: { grade: "G", scope: ["coal", "lng", "smr"], text: "석탄·LNG·SMR 모두 마을·병원·학교 가까운(지도 3칸 안) 곳일수록 입지 민원(크기는 게임 가정)으로 지지율이 낮아져요. 3칸은 발전소주변지역 지원법의 주변지역 반경 5km를 옮긴 근사며 안전거리가 아니에요." }
+      pm: { unit: "kg/MWh", coalReference: 0.120, coalNew: 0.044, lngReference: 0.015, lngNew: 0.007, grade: "O", sources: ["https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/b281ee97263e31eaea236d024aa06765", "https://www.motir.go.kr/attach/down/095a2dda9c864e1d90d751f7668a1117/794ac2b49ba21d4909dbc16f75d7a39f"], get text() { return `산업통상자원부 자료(2017년 기준) 1MWh당 초미세먼지는 석탄 평균 0.120kg·새 석탄 사례 0.044kg, LNG 평균 0.015kg·새 LNG 사례 0.007kg(환산한 값, 동네 공기 농도 아님)이에요. 게임은 새 석탄·LNG를 각 평균의 약 ${Math.round(KCP.ECON_DATA.params.pmNewFuelW.v.coal / KCP.ECON_DATA.params.pmFuelW.v.coal * 100)}%·약 ${Math.round(KCP.ECON_DATA.params.pmNewFuelW.v.lng / KCP.ECON_DATA.params.pmFuelW.v.lng * 100)}%로 가정해요.`; } },
+      siting: { grade: "G", scope: ["coal", "lng", "smr"], get text() { const radius = KCP.ECON_DATA.params.sitingWeights.v.length - 1; return `석탄·LNG·SMR 모두 마을·병원·학교 가까운(지도 ${radius}칸 안) 곳일수록 입지 민원(크기는 게임 가정)으로 지지율이 낮아져요. ${radius}칸은 발전소주변지역 지원법의 주변지역 반경 5km를 옮긴 근사며 안전거리가 아니에요.`; } }
     },
     // D-69 확정: 전력 연계선과 독립인 대기 기여 방향(from → to), 쌍별 ratio를 한 번 적용.
     // P61 Table 6, p.158: 당진화력 자체 .092㎍/㎥ 대비 수용 도시의 연평균 모형 기여(P).
@@ -249,8 +249,8 @@
       taxGain: p(8, "G", "설계 선택: 감세 한 단계 만족 8점 · REF 11.4", []),
       hospPenHours: p(8, "G", "설계 선택: 병원 정전 8시간에서 최대 감점 · REF 5.6", []),
       priceSteelMul: p(4, "M", "철강 요금 가중 · Kahn–Mansur(2013) 1차 금속 탄력 −0.64~−0.85 · 배속: 없음 · REF 4.3", ["P25"]),
-      thermalMW: p({ lng: 561, coal: 1040 }, "O*", "D-87: 실제 호기 MW. 음성 1호기 561MW·강릉안인 1호기 1040MW; 설계 초안 R04의 보도 확인 기록 승계, region.mwScale로 게임MW 환산 · REF 18.1"),
-      thermalCapex: p({ lng: 1275, coal: 1809 }, "P", "D-87: 2023 CAPEX $/kW, Moon·Baik·Park(2025), Energy Strategy Reviews 62:101897 Table 3; DOI 10.1016/j.esr.2025.101897. SMR 기준 가격지수로 신규 화력만 환산 · REF 18.1"),
+      thermalMW: p({ lng: 561, coal: 1040 }, "O*", "D-87: 실제 호기 MW. 음성 1호기 561MW·강릉안인 1호기 1040MW; 설계 초안 R04의 보도 확인 기록 승계, region.mwScale로 게임MW 환산 · REF 18.1\n원문 미대조 사유: 사업자·정부의 공식 원문(정격 용량 명시)을 찾지 못해 언론 보도(대장 D87-R04)로만 확인했다", ["D87-R04"]),
+      thermalCapex: p({ lng: 1275, coal: 1809 }, "P", "D-87: 2023 CAPEX $/kW, Moon·Baik·Park(2025), Energy Strategy Reviews 62:101897 Table 3; DOI 10.1016/j.esr.2025.101897. SMR 기준 가격지수로 신규 화력만 환산 · REF 18.1", ["D87-R01"]),
       sitingBase: p(10, G, "D-87: 신설 coal/lng/smr 기당 입지 우려, 운전·PM 무관. 5km는 지원구역 반경의 근사이지 안전반경 아님. 1.5km/칸에서 육각거리 3칸(약 4.5km); 집단 짝짓기는 G"),
       sitingWeights: p([1, 1, 0.6, 0.3], G, "D-87: 육각거리 0·1·2·3칸 감쇠, 4칸부터 0; 기존 민원 거리띠 적용"),
       complaintScale: p(1, G, "D-62: 민원 점수당 해당 집단 만족 감점; 국내 인과 실증값 없음"),
@@ -483,7 +483,7 @@
   params.pmNewFuelW = p({
     coal: pmFuelW.coal * (pmFacts.coalNew / pmFacts.coalReference),
     lng: pmFuelW.lng * (pmFacts.lngNew / pmFacts.lngReference)
-  }, M, "D-87 (다): 같은 연료 안에서 신규 설비의 전구물질 비율이 평균과 같다고 보고 피해를 직접 배출에 비례(G), 비율은 산업부 2019-03-05 p.1 표(LNG 평균 0.015·석탄 0.120)·2017-09-01 p.1 표(영흥 3~6호기 0.044·안동 LNG 0.007)에서 계산(M). 신규 전국 평균 아님 · REF 18.2");
+  }, M, "D-87 (다): 같은 연료 안에서 신규 설비의 전구물질 비율이 평균과 같다고 보고 피해를 직접 배출에 비례(G), 비율은 산업부 2019-03-05 p.1 표(LNG 평균 0.015·석탄 0.120)·2017-09-01 p.1 표(영흥 3~6호기 0.044·안동 LNG 0.007)에서 계산(M). 신규 전국 평균 아님 · REF 18.2", ["D87-R02", "D87-R03"]);
   const intlKeys = [];
   const alias = key => {
     intlKeys.push(key);
