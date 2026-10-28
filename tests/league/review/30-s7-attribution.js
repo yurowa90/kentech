@@ -1,5 +1,6 @@
 'use strict';
 const weatherShort = require('./v8-weather-contract');
+const displayContract = require('./rev10-display-contract'); // rev10 R7
 // V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix2.md 호출 수·옛 frozen 호환 + S7-fix3.md + V3B-s7.md 영상 3차.
 // D-80: §2 C-1·2 우선. 단계마다 계통 반영, 네 몫; gridImport는 옛 frozen에서만 유지.
 // 실행: node tests/league/review/30-s7-attribution.js (브라우저 없음)
@@ -47,6 +48,12 @@ function sameParagraph(topic, days) {
 const shownHigh = value => Number.isFinite(value) && Math.round(value * 100) >= 500;
 const noCauseLabel = (before, after, target = 'uns') => target !== 'grid' && shownHigh(before) && shownHigh(after) ? // D-80: MWh를 높은 정전으로 해석하지 않음.
   '차이 원인 없음(정전 자체는 큼)' : '뚜렷한 원인 없음';
+// rev10 R5(검토 반영, 총괄 수정): 이 fixture에는 운영 사본(outageSnapshots)도 operatingPlan도 없다.
+// 명세 R5 '운영 당시 값을 얻을 수 없으면 원래 문장 유지'에 따라 현재 공개 계획으로 n을 세지 않고 원래 문장을 기대한다.
+// 운영 사본이 있는 경로는 57-rev10.js R5·32-s7-monthly.js·s7.py가 본다.
+function highOutageCopy() {
+  return '지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
+}
 function studentWords(html, label) {
   const text = html.replace(/<[^>]*>/g, ''); // #lg-missed 전체, 접힌 상세 텍스트 포함
   ok(!text.includes('S7') && !text.includes('(G)'), `${label}: 학생 영역 내부 표기 미노출`);
@@ -332,7 +339,8 @@ function rendered(a, html, label) {
     html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), `${label}: 실제 계산 순서·순서 의존 안내`);
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g)) {
     const rate = ['trial', 'actual'].includes(m[1]);
-    equal(m[3], a.target === 'grid' ? unitNumber(a, +m[2], !rate) : number(+m[2], !rate) + (rate ? '%' : '%p'), // D-80: C-4.
+    const value = rate ? +m[2] : displayContract(a).get(m[1]) ?? +m[2]; // rev10 R7
+    equal(m[3], a.target === 'grid' ? unitNumber(a, value, !rate) : number(value, !rate) + (rate ? '%' : '%p'), // D-80: C-4.
       `${label}: ${m[1]} 소수 둘째 자리·마이너스·단위 붙임`); // D-80: C-1·2·4·5 대상별 검사.
   }
   ok(new RegExp('id="lg-outage-waterfall"[^>]*role="img"[^>]*aria-label="[^"]*시험 [\\d.,]+' + (a.target === 'grid' ? ' MWh/일' : '%')).test(html), // D-82: 접근성 요약도 하루 평균 단위.
@@ -802,8 +810,7 @@ for (const field of ['seed', 'days', 'plan']) {
     studentWords(html, `첫 달 극단/${opened}`);
     ok(html.includes(`시험 ${number(before)}% → 실제 ${number(after)}%로 거의 같아요`),
       '첫 달 요약 인용값 = 독립 시험·실제 정전율');
-    ok(html.includes('차이 원인 없음(정전 자체는 큼)') && html.includes('지금 설비·접속이 수요를 못 따라가는 상태') &&
-      html.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), '첫 달 높은 정전은 설비·접속 부족·재점검 안내');
+    ok(html.includes('차이 원인 없음(정전 자체는 큼)') && html.includes(highOutageCopy(V, res)) /* rev10 R5 */, '첫 달 높은 정전은 설비·접속 부족·재점검 안내');
     ok(!/data-missed=|id="lg-outage-open"|data-out-tag="largest"|가장 큰 몫/.test(html),
       '첫 달 높은 정전 요약은 선택·최대 몫을 꾸미지 않음');
   }
@@ -833,8 +840,7 @@ for (const field of ['seed', 'days', 'plan']) {
         `${label}: 큰 재현 차이에 작은 변화 설명 금지`);
       equal(summary.includes('이번 달 변화보다'), smallDifference, `${label}: 0.05%p 미만에만 비교`);
       equal(summary.includes('시험에도 정전이 컸으니'), before >= 5, `${label}: 기준값이 높을 때만 전제`);
-      ok(summary.includes('지금 설비·접속이 수요를 못 따라가는 상태') &&
-        summary.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), `${label}: 실제 높은 정전 안내 유지`);
+      ok(summary.includes(highOutageCopy(V, res)) /* rev10 R5 */, `${label}: 실제 높은 정전 안내 유지`);
       ok(html.includes(noCauseLabel(before, after)) && !/data-missed=|data-out-tag="largest"|가장 큰 몫/.test(html),
         `${label}: 후보·최대 몫 없이 기록`);
       ok(!session.outShownPending.largest, `${label}: 최대 몫 저장 대기 없음`);
@@ -867,8 +873,8 @@ for (const field of ['seed', 'days', 'plan']) {
       ok(html.includes('data-single="true"') && html.includes(noCauseLabel(before, after)), `${label}: 경계 기록 문구`);
       ok(html.includes(`시험 ${number(before)}% → 실제 ${number(after)}%로 거의 같아요`), `${label}: 원시 입력 인용`);
       equal(html.includes('정전 자체는 큼'), high, `${label}: 두 표시값 모두 5.00% 이상`);
-      equal(html.includes('지금 설비·접속이 수요를 못 따라가는 상태'), actualHigh, `${label}: 실제 표시값 기준 설비·접속 안내`);
-      equal(html.includes('1주 시험과 자리 판단(접속 여유)에서 다시 봐요'), actualHigh, `${label}: 실제 표시값 기준 재점검 안내`);
+      equal(html.includes(highOutageCopy(V, res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 설비·접속 안내`);
+      equal(html.includes(highOutageCopy(V, res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 재점검 안내`);
       equal(html.includes('시험에도 정전이 컸으니'), high, `${label}: 높은 기준값 전제`);
       equal(html.includes('이번 달 변화보다'), actualHigh, `${label}: 작은 차이일 때만 비교`);
       ok(!session.outShownPending.largest && !html.includes('data-out-tag="largest"'), `${label}: 최대 몫 없음`);
