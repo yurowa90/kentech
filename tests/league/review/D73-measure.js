@@ -148,17 +148,29 @@ function decomposition(rows, ids, weights, floor) {
       log, logSum, geometricGap, coopDelta, clippingDelta, roundingDelta}];
   }));
 }
-function technology(variant, seed) {
+function technologyLoader(variant) {
   const evaluated = {};
   let KCP;
+  // 읽기 경계에서 파일을 식별한다. T5가 AI 진단을 삽입해도 같은 파일로 센다.
+  const sourceTag = name => `\n//# sourceURL=d73/ui/${name}.js`;
+  const shimFS = {...fs, readFileSync(file, options) {
+    const name = MODULES.find(n => path.resolve(file) === path.join(ROOT, `ui/${n}.js`));
+    // Buffer reads feed source hashes and must keep the original bytes.
+    if (name && (options === "utf8" || options?.encoding === "utf8"))
+      return sourceFor(name, variant) + sourceTag(name);
+    return fs.readFileSync(file, options);
+  }, writeFileSync(file) {ok(file === "/d73-memory.json", "T5 report sink only");}};
   const shimVM = {...vm, runInContext(source, ctx, ...args) {
-    for (const name of MODULES) if (source === read(`ui/${name}.js`)) {
+    for (const name of MODULES) if (source.endsWith(sourceTag(name))) {
       evaluated[name] = (evaluated[name] || 0) + 1;
-      source = sourceFor(name, variant); break;
+      break;
     }
     const value = vm.runInContext(source, ctx, ...args); KCP = ctx.KCP; return value;
   }};
-  const shimFS = {...fs, writeFileSync(file) {ok(file === "/d73-memory.json", "T5 report sink only");}};
+  return {evaluated, shimFS, shimVM, getKCP: () => KCP};
+}
+function technology(variant, seed) {
+  const {evaluated, shimFS, shimVM, getKCP} = technologyLoader(variant);
   const allowed = {"node:fs": shimFS, "node:path": path, "node:vm": shimVM, "node:crypto": crypto};
   const box = {__dirname, console: {log(...args) {
     if (args[0] === "FAIL:" || String(args[0]).startsWith('{"city":')) console.log(...args);
@@ -171,7 +183,7 @@ function technology(variant, seed) {
   ok(MODULES.every(n => evaluated[n] === 1), "T5 each engine source exactly once");
   ok(raw.seed === seed && raw.runs.length === 42 && raw.runs.every(r => r.months.length === 36), "T5 seed and full 42 trajectories");
   ok(box.process.exitCode === (raw.failures.length ? 1 : 0), "T5 source exit agrees with failures");
-  return summarizeTechnology(raw, KCP, variant, seed);
+  return summarizeTechnology(raw, getKCP(), variant, seed);
 }
 function summarizeTechnology(raw, KCP, variant, seed) {
   ok(raw.seed === seed && raw.runs.length === 42 && raw.runs.every(r => r.months.length === 36), "T5 complete input for summary");
@@ -194,6 +206,20 @@ function summarizeTechnology(raw, KCP, variant, seed) {
     decomposition: decomposition(rows, ids, weights, floor)};
 }
 function selfTest() {
+  // 실제 T5 시작부로 삽입 후 AI는 1회, 재평가는 2회로 검출한다.
+  const startup = read("tests/league/review/11-tech-balance.js").split("const { leagueCore: C")[0];
+  ok(startup.includes('vm.runInContext(aiSource.replace('), "T5 startup includes transformed AI evaluation");
+  for (const variant of Object.keys(VARIANTS)) {
+    const loader = technologyLoader(variant), allowed = {"node:fs": loader.shimFS, "node:path": path, "node:vm": loader.shimVM, "node:crypto": crypto};
+    const box = {__dirname, console, process: {env: {}}, require(name) {ok(Object.hasOwn(allowed, name), `T5 startup dependency ${name}`); return allowed[name];}};
+    vm.runInNewContext(startup + "\nglobalThis.__ctx = ctx;", box);
+    ok(MODULES.every(n => loader.evaluated[n] === 1), `${variant}: T5 each engine source exactly once`);
+    ok(typeof loader.getKCP().t5SmrComparison === "function", `${variant}: injected AI diagnostic preserved`);
+    const file = path.join(ROOT, "ui/league-ai.js");
+    ok(loader.shimFS.readFileSync(file).equals(fs.readFileSync(file)), "T5 source hash bytes unchanged");
+    loader.shimVM.runInContext(loader.shimFS.readFileSync(file, "utf8"), box.__ctx);
+    ok(loader.evaluated["league-ai"] === 2 && !MODULES.every(n => loader.evaluated[n] === 1), `${variant}: duplicate engine evaluation detected`);
+  }
   const base = context("current"), D = base.KCP.ECON_DATA;
   for (const n of MODULES) ok(sourceFor(n, "current") === read(`ui/${n}.js`), `${n}: current source byte identity`);
   for (const [variant, v] of Object.entries(VARIANTS)) {

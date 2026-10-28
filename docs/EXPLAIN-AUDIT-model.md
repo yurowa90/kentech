@@ -1,23 +1,23 @@
 # 학생에게 보이는 모형 설명 전수 대조 — 품질 축 E
 
-2026-10-25 재실행 · `wip/q8-ae` · **기준 HEAD `186e1824d24486e96a1acbd2c539fae5067ba542`** (D-87 포함). 시작 작업 트리는 깨끗했다. 감사 문서와 읽기 전용 조사 스크립트만 작성했다.
+2026-10-25 기준판 `186e1824d24486e96a1acbd2c539fae5067ba542`(D-87 포함)의 351항목을 유지하고, 2026-10-26 `wip/q8-score3`의 `d8a072d` 작업 파일에서 D-90·집단 전용 항 8개를 후속 대조했다. 기존 표 전체를 새로 수동 감사했다는 뜻은 아니다.
 
-**기존 343항목 + D-87 8항목 = 351항목. 기존 불일치 25건은 25건 해소, 0건 남음. 독립 검토(10-25)가 찾은 신규 불일치 1건(V60)은 아르곤 문구로 고쳐 해소했다. 현재 불일치 합계는 0건이다.** 현재 기본 자료와 설명의 의미·숫자를 대조한 결과다. 모든 설명의 수치 의존성과 변형 검사가 갖춰졌다는 뜻은 아니므로 E 8점 충족을 선언하지 않는다.
+**기존 343 + D-87 8 + 이번 후속 8 = 359항목. 기존 불일치 25건은 해소됐고, 독립 검토가 찾은 V60도 수정됐다. 이번 추가 8항목의 불일치는 0건이며, 현재 대조표의 남은 불일치 합계도 0건이다.** `e-audit-probe.js`는 현재 작업 파일에서 952단언/실패0. 수치 직접 기재 18행 중 D02·D05·D06·D07을 자료에서 읽도록 바꿔 14행이 남는다. 평점 충족을 선언하지 않는다.
 
-| 범주 | 기존 항목 | D-87 추가 | 현재 항목 | 10-21 불일치 | 해소 | 남음(현재 불일치) | 현재 수치 직접 기재 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 배속표 | 41 | 2 | 43 | 0 | 0 | 0 | 3 |
-| 점수식 | 12 | 0 | 12 | 0 | 0 | 0 | 0 |
-| 원인 분해 | 94 | 3 | 97 | 11 | 11 | 0 | 7 |
-| 공기 주석 | 12 | 1 | 13 | 3 | 3 | 0 | 1 |
-| 사건 출처 | 63 | 1 | 64 | 4 | 4 | 0 | 0 |
-| 기술 카드 효과 | 74 | 0 | 74 | 6 | 6 | 0 | 6 |
-| 집단 만족 이유 | 47 | 1 | 48 | 1 | 1 | 0 | 1 |
-| 합계 | 343 | 8 | 351 | 25 | 25 | 0 | 18 |
+| 범주 | 기존 항목 | D-87 추가 | 이번 후속 | 현재 항목 | 10-21 불일치 | 해소 | 남음(현재 불일치) | 현재 수치 직접 기재 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 배속표 | 41 | 2 | 0 | 43 | 0 | 0 | 0 | 2 |
+| 점수식 | 12 | 0 | 0 | 12 | 0 | 0 | 0 | 0 |
+| 원인 분해 | 94 | 3 | 2 | 99 | 11 | 11 | 0 | 6 |
+| 공기 주석 | 12 | 1 | 0 | 13 | 3 | 3 | 0 | 0 |
+| 사건 출처 | 63 | 1 | 3 | 67 | 4 | 4 | 0 | 0 |
+| 기술 카드 효과 | 74 | 0 | 0 | 74 | 6 | 6 | 0 | 6 |
+| 집단 만족 이유 | 47 | 1 | 3 | 51 | 1 | 1 | 0 | 0 |
+| 합계 | 343 | 8 | 8 | 359 | 25 | 25 | 0 | 14 |
 
 항목은 반복 출력 횟수가 아닌 설명 템플릿 기준이다. 동일 `thermalFacts.text`의 반복 출력 경로는 한 행에 묶었다. D07은 석탄·LNG·SMR 배치 때(`ui/build.js:3452` siting 대상 세 전원 공통) 계산하는 민원 건수·영향 시설 수를 따로 센다. B05·B06·B09·B19·B20·B26은 별도 표와 전수 표에 각각 표시하되 합계에서는 한 번만 센다.
 
-`docs/QUALITY-model.md` §3 E행은 W1 42항목과 과거 기술 eff 오류를 근거로 한 이전 평가다. 독립 채점 `/Users/yurosung/Projects/kentech-wt/_briefs/score1/model.md` E는 a29a3e2에서 343표가 갱신되지 않은 점과 #build 여섯 항목의 미확인을 지적했다. 이번 문서는 그 대조를 186e182에서 재실행한 것이며 QUALITY 문서·평점은 수정하지 않았다. 사건 why는 저장소 자료→표시와 게임 효과의 구분을 대조했다. 외부 관측값·출처 원문의 사실성·URL 생존은 네트워크 금지로 재검증하지 않았다.
+`docs/QUALITY-model.md` §3 E행은 W1 42항목과 과거 기술 eff 오류를 근거로 한 이전 평가다. 독립 채점 `/Users/yurosung/Projects/kentech-wt/_briefs/score1/model.md` E는 a29a3e2에서 343표가 갱신되지 않은 점과 #build 여섯 항목의 미확인을 지적했다. 기준판 대조는 186e182에서 수행했고 이번 후속은 위 작업 파일을 읽었다. QUALITY 문서·평점은 수정하지 않았다. 사건 why는 저장소 자료→표시와 게임 효과의 구분을 대조했다. 외부 관측값·출처 원문의 사실성·URL 생존은 네트워크 금지로 재검증하지 않았다.
 
 ## 남은 불일치와 수정 분류
 
@@ -25,9 +25,9 @@
 |---|---:|---|
 | (a) 문장 숫자를 자료에서 읽게 하는 코드 변경 | 0 | 현재 기본값의 불일치 없음. 아래 직접 기재·중복 자료는 향후 값 변경에 대한 개선 대상으로 별도 기록 |
 | (b) 문장 뜻 변경 — 아르곤 문구 필요 | 0 | 현재 남은 의미 불일치 없음 |
-| (c) 계산이 틀림 — 엔진 변경 | 0 | 이번 351항목에서 확인한 계산 불일치 없음 |
+| (c) 계산이 틀림 — 엔진 변경 | 0 | 기준판 351항목 및 이번 추가 8항목에서 확인한 계산 불일치 없음 |
 
-화면·엔진은 수정하지 않았다. 브라우저 실기나 외부 원문 검증을 완료했다는 의미도 아니다.
+이번 후속은 thermalFacts의 세 문장을 자료 기반 getter로 바꾸었고 기본 문장의 바이트 동일성을 확인했다. 계수·등급·계산 엔진은 바꾸지 않았다. 브라우저 실기나 외부 원문 검증은 수행하지 않았다.
 
 ## 10-21 불일치 25건의 해소 근거
 
@@ -74,7 +74,7 @@
 
 ## 직접 기재·근사 표시의 현재 상태
 
-이전 수치 직접 기재 81행 중 67행은 계산 자료/헬퍼를 읽도록 바뀌었고 **14행이 남는다**: S18·S40·B05·B16·B22·B25·B27·B33·T62~T67. D-87에서 게임 공사12달(D02), 신규 PM 비율37%·47%(D05), 입지3칸(D06·D07)이 추가되어 **현재 18행**이다. D07의 민원 건수는 동적이지만 같은 행의3칸 문구가 고정이다. 외부 관측 숫자·연도는 이전처럼 제외했다. 계산과 공유하는 상수와 문장에 복사한 숫자를 구별한다.
+이전 수치 직접 기재 81행 중 67행은 계산 자료/헬퍼를 읽도록 바뀌었고 **14행이 남는다**: S18·S40·B05·B16·B22·B25·B27·B33·T62~T67. D-87에서 추가된 4행(D02·D05·D06·D07)은 이번 후속에서 해소했다. 석탄 설명의 SMR 기간은 `TECH_DATA.params.smrTurns`, PM 비율은 `params.pmNewFuelW/pmFuelW`, 도구·배치 안내의 반경은 `params.sitingWeights.length−1`을 읽는다. 기본값에서 세 text의 UTF-8 바이트가 작업 시작판과 동일하며, probe는 8달·50%/60%·4칸 변형과 실제 출력 경로를 검사한다. 외부 관측 숫자·연도는 이전처럼 직접 기재 집계에서 제외했다.
 
 | ID | 현재 맞는 값 / 남은 직접 기재 | 후속 방향(현재 불일치와 별개) |
 |---|---|---|
@@ -86,9 +86,9 @@
 | B27 | 디젤·바이오 사전 민원 가동60% 가정 | (a) 기본 runFrac=.6과 표시 공유 |
 | B33 | 예측 기술 저녁17–22시 | (a) 저장 예약 시간대와 표시 공유 |
 | T62~T67 | 비교 기준5배·22→26.9%·40%·35%·12%·90%와 계산 분모 중복 | (a) reference 객체와 문장/비율 생성 경로 합치기 |
-| D02 | 석탄 설명 안의 SMR12달(표 본체는 params 읽음) | (a) smrTurns 읽기 |
-| D05 | 약37%·47%는 text 리터럴, pmNewFuelW는 원자료 비율 계산 | (a) 신규/평균 비율에서 문장 생성 |
-| D06·D07 | 입지3칸은 text 리터럴, 계산은 sitingWeights.length−1 | (a) 거리 자료를 도구·배치 안내와 공유 |
+| D02 | 해소: 석탄 설명과 표가 smrTurns를 읽음 | 8달 변형 시 문장·표 추종 |
+| D05 | 해소: pmNewFuelW/pmFuelW의 백분율로 문장 생성 | 50%·60% 변형 시 도구 설명 추종 |
+| D06·D07 | 해소: 공통 siting.text가 sitingWeights.length−1을 읽음 | 4칸 변형 시 두 반경 표현과 도구 설명 추종 |
 
 D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 근거 문장이다. 기본값은 일치하지만 `thermalFacts`와 `params.thermalMW/thermalCapex`가 자동 동기화되지는 않는다. 조사 변형에서 `thermalCapex.coal=2000`으로 바꾸면 건설비는15.072464억으로 변하고 건설비 !의1809달러 문장은 그대로였다. 기본값 불일치로 세지 않고 (a) 개선 대상으로 남긴다. 원자료를 바꾸는 편집이라면 출처 문장도 검토해야 한다.
 
@@ -481,17 +481,32 @@ D01의2040, D02·D03의규모/날짜, D04의1275·1809, D05의 kg/MWh는 외부 
 | ID | 범주 | 현재 위치 | 화면 문장 | 실제 계산·조건 | 자료 | 판정 | 이번 근거 |
 |---|---|---|---|---|---|---|---|
 | D01 | 사건 출처 | ui/econ-data.js:20; ui/league.js:87; ui/build.js:2747 | 석탄 신규 건설: 정부 목표2040, 계획에 없는 새 건설을 비교용으로 가정 | hypothetical=true, phaseoutTargetYear=2040; 리그 coal 도구 허용. 자동 폐지 연도 계산은 없음(역사/가정 안내) | 해당 없음 | 일치 | probe facts + 45/소스 |
-| D02 | 배속표 | ui/econ-data.js:21; ui/league.js:385 | 석탄1040MW·2018-03→2022-11 약56개월·게임 즉시 가동(SMR만12달) | (2022−2018)×12+11−3=56; gameTurns=0; 게임MW=1040/230=4.521739. core construction은 SMR만 생성 | 아니오 | 일치 | probe 날짜/용량 + 38·45/소스 |
+| D02 | 배속표 | ui/econ-data.js:21; ui/league.js:385 | 석탄1040MW·2018-03→2022-11 약56개월·게임 즉시 가동(SMR만12달) | (2022−2018)×12+11−3=56; gameTurns=0; 게임MW=1040/230=4.521739. core construction은 SMR만 생성 | 예 | 일치 | probe 날짜/용량 + 38·45/소스 |
 | D03 | 배속표 | ui/econ-data.js:22; ui/league.js:385 | LNG561MW·2022-11→2025-06 약31개월(계획)·게임 즉시 가동 | (2025−2022)×12+6−11=31; status=planned, gameTurns=0; 게임MW=561/230=2.439130 | 예 | 일치 | probe 날짜/용량 + 45/소스 |
 | D04 | 원인 분해 | ui/econ-data.js:23; ui/build.js:2747 | 건설비 !: 2023 연구 LNG1275·석탄1809달러/kW; 게임 돈 환산비는 G | cost=(realMW/230)×(smrCostBase7.5/smrCapexBase4500)×thermalCapex; 석탄13.633043억·LNG5.183152억 | 해당 없음 | 일치 | probe 원자료/params/BLD + 45 |
-| D05 | 공기 주석 | ui/econ-data.js:24; ui/build.js:2747 | 미세먼지 !: 석탄 .120→.044·LNG .015→.007kg/MWh; 신규는 각 평균 약37%·47%, 동네 농도 아님 | 석탄 .044/.120=.366667; LNG .007/.015=.466667. pmNewFuelW는 coal1×ratio=.366667, lng.05×ratio=.0233333; 농도는 kPM·발전량으로 별도 계산 | 아니오 | 일치 | probe 비율 + 45 신구 분리 |
-| D06 | 집단 만족 이유 | ui/econ-data.js:25; ui/build.js:2747 | 입지 민원 !: 석탄·LNG·SMR, 마을·병원·학교3칸 안; 5km 지원구역 근사, 안전거리 아님 | sitingWeights=[1,1,.6,.3], base10 → 거리1/2/3/4칸 10/6/3/0점. senior/youth 감점 min(20,score), 가동률 독립, 기존plant 제외 | 아니오 | 일치 | probe 거리/운전율 + 45·46/소스 |
-| D07 | 원인 분해 | ui/build.js:3449; ui/build.js:3515 | 석탄·LNG·SMR 배치: 입지 민원+n건(예상·가동과 무관)·영향 주변 시설·마을n곳; 공통3칸 안내 | after.issues−before.issues, 영향시설=items.ti 집합. 단일수용자 거리1/2/3/4칸: 민원건수1/1/0/0, 영향시설1/1/1/0. 3칸의3점도 core가 경제cpList에 전달(건수≥5와 구별) | 아니오 | 일치 | probe placementAdvice + core.cp.items/groupTargets 소스 |
+| D05 | 공기 주석 | ui/econ-data.js:24; ui/build.js:2747 | 미세먼지 !: 석탄 .120→.044·LNG .015→.007kg/MWh; 신규는 각 평균 약37%·47%, 동네 농도 아님 | 석탄 .044/.120=.366667; LNG .007/.015=.466667. pmNewFuelW는 coal1×ratio=.366667, lng.05×ratio=.0233333; 농도는 kPM·발전량으로 별도 계산 | 예 | 일치 | probe 비율 + 45 신구 분리 |
+| D06 | 집단 만족 이유 | ui/econ-data.js:25; ui/build.js:2747 | 입지 민원 !: 석탄·LNG·SMR, 마을·병원·학교3칸 안; 5km 지원구역 근사, 안전거리 아님 | sitingWeights=[1,1,.6,.3], base10 → 거리1/2/3/4칸 10/6/3/0점. senior/youth 감점 min(20,score), 가동률 독립, 기존plant 제외 | 예 | 일치 | probe 거리/운전율 + 45·46/소스 |
+| D07 | 원인 분해 | ui/build.js:3449; ui/build.js:3515 | 석탄·LNG·SMR 배치: 입지 민원+n건(예상·가동과 무관)·영향 주변 시설·마을n곳; 공통3칸 안내 | after.issues−before.issues, 영향시설=items.ti 집합. 단일수용자 거리1/2/3/4칸: 민원건수1/1/0/0, 영향시설1/1/1/0. 3칸의3점도 core가 경제cpList에 전달(건수≥5와 구별) | 예 | 일치 | probe placementAdvice + core.cp.items/groupTargets 소스 |
 | D08 | 원인 분해 | ui/build.js:436 | 배치 거절: 냉각수: 해안·하천만 | siteRule: ["smr","lng","coal"] 공통, 타일이 river·beach가 아니면 거절(D-87이 SMR 전용에서 세 전원으로 넓힘). 공랭식 등 다른 냉각 방식은 게임 규칙에서 생략(G) | 해당 없음 | 일치 | probe 소스 단언 |
 
-## 이번에 실행한 검증
+## D-90·집단 전용 항 후속 8항목 (2026-10-26)
 
-실행 환경: macOS workspace-write 셸, Node `v24.21.0`, pnpm `11.25.0`. package.json·lockfile·Node 버전 지정 파일은 없다. 아래는 이번 작업에서 다시 실행한 결과다. 기존 검사는 파일 쓰기·브라우저·네트워크 호출 여부를 확인해 범위 내 Node 검사만 실행했다. UI 함수는 메모리에서 참조를 노출하고 가짜 DOM에 문자열을 받아 대조했다.
+범주는 위 합계표에 포함했다. 화면 문장의 기본값·의미를 유지하고 실제 renderer와 계산을 Node VM에서 대조했다. HUD는 원래 `syncMoney` 클로저를 같은 스코프에 노출하여 기존 DOM 노드 대역으로 실행했다. 화면 배치·터치·브라우저 실기를 검증한 결과는 아니다.
+
+| ID | 범주 | 현재 위치 | 화면 문장 | 실제 계산·조건 | 자료 | 판정 | 이번 근거 |
+|---|---|---|---|---|---|---|---|
+| D09 | 사건 출처 | ui/econ-data.js disasterFacts.rain; ui/league.js evCards | 호우 카드 !: 장마 사건 때 절반 확률로 먹구름 대신, 자연재난, 피해·보수비는 게임 가정 | heavyRainShare=.5; drawParent=monsoon_cloud. 실제 drawEvents의 비율0/1에서 같은 추첨 한 자리를 대체하고 다른 사건·크기는 동일 | 예 | 일치 | probe D09: 카드 !·분기 양끝 추첨 대조 |
+| D10 | 사건 출처 | ui/econ-data.js disasterFacts.heat.text; ui/league.js evCards | 폭염 !: 바깥 공기·패널 온도 증가로 LNG·일반 태양광 출력 감소, 온도차는 G | lngCapMul=1−heatLngSlope×heatAirDelta×x; solarHeatMul=1−heatPvSlope×heatModuleDelta×x. 대응은 수요만 완화 | 예 | 일치 | probe D10: 카드 출력·modsFor 실제 배수 |
+| D11 | 사건 출처 | ui/econ-data.js disasterFacts.heat.limitation; ui/league.js evCards | 석탄·SMR·디젤·탠덤은 근거 값 미확보로 폭염 출력 감소 생략 | 폭염 전용 감소는 lngCapMul/solarHeatMul만 생성, coal/smr/diesel/tandem 전용 배수 없음. 실제 발전 적용은 52번 계약 검사 범위 | 해당 없음 | 일치 | probe D11: 카드 출력·제외 배수 부재 |
+| D12 | 원인 분해 | ui/econ-data.js disasterFacts.repair; ui/league.js cityHTML | 보수비 !: 사건 달에 한 번, 크기에 비례, 대응은 호우 보수비만 감소, 금액은 G | repairOf는 월별 사건의 repairParam×x를 합산. 호우 inspect ×.8, 폭염 dr은 보수비 불변. fiscal.exp.repair를 도시 세출과 !에 표시 | 예 | 일치 | probe D12: 크기1/2·대응 비교·공개 상태→도시 세출 ! |
+| D13 | 원인 분해 | ui/econ-data.js disasterFacts.grant; ui/league.js syncMoney·grantMoneyNote·evCards | 남은 특별교부세 n억: 새 설비·선로·재난 대응→월말 재난 보수비 우선→잔액 소멸; 돈 칩·사건 안내 | grantOf의 left를 돈 칩·!에 표시. disasterSettlementOf.repairUsed=min(left,교부대상 보수비), expired=left−repairUsed. 호우 카드도 사용 순서·소멸 안내 | 예 | 일치 | probe D13: 실제 HUD 클로저·사건 카드·정산 대조 |
+| G48 | 집단 만족 이유 | ui/econ-data.js groupOwnCopy; ui/league.js groupCauseHTML | 민원 막대 최종 반영 n점 · 현재 반영 m점, 낭독도 같은 값 | 월 정산 groupOwn(지연 전 목표)·groupOwnLag(현재 groupContrib 반올림)를 구분. 목표0·잔여−1.52점도 표시 | 예 | 일치 | probe G48: 실제 monthStep→publicView→renderer, 회복 지연·0목표 |
+| G49 | 집단 만족 이유 | ui/econ-data.js groupOwnCopy; ui/econ.js groupTargets; ui/league.js groupCauseHTML | 민원(입지 n건) / 민원(n건 중 입지 m건) / 민원(n건) | 집단별 complaintGroups 해당 cpList 길이와 siting 부분집합. 만족 목표 감점·민원 건수는 별개 | 예 | 일치 | probe G49: 입지1·혼합2중1·일반1건, 세 실제 월 정산 |
+| G50 | 집단 만족 이유 | ui/econ.js groupTargets; ui/league.js groupCauseHTML | 전력 신뢰와 병원 정전을 별도 막대로 표시 | 공통 rel에서 w.rel×hospRel/Σw를 빼고 병원 전용 항에 한 번 넣음. 노년은 seniorHosp×min(1,hospH/hospPenHours) 추가. 총량 유지 | 예 | 일치 | probe G50: 실제 공개 hospRel·공통 막대·병원 전용 항 산술 대조 |
+
+## 기준판에서 실행한 검증 (2026-10-25 기록)
+
+실행 환경: macOS workspace-write 셸, Node `v24.21.0`, pnpm `11.25.0`. package.json·lockfile·Node 버전 지정 파일은 없다. 아래는 기준판 작업 당시 실행 결과다. 이번 후속의 명령·결과는 `tests/league/review/SCORE3-report.md`에 따로 기록한다. 기존 검사는 파일 쓰기·브라우저·네트워크 호출 여부를 확인해 범위 내 Node 검사만 실행했다. UI 함수는 메모리에서 참조를 노출하고 가짜 DOM에 문자열을 받아 대조했다.
 
 | 명령 (`node tests/league/review/…`) | 이번 결과 |
 |---|---|
@@ -822,7 +837,7 @@ probe는 10-25 독립 검토 반영 뒤 **기본이 현재 작업 파일**이고
 | B34 | 원인 분해 | ui/build.js:979 | 배터리1대12억의 값어치 | 12 | BLD.battery.cost=12(차세대15는 별도) | 아니오 | 일치 | 없음 |
 | B35 | 원인 분해 | ui/build.js:3416 | 총비용=건설+연료+정책+연구 | 비용 합 | simulate R.cost.total; 리그 시험은 지도 전체 투자라고 표시 | 예 | 일치 | 없음 |
 | B36 | 원인 분해 | ui/build.js:941·944·948 | 뉴스 버린MWh·수입%·송전손실% | curt,import/sup×100,loss/공급×100 | 결과값에서 읽으며 관측 통계가 아닌 모형 결과 | 예 | 일치 | 없음 |
-| B37 | 원인 분해 | ui/build.js:916·930·949 | 뉴스 시설정전h·저녁h·n일무정전 | outH,eveH,days | 시간별 town 결과; 도시 core outH와 다른 시설 기준 | 예 | 일치 | 없음 |
+| B37 | 원인 분해 | ui/build.js:943·956·976 | 뉴스 시설정전h·저녁h·n일무정전 | outH,eveH,days | 시간별 town 결과; 도시 core outH와 다른 시설 기준 | 예 | 일치 | 없음 |
 | B38 | 원인 분해 | ui/build.js:943·964·973 | 뉴스/질문 CO₂t·연료비억·미공급MWh | R.co2, cost.fuel,town.uns | 리그 뉴스는 tot.co2 생산; 질문은 simulate 결과 | 예 | 일치 | 없음 |
 | B39 | 원인 분해 | ui/build.js:224 | solar 설비 spec: 2 MW | 2 MW | BLD.solar: mw=2, mwh=없음, cost=8; 지도 override 뒤 값 | 아니오 | 일치 | 없음 |
 | B40 | 원인 분해 | ui/build.js:225 | roof 설비 spec: 0.6 MW | 0.6 MW | BLD.roof: mw=0.6, mwh=없음, cost=4; 지도 override 뒤 값 | 아니오 | 일치 | 없음 |

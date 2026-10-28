@@ -3,6 +3,8 @@
 const path = require("path");
 global.window = { KCP: {} };
 Math.random = () => { throw new Error("Math.random 호출 금지"); };
+// ECON_DATA 사실 문장(SMR 공사 달)이 기술 원장을 읽으므로 실제 앱처럼 tech-data를 먼저 읽는다.
+require(path.resolve(__dirname, "../../ui/tech-data.js"));
 require(path.resolve(__dirname, "../../ui/econ-data.js"));
 require(path.resolve(__dirname, "../../ui/econ.js"));
 require(path.resolve(__dirname, "../../ui/league-data.js"));
