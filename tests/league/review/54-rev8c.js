@@ -192,7 +192,8 @@ for (const [round, before, after, want] of [
     assert.ok(observed, '실제 monthEnd 호출');
     assert.equal(observed.hud.find(h => h.el === chip)?.direction, want);
     const row = htmlTree(api('resultHTML')(S, S.results.at(-1)))
-      .querySelectorAll('#lg-result-deltas div').find(e => e.textContent.includes('생산 CO₂'));
+    // rev11 R5: S6 생산 줄 이름이 'CO₂ 생산(이번 달)'로 바뀌어 찾는 낱말만 맞춘다(기대값 불변).
+      .querySelectorAll('#lg-result-deltas div').find(e => e.textContent.includes('CO₂ 생산'));
     assert.ok(row, 'S6 생산 CO₂ 행');
     const delta = row.querySelector('small').textContent.match(/Δ\s*([+−-]?\d[\d,.]*)/);
     assert.ok(delta, 'S6 표시 Δ');

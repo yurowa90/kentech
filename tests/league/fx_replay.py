@@ -86,7 +86,8 @@ OBSERVE_JS = r"""() => {
     ...articles.filter(el => el.querySelector('.fx-turn-tag')?.textContent.trim() === '지난달 결산')]
     .filter(el => !el.closest('#lg-panel') && visible(el));
   const summaries = summaryRoots.map(el => ({
-    numbers: ['정전 시간', '정전', 'CO₂'].map(label => {
+    // rev11 R5: 운영 요약의 이름이 'CO₂ 생산'으로 바뀌어 찾는 낱말만 맞춘다(값 co2Prod 기대 불변).
+    numbers: ['정전 시간', '정전', 'CO₂ 생산'].map(label => {
       const match = el.innerText.match(new RegExp(label + '\\s*([-+−]?\\d[\\d,]*(?:\\.\\d+)?)'));
       return match ? match[1].replaceAll(',', '').replace('−', '-') : null;
     })}));

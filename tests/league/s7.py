@@ -190,7 +190,8 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
       return KCP.buildGame.network(KCP.buildGame.sanitize(p,1e9)).nodes
         .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length;
     }""")
-    hint = (f"설비·접속 상태를 살펴봐요. 이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 봐요"
+    # rev11 REV11_COPY.C4 (rev10 R5 N2 대체): n>0만 대체, n=0 안내는 유지한다.
+    hint = (f"이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요."
             if n else "지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요")
     checks.ok((("바뀐 조건 하나하나는" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
               (hint in summary) == actual_high,  # rev10 R5: N2/원래 문장의 조건별 기대.

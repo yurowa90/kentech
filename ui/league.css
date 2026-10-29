@@ -572,11 +572,13 @@ section#lg-missed.lg-outage { display: block; }
   #lg-host-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 11px; line-height: 1.6; margin: 0; color: var(--ui-muted); overflow-wrap: break-word; }
   .lg-goal-chip { display: grid; align-content: start; gap: 4px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-hud); }
   .lg-goal-note { grid-column: 1 / -1; }
-  .lg-goalbar { display: grid; grid-template-columns: 34px minmax(20px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
+  /* rev11 R5: 막대 이름이 'CO₂ 생산'으로 길어져 첫 칸을 내용 폭까지 늘리고 줄바꿈하지 않는다. */
+  .lg-goalbar { display: grid; grid-template-columns: minmax(34px, max-content) minmax(20px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
   .lg-goalbar > div { position: relative; height: 8px; border-radius: var(--ui-radius); background: var(--ui-border); }
   .lg-goalbar i { display: block; height: 100%; border-radius: var(--ui-radius); background: var(--ui-mint); }
   .lg-goalbar em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ui-text); }
   .lg-goalbar b { font: 600 12px var(--mono); white-space: nowrap; }
+  .lg-goalbar > span:first-child { white-space: nowrap; }
   .lg-goalbar[data-bad="true"] b { color: var(--ui-danger); }
   .lg-goalbar[data-bad="true"] i { background: var(--ui-danger); }
   .lg-host-actions { display: grid; grid-template-rows: minmax(56px, auto) auto; gap: 8px; align-self: start; }
@@ -688,7 +690,7 @@ section#lg-missed.lg-outage { display: block; }
     html.v2-league-host #lg-host-goals,
     html.v2-league-host .lg-goalbar,
     html.v2-league-host .lg-goalbar b { font-size: 16px; }
-    html.v2-league-host .lg-goalbar { grid-template-columns: 44px minmax(20px, 1fr) auto; }
+    html.v2-league-host .lg-goalbar { grid-template-columns: minmax(44px, max-content) minmax(20px, 1fr) auto; }
     html.v2-league-host .lg-command-goals > small { font-size: 16px; }
     html.v2-league-host .lg-command-goals small.lg-goal-note { font: 400 14px/1.5 var(--body); }
     html.v2-league-host #lg-host-risk > .lg-hint,
@@ -1836,3 +1838,39 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   .lg-team-map #bd-skip { grid-column: 4; grid-row: 1; }
   .lg-team-map #bd-run-toggle { grid-column: 5; grid-row: 1; }
 }
+
+/* rev11 R4: 진행자 글꼴은 축약 font의 상속에 맡기지 않고 각 속성을 명시한다. */
+html.v2-league-host .lg-ledger-value small { font-size: 14px; }
+html.v2-league-host #lg-next { font-size: 16px; }
+@media (min-width: 901px) {
+  html.v2-league-host #lg-host-summary-table th[scope="row"] > button {
+    font-family: var(--display); font-size: 18px; font-weight: 400; line-height: 1.4;
+  }
+  html.v2-league-host #lg-host-summary-table thead th { white-space: normal; overflow-wrap: normal; }
+}
+
+/* rev11 R8: 재생 중 마을 범례를 숨긴다. 계획 시작 알림만 안내 실측 끝 다음에 둔다.
+   app·root·toast id로 기존 서랍·운영 띠의 :has 규칙보다 우선한다. */
+.lg-team-map.bd-replaying .lg-town-key { display: none; }
+#app #bd-root.lg-team-map #bd-toast[data-phase="plan"] {
+  top: max(var(--lg-map-info-top, var(--lg-mapbar-bottom, 210px)), var(--lg-guidance-bottom, 0px));
+  bottom: auto; left: 8px; right: auto; width: max-content;
+  max-width: min(420px, calc(100vw - 16px)); box-sizing: border-box;
+  transform: translate(0, -6px);
+}
+#app #bd-root.lg-team-map #bd-toast[data-phase="plan"][data-show="true"] { transform: translate(0, 0); }
+
+/* 상세 높이는 syncRunStrip이 머리를 뺀 40vh 이내로 계산한다. */
+#bd-root.lg-team-map #bd-run { max-height: 40vh; max-height: 40dvh; overflow-y: auto; }
+.lg-team-map #bd-replay-note { display: block; min-height: 0; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere; }
+.bd-jmodal .bd-jstrip > span,
+#bd-root .bd-jc-m > span,
+#bd-root .bd-jc-cmp > span { min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+
+/* rev11 R9: 학생 문장을 더하지 않는 달 전환 진행 표시. */
+#lg-month-progress {
+  position: fixed; z-index: 61; left: 8px; right: 8px; top: var(--bd-top, 8px);
+  height: 6px; border-radius: 6px; background: var(--ui-border); overflow: hidden;
+}
+#lg-month-progress::before { content: ""; display: block; width: 35%; height: 100%; background: var(--ui-cyan); }
+html.v2-league-host #lg-month-progress { top: 8px; }

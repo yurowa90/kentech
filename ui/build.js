@@ -14,6 +14,11 @@
   const GRADE_WORDS = { G: "게임 가정", M: "모형 계산", O: "공식 자료", "O*": "공식 자료(보도로 확인)", P: "논문·보고서" };
   KCP.gradeWords = grade => [...new Set(String(grade || "G").split("·").map(g => g.trim().replace(/^추정$/, "G"))
     .filter(Boolean).map(g => GRADE_WORDS[g] || g))].join(" · ");
+  const REV11_COPY = {
+    C5: "CO₂ 소비(계통 포함)가 {n} t인데 탄소세를 고르지 않았습니다. 왜였나요?",
+    C6: "{d}일 운영 끝. 정전 {h}시간, 총비용 {c}억, CO₂ 소비(계통 포함) {n} t."
+  };
+  const rev11Copy = (key, values = {}) => REV11_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
   const html = document.documentElement;
   const KEY = "kcp-build-v1";
   const TRIAL_KEY = "kcp-build-trial-v1";
@@ -971,7 +976,7 @@
     });
     if (R.tot.renAvail > 1 && R.tot.curt / R.tot.renAvail > 0.12) add(55, `남는 전기 ${fmt(R.tot.curt)} MWh 버려져… "담아 둘 곳이 없다"`);
     const hiCO2 = PK.climate ? PK.goals.co2Day * 1.3 : 30;
-    if ((LG ? R.tot.co2 : R.co2) / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 CO₂ ${fmt(LG ? R.tot.co2 : R.co2)} t… 탄소세 도입 논의`);
+    if ((LG ? R.tot.co2 : R.co2) / R.days > hiCO2) add(R.pol.tax ? 58 : 62, R.pol.tax ? `탄소세에 연료비 껑충… 연료 ${fmt(R.cost.fuel, 1)}억` : `${place} 하늘에 ${LG ? "CO₂ 생산" : "CO₂ 소비(계통 포함)"} ${fmt(LG ? R.tot.co2 : R.co2)} t… 탄소세 도입 논의`);
     if (R.tot.by.import > 0 && R.tot.by.import / Math.max(1, R.tot.sup) > 0.3) add(48, `전기 ${fmt(100 * R.tot.by.import / R.tot.sup)}%를 밖에서 사 왔다… "자립은 멀다"`);
     const lossShare = R.tot.loss / Math.max(1, R.tot.sup + R.tot.loss);
     // 섬의 기존 6% 문턱을 기준으로 리그 지도 손실률에 비례한다. #build의 뉴스는 보존한다.
@@ -1001,7 +1006,7 @@
       add(80, `${what} ${W.name} 가까이 지었습니다. 주민이 반대하면 어떻게 하겠습니까?`,
         ["누구의 불편을 먼저 볼지 정하기", `${W.name} 만족도 ${R.sat[nearTown.ti]}점`, "옮기면 송전 손실·비용은?"]);
     }
-    if (R.co2 / R.days > (PK.climate ? PK.goals.co2Day : 30) && !R.pol.tax) add(75, `CO₂가 ${fmt(R.co2)} t 나왔는데 탄소세를 고르지 않았습니다. 왜였나요?`,
+    if (R.co2 / R.days > (PK.climate ? PK.goals.co2Day : 30) && !R.pol.tax) add(75, rev11Copy("C5", { n: fmt(R.co2) }),
       ["지역 부담 vs 지구 부담", `하루 ${fmt(R.co2 / R.days, 1)} t`, "탄소세를 걸면 누가 더 내나?"]);
     const spent = capex(st);
     if (spent >= budgetOf() - 6) add(70, `예산 ${fmt(spent, 1)}억을 거의 다 썼습니다. 같은 돈으로 더 나은 조합이 있었을까요?`,
@@ -1360,7 +1365,7 @@
       loss: res.tot.loss, idle: res.tot.idle,
       // D-80: gridFill이 더한 바깥 계통 전기(대표 기간 MWh). 지도의 수입 설비 출력은 섞지 않는다. 옛 기록에는 없다.
       gridMWh,
-      // 계통 보충 전 이 도시 설비가 낸 CO₂(대표 기간 t). 결과의 co2Prod와 같은 생산 기준으로 첫 달 S6을 비교한다. 옛 기록에는 없다.
+      // 계통 보충 전 이 도시 설비가 낸 CO₂(대표 기간 t). 결과의 co2Prod와 같은 CO₂ 생산 기준으로 첫 달 S6을 비교한다. 옛 기록에는 없다.
       ...(Number.isFinite(co2Prod) ? { co2Prod } : {}),
       plan: { builds: st.builds, lines: st.lines, policies: st.policies, shed: st.shed, fab2: st.fab2, rq: st.rq }
     };
@@ -3132,10 +3137,8 @@
     $("#bd-run").hidden = false;
     $("#bd-run-len").textContent = opts.label || "실제 운영 · 재생";
     const replayNote = (opts.note ? `${opts.note} · ` : "") + "선 위 점은 전기가 통하는 길(양 아님)";
-    if (S.opts.league && KCP.league?.infoTip) {
-      $("#bd-replay-note").innerHTML = "재생 " + KCP.league.infoTip("replay-note", esc(replayNote), { label: "재생" });
-      KCP.league.bindInfoTips($("#bd-replay-note"));
-    } else $("#bd-replay-note").textContent = replayNote;
+    // 설명을 접힌 !의 빈 여백으로 두지 않고 상세 띠 안에서 바로 읽게 한다.
+    $("#bd-replay-note").textContent = replayNote;
     $("#bd-replay-note").hidden = false;
     $("#bd-skip span").textContent = "건너뛰기";
     S.root.querySelectorAll("[data-run]").forEach(b => { b.disabled = true; });
@@ -3259,7 +3262,8 @@
     if (!quiet) openDrawer("result");
     const head = $("#bd-res-title");
     if (!quiet && head) head.focus({ preventScroll: true });
-    announce(`운영 끝. 정전 ${R.res.outTotal}시간, 총비용 ${fmt(R.res.cost.total, 1)}억, CO₂ ${fmt(R.res.co2)} t.`);
+    // 낭독 정전 시간은 화면 HUD와 같은 값(리그: 도시 전체 부족 시간, 단독: 수요지 합)을 읽는다(rev11 문구 검토).
+    announce(rev11Copy("C6", { d: R.res.days, h: LG ? cityOutageHours(R.res) : R.res.outTotal, c: fmt(R.res.cost.total, 1), n: fmt(R.res.co2) }));
     // 첫 운영 뒤 한 번만 일지를 저절로 연다.
     if (!quiet && !S.opts.league && !S.doc.jAuto) { S.doc.jAuto = true; persist(); openJournal(S.result.entry, head); }
     if (S.opts.league) S.opts.onTrial?.(S.result);
@@ -3288,7 +3292,7 @@
    * 8. DOM: HUD, 도구, 서랍, 말풍선
    * ===================================================================== */
   function on(el, type, fn, opt) { el.addEventListener(type, fn, opt); S.off.push(() => el.removeEventListener(type, fn, opt)); }
-  const cap = (k, icon, name, tone) => `<span class="v2-cap bd-cap${tone ? " tone-" + tone : ""}" data-cap="${k}">${ico(icon)}<span class="v2-cap-txt"><span class="v2-cap-k">${name}</span><span class="v2-cap-v" data-v></span></span></span>`;
+  const cap = (k, icon, name, tone, description) => `<span class="v2-cap bd-cap${tone ? " tone-" + tone : ""}" data-cap="${k}">${ico(icon)}<span class="v2-cap-txt"><span class="v2-cap-k"${description ? ` title="${esc(description)}" aria-label="${esc(description)}"` : ""}>${name}</span><span class="v2-cap-v" data-v></span></span></span>`;
   // 지도가 많으면 [지도: 평택 ▾] 하나로 접는다. 연습 / 경기 남부·충청권 도시로 나눠 보여 준다.
   function mapPicker(packs) {
     const btn = id => `<button type="button" class="bd-mapbtn" data-map="${id}" aria-pressed="false">${esc(PACKS[id].name)}</button>`;
@@ -3319,7 +3323,7 @@
           ${cap("budget", "coin", "예산", "gold")}
           ${cap("time", "clock", "시간", "sky")}
           ${cap("power", "bolt", "공급/수요", "mint")}
-          ${cap("co2", "co2", "CO₂")}
+          ${cap("co2", "co2", "CO₂", undefined, "CO₂ 소비(계통 포함)")}
           ${cap("cp", "alert", "민원")}
         </div>
         <span class="bd-virtual" id="bd-virtual"></span>
@@ -3663,6 +3667,7 @@
   function showTip(i) {
     const el = $("#bd-tip");
     if (!el || S.run) return;
+    const opening = el.hidden;
     const T = TILES[i];
     let verdict = "";
     if (S.tool && S.tool !== "line" && S.tool !== "remove") {
@@ -3734,6 +3739,18 @@
       el.dataset.legendOverlap = String(legendOverlap);
     } else ty = clamp(ty, V.area.t, V.H - h - 8);
     el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
+    // 새로 열린 말풍선만 단계 알림을 닫는다. 칸 이동·배치 실패 뒤 갱신은 피드백을 보존한다.
+    if (opening && S.opts.league) {
+      const toastEl = $("#bd-toast");
+      const shownPhase = !!toastEl?.dataset.phase && toastEl.dataset.warn !== "true";
+      const pendingPhase = S.toastPending?.opts?.phase && !S.toastPending.opts.warn;
+      if (shownPhase) toastEl.dataset.show = "false";
+      if (pendingPhase || shownPhase && !S.toastPending) { clearTimeout(toastTimer); S.toastPending = null; }
+      // 대기하던 단계 알림을 버리면, 그 대기 때문에 닫기 타이머를 잃은 피드백 알림을 원래 수명(2.2초) 뒤 닫는다(rev11 검토 minor).
+      if (pendingPhase && !shownPhase && toastEl?.dataset.show === "true" && toastEl.dataset.warn !== "true") {
+        const state = S, shownMsg = toastEl.textContent; S.timers.push(setTimeout(() => { if (S === state && S.alive && !S.toastPending && toastEl.textContent === shownMsg && !toastEl.dataset.phase) toastEl.dataset.show = "false"; }, 2200));
+      }
+    }
   }
   function hideTip() { const el = $("#bd-tip"); if (el) el.hidden = true; }
 
@@ -3783,6 +3800,8 @@
     el.textContent = msg;
     el.dataset.show = "true";
     el.dataset.warn = String(warn);
+    if (opts?.phase) el.dataset.phase = opts.phase;
+    else delete el.dataset.phase;
     clearTimeout(toastTimer);
     const state = S;
     // 수명 절반(1.1초) 때 카드에 가려져 있었는지 기록한다. 이미 절반 넘게 보인 알림은 카드가 닫힌 뒤 다시 띄우지 않는다.
@@ -3804,7 +3823,7 @@
     const parts = Object.keys(counts).map(k => `${BLD[k].name} ${counts[k]}`);
     const moneyDescription = LG && budgetDescription() || `예산 잔액 ${fmt(budgetLeft(), 1)}억`;
     const lbl = `${PK.name} 지도. ${parts.length ? parts.join(", ") : "건물 없음"}, 송전선 ${S.st.lines.length}개. 전기가 닿는 수요지 ${live}/${TOWNS.length}. ${moneyDescription}.` +
-      (S.result ? ` 최근 운영: 정전 ${S.result.outTotal}시간, CO₂ ${fmt(S.result.co2)} t.` : "");
+      (S.result ? ` 최근 운영: 정전 ${LG ? cityOutageHours(S.result) : S.result.outTotal}시간, CO₂ 소비(계통 포함) ${fmt(S.result.co2)} t.` : "");
     S.canvas.setAttribute("aria-label", lbl);
   }
 
@@ -3941,7 +3960,7 @@
       <div class="bd-kpis">
         <p><span>총비용</span><b class="num">${fmt(R.cost.total, 1)}억</b><small>${S.opts.league ? "건설(지도 전체 설비비)" : "건설"} ${fmt(R.cost.capex, 1)} + 연료 ${fmt(R.cost.fuel, 1)} + 정책 ${fmt(R.cost.policy, 1)}${R.cost.research ? ` + 연구 ${fmt(R.cost.research, 1)}` : ""}</small></p>
         ${R.research && (R.research.unis || R.research.labs) ? `<p><span>연구</span><b class="num">${Object.keys(R.research.adoptW).length ? Object.keys(R.research.adoptW).map(id => `${TECHS.find(T => T.id === id).name.split(/[·\s]/)[0]} ${R.research.adoptW[id] + 1}주차`).join(", ") : "도입 없음"}</b><small>${(R.st && R.st.rq || []).length || (R.research.log.length) ? `실증 ${R.research.log.filter(x => x.ev === "demo").length}건 · ` : ""}연구비 ${fmt(R.research.cost.total, 1)}억</small></p>` : ""}
-        <p><span>CO₂${LG ? " 생산" : ""}</span><b class="num">${fmt(LG ? R.tot.co2 : R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
+        <p><span>${LG ? "CO₂ 생산" : "CO₂ 소비(계통 포함)"}</span><b class="num">${fmt(LG ? R.tot.co2 : R.co2)} t</b><small>${PK.climate ? `${R.tot.by.coal > 0 ? `석탄 ${fmt(R.tot.by.coal)} · ` : ""}LNG ${fmt(R.tot.by.lng)} · ${LG ? "" : `수입 ${fmt(R.tot.by.import)} · `}디젤 ${fmt(R.tot.by.diesel)} MWh` : `디젤 ${fmt(R.tot.diesel)} MWh`}</small></p>
         <p><span>버린 전력</span><b class="num">${fmt(R.tot.curt)} MWh</b><small>송전 손실 ${fmt(R.tot.loss)} MWh</small></p>
       </div>
       <table class="bd-towns"><thead><tr><th scope="col">수요지</th><th scope="col">정전 h</th><th scope="col">부족 MWh</th><th scope="col">만족</th></tr></thead>
@@ -4033,10 +4052,10 @@
   const entryDate = e => `${e.id}번째 운영 · ${mapName(e.map)}${e.season ? " · " + e.season : ""} · ${lenName(e.days)} · 맑음 ${e.wx[0]}일/흐림 ${e.wx[1]}일/비 ${e.wx[2]}일`;
   const misTxt = e => (e.mis.length ? e.mis.map(m => `${misName(m.id)} ${m.ok ? "✓" : "✗"}`).join(" · ") : "없음");
   const misHtml = e => (e.mis.length ? e.mis.map(m => `<span class="bd-mk" data-ok="${m.ok}">${esc(misName(m.id))} ${ico(m.ok ? "check" : "x", "v2-ico bd-mk-i")}<span class="bd-sr">${m.ok ? "성공" : "실패"}</span></span>`).join(" ") : "없음");
-  const metricLine = e => `정전 ${fmt(e.m.out)}h · CO₂ ${fmt(e.m.co2)} t · 비용 ${fmt(e.m.cost, 1)}억 · 민원 ${fmt(e.m.cp)}건 · 정책 ${e.pol.length ? e.pol.map(polName).join(", ") : "없음"} · 미션 ${misTxt(e)}`;
+  const metricLine = e => `정전 ${fmt(e.m.out)}h · CO₂ 소비(계통 포함) ${fmt(e.m.co2)} t · 비용 ${fmt(e.m.cost, 1)}억 · 민원 ${fmt(e.m.cp)}건 · 정책 ${e.pol.length ? e.pol.map(polName).join(", ") : "없음"} · 미션 ${misTxt(e)}`;
   function jStrip(e) {
     const it = (k, v) => `<span><span class="bd-js-k">${k}</span> <b class="num">${esc(v)}</b></span>`;
-    return `<p class="bd-jstrip">${it("정전", fmt(e.m.out) + "h")}${it("CO₂", fmt(e.m.co2) + " t")}${it("비용", fmt(e.m.cost, 1) + "억")}${it("민원", fmt(e.m.cp) + "건")}${it("정책", e.pol.length ? e.pol.map(polName).join("·") : "없음")}<span><span class="bd-js-k">미션</span> ${misHtml(e)}</span></p>`;
+    return `<p class="bd-jstrip">${it("정전", fmt(e.m.out) + "h")}${it("CO₂ 소비(계통 포함)", fmt(e.m.co2) + " t")}${it("비용", fmt(e.m.cost, 1) + "억")}${it("민원", fmt(e.m.cp) + "건")}${it("정책", e.pol.length ? e.pol.map(polName).join("·") : "없음")}<span><span class="bd-js-k">미션</span> ${misHtml(e)}</span></p>`;
   }
   function openJournal(id, from) {
     if (!uiVisible("journal")) return;
@@ -4129,8 +4148,8 @@
       return `<li class="bd-jcard">
         <p class="bd-jc-h"><b>${e.id}번째 · ${lenName(e.days)}</b><span class="num">${esc(e.at)}</span></p>
         <p class="bd-jc-map"><span class="bd-mapchip">${esc(mapName(e.map))}</span>${e.season ? `<span>${esc(e.season)}</span>` : ""}</p>
-        <p class="bd-jc-m"><span>정전 <b class="num">${fmt(e.m.out)}h</b></span><span>CO₂ <b class="num">${fmt(e.m.co2)} t</b></span><span>비용 <b class="num">${fmt(e.m.cost, 1)}억</b></span><span>민원 <b class="num">${fmt(e.m.cp)}건</b></span></p>
-        ${p ? `<p class="bd-jc-cmp">${cmp(e.m.out, p.m.out, "정전", "h")}${cmp(e.m.co2, p.m.co2, "CO₂", " t")}${cmp(e.m.cost, p.m.cost, "비용", "억", 1)}</p>` : ""}
+        <p class="bd-jc-m"><span>정전 <b class="num">${fmt(e.m.out)}h</b></span><span>CO₂ 소비(계통 포함) <b class="num">${fmt(e.m.co2)} t</b></span><span>비용 <b class="num">${fmt(e.m.cost, 1)}억</b></span><span>민원 <b class="num">${fmt(e.m.cp)}건</b></span></p>
+        ${p ? `<p class="bd-jc-cmp">${cmp(e.m.out, p.m.out, "정전", "h")}${cmp(e.m.co2, p.m.co2, "CO₂ 소비(계통 포함)", " t")}${cmp(e.m.cost, p.m.cost, "비용", "억", 1)}</p>` : ""}
         <p class="bd-jc-mis">${misHtml(e)}</p>
         <dl class="bd-jc-a">${JQ.map(P => `<dt>${P.s}</dt><dd${e.a[P.k].trim() ? "" : ' class="empty"'}>${e.a[P.k].trim() ? esc(e.a[P.k]) : "아직 안 씀"}</dd>`).join("")}</dl>
         <button type="button" class="bd-jc-btn" data-jopen="${e.id}">${ico("pen")}<span>${answered ? "고치기" : "쓰기"}</span></button>
@@ -4170,6 +4189,16 @@
   }
 
   /* ---------- 배치 계산 ---------- */
+  function syncLensKeyTop() {
+    if (!S?.alive || !S.opts.league) return;
+    const lenses = S.root.querySelector(".lg-lenses");
+    if (!lenses) return;
+    const guidance = S.root.querySelector(".lg-map-guidance");
+    // 이유 띠 아래(infoTop)와 안내 묶음 아래 중 더 낮은 곳에서 8px 띄운다. 렌즈 부모 기준으로 변환한다.
+    const keyTop = Math.max(S.leagueMapTop || 0, guidance?.getBoundingClientRect().bottom || 0) + 8;
+    const top = `${Math.max(48, Math.ceil(keyTop - lenses.getBoundingClientRect().top))}px`;
+    if (lenses.style.getPropertyValue("--lg-lens-key-top") !== top) lenses.style.setProperty("--lg-lens-key-top", top);
+  }
   function layout() {
     S.dirtyLayout = false;
     const W = window.innerWidth, H = window.innerHeight;
@@ -4207,10 +4236,8 @@
         if (height) infoTop += height + 8;
       }
       html.style.setProperty("--lg-map-info-top", `${Math.ceil(infoTop)}px`);
-      const lenses = S.root.querySelector(".lg-lenses");
-      // 띠가 보이면 범례를 띠 아래로 내린다. 범례 top은 렌즈 부모 기준이다.
-      if (lenses) lenses.style.setProperty("--lg-lens-key-top", `${infoTop > stripTop ? Math.max(48, Math.ceil(infoTop - lenses.getBoundingClientRect().top)) : 48}px`);
       S.leagueMapTop = infoTop;
+      syncLensKeyTop();
     }
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     if (S.opts.league) V.area.t = S.leagueMapTop;
@@ -4307,7 +4334,7 @@
         if (el.getClientRects().length) top = Math.max(top, el.getBoundingClientRect().bottom + 8);
       }
       const baseHeight = panel.getBoundingClientRect().height - (detail.hidden ? 0 : detail.getBoundingClientRect().height);
-      detail.style.maxHeight = `${Math.max(0, Math.min(260, bottom - 8 - top - baseHeight))}px`;
+      detail.style.maxHeight = `${Math.max(0, Math.min(260, window.innerHeight * .4 - baseHeight, bottom - 8 - top - baseHeight))}px`;
     }
     S.root.style.setProperty("--lg-run-height", `${panel.hidden ? 0 : Math.ceil(panel.getBoundingClientRect().height)}px`);
     S.root.style.setProperty("--lg-run-left", `${V.area.l}px`);
@@ -4475,7 +4502,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset, syncLensKeyTop,
     finishTrial: () => { if (!S?.alive || !S.run || S.run.replay) return false; S.run.k = S.run.res.H - 1; updateRunPanel(1); finishRun({ quiet: true }); return true; },
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues, townLook, nearestTown, focusTiles,

@@ -77,7 +77,8 @@ test('S6 소비 기준 하루 평균·지난달 Δ, 판정 바로 다음 줄', (
   const html = api.promiseResultHTML(S, note());
   // 175/7=25, 140/7=20 t/일, Δ +5. 월 합계는 175×28/7=700 t.
   assert.match(html, /id="lg-promise-summary"[^]*?<\/p><p id="lg-s6-co2cons"/);
-  assert.match(html, /소비 CO₂\(이웃·계통에서 받은 전기 포함\) 하루 평균 25 t\/일 · 지난달 대비 Δ \+5 t\/일\(이번 달 합 700 t\)/);
+  // rev11 R5: 소비 표지만 통일하고 하루 평균·차이·월 합계 검산 유지.
+  assert.match(html, /CO₂ 소비\(계통 포함\) 하루 평균 25 t\/일 · 지난달 대비 Δ \+5 t\/일\(이번 달 합 700 t\)/);
   assert.ok(html.includes('계통에서 끌어온 전기도 우리 도시 소비 배출에 들어가요.'));
 });
 test('S6 월 합계가 달라도 소비 CO₂ 하루 평균이 같으면 Δ 0·상태와 저장 키 유지', () => {
@@ -130,7 +131,8 @@ trial = { map: C.teamDef(C.regionOf('south'), id).pack,
 test('S6 첫 달 기존 시험 소비 CO₂는 하루 평균 Δ +5 t\/일', () => {
   const n = note(); n.trial = { unsPct: 0, days: 7, gridMWh: 7 };
   const html = api.promiseResultHTML(S, n);
-  assert.match(html, /소비 CO₂\(이웃·계통에서 받은 전기 포함\) 하루 평균 25 t\/일 · 시험 1주 대비 Δ \+5 t\/일\(이번 달 합 775 t\)/);
+  // rev11 R5: 첫 달 시험도 같은 소비 표기를 사용한다.
+  assert.match(html, /CO₂ 소비\(계통 포함\) 하루 평균 25 t\/일 · 시험 1주 대비 Δ \+5 t\/일\(이번 달 합 775 t\)/);
 });
 test('S6 약속 후 다른 시험이면 CO₂ Δ를 만들지 않음', () => {
   const n = note(); n.trial = { unsPct: 0, days: 7, gridMWh: 8 };
@@ -161,7 +163,8 @@ test('N2 S3 7일 계통량→하루 평균→31일 합계·월 비용·생산/�
   const price = ctx.KCP.ECON_DATA.params.normalCost.v * ctx.KCP.ECON_DATA.params.gridImportMarkup.v;
   assert.ok(line.includes((310 * price).toLocaleString('ko-KR', { maximumFractionDigits: 2 }) + '억'));
   const explanation = info.notes.find(x => x.includes('머리 칩'));
-  assert.ok(explanation && explanation.includes('생산 배출') && explanation.includes('소비 기준') && explanation.includes('바깥 계통에서 받은 전기'));
+  // rev11 R5·총괄 결정: 생산 배출 설명을 유지하고 머리 칩의 소비 이름을 통일한다.
+  assert.ok(explanation && explanation.includes('생산 배출') && explanation.includes('CO₂ 소비(계통 포함)') && explanation.includes('바깥 계통에서 받은 전기'));
   // 차이 줄도 S4·성적표와 같은 gridMWh(70)를 쓴다(독립 검토 minor: 계통 줄과 차이 줄의 출처 일치).
   assert.ok(explanation.includes((70 * ctx.KCP.ECON_DATA.params.normalCo2.v).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) + ' t'));
 });
@@ -293,7 +296,8 @@ trial = null; S.phase = 'review'; S.round = 2;
 S.results = [result(1, 140), result(2, 140)];
 S.results.forEach(res => { res.team[id].co2Prod = 140; });
 function co2Cell(res = S.results.at(-1)) {
-  return api.resultHTML(S, res).match(/<div><dt>생산 CO₂\(이번 달\)<\/dt>(.*?)<\/div>/s)[1];
+  // rev11 R5: 결과의 생산 표기 순서만 통일한다.
+  return api.resultHTML(S, res).match(/<div><dt>CO₂ 생산\(이번 달\)<\/dt>(.*?)<\/div>/s)[1];
 }
 test('S6 계통 주제 CO₂: 31→28일 하루 평균 같으면 Δ 0, 월 합계 620→560은 보조', () => {
   months[1] = { topic: 'grid', confirmed: true }; note();
@@ -362,12 +366,13 @@ for (const days of [7, 30]) for (const topic of ['uns', 'grid']) for (const lega
       ...(!legacy ? { co2Prod:days * 8 } : {}) };
     const n = note(topic); n.trial = { ...trial };
     const html = api.resultHTML(S, S.results[0]), basis = days === 7 ? '시험 1주 대비' : `시험 ${days}일 대비`;
-    const cells = [...html.matchAll(/<div><dt>(정전\(이번 달\)|정전 시간\(이번 달\)|생산 CO₂\(이번 달\))<\/dt>(.*?)<\/div>/gs)];
+    // rev11 R5: 표지 순서 변경 뒤에도 세 결과 칸의 수치 계약을 그대로 검사한다.
+    const cells = [...html.matchAll(/<div><dt>(정전\(이번 달\)|정전 시간\(이번 달\)|CO₂ 생산\(이번 달\))<\/dt>(.*?)<\/div>/gs)];
     assert.equal(cells.length, 3);
     cells.forEach(m => assert.ok(m[2].includes(basis), `${m[1]}: ${m[2]}`));
     // 2/7×31 − (days/7)/days×31 = 31/7 → 4.4시간.
     assert.ok(cells.find(m => m[1].startsWith('정전 시간'))[2].includes('Δ +4.4시간'));
-    const co2 = cells.find(m => m[1].startsWith('생산'))[2];
+    const co2 = cells.find(m => m[1] === 'CO₂ 생산(이번 달)')[2];
     assert.ok(co2.includes(legacy ? '비교 없음(시험 기록 없음)' : 'Δ +2 t/일'), co2); // spec-C §M1: 정전·계통 모두 생산 10−8=+2 t/일.
     assert.ok(!co2.includes('9999'), '시험 소비 배출을 생산 기준에 섞지 않음');
   });

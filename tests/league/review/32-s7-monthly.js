@@ -80,7 +80,8 @@ function highOutageCopy(V, res) {
   const plan = V.teams[id].plan;
   const n = plan ? B.network(B.sanitize(clone(plan),1e9)).nodes
     .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length : 0;
-  return n ? `설비·접속 상태를 살펴봐요. 이번 달 '전선에 안 닿은 설비'가 ${n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 봐요` :
+  // rev11 REV11_COPY.C4 (rev10 R5 N2 대체): 운영 사본에서 센 n은 그대로.
+  return n ? `이번 달 '전선에 안 닿은 설비'가 ${n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요.` :
     '지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
 }
 function studentWords(html, label) {

@@ -140,7 +140,7 @@ NUMBER = r"[+−-]?\d[\d,]*(?:\.\d+)?"
 DATE = r"\d{4}년\s+\d{1,2}월"
 # fx-end.js METRICS: 주민은 원 인구가 아닌 시작 대비 비율이며 소수 1자리다.
 METRICS = {'appr': ('지지', '%', 1), 'pop': ('주민 · 시작 대비 변화', '%', 1),
-           'uns': ('정전', '%', 1), 'co2': ('CO₂', 't/일', 1),
+           'uns': ('정전', '%', 1), 'co2': ('CO₂ 생산', 't/일', 1),  # rev11 R5: 그래프 제목·낭독 이름.
            'grid': ('계통이 메운 전기', 'MWh/일', 1)}
 
 
@@ -698,7 +698,8 @@ def crosscheck(checks, page, rows, label):
     detail = page.locator('#lg-last-month')
     if not detail.evaluate('el => el.open'):
         detail.locator(':scope > summary').click()
-    for key, heading, old_precision in (('uns', '정전(이번 달)', 2), ('co2', '생산 CO₂(이번 달)', 0)):
+    # rev11 R5: 같은 개념은 CO₂ 접두 뒤 생산으로 통일한다.
+    for key, heading, old_precision in (('uns', '정전(이번 달)', 2), ('co2', 'CO₂ 생산(이번 달)', 0)):
         div = page.locator('#lg-result-deltas > div').filter(
             has=page.get_by_text(heading, exact=True))
         dd_text = div.locator('dd').inner_text()
@@ -915,7 +916,8 @@ def host_end(checks, context, base, pages, label, mobile=False):
     checks.ok(state['round'] == 12 and len(state['results']) == 12 and len(state['active']) == 2,
               label + ' 2팀 화면 조작으로 12달 완주')
     host.wait_for_selector('#lg-host-rank .lg-fx-end')
-    checks.ok('CO₂(t/월)' in host.locator('#lg-host-summary-table thead th').all_inner_texts(), label + ' 진행자 장부 머리 CO₂(t/월)')
+    # rev11 R5: co2Prod를 보여 주는 장부 열 머리의 명세 이름.
+    checks.ok('CO₂ 생산(t/월)' in host.locator('#lg-host-summary-table thead th').all_inner_texts(), label + ' 진행자 장부 머리 CO₂ 생산(t/월)')
     checks.ok('목표·평가선 벗어남(위험)' in host.locator('.lg-ledger-note').inner_text(), label + ' 진행자 장부 각주 목표·평가선 벗어남(위험)')
     checks.test(label + ' 움직임·순위 막대 관측 실행', lambda: motion(checks, host, label, False) is None)
     graphs(checks, host, label, host=True)

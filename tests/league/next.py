@@ -454,8 +454,8 @@ def results(host, team, checks, fixture):
             detail.locator(':scope > summary').focus()
             detail.locator(':scope > summary').press('Enter')
             checks.ok(detail.evaluate('el => el.open'), 'U2 result layer opens by keyboard ' + key)
-    # 채점 1회 F3: 결과 서랍 S6 칸 이름이 '생산 CO₂(이번 달)'로 바뀌었다(진행자 카드는 옛 이름).
-    for pattern in [r"생산\s*CO₂\s*\(이번\s*달\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
+    # rev11 R5: 같은 생산 개념은 CO₂ 접두 뒤 종류를 붙인다.
+    for pattern in [r"CO₂\s*생산\s*\(이번\s*달\)", r"민원\s*\(지금\s*지도\s*기준\)", r"정전\s*\(이번\s*달\)"]:
         checks.ok(text_present(team, pattern), f"team indicator reference name {pattern}")
     checks.ok(team.locator('#lg-map-result').is_visible(), 'U2 public result remains on city map')
     result = state["results"][-1]
@@ -517,7 +517,8 @@ def results(host, team, checks, fixture):
     checks.ok(not re.search(r'\d+\.\d{2,}%p|-\d+(?:\.\d+)?%p', cause),
               'D-A11 지지율 원인 한 자리·음수 − 표시')
     # spec-C §M1: 정전·현금도 S6 생산 CO₂와 Δ는 소수 1자리 t/일, 월 합계만 정수 t다.
-    co2 = team.locator('#lg-result-deltas > div').filter(has_text='생산 CO₂(이번 달)')
+    # rev11 R5: 수치 검산 기준은 그대로, S6 표지의 순서만 바뀐다.
+    co2 = team.locator('#lg-result-deltas > div').filter(has_text='CO₂ 생산(이번 달)')
     token = r'[+−-]?\d[\d,]*(?:\.\d)?'
     daily = re.fullmatch(rf'({token}) t/일', co2.locator('dd').inner_text())
     change = co2.locator('small').inner_text()

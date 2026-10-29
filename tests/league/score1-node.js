@@ -110,9 +110,10 @@ function withCoachLineTarget(check) {
     const town = B.SITES.filter(s => s.dem).sort((a,b) =>
       distance(B.TILES[a.tile]) - distance(B.TILES[b.tile]) || a.tile - b.tile)[0];
     assert.ok(town && town.name, '자료에서 헥스 거리가 가장 가까운 수요지');
+    // rev11 R3 / REV11_COPY.C3: 기존 설비에는 미연결일 때 운영 불가 이유를 명시한다.
     const instruction = st.st.builds.some(b => b.i === target.i)
       ? `${target.name} 칸, ${town.name} 칸을 차례로 누르고 '연결'을 누르세요`
-      : `기존 ${target.name}도 이어야 넘어가요. ${target.name} 칸, ${town.name} 칸을 누르고 '연결'을 누르세요`;
+      : `기존 ${target.name}도 전선에 안 닿으면 운영에서 못 써요. ${target.name} 칸, ${town.name} 칸을 차례로 누르고 '연결'을 눌러야 넘어가요.`;
     check({st,target,town,instruction});
   } finally { E.set(null); }
 }

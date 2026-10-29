@@ -25,7 +25,8 @@ from solo import click_next, close_drawer, read
 
 NUMBER = r"[+−-]?\s*\d[\d,]*(?:\.\d+)?"
 PER_DAY = rf"{NUMBER} MWh/일(?: 미만)?"
-TITLE = "CO₂ 시험 운전 · 소비 기준(계통에서 받은 전기 포함)"
+# rev11-testfix1 총괄 결정: 머리 칩은 시험·소비 이름을 보이는 글자와 낭독 이름에 구분한다.
+TITLE = "CO₂ 시험 운전 · 소비(계통 포함)"
 
 
 def require(checks, condition, label):
@@ -65,10 +66,11 @@ def month_days(result):
 def chip(checks, page, label):
     label_node = page.locator('[data-cap="co2"] .v2-cap-k')
     require(checks, label_node.count() == 1, label + " CO₂ 칩 한 개")
-    checks.ok(label_node.inner_text() == "CO₂ 시험·소비" and
+    checks.ok(label_node.inner_text() == "CO₂ 시험·소비"  # rev11 총괄 결정: 390 머리 줄 높이 때문에 보이는 글자는 짧게, 정식 이름은 TITLE
+              and
               label_node.get_attribute("title") == TITLE and
               label_node.get_attribute("aria-label") == TITLE,
-              label + " CO₂ 머리 칩 소비 기준·title·aria-label")
+              label + " CO₂ 머리 칩 시험 · 소비(계통 포함)·title·aria-label")
     checks.ok(label_node.evaluate("""el => {
       const cap=el.closest('[data-cap]'), box=cap.getBoundingClientRect();
       const range=document.createRange(); range.selectNodeContents(el);
@@ -185,7 +187,8 @@ def trial_report(checks, page, tested, label):
     explanation = page.locator("#bd-league-goals p").filter(has_text="머리 칩").inner_text()
     co2 = re.search(rf"7일 시험 약 ({NUMBER}) t", explanation)
     factor = page.evaluate("() => KCP.ECON_DATA.params.normalCo2.v")
-    checks.ok("생산 배출" in explanation and "소비 기준" in explanation and
+    # rev11 R5·총괄 결정: 생산 배출 설명과 통일한 머리 칩 소비 이름을 확인한다.
+    checks.ok("생산 배출" in explanation and "CO₂ 소비(계통 포함)" in explanation and
               "바깥 계통에서 받은 전기" in explanation and bool(co2) and
               near(co2[1], tested["gridMWh"] * factor, 0),
               label + " 생산/소비 CO₂ 차이 = 실제 계통 MWh × 기존 normalCo2")
@@ -229,7 +232,8 @@ def result(checks, page, tested, label, grid=True):
     previous = next((x for x in S["results"] if x["round"] == current["round"] - 1), None)
     basis = ("시험 1주 대비" if tested["days"] == 7 else f"시험 {tested['days']}일 대비") if tested else "시험 1주 대비"
     # spec-C §M1: 정전·현금 주제도 생산 CO₂와 Δ는 하루 평균 t/일, 월 합계는 보조다.
-    prod = page.locator("#lg-result-deltas > div").filter(has_text="생산 CO₂(이번 달)")
+    # rev11 R5: 생산 표지의 접두 순서 통일, 하루 평균/월 합계 검산 유지.
+    prod = page.locator("#lg-result-deltas > div").filter(has_text="CO₂ 생산(이번 달)")
     prod_total = r["co2Prod"] * month_days(current) / current["days"]
     prod_value, prod_change = prod.locator("dd").inner_text(), prod.locator("small").inner_text()
     m = re.fullmatch(rf"({NUMBER}) t/일", prod_value)
@@ -276,7 +280,8 @@ def result(checks, page, tested, label, grid=True):
         base = tested["co2"] / tested["days"]
         baseline_name = "시험 1주 대비"
     line = node.inner_text()
-    match = re.search(rf"소비 CO₂\(이웃·계통에서 받은 전기 포함\) 하루 평균 ({NUMBER}) t/일 · {baseline_name} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", line)
+    # rev11 R5: 같은 소비 개념의 명세 표기, 숫자/단위/기준은 그대로 검사.
+    match = re.search(rf"CO₂ 소비\(계통 포함\) 하루 평균 ({NUMBER}) t/일 · {baseline_name} Δ ({NUMBER}) t/일\(이번 달 합 ({NUMBER}) t\)", line)
     require(checks, bool(match), label + " S6 소비 CO₂·기준·Δ 형식")
     checks.ok(near(match[1], per_day, 1) and near(match[2], per_day - base, 1) and near(match[3], total, 0) and
               (value(match[2]) == 0 or match[2].lstrip().startswith(("+", "−", "-"))),

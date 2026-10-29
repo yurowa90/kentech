@@ -3,6 +3,7 @@
   "use strict";
   const KCP = window.KCP;
   if (!KCP) return;
+  const REV11_COPY = { C2v: "사건 닫기" };
   let status = { playing: false, skipped: false, ms: 0, replayed: false, cardsOpen: false,
     source: null, fallback: null, recomputeMs: 0, forecastOpen: false, mood: null, strip: false, deferred: false };
   let layer = null, toast = null, deck = null, timers = [], off = [], raf = 0, layoutRaf = 0, epoch = 0;
@@ -411,7 +412,7 @@
       summaryLive.setAttribute("aria-live", "polite"); summaryLive.setAttribute("aria-atomic", "true");
       deck.append(summaryLive);
     }
-    const close = node("button", "fx-turn-close", "닫기"); close.type = "button";
+    const close = node("button", "fx-turn-close", REV11_COPY.C2v); close.type = "button";
     close.addEventListener("click", () => closeCards(true)); deck.append(close);
     const row = node("div", "fx-turn-card-row"); deck.append(row);
     stripBar = node("div", "fx-turn-strip"); stripBar.setAttribute("role", "status");
