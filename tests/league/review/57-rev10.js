@@ -125,7 +125,7 @@ try {
     blocked('기준판 VM 연결점이 없어 화면 함수 실행 불가');
   // 기준판에 존재하는 진입점만 메모리에서 노출한다. 새 구현의 함수명을 추측하지 않는다.
   const names = ['outageCardsHTML', 'outageShareThresholdText', 'outageEvidenceSummary', 'outageDisplayValues',
-    'promiseVerdictText', 'direction', 'rev10Copy', 'rev8Copy', 'outageRememberIntl', 'outageSnapshot', 'outageAttribution', 'outageAttributionMonthly', 'cityHTML', 'groupCauseHTML', 'hostOverviewHTML', 'trialGoals', 'promiseTopic', 'predictionHTML', 'promiseComparison', 'promiseResultHTML',
+    'promiseVerdictText', 'direction', 'rev10Copy', 'rev11Copy', 'rev8Copy', 'outageRememberIntl', 'outageSnapshot', 'outageAttribution', 'outageAttributionMonthly', 'cityHTML', 'groupCauseHTML', 'hostOverviewHTML', 'trialGoals', 'promiseTopic', 'predictionHTML', 'promiseComparison', 'promiseResultHTML', // rev11 REV11_COPY.C4 (rev10 R5 N2 대체) 접근 함수.
     'reasonStartsHTML', 'evidenceCandidates', 'evidenceFocusHTML', 'outageEvidenceText',
     'outageEventClue', 'resultHTML', 'decisionsHTML', 'evidenceEffect', 'OUTAGE_EVIDENCE_LINKS'];
   const hooks = names.map(n => `${n}: typeof ${n} === 'undefined' ? undefined : ${n}`).join(',');
@@ -213,12 +213,17 @@ for (const round of [1,2]) test(`R2 N1 채움/접힘 밖 ${round===1?'시험':'�
   assert.doesNotMatch(calc.textContent,/[{}]/);
 });
 const N1="판정 계산: {기준} Δ {Δ}%p · '같음' 범위 ±{tol}%p 미만(게임 비교 기준)";
-const N2="설비·접속 상태를 살펴봐요. 이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 봐요";
+// rev11 REV11_COPY.C4 (rev10 R5): N2 자리를 새 표/접근 함수로 옮긴다.
+const C4="이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요.";
 for (const [key,values,want] of [
   ['N1',{기준:'지난달 대비',Δ:'+0.20',tol:'0.5'},N1.replace('{기준}','지난달 대비').replace('{Δ}','+0.20').replace('{tol}','0.5')],
-  ['N2',{n:6},N2.replace('{n}','6')], ['N3',{n:3},'이번 달 볼 것 3개 더 보기']
-]) test(`R${key==='N1'?2:key==='N2'?5:4} REV10_COPY ${key} 글자/치환`,()=>{
+  ['N3',{n:3},'이번 달 볼 것 3개 더 보기']
+]) test(`R${key==='N1'?2:4} REV10_COPY ${key} 글자/치환`,()=>{
   setup(); assert.equal(api('rev10Copy')(key,values),want);
+});
+// rev11 REV11_COPY.C4 (rev10 R5): 옛 rev10Copy('N2') 호출을 요구하지 않는다.
+test('rev11 REV11_COPY C4 글자/치환',()=>{
+  setup(); assert.equal(api('rev11Copy')('C4',{n:6}),C4.replace('{n}','6'));
 });
 
 // rev10 R6·R5: 실제 core 운영과 화면 사본 함수를 연결한다. 결과/단서를 생성해 넣지 않는다.
@@ -388,7 +393,7 @@ for(const league of [true,false]) test(`R3 ${league?'리그':'#build'} 시험 �
 });
 
 // rev10 R5: 실제 운영 사본에 미연결 6기인 계획만 둔다. 다음 달 편집과 독립적이어야 한다.
-for(const n of [6,0]) test(`R5 운영 계획 미연결 ${n}기/N2·①②③`,()=>{
+for(const n of [6,0]) test(`R5 운영 계획 미연결 ${n}기/C4·①②③`,()=>{
   const S=game('hwaseong'),p=S.teams.hwaseong.plan;
   p.builds=[];p.lines=[];p.policies=[];
   const spots=B.TILES.filter(t=>!t.out&&t.site<0&&!B.siteRule('diesel',t)).slice(0,n);
@@ -398,7 +403,8 @@ for(const n of [6,0]) test(`R5 운영 계획 미연결 ${n}기/N2·①②③`,()
   const {res,V}=operate(S), a={...attribution([0,0,0,0,0,0],'uns'),id:'hwaseong',round:1,basis:'trial',trial:50,base:50,actual:50,total:0};
   const note={outageFrozen:a,outageSingleShown:true,outageOpened:true};
   const summary=()=>element(api('outageCardsHTML')(V,res,'hwaseong',note),'#lg-outage-single').textContent;
-  const want=n?N2.replace('{n}',String(n)):'지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
+  // rev11 REV11_COPY.C4 (rev10 R5): 미연결 양수일 때의 새 재점검 문장.
+  const want=n?C4.replace('{n}',String(n)):'지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
   const text=summary(); assert.ok(text.includes(`정전 자체는 커요: 시험에도 정전이 컸으니 이번 달 변화보다 ${want}`),text);
   // ①②③: 높은 기준값/작은 차이의 선택적 앞말 조합을 모두 이어 붙여 검사한다.
   for(const [before,after,total,prefix] of [[50,50,0,'시험에도 정전이 컸으니 이번 달 변화보다 '],[1,50,49,''],[50,51,1,'시험에도 정전이 컸으니 '],[4.99,5.01,.02,'이번 달 변화보다 ']]) {

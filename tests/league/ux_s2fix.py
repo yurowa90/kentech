@@ -183,7 +183,8 @@ def coach_text(info, mode="initial"):
     elif mode == "start":
         text = f"이제 {town} 칸을 누르고 뜨는 막대의 '연결'을 누르세요"
     elif info["existing"]:
-        text = f"기존 {name}도 이어야 넘어가요. {name} 칸, {town} 칸을 누르고 '연결'을 누르세요"
+        # rev11 R3 / REV11_COPY.C3: 이유·조작 순서·마침표까지 표의 글자 그대로.
+        text = f"기존 {name}도 전선에 안 닿으면 운영에서 못 써요. {name} 칸, {town} 칸을 차례로 누르고 '연결'을 눌러야 넘어가요."
     else:
         text = f"{name} 칸, {town} 칸을 차례로 누르고 '연결'을 누르세요"
     if info["count"] >= 2:

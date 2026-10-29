@@ -129,7 +129,8 @@ def first_result(checks, page, tested, label, width):
               for t in styles['trials']), label + ' F2 결과 시험 단추 그라데이션/그림자 없음')
     cells = page.locator('#lg-result-deltas > div').evaluate_all("""nodes => nodes.map(n=>({
       title:n.querySelector('dt')?.textContent, small:n.querySelector('small')?.textContent}))""")
-    headings = ('정전(이번 달)', '정전 시간(이번 달)', '생산 CO₂(이번 달)')
+    # rev11 R5: 생산/소비는 CO₂ 접두 뒤에 붙인다.
+    headings = ('정전(이번 달)', '정전 시간(이번 달)', 'CO₂ 생산(이번 달)')
     basis = '시험 1주 대비' if tested['days'] == 7 else f"시험 {tested['days']}일 대비"
     checks.ok(all(sum(c['title'] == h for c in cells) == 1 for h in headings) and
               all(next(c for c in cells if c['title'] == h)['small'].startswith(basis) for h in headings),

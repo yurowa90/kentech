@@ -5,7 +5,7 @@
   if (!KCP) return;
   const ICON = { heat: ["☀", "폭염"], cold: ["✧", "한파"], snow: ["❄", "눈"],
     storm: ["🌀", "태풍"], cloud: ["☁", "구름"], rain: ["☂", "집중호우"], haze: ["≋", "안개·먼지"] };
-  const METRICS = [["appr", "지지", "%"], ["pop", "주민 · 시작 대비 변화", "%p"], ["uns", "정전", "%"], ["co2", "CO₂", " t/일"], ["grid", "계통이 메운 전기", " MWh/일"]];
+  const METRICS = [["appr", "지지", "%"], ["pop", "주민 · 시작 대비 변화", "%p"], ["uns", "정전", "%"], ["co2", "CO₂ 생산", " t/일"], ["grid", "계통이 메운 전기", " MWh/일"]];
   const mounted = new WeakSet();
   const played = new Set();
   const co2Key = (room, id) => "kcp-fx-end-co2-v1:" + JSON.stringify([room, id]);
@@ -116,7 +116,7 @@
     }).join("");
     // 진행자는 기존 DOM 보존 훅이 재연출을 막는다. 팀 서랍만 세션 키로 중복을 막는다.
     const endKey = opts.allCities ? "" : JSON.stringify([V.room, team, end]);
-    return `<section class="lg-fx-end" data-fx-end-key="${esc(endKey)}" aria-label="달별 도시 궤적"><h3>달별 도시 궤적</h3><div class="lg-fx-strip" role="region" aria-label="연대기 띠 · 좌우 스크롤" tabindex="0"><ol>${strip}</ol></div><p class="lg-fx-key">${opts.allCities ? "도시별 색·선무늬" : "청록 실선: 내 도시 · 회색 점선: 이웃 평균"} · ●: 정전 표시</p><div class="lg-fx-charts" role="region" aria-label="지표 그래프 ${METRICS.length}개 · 좁은 화면에서는 좌우로 넘겨요" tabindex="0">${graphs}</div>${KCP.league.tipBox("end-trajectory-note", "궤적 자료와 읽는 법", `<p class="lg-fx-note">출처: 공개된 달별 경제 이력·운영 결과(${esc(KCP.gradeWords("M·G"))}). CO₂는 생산 기준이고, 달마다 일수가 달라 그달 합계를 일수로 나눈 하루 평균이에요. 계통이 메운 전기는 결과 서랍에 나오는 같은 이름의 하루 평균(MWh/일) 값과 같아요. 주민은 각 도시 시작 인구 대비 변화(%)이고 가운데 실선이 0(변화 없음)이에요. 이웃 평균은 같은 달 활성 이웃 중 값이 있는 도시의 산술 평균이며 주민은 도시별 시작 대비 %를 평균해요. 값이 없는 달은 선을 끊어요.</p>`)}</section>`;
+    return `<section class="lg-fx-end" data-fx-end-key="${esc(endKey)}" aria-label="달별 도시 궤적"><h3>달별 도시 궤적</h3><div class="lg-fx-strip" role="region" aria-label="연대기 띠 · 좌우 스크롤" tabindex="0"><ol>${strip}</ol></div><p class="lg-fx-key">${opts.allCities ? "도시별 색·선무늬" : "청록 실선: 내 도시 · 회색 점선: 이웃 평균"} · ●: 정전 표시</p><div class="lg-fx-charts" role="region" aria-label="지표 그래프 ${METRICS.length}개 · 좁은 화면에서는 좌우로 넘겨요" tabindex="0">${graphs}</div>${KCP.league.tipBox("end-trajectory-note", "궤적 자료와 읽는 법", `<p class="lg-fx-note">출처: 공개된 달별 경제 이력·운영 결과(${esc(KCP.gradeWords("M·G"))}). CO₂는 생산(우리 도시 설비 배출) 기준이고, 달마다 일수가 달라 그달 합계를 일수로 나눈 하루 평균이에요. 계통이 메운 전기는 결과 서랍에 나오는 같은 이름의 하루 평균(MWh/일) 값과 같아요. 주민은 각 도시 시작 인구 대비 변화(%)이고 가운데 실선이 0(변화 없음)이에요. 이웃 평균은 같은 달 활성 이웃 중 값이 있는 도시의 산술 평균이며 주민은 도시별 시작 대비 %를 평균해요. 값이 없는 달은 선을 끊어요.</p>`)}</section>`;
   }
   function mount(root) {
     if (!root) return;

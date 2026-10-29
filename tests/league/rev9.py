@@ -250,7 +250,7 @@ def result_checks(checks, page, topic, label):
     if topic in ('uns', 'cash'):
         co2 = page.locator('#lg-s6-co2cons')
         checks.ok(co2.count() == 1 and co2.is_visible() and
-                  '소비 CO₂' in co2.inner_text() and '하루 평균' in co2.inner_text() and
+                  'CO₂ 소비(계통 포함)' in co2.inner_text() and '하루 평균' in co2.inner_text() and  # rev11 R5: 같은 소비 표기.
                   co2.evaluate('e=>!e.closest("details, .lg-info, .lg-info-pop")'),
                   label + f' R9 {topic} 주제 소비 CO₂ 하루 평균 보임')
     overflow(checks, page, label + ' S6')

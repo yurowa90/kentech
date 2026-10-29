@@ -1,5 +1,10 @@
 /* 끝 화면의 공개 이력·월 환산·누락값·접근성을 브라우저 없이 검사한다. */
 "use strict";
+// 검사 환경(rev11): Node v24.21에서 이 파일만 간헐 exit 139(세그폴트, 출력 0줄)가 났다. 13번째 검사가 vm 맥락을
+// 13번째로 만드는 순간 죽었고(동기 표지로 확인), 기본 15회 중 6회 재현 → --no-maglev 0/15, --no-concurrent-marking 0/15,
+// --jitless 0/5. 검사 코드가 아니라 V8 Maglev 컴파일과 동시 표시 GC가 겹친 실행기 결함으로 보인다(추정, V8 내부는 미확인).
+// 단언은 그대로 두고 이 파일 안에서만 Maglev를 끈다. 실패를 숨기지 않도록 다른 V8 플래그·재시도는 쓰지 않는다.
+require("node:v8").setFlagsFromString("--no-maglev");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");

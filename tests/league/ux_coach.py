@@ -130,7 +130,8 @@ def main():
                         name, town = issues['name'], issues['town']
                         assert name and town, 'M2 미연결 설비·가장 가까운 수요지 이름 존재'
                         if issues['existing']:
-                            text = (f"기존 {name}도 이어야 넘어가요. {name} 칸, {town} 칸을 누르고 '연결'을 누르세요")
+                            # rev11 R3 / REV11_COPY.C3: 기존 설비 미연결 이유와 순서.
+                            text = (f"기존 {name}도 전선에 안 닿으면 운영에서 못 써요. {name} 칸, {town} 칸을 차례로 누르고 '연결'을 눌러야 넘어가요.")
                         else:
                             text = f"{name} 칸, {town} 칸을 차례로 누르고 '연결'을 누르세요"
                         if count >= 2:
