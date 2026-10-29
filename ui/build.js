@@ -330,9 +330,10 @@
     { id: "co2", name: "CO₂ 최소", icon: "co2", goal: () => `하루 평균 ≤ ${PK.goals.co2Day} t` },
     { id: "complaint", name: "주민 민원 최소", icon: "alert", goal: () => `민원 ≤ ${MISSION_TARGETS.complaints}건 · 최저 만족 ≥ ${MISSION_TARGETS.satisfaction}` }
   ];
+  const WIND_SPEED_EXAMPLE_RATIO = 2; // 표시 전용: v³ 관계의 풍속 비교 입력값.
   const TIPS0 = [
     "송전 손실은 거리에 비례해 쌓인다 — 발전소를 수요지 가까이?",
-    "풍속이 2배면 풍력 출력은 약 8배(v³).",
+    `풍속이 ${WIND_SPEED_EXAMPLE_RATIO}배면 풍력 출력은 약 ${WIND_SPEED_EXAMPLE_RATIO ** 3}배(v³).`,
     "태양광은 저녁 피크 전에 끝난다 — 배터리가 시간을 옮긴다.",
     "전력량(MWh) = 전력(MW) × 시간(h).",
     "한 전원에만 기대면 그 조건이 무너질 때 다 멈춘다.",
@@ -442,7 +443,9 @@
   function lineCost(p) { let s = 0; for (let k = 1; k < p.length; k++) s += lineUnit() * stepMul(TILES[p[k]]); return s; }
   const capex = st => st.builds.reduce((a, b) => a + (LG && Number.isFinite(b.paidCost) ? b.paidCost : buildCost(b.t, b.i)), 0) + st.lines.reduce((a, L) => a + lineCost(L.p), 0);
   const toolsOf = () => (PK.groups ? PK.groups.flatMap(g => g.tools) : PK.tools).filter(id => LG || !["coal", "lng"].includes(id)).concat(LG && KCP.TECH_DATA ? Object.keys(BLD).filter(k => BLD[k].tech) : []);
+  const REV12_COPY = { S1: "{설비}: {지형}만" };
   // 이 타일에 이 발전원을 지을 수 있나(예산 제외)
+  // 일반 분기의 지형 목록은 다른 이유 문장(냉각수: 해안·하천만 등)과 같은 일반 지형 낱말을 쓴다. 지역 이름표(예: 영인산·설화산)는 가운뎃점을 품어 목록이 섞여 읽힌다.
   function siteRule(type, T) {
     const B = BLD[type];
     if (!B || !toolsOf().includes(type)) return "못 지음";
@@ -452,7 +455,11 @@
     if (T.t === "sea") return "바다에는 못 지음";
     if (T.site >= 0) { const k = SITES[T.site].kind; return B.roof && k !== "plant" && k !== "gridpt" && T.t === "urban" ? "" : "시설 자리"; }
     if (T.t === "town") return "마을 자리";
-    if (!B.ok[T.t]) return T.t === "mount" ? "산 능선: 풍력만" : B.roof ? "지붕 태양광: 도시만" : type === "hydro" ? "소수력: 하천만" : T.water ? "물 위에는 못 지음" : "못 지음";
+    if (!B.ok || !Object.keys(B.ok).length) return "못 지음";
+    if (!B.ok[T.t]) {
+      const terrain = ["plain", "hill", "forest", "beach", "urban", "river", "mount"].filter(key => Object.hasOwn(B.ok, key)).map(key => BASE_TNAME[key]).join("·");
+      return T.t === "mount" ? "산 능선: 풍력만" : B.roof ? "지붕 태양광: 도시만" : type === "hydro" ? "소수력: 하천만" : T.water ? "물 위에는 못 지음" : terrain ? REV12_COPY.S1.replace("{설비}", B.name).replace("{지형}", terrain) : "못 지음";
+    }
     return "";
   }
 
@@ -2383,14 +2390,18 @@
       }
     }
     if (gridText) {
-      gridText.hidden = !S.lenses.grid;
+      if (gridText.hidden !== !S.lenses.grid) gridText.hidden = !S.lenses.grid;
+      let warn = false;
       if (S.lenses.grid) {
         const key = JSON.stringify([S.st.builds, S.st.lines, S.st.policies, S.opts.leagueRound?.()?.month, S.opts.leagueLensStamp?.()]);
         if (S.lensCache?.key !== key) S.lensCache = { key, grid: S.opts.leagueGrid?.(S.st) };
         const grid = S.lensCache.grid, text = grid ? `접속 여유 ${fmt(grid.headroomMW, 1)} MW · 대기 ${fmt(grid.waitingMW, 1)} MW` : `선이 닿는 수요지 ${S.net.nodes.filter(n => n.kind === "town" && n.live).length}/${TOWNS.length}`;
+        warn = !!grid && (grid.waitingMW > 0 || grid.headroomMW <= 0);
         if (gridText.textContent !== text) gridText.textContent = text;
       }
+      if (gridText.dataset.warn !== String(warn)) gridText.dataset.warn = String(warn);
     }
+    syncResultToastPosition();
     g.save();
     if (actual && S.lenses.result && !S.run) {
       g.globalAlpha = actual.faded ? .35 : 1;
@@ -3748,7 +3759,9 @@
       if (pendingPhase || shownPhase && !S.toastPending) { clearTimeout(toastTimer); S.toastPending = null; }
       // 대기하던 단계 알림을 버리면, 그 대기 때문에 닫기 타이머를 잃은 피드백 알림을 원래 수명(2.2초) 뒤 닫는다(rev11 검토 minor).
       if (pendingPhase && !shownPhase && toastEl?.dataset.show === "true" && toastEl.dataset.warn !== "true") {
-        const state = S, shownMsg = toastEl.textContent; S.timers.push(setTimeout(() => { if (S === state && S.alive && !S.toastPending && toastEl.textContent === shownMsg && !toastEl.dataset.phase) toastEl.dataset.show = "false"; }, 2200));
+        const state = S, shownSeq = toastEl.dataset.toastSeq;
+        const remaining = Math.max(0, Number(toastEl.dataset.toastShownAt) + 2200 - Date.now());
+        S.timers.push(setTimeout(() => { if (S === state && S.alive && !S.toastPending && toastEl.dataset.toastSeq === shownSeq && !toastEl.dataset.phase) toastEl.dataset.show = "false"; }, remaining));
       }
     }
   }
@@ -3774,13 +3787,37 @@
     } else { el.hidden = true; el.innerHTML = ""; }
   }
 
-  let toastTimer = 0;
+  // 기존 도크·운영 띠·서랍 배치를 먼저 사용하고, 결과 알림이 여유 줄과 겹칠 때만 빈 세로 구간으로 옮긴다.
+  function syncResultToastPosition() {
+    if (!S?.opts.league) return;
+    const el = $("#bd-toast");
+    if (!el || el.dataset.phase !== "result" || el.dataset.show !== "true") return;
+    const rect = node => {
+      const r = node?.getBoundingClientRect();
+      return r?.width > 0 && r.height > 0 ? r : null;
+    };
+    const shown = selectors => [...S.root.querySelectorAll(selectors)].map(rect).filter(Boolean);
+    const t = rect(el), keys = shown("#lg-lens-grid, #lg-map-key-toggle");
+    if (!t) return;
+    const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const obstacles = shown('#lg-lens-grid, #lg-map-key-toggle, #bd-town-look-key, #bd-hud, .lg-bar, #lg-panel:not([hidden]):not([data-folded="true"]), .lg-ptabs, #lg-result-heading, #bd-mapbar, .lg-map-guidance, #bd-dock, #bd-run');
+    if (!keys.some(k => intersects(t, k)) && !(el.dataset.clearKeys === "true" && obstacles.some(k => intersects(t, k)))) return;
+    const across = obstacles.filter(r => t.left < r.right && t.right > r.left);
+    const candidates = [8, window.innerHeight - t.height - 8, ...across.flatMap(r => [r.top - t.height - 8, r.bottom + 8])];
+    const top = candidates.filter(y => y >= 8 && y + t.height <= window.innerHeight - 8 && across.every(r => y + t.height <= r.top - 8 || y >= r.bottom + 8))
+      .sort((a, b) => Math.abs(a - t.top) - Math.abs(b - t.top))[0];
+    if (top == null) return;
+    S.root.style.setProperty("--lg-result-toast-top", `${Math.round(top)}px`);
+    el.dataset.clearKeys = "true";
+  }
+  let toastTimer = 0, toastSeq = 0;
   // 경고 토스트(opts.warn)가 떠 있는 동안에는 일반 토스트가 덮지 못한다: 같은 동작 안의 '결과가 나왔어요'가
   // 저장 실패 경고를 75ms 만에 지우던 문제(2026-10-20 재현).
   let toastWarnUntil = 0;
   // 결과 공개 카드만 알림을 미룬다. 계획 단계 예보 카드와 '계획 시작' 알림은 기존 계약대로 함께 보이며 서로 겹치지 않게 배치된다(score1 F9).
   const toastBlocked = () => S.opts.league && S.root.querySelector('.fx-turn-layer:not([hidden]):not([data-strip="true"]) .fx-turn-card-row:not([hidden]) article:not([data-forecast="true"])');
   function toast(msg, opts) {
+    const seq = ++toastSeq;
     const el = $("#bd-toast");
     if (!el) return;
     const warn = !!opts?.warn, now = Date.now();
@@ -3798,17 +3835,21 @@
     S.toastPending = null;
     if (warn) toastWarnUntil = now + 2200;
     el.textContent = msg;
+    el.dataset.toastSeq = String(seq);
+    el.dataset.toastShownAt = String(now);
     el.dataset.show = "true";
     el.dataset.warn = String(warn);
     if (opts?.phase) el.dataset.phase = opts.phase;
     else delete el.dataset.phase;
+    delete el.dataset.clearKeys;
+    syncResultToastPosition();
     clearTimeout(toastTimer);
     const state = S;
     // 수명 절반(1.1초) 때 카드에 가려져 있었는지 기록한다. 이미 절반 넘게 보인 알림은 카드가 닫힌 뒤 다시 띄우지 않는다.
     let hiddenEarly = false;
-    S.timers.push(setTimeout(() => { if (S === state && S.alive) hiddenEarly = !warn && !!toastBlocked(); }, 1100));
+    S.timers.push(setTimeout(() => { if (S === state && S.alive && el.dataset.toastSeq === String(seq)) hiddenEarly = !warn && !!toastBlocked(); }, 1100));
     toastTimer = setTimeout(() => {
-      if (S !== state || !S.alive) return;
+      if (S !== state || !S.alive || el.dataset.toastSeq !== String(seq)) return;
       // 단계 알림이 먼저 뜬 뒤 곧바로 카드가 열린 경우만 보류해 카드가 닫힌 뒤 다시 보인다.
       if (!warn && hiddenEarly && toastBlocked()) { toast(msg, opts); return; }
       const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false";
@@ -4242,6 +4283,7 @@
     V.area = { l: 8, t: Math.max(top, bar.bottom) + 6, r, b };
     if (S.opts.league) V.area.t = S.leagueMapTop;
     syncRunStrip();
+    syncResultToastPosition();
     fitView();
     const wc = $("#bd-windchip svg");
     if (wc) wc.style.transform = V.rot ? "rotate(90deg)" : "";

@@ -80,8 +80,8 @@ function highOutageCopy(V, res) {
   const plan = V.teams[id].plan;
   const n = plan ? B.network(B.sanitize(clone(plan),1e9)).nodes
     .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length : 0;
-  // rev11 REV11_COPY.C4 (rev10 R5 N2 대체): 운영 사본에서 센 n은 그대로.
-  return n ? `이번 달 '전선에 안 닿은 설비'가 ${n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요.` :
+  // rev12 E5-a/C4: 운영 사본에서 센 n은 그대로.
+  return n ? `이번 달 '전선에 안 닿은 설비'가 ${n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요.` :
     '지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요';
 }
 function studentWords(html, label) {
@@ -896,8 +896,9 @@ test('월간 높은 정전 5% 경계·표시 반올림', () => {
       eq(html.includes('정전 자체는 큼'), high, `${label}: 두 표시값 모두 5.00% 이상`);
       eq(html.includes(highOutageCopy(second.V, second.res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 설비·접속 안내`);
       eq(html.includes(highOutageCopy(second.V, second.res)) /* rev10 R5 */, actualHigh, `${label}: 실제 표시값 기준 재점검 안내`);
-      eq(html.includes('지난달에도 정전이 컸으니'), high, `${label}: 높은 기준값 전제`);
-      eq(html.includes('이번 달 변화보다'), actualHigh, `${label}: 작은 차이일 때만 비교`);
+      const unlinked = highOutageCopy(second.V, second.res).startsWith("이번 달 '전선에 안 닿은 설비'");
+      eq(html.includes(unlinked ? '지난달에도 정전이 컸어요.' : '지난달에도 정전이 컸으니'), high, `${label}: 높은 기준값 전제`);
+      eq(html.includes('이번 달 변화보다'), actualHigh && !unlinked, `${label}: 작은 차이·미연결 0일 때만 비교`);
       ok(!session.outShownPending.largest && !html.includes('data-out-tag="largest"'), `${label}: 최대 몫 없음`);
     }
   }

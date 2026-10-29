@@ -7,7 +7,7 @@
 AUTO 문자열을 평가하지 않는다. 계획 변경은 공개 검사 API를 사용한다.
 """
 
-from league_flow import finish_trial
+from league_flow import finish_trial, map_key_visible
 from league_flow import pass_issue_check
 import re
 import sys
@@ -189,17 +189,19 @@ def reminder_geometry(checks, page, label, first_guide):
     for selector in ('#bd-hud .bd-cap', chips, '#lg-lens-grid', '.lg-lens-key',
                      '.lg-map-result'):
         nodes = page.locator(selector)
-        require(checks, shown(page, selector), label + ' 겹침 검사 대상 표시 ' + selector)
-        boxes = nodes.evaluate_all("""nodes => {
-          const a=document.querySelector('#lg-plan-reminder').getBoundingClientRect();
-          return nodes.filter(n=>n.checkVisibility()).map(n=>{
-            const b=n.getBoundingClientRect();
-            return {area:Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*
-              Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top))};
-          });
-        }""")
-        checks.ok(bool(boxes) and all(b['area'] == 0 for b in boxes),
-                  label + ' 띠와 경계 상자 교차 면적 0 ' + selector)
+        # rev12 Q2: 접힌 두 줄의 같은 요소를 펼친 상태로 기존 가시성·교차 단언 유지.
+        with map_key_visible(page, selector):
+            require(checks, shown(page, selector), label + ' 겹침 검사 대상 표시 ' + selector)
+            boxes = nodes.evaluate_all("""nodes => {
+              const a=document.querySelector('#lg-plan-reminder').getBoundingClientRect();
+              return nodes.filter(n=>n.checkVisibility()).map(n=>{
+                const b=n.getBoundingClientRect();
+                return {area:Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*
+                  Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top))};
+              });
+            }""")
+            checks.ok(bool(boxes) and all(b['area'] == 0 for b in boxes),
+                      label + ' 띠와 경계 상자 교차 면적 0 ' + selector)
     overflow(checks, page, label + ' 띠·렌즈')
     page.evaluate("""html => {
       document.querySelector('#bd-root').insertAdjacentHTML('beforeend',html);

@@ -1072,8 +1072,17 @@ html.v2-league-lobby .lg-lobby .v2-kicker { color: var(--ui-cyan, #71dceb); }
 
 .lg-map-keys { position: fixed; z-index: 29; left: 8px; bottom: calc(var(--bd-dock, 112px) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: calc(100vw - 16px); pointer-events: none; }
 /* 안내와 범례 사이가 말풍선보다 좁을 때만, 떠 있는 말풍선(z 5)을 범례보다 앞에 둔다. */
-#bd-root.lg-team-map:has(#bd-tip[data-legend-overlap="true"]:not([hidden])) .lg-map-keys { z-index: 4; }
+#bd-root.lg-team-map:has(#bd-tip[data-legend-overlap="true"]:not([hidden])) .lg-map-keys:not(:has(#lg-map-key-info[open]:not([hidden]))) { z-index: 4; }
 .lg-team-map .lg-map-keys > :is(.lg-town-key, .lg-lens-grid) { position: static; top: auto; bottom: auto; box-sizing: border-box; margin: 0; }
+/* rev12 Q2: 도크·운영 띠 위의 기존 범례 자리에서 44px 단추만 남긴다. 폭 판정은 setupMapKeyInfo가 한다. */
+.lg-map-keys > details.lg-map-key-info { position: relative; width: auto; flex-basis: auto; pointer-events: auto; }
+.lg-map-key-info > summary.lg-info-btn { display: flex; gap: 4px; width: auto; min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-panel); font-family: var(--body); }
+.lg-map-key-info > summary.lg-info-btn::after { content: none; }
+.lg-map-key-info .lg-info-pop { position: absolute; left: 0; bottom: calc(100% + 8px); width: min(420px, calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: max(44px, calc(100dvh - var(--bd-dock, 112px) - var(--lg-run-height, 0px) - var(--lg-guidance-bottom, var(--lg-mapbar-bottom, 210px)) - 80px)); overflow-y: auto; overscroll-behavior: contain; box-shadow: var(--ui-shadow); }
+.lg-map-key-info .lg-info-pop > :is(.lg-town-key, .lg-lens-grid) { position: static; max-width: 100%; margin: 0; }
+.lg-map-key-info .lg-info-pop > .lg-town-key { border: 0; padding: 0; }
+.lg-map-key-info .lg-info-pop > .lg-lens-grid { padding: 8px 0 0; }
+.lg-team-map.bd-replaying .lg-map-key-info { display: none; }
 .lg-team-map .bd-subtools .bd-tool-c { display: block; }
 .lg-team-map .bd-subtools .bd-tool-n small { display: block; font-size: 11px; white-space: normal; }
 @media (max-width: 760px) {
@@ -1859,6 +1868,8 @@ html.v2-league-host #lg-next { font-size: 16px; }
   transform: translate(0, -6px);
 }
 #app #bd-root.lg-team-map #bd-toast[data-phase="plan"][data-show="true"] { transform: translate(0, 0); }
+/* Q6b: 충돌할 때만 build의 실측 배치가 top을 정한다. 계획 알림과 기존 가로 위치는 유지한다. */
+#app #bd-root.lg-team-map #bd-toast[data-phase="result"][data-clear-keys="true"] { top: var(--lg-result-toast-top); bottom: auto; }
 
 /* 상세 높이는 syncRunStrip이 머리를 뺀 40vh 이내로 계산한다. */
 #bd-root.lg-team-map #bd-run { max-height: 40vh; max-height: 40dvh; overflow-y: auto; }

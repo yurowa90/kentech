@@ -574,8 +574,10 @@ def record_trial(team, checks, days=7):
     checks.ok(team.locator('#bd-hud .bd-cap').evaluate_all("""caps => caps.length===5 && caps.every(cap => {
       const bounds=cap.getBoundingClientRect();
       return [...cap.querySelectorAll('.v2-cap-k,.v2-cap-v')].every(value => {
-        const range=document.createRange(); range.selectNodeContents(value);
-        return value.scrollWidth<=value.clientWidth && [...range.getClientRects()].every(r =>
+        // rev12 Q5: .bd-sr는 낭독용이다. 보이는 모든 이름·숫자의 기존 경계 검사는 유지한다.
+        const rects=[...value.childNodes].filter(n=>!(n.nodeType===1 && n.classList.contains('bd-sr')))
+          .flatMap(n=>{const range=document.createRange();range.selectNode(n);return [...range.getClientRects()];});
+        return value.scrollWidth<=value.clientWidth && rects.length>0 && rects.every(r =>
           r.left>=bounds.left && r.right<=bounds.right && r.top>=bounds.top && r.bottom<=bounds.bottom);
       });
     })"""), 'D-A8 390 머리 칩의 이름·숫자 전체가 칩 안에 표시')

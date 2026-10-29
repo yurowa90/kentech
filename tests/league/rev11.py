@@ -482,6 +482,11 @@ def map_overlays(checks, page, base, label, touch):
     attempt(checks, label + ' R6', lambda: calc_digits(checks, page, label))
     attempt(checks, label + ' R8a', lambda: lens(checks, page, label))
     close_drawer(page)
+    # rev12 Q2: plan에서만 접히므로 review와 직접 비교하지 않는다.
+    # 재생 뒤 다음 plan에서 같은 details 접힘 상태를 맞춰 원래 복원 단언을 유지한다.
+    toggle = page.locator('[aria-label="범례·여유: 지도 범례와 접속 여유 보기"]')
+    folded = page.viewport_size['width'] <= 1100
+    baseline_open = toggle.evaluate("e=>!!e.closest('details')?.open") if folded else None
     baseline = page.locator('#bd-town-look-key').evaluate('e=>({hidden:e.hidden,visible:(' + DOM + ').visible(e)})')
     page.evaluate('() => {__rev11.replay=[];}')
     reach_result(page, 1)
@@ -500,10 +505,20 @@ def map_overlays(checks, page, base, label, touch):
     replay = page.evaluate('() => __rev11.replay')
     checks.ok(bool(replay) and all(row['exists'] and not row['visible'] for row in replay),
               f'{label} R8b 재생 모든 관측 프레임 숨김: {len(replay)}개')
-    restored = page.locator('#bd-town-look-key').evaluate('e=>({hidden:e.hidden,visible:(' + DOM + ').visible(e)})')
-    checks.ok(restored == baseline, f'{label} R8b 재생 뒤 원래 hidden/표시 복원: {baseline} → {restored}')
+    if folded:
+        checks.ok(shown(page, '#bd-town-look-key'), label + ' R8b 재생 뒤 결과 단계 범례 펼침')
+    else:  # ≥1101px는 기존 재생 직후 비교 그대로.
+        restored = page.locator('#bd-town-look-key').evaluate('e=>({hidden:e.hidden,visible:(' + DOM + ').visible(e)})')
+        checks.ok(restored == baseline, f'{label} R8b 재생 뒤 원래 hidden/표시 복원: {baseline} → {restored}')
     overflow(checks, page, label + ' R8b')
     attempt(checks, label + ' R8c', lambda: planning_toast(checks, page, label))
+    if folded:
+        checks.ok(read(page)['S']['phase'] == 'plan', label + ' R8b 복원 비교는 같은 계획 단계')
+        if toggle.evaluate("e=>!!e.closest('details')?.open") != baseline_open:
+            press(page, '[aria-label="범례·여유: 지도 범례와 접속 여유 보기"]', touch)
+            frames(page)
+        restored = page.locator('#bd-town-look-key').evaluate('e=>({hidden:e.hidden,visible:(' + DOM + ').visible(e)})')
+        checks.ok(restored == baseline, f'{label} R8b 재생 뒤 원래 hidden/표시 복원: {baseline} → {restored}')
 
 
 def end_graph(checks, page, base, label, touch):

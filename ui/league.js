@@ -84,11 +84,19 @@
     C1a: "첫 달 코치 닫기",
     C2v: "사건 닫기",
     C3: "기존 {설비}도 전선에 안 닿으면 운영에서 못 써요. {설비} 칸, {마을} 칸을 차례로 누르고 '연결'을 눌러야 넘어가요.",
-    C4: "이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요.",
+    C4: "이번 달 '전선에 안 닿은 설비'가 {n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요.",
     C5: "CO₂ 소비(계통 포함)가 {n} t인데 탄소세를 고르지 않았습니다. 왜였나요?",
     C6: "{d}일 운영 끝. 정전 {h}시간, 총비용 {c}억, CO₂ 소비(계통 포함) {n} t."
   };
   const rev11Copy = (key, values = {}) => REV11_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
+  const REV12_COPY = {
+    P1: "{기준}에도 정전이 컸어요.",
+    K1v: "범례·여유",
+    K1a: "범례·여유: 지도 범례와 접속 여유 보기",
+    S1: "{설비}: {지형}만",
+    A1: "CO₂ 시험·소비, 시험 운전 소비 배출(계통 포함)"
+  };
+  const rev12Copy = (key, values = {}) => REV12_COPY[key].replace(/\{([^{}]+)\}/g, (_, name) => values[name] ?? "");
   const JQ = [
     { k: "why", q: "우리 도시는 무엇을, 왜 지었나요?" },
     { k: "nb", q: "우리 선택이 이웃 도시에 준 영향은?" },
@@ -262,6 +270,24 @@
     const rounded = Number(value.toFixed(digits)) + 0;
     return `${rounded < 0 ? "−" : delta && rounded > 0 ? "+" : ""}${Math.abs(rounded).toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
   }
+  function calcLineTexts(delta, tol, base = 2, topic = "cash") {
+    const digits = calcDigits(delta, tol, base, topic);
+    let deltaText = calcValueText(delta, digits, true, topic);
+    const tolText = calcValueText(tol, digits, false, topic);
+    const magnitude = text => Number(text.replace(/^[+−-]/, "").replace(/,/g, ""));
+    if (digits === 4 && Number.isFinite(delta) && Number.isFinite(tol) && Math.abs(delta) !== tol && magnitude(deltaText) === magnitude(tolText)) {
+      // 네 자리에서도 같은 눈금이면 Δ만 실제 판정 쪽으로 자른다. 계산·판정 값은 건드리지 않는다.
+      const scaled = Math.abs(delta) * 10 ** digits;
+      const value = (Math.abs(delta) < tol ? Math.floor(scaled) : Math.ceil(scaled)) / 10 ** digits;
+      deltaText = `${delta < 0 && value > 0 ? "−" : delta > 0 && value > 0 ? "+" : ""}${value.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+    }
+    return { digits, delta: deltaText, tol: tolText };
+  }
+  function highOutageHintText({ trialHigh, monthly, smallDifference, unlinked }) {
+    const basis = monthly ? "지난달" : "시험";
+    if (unlinked >= 1) return `. 정전 자체는 커요: ${trialHigh ? rev12Copy("P1", { 기준: basis }) + " " : ""}${rev11Copy("C4", { n: unlinked })}`;
+    return `. 정전 자체는 커요: ${trialHigh ? `${basis}에도 정전이 컸으니 ` : ""}${smallDifference ? "이번 달 변화보다 " : ""}지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요`;
+  }
   // 하루 평균의 작은 양을 0으로 읽지 않게 한다. 부호 있는 Δ와 상세 계산은 각자 정밀도를 유지한다.
   const perDayText = x => Number.isFinite(x) && x >= 0 && x < GRID_DISPLAY_MIN_PER_DAY ? "0.1 MWh/일 미만" : `${fmt(x, 1)} MWh/일`;
   const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -293,7 +319,7 @@
     flushHost();
     L.resultReplayWait?.();
     L.regionObserver?.disconnect(); L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.guidanceObserver?.disconnect();
-    L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
+    L.panelObserver?.disconnect(); L.mapKeyObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
     if (L.watchOutside) document.removeEventListener("pointerdown", L.watchOutside, true);
     BG.setViewInset?.({ right: 0 });
     clearInterval(L.guidanceTimer); L.guidanceTimer = null; if (L.guidanceFrame) cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
@@ -665,11 +691,11 @@
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
       ["준비 → 근거·방향·확신 고르고 약속해요", L.snap?.phase === "plan" && document.querySelector("#lg-ready")?.disabled ? "남은 칸 채우기" : L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
       // 결과 단계에서는 막대 '결과'가 서랍을 닫는 토글이라 판정 줄 단추를 짚는다(검토 major 2).
-      ["운영 끝 · 결과 맨 위에서 내 예측과 실제를 비교해요", "결과", document.querySelector("#lg-promise-summary [data-promise-details]") ? "#lg-promise-summary [data-promise-details]" : '#lg-bar [data-panel="result"]'],
+      ["운영 끝 · 결과 맨 위에서 내 예측과 실제를 비교해요", document.querySelector("#lg-promise-summary [data-promise-details]") ? "예측 자세히" : "결과", document.querySelector("#lg-promise-summary [data-promise-details]") ? "#lg-promise-summary [data-promise-details]" : '#lg-bar [data-panel="result"]'],
       coachHasCards()
         ? ["이번 달 변화의 원인 하나를 골라 열어 봐요", "원인 열기", document.querySelector("#lg-outage-open") ? "#lg-outage-open" : "#lg-outage-carry"]
         : ["이번 달은 고를 원인 카드가 없어요 · 확인하고 넘어가요", "확인하고 다음", "#lg-missed"],
-      [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", n.answer && n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
+      [n.answer && n.askReason?.trim() ? "이유를 남겼어요 · 다음 달로 가요" : "다음에 바꿀 것 고르고 이유 한 줄 써요", n.answer && n.askReason?.trim() ? "다음 달" : "이유 쓰기", !n.answer ? (document.querySelector("#lg-panel .lg-decision-actions") ? ".lg-decision-actions" : '[data-note="askReason"]') : n.askReason?.trim() ? "#lg-ready" : '[data-note="askReason"]']
     ];
   }
   // 다른 서랍으로 바꾸면 #lg-missed가 DOM에서 빠지므로 결과 서랍일 때 읽은 판정을 유지한다(검토 minor 6).
@@ -803,9 +829,14 @@
       if (open?.disabled) { scrollPanelTo(document.querySelector("#lg-missed") || open); return; }
       coachAck(6);
     }
+    // 8/8 대상이 '다음 달'(#lg-ready)이면 접어 둔 결과 서랍을 다시 펼치지 않는다(재검토 minor).
+    if (step === 7 && (L.panel !== "result" || L.panelFolded)) { const m = monthNote().n; if (!(m.answer && m.askReason?.trim())) openPanel("result"); }
     const { n } = monthNote(), [, , selector] = coachSteps(planIssueCounts(), n)[step];
     const target = document.querySelector(selector);
     if (!target) { if (step === 6) updateCoach(false); else openPanel(step >= 5 ? "result" : "journal"); return; }
+    if (step === 7 && !n.answer && selector === ".lg-decision-actions") {
+      scrollPanelTo(target); target.querySelector("[data-answer]")?.focus({ preventScroll: true }); updateCoach(false); return;
+    }
     if (step >= 6 && selector !== "#lg-ready") { scrollPanelTo(target); target.focus({ preventScroll: true }); if (target.matches("button") && !target.disabled) target.click(); }
     else if (!target.disabled) target.click();
     if (step === 6) updateCoach(false);
@@ -1601,7 +1632,7 @@
     return rows.length ? `<details id="lg-promise-history"><summary>약속 일지 · 근거 유지와 변경</summary><ul>${rows.map(([t, n], i) => `<li>${esc(t)}달 · ${esc(n.evidence.text)} · ${i ? n.evidence.key === rows[i - 1][1].evidence.key ? "근거 유지" : "근거 변경" : "첫 근거"}${missedText(n) ? ` · ${esc(missedText(n))}` : ""}</li>`).join("")}</ul></details>` : "";
   }
   function calibrationHTML(id = "lg-calibration") {
-    if (L.role !== "solo") return "";
+    if (!["solo", "team"].includes(L.role)) return "";
     const rows = Object.values(tdata().interview?.months || {}).filter(n => n.outcome && Object.hasOwn(CONFIDENCE, n.confidence || ""));
     return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · 기기에만</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
       const group = rows.filter(n => n.confidence === key), wins = group.filter(n => n.outcome.hit).length;
@@ -1914,11 +1945,11 @@
         예상화살표: evidenceDir === "up" ? "↑" : "↓", 실제화살표: actual === "up" ? "↑" : "↓"
       }) : "결과의 비교 기준이 없어 비교하지 않아요";
     const verdict = esc(promiseVerdictText(compared, n));
-    const digits = calcDigits(compared.delta, params("promiseSameDelta"), 2, topic);
+    const calc = calcLineTexts(compared.delta, params("promiseSameDelta"), 2, topic);
     const cashCalc = topic === "cash" && compared.delta != null
-      ? `<p id="lg-promise-cash-calc" class="lg-hint">${esc(rev9Copy("K5", { Δ: calcValueText(compared.delta, digits, true, "cash"), tol: calcValueText(params("promiseSameDelta"), digits, false, "cash") }))}</p>` : "";
+      ? `<p id="lg-promise-cash-calc" class="lg-hint">${esc(rev9Copy("K5", { Δ: calc.delta, tol: calc.tol }))}</p>` : "";
     const unsCalc = topic === "uns" && compared.delta != null
-      ? `<p id="lg-promise-uns-calc" class="lg-hint">${esc(rev10Copy("N1", { 기준: compared.comparison.label, Δ: calcValueText(compared.delta, digits, true, "uns"), tol: calcValueText(params("promiseSameDelta"), digits, false, "uns") }))}</p>` : "";
+      ? `<p id="lg-promise-uns-calc" class="lg-hint">${esc(rev10Copy("N1", { 기준: compared.comparison.label, Δ: calc.delta, tol: calc.tol }))}</p>` : "";
     // 표시 1자리가 같아도 판정이 갈리는 경계에서 학생이 판정을 의심하지 않게 상세에 계산값을 보인다.
     const gridCalc = topic === "grid" && compared.grid.deltaPerDay != null
       ? `<p id="lg-promise-grid-calc" class="lg-hint">판정 계산: 하루 평균 Δ ${esc(signed(compared.grid.deltaPerDay, 2))} MWh/일, '같음' 범위 ±${esc(fmt(compared.grid.tolPerDay, 2))} MWh/일(기준 하루 평균 ${esc(fmt(compared.grid.base.perDay, 2))}의 ${esc(fmt(GRID_SAME_SHARE_PER_DAY * 100))}%와 ${esc(fmt(GRID_SAME_MWH_PER_DAY, 2))} 중 큰 값)</p>` : "";
@@ -4086,7 +4117,7 @@
       `차이의 대부분은 재현 차이(저장된 ${monthly ? "지난달 사본" : "시험"}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요` :
       `${causeCount} 원인의 몫이 모두 ${thresholdText} 이하라, 바뀐 조건 하나하나는 ${subject}${a.target === "grid" ? "를" : "을"} 거의 바꾸지 않았어요`;
     const unlinked = a.target !== "grid" && outageHigh(a.actual) ? operatingUnlinkedCount(V, res, id) : null;
-    const highOutageHint = a.target !== "grid" && outageHigh(a.actual) ? `. 정전 자체는 커요: ${outageHigh(a.trial) ? `${monthly ? "지난달" : "시험"}에도 정전이 컸으니 ` : ""}${smallDifference ? "이번 달 변화보다 " : ""}${unlinked >= 1 ? rev11Copy("C4", { n: unlinked }) : "지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요"}` : "";
+    const highOutageHint = a.target !== "grid" && outageHigh(a.actual) ? highOutageHintText({ trialHigh: outageHigh(a.trial), monthly, smallDifference, unlinked }) : "";
     const noCauseSummary = `${monthly ? "지난달" : "시험"} ${a.trial == null ? "기록에 계통 값이 없어 시험 대비 차이는 표시하지 않아요. 실제" : esc(level(a.trial))}${a.trial == null ? "" : ` → ${monthly ? "이번 달" : "실제"}`} ${esc(level(a.actual))}${a.trial == null ? "예요" : smallDifference ? "로 거의 같아요" : "의 차이를 나눠 보는 카드예요"}. ${noCauseDetail}${highOutageHint}`;
     const singleText = !largest ? noCauseSummary : `이번 차이의 가장 큰 몫은 ${esc(names[largest.key])}(${esc(part(largest.value, largest.key) + outageCost(largest.value, a, true))})${withParticle(names[largest.key], "이에요").slice(names[largest.key].length)}. ${causeCount} 원인 중 나머지 몫은 모두 ${shareThreshold ? `차이 ${outageValue(Math.abs(difference), unit)}의 ${shareText}` : `카드 최소 크기(${minText})`} 이하라 고르기를 건너뛰어요`;
     // 합계 밖의 지속 병목: 카드 정답과 무관하므로 열기 전에도 같은 위치에 표시한다.
@@ -5383,8 +5414,9 @@
     // build.mount는 append 방식이다. 팀이 다시 mount할 때 숨긴 이전 루트도 제거한다.
     // 돌아갈 입력 서랍은 leaveTeamCity가 L.home.panel로 따로 보존한다.
     L.hudObserver?.disconnect(); L.barObserver?.disconnect(); L.syncMoney = null;
-    L.panelObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
+    L.panelObserver?.disconnect(); L.mapKeyObserver?.disconnect(); window.removeEventListener("resize", L.mapResize);
     if (L.watchOutside) document.removeEventListener("pointerdown", L.watchOutside, true);
+    L.watchOutside = null; // 새 관전 지도가 이전 범례의 처리기를 다시 감싸지 않게 참조도 해제한다.
     L.viewInset = null; BG.setViewInset?.({ right: 0 });
     app.querySelectorAll("#bd-root, #lg-region").forEach(el => el.remove());
   }
@@ -5573,9 +5605,42 @@
     // build.refreshHUD가 title을 다시 써도 기존 관찰자의 syncMoney에서 설명을 복원한다.
     L.hudObserver?.observe(power, { attributes: true, attributeFilter: ["title"] });
   }
+  function setupMapKeyInfo(root) {
+    const keys = root.querySelector(".lg-map-keys"), town = keys?.querySelector("#bd-town-look-key"), grid = keys?.querySelector("#lg-lens-grid");
+    if (!keys || !town || !grid) return () => {};
+    keys.insertAdjacentHTML("beforeend", infoTip("map-keys", "").replace('class="lg-info"', 'id="lg-map-key-info" class="lg-info lg-map-key-info"'));
+    const info = keys.querySelector("#lg-map-key-info"), button = info.querySelector("summary"), pop = info.querySelector(".lg-info-pop");
+    button.id = "lg-map-key-toggle";
+    button.textContent = `! ${rev12Copy("K1v")}`;
+    button.setAttribute("aria-label", rev12Copy("K1a"));
+    const sync = () => {
+      const folded = root.dataset.lgPhase === "plan" && ["solo", "team"].includes(L.role) && window.matchMedia("(max-width: 1100px)").matches;
+      // 같은 DOM을 옮겨 렌즈의 hidden·숫자 갱신 경로를 보존한다. 경고는 상자 밖에 둔다.
+      const townParent = folded ? pop : keys, gridParent = folded && grid.dataset.warn !== "true" ? pop : keys;
+      if (town.parentElement !== townParent) townParent.prepend(town);
+      if (grid.parentElement !== gridParent) gridParent.append(grid);
+      info.hidden = !folded || town.hidden && (grid.hidden || gridParent === keys);
+      if (info.hidden) { info.open = false; delete info.dataset.pinned; }
+    };
+    L.mapKeyObserver?.disconnect();
+    L.mapKeyObserver = new MutationObserver(sync);
+    L.mapKeyObserver.observe(root, { attributes: true, attributeFilter: ["data-lg-phase"] });
+    for (const el of [town, grid]) L.mapKeyObserver.observe(el, { attributes: true, attributeFilter: ["hidden", "data-warn"] });
+    // 기존 기기 화면의 바깥 누르기 처리와 함께 해제한다(관전 지도에도 적용).
+    if (L.watchOutside) document.removeEventListener("pointerdown", L.watchOutside, true);
+    const watchOutside = L.watchOutside;
+    L.watchOutside = e => {
+      watchOutside?.(e);
+      if (info.open && !info.contains(e.target)) { info.open = false; delete info.dataset.pinned; }
+    };
+    document.addEventListener("pointerdown", L.watchOutside, true);
+    bindInfoTips(keys); sync();
+    return sync;
+  }
   function setupTeamMap(root, id = L.team) {
     root.classList.add("lg-team-map");
     root.dataset.lgPhase = L.snap?.phase || "";
+    const syncMapKeys = setupMapKeyInfo(root);
     // 자료 지도만 접는다. 녹화·검사에서 쓰는 세 렌즈는 항상 펼침 밖에 둔다.
     const layers = root.querySelector(".bd-layers");
     if (layers && !layers.querySelector(".lg-map-views")) {
@@ -5695,6 +5760,7 @@
     window.removeEventListener("resize", L.mapResize);
     L.mapResize = () => {
       if (!root.isConnected) return;
+      syncMapKeys();
       syncMoney();
       requestAnimationFrame(() => { syncViewInset(); syncWatchBadges(); });
     };
@@ -5705,8 +5771,12 @@
     if (panel) L.panelObserver.observe(panel);
     if (canvas) L.panelObserver.observe(canvas);
     syncViewInset();
-    // rev11: 보이는 칩 글자는 390 머리 줄 높이를 지키려고 기준판 길이('CO₂ 시험·소비')를 유지하고, 정식 이름은 title·aria에 둔다.
-    root.querySelectorAll('[data-cap="co2"] .v2-cap-k').forEach(el => { el.textContent = "CO₂ 시험·소비"; el.title = "CO₂ 시험 운전 · 소비(계통 포함)"; el.setAttribute("aria-label", el.title); });
+    // 일반 span은 보이는 이름 뒤의 시각 숨김 글자로 전체 뜻을 읽는다. 머리 줄 높이는 유지한다.
+    root.querySelectorAll('[data-cap="co2"] .v2-cap-k').forEach(el => {
+      const text = rev12Copy("A1"), visible = "CO₂ 시험·소비";
+      el.textContent = visible; el.title = text; el.removeAttribute("aria-label");
+      const extra = document.createElement("span"); extra.className = "bd-sr"; extra.textContent = text.slice(visible.length); el.append(extra);
+    });
     root.querySelectorAll('[data-cap="cp"] .v2-cap-k').forEach(el => { el.textContent = "민원 지금"; el.title = "민원(지금 지도 기준)"; el.setAttribute("aria-label", el.title); });
   }
   function addBar(root) {
@@ -5963,9 +6033,9 @@
   function scrollPanelTo(el) {
     const p = document.getElementById("lg-panel");
     if (!p || !el || !p.contains(el)) return;
-    const tabs = p.querySelector(".lg-ptabs")?.offsetHeight || 0;
     const body = p.querySelector(".lg-pbody");
-    if (body) body.scrollTop += el.getBoundingClientRect().top - p.getBoundingClientRect().top - tabs - 8;
+    // 본문의 실측 위끝은 고정 머리·탭 줄 아래다. 코치 띠에 따른 서랍 위치 변경도 포함한다.
+    if (body) body.scrollTop += el.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientTop - 8;
   }
   // S8 선택 뒤 다시 그린 이유 묶음을 읽을 위치로 옮긴다. 입력 초점은 건드리지 않는다.
   function revealDecisionReason() {
@@ -6380,7 +6450,7 @@
   });
   // 검사용
   KCP.league = {
-    infoTip, tipBox, bindInfoTips, grantRepairTail, calcDigits,
+    infoTip, tipBox, bindInfoTips, grantRepairTail, calcDigits, calcLineTexts, highOutageHintText,
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
     uiMath: { monthPoints, resultPeriod, gridFillMWh, fmt, cityTownLook, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },

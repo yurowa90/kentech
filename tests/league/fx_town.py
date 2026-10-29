@@ -23,7 +23,7 @@
   사용하며 양수인지 별도로 확인한다. Canvas 캡처는 사람이 볼 증거로 남긴다.
 """
 
-from league_flow import finish_trial
+from league_flow import finish_trial, map_key_visible
 import math
 import sys
 
@@ -83,8 +83,11 @@ def settle(page):
 
 
 def annotation(checks, page, state, label):
-    checks.ok(state['legendHidden'] is False and shown(page, '#bd-town-look-key'),
-              label + ' 범례 hidden=false·실제로 보임')
+    with map_key_visible(page, '#bd-town-look-key'):  # rev12 Q2: ≤1100px 계획만 접힘.
+        checks.ok(state['legendHidden'] is False and shown(page, '#bd-town-look-key'),
+                  label + ' 범례 hidden=false·실제로 보임')
+        checks.ok(page.locator('#bd-town-look-key').inner_text() == state['legend'],
+                  label + ' 펼쳐도 같은 범례 글자')
     for key, text in (('legend', state['legend']), ('aria-description', state['aria'])):
         text = ' '.join(text.split())
         checks.ok(SCALE_TEXT in text, label + f' {key}: 집 한 채 = 시작 주민 2%')
