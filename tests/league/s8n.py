@@ -377,7 +377,11 @@ def solo(checks, context, base, width, label, pages):
     page.wait_for_function(SYNC, arg=[2, 'plan'])
     checks.ok(not shown(page, '#lg-plan-reminder'), label + ' 닫기 새로고침 뒤 유지 [9]')
     drawer(checks, page, width, 'journal', False, label + '-다음계획')
-    checks.ok(page.locator('.lg-debt-note').inner_text() == '(빚 한도 포함)', label + ' 머리 돈 칩 설명 [14]')
+    # rev13 R3: ≤760px는 짧은 꼬리표, 나머지 폭은 기존 뜻/교부세 주석 유지.
+    money_note = page.locator('[data-cap="budget"] [data-money-note], [data-cap="budget"] .lg-debt-note').filter(visible=True).first
+    note_text = money_note.inner_text().strip()
+    checks.ok(note_text == '+빚 한도' if width <= 760 else note_text.startswith('(빚 한도 포함)'),
+              label + ' 머리 돈 칩 설명 [14] (rev13 R3 폭별 꼬리표)')
     state = page.evaluate(STATE)
     require(checks, state['results'][0]['team']['pyeongtaek']['unsPct'] > state['goals']['unsPct'],
             label + ' 실제 운영 정전 목표 초과 사례')

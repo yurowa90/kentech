@@ -926,7 +926,7 @@ section#lg-missed.lg-outage { display: block; }
   .lg-regioncity span { overflow-wrap: anywhere; }
   .lg-bar .lg-bbtn { min-width: 44px; flex: 0 0 auto; }
   .lg-team-map .bd-cap .v2-cap-txt { width: 100%; }
-  .lg-team-map .bd-cap .lg-debt-note { display: none; }
+  .lg-team-map .bd-cap .lg-debt-note { display: block; font-size: 9px; line-height: 10px; white-space: nowrap; }
   .lg-team-map .bd-cap[data-cap="time"] .v2-cap-v { font-size: 10px; }
 }
 #lg-final-summary p,
@@ -1870,6 +1870,8 @@ html.v2-league-host #lg-next { font-size: 16px; }
 #app #bd-root.lg-team-map #bd-toast[data-phase="plan"][data-show="true"] { transform: translate(0, 0); }
 /* Q6b: 충돌할 때만 build의 실측 배치가 top을 정한다. 계획 알림과 기존 가로 위치는 유지한다. */
 #app #bd-root.lg-team-map #bd-toast[data-phase="result"][data-clear-keys="true"] { top: var(--lg-result-toast-top); bottom: auto; }
+/* rev13 R1: 넓은 화면에서 옆 서랍이 열려 있으면 서랍 왼쪽 빈 자리로(가로 위치만, 미끄러짐 없이 한 번에). */
+#app #bd-root.lg-team-map #bd-toast[data-phase="result"][data-clear-panel="true"] { left: var(--lg-result-toast-left); right: auto; transform: none; }
 
 /* 상세 높이는 syncRunStrip이 머리를 뺀 40vh 이내로 계산한다. */
 #bd-root.lg-team-map #bd-run { max-height: 40vh; max-height: 40dvh; overflow-y: auto; }

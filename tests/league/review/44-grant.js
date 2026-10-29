@@ -434,7 +434,7 @@ try {
       const start = source.build.indexOf('  function confirmLine()'), end = source.build.indexOf('  function cancelLine()', start);
       let toast = '';
       vm.runInNewContext(source.build.slice(start, end) + ';confirmLine();', { S: state, withinBudget: h.editor.withinBudget,
-        budgetShortfall: h.editor.budgetShortfall, fmt: h.editor.fmt, toast: msg => { toast = msg; }, undoTurn: () => null, mapEffect() {}, floater() {}, showConfirm() {}, changed() {} });
+        budgetShortfall: h.editor.budgetShortfall, fmt: h.editor.fmt, toast: msg => { toast = msg; }, undoTurn: () => null, mapEffect() {}, floater() {}, showConfirm() {}, changed() {}, hideTouchTip() {} });
       a.equal(state.st.lines.length, want ? 1 : 0, '실제 선로 확정 결과');
       a.equal(Boolean(toast), !want, '거절 안내');
       if (!want) {
