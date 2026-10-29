@@ -190,8 +190,8 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
       return KCP.buildGame.network(KCP.buildGame.sanitize(p,1e9)).nodes
         .filter(x=>x.kind!=='town'&&x.kind!=='import'&&!x.live).length;
     }""")
-    # rev11 REV11_COPY.C4 (rev10 R5 N2 대체): n>0만 대체, n=0 안내는 유지한다.
-    hint = (f"이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요."
+    # rev12 E5-a: n>0은 새 C4, n=0은 기존 안내·접두 문장을 유지한다.
+    hint = (f"이번 달 '전선에 안 닿은 설비'가 {n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요."
             if n else "지금 설비·접속이 수요를 못 따라가는 상태를 살펴봐요. 1주 시험과 자리 판단(접속 여유)에서 다시 봐요")
     checks.ok((("바뀐 조건 하나하나는" in summary and ("계통" if grid_target else "정전") in summary and "거의 바꾸지 않았어요" in summary)) == (not replay_dominates) and  # D-80: C-1·2·4·5 대상별 검사.
               (hint in summary) == actual_high,  # rev10 R5: N2/원래 문장의 조건별 기대.
@@ -199,10 +199,11 @@ def no_cause_summary(checks, page, label, before, after, monthly=False):
     saved_name = "지난달 사본" if monthly else "시험"
     replay_detail = f"차이의 대부분은 재현 차이(저장된 {saved_name}과 같은 조건 재계산의 차이)예요 — 원인 후보로 나눌 수 없어요"
     checks.ok((replay_detail in summary) == replay_dominates, f"{label} 재현 차이가 대부분일 때 원인 분해 한계")
-    checks.ok(("이번 달 변화보다" in summary) == (actual_high and small_difference),
+    checks.ok(("이번 달 변화보다" in summary) == (actual_high and small_difference and not n),
               f"{label} 0.05%p 미만 차이에만 변화 비교")
     baseline_name = "지난달" if monthly else "시험"
-    checks.ok((f"{baseline_name}에도 정전이 컸으니" in summary) == high,
+    baseline_prefix = f"{baseline_name}에도 정전이 컸어요." if n else f"{baseline_name}에도 정전이 컸으니"
+    checks.ok((baseline_prefix in summary) == high,
               f"{label} 기준 표시값도 높을 때만 높은 정전 전제")
     return expected_label
 

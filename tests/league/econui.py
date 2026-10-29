@@ -5,7 +5,7 @@ calib.py는 실행/import하지 않고 AUTO 문자열만 읽는다(그 파일의
 브라우저 실행은 총괄 담당. solo.py도 이 파일의 공통 검사 도구를 사용한다.
 """
 
-from league_flow import finish_trial
+from league_flow import finish_trial, map_key_visible
 from league_flow import pass_issue_check, wait_unfolded
 import ast
 import json
@@ -540,7 +540,8 @@ def u_plan_contract(checks, team, host, tid, label):
               for key in ('complaints', 'grid')), f'{label} U3 설비 선택 시 민원·전력망 자동 렌즈')
     # 렌즈 글은 다음 그리기 때 채워진다.
     wait_ui(team, "() => { const g = document.querySelector('#lg-lens-grid'); return g && !g.hidden && g.textContent.trim() }")
-    checks.ok(wait_shown(team, '#lg-lens-grid'), f'{label} U3 계산한 접속 여유 미리보기')
+    with map_key_visible(team, '#lg-lens-grid'):  # rev12 Q2: 좁은 계획만 펼친 뒤 같은 줄 검사.
+        checks.ok(wait_shown(team, '#lg-lens-grid'), f'{label} U3 계산한 접속 여유 미리보기')
     team.locator('[data-lens="complaints"]').focus(); team.locator('[data-lens="complaints"]').press('Enter')
     wait_ui(team, "() => document.querySelector('[data-lens=complaints]')?.getAttribute('aria-pressed') === 'false'")
     checks.ok(team.locator('[data-lens="complaints"]').get_attribute('aria-pressed') == 'false',
@@ -771,7 +772,8 @@ def economic(checks, context, base, label, pages):
             open_panel(team, 'result')
             checks.ok(wait_shown(team, '#lg-promise-result') and wait_shown(team, '#lg-evidence-direction'),
                       f'{label} U8 예측 대 실제·근거 방향 비교')
-            checks.ok(team.locator('#lg-calibration').count() == 0, f'{label} U8 멀티 확신 보정 숫자 없음')
+            # rev12 E4(총괄 결정 10-29): 팀 기기에도 기기 안 확신 보정을 보인다(전송 없음). 진행자 화면 부재는 rev12.py가 확인.
+            checks.ok(team.locator('#lg-calibration').count() == 1, f'{label} U8 멀티 팀 확신 보정 기기 안 기록 표시')
         alignment = team.evaluate("""() => {
           const L=KCP.league.state(), V=L.snap, id=L.team;
           const points=KCP.league.uiMath.monthPoints(V,id), hist=V.econ.cities[id].hist;

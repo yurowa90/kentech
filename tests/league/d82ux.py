@@ -25,8 +25,8 @@ from solo import click_next, close_drawer, read
 
 NUMBER = r"[+−-]?\s*\d[\d,]*(?:\.\d+)?"
 PER_DAY = rf"{NUMBER} MWh/일(?: 미만)?"
-# rev11-testfix1 총괄 결정: 머리 칩은 시험·소비 이름을 보이는 글자와 낭독 이름에 구분한다.
-TITLE = "CO₂ 시험 운전 · 소비(계통 포함)"
+# rev12 Q5 A1: 일반 span은 aria-label 없이 보이는 글자 뒤 숨김 글자로 이름을 잇는다.
+TITLE = "CO₂ 시험·소비, 시험 운전 소비 배출(계통 포함)"
 
 
 def require(checks, condition, label):
@@ -66,15 +66,21 @@ def month_days(result):
 def chip(checks, page, label):
     label_node = page.locator('[data-cap="co2"] .v2-cap-k')
     require(checks, label_node.count() == 1, label + " CO₂ 칩 한 개")
-    checks.ok(label_node.inner_text() == "CO₂ 시험·소비"  # rev11 총괄 결정: 390 머리 줄 높이 때문에 보이는 글자는 짧게, 정식 이름은 TITLE
-              and
+    visible_text = label_node.evaluate("""e => [...e.childNodes]
+      .filter(n => !(n.nodeType === 1 && n.classList.contains('bd-sr')))
+      .map(n => n.textContent).join('').trim()""")
+    checks.ok(visible_text == "CO₂ 시험·소비" and
               label_node.get_attribute("title") == TITLE and
-              label_node.get_attribute("aria-label") == TITLE,
-              label + " CO₂ 머리 칩 시험 · 소비(계통 포함)·title·aria-label")
+              label_node.get_attribute("aria-label") is None,
+              label + " CO₂ 보이는 글자·title A1·일반 span aria-label 없음")
+    name = label_node.evaluate("e => e.textContent.trim().replace(/\\s+/g, ' ')")
+    checks.ok(name == TITLE and name.startswith(visible_text),
+              label + " CO₂ 접근 이름 A1·보이는 글자로 시작")
     checks.ok(label_node.evaluate("""el => {
       const cap=el.closest('[data-cap]'), box=cap.getBoundingClientRect();
-      const range=document.createRange(); range.selectNodeContents(el);
-      return [...range.getClientRects()].every(r=>r.left>=box.left-.5 &&
+      const rects=[...el.childNodes].filter(n=>!(n.nodeType===1 && n.classList.contains('bd-sr')))
+        .flatMap(n=>{const range=document.createRange();range.selectNode(n);return [...range.getClientRects()];});
+      return rects.length>0 && rects.every(r=>r.left>=box.left-.5 &&
         r.right<=box.right+.5 && r.top>=box.top-.5 && r.bottom<=box.bottom+.5 &&
         r.left>=0 && r.right<=innerWidth);
     }"""), label + " 칩 글자 전체가 칩·화면 안에 표시")

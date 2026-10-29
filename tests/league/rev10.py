@@ -269,8 +269,8 @@ def no_lines(checks, page, base, label):
     summary = page.locator('#lg-outage-single')
     if summary.count() != 1:
         raise Blocked(label + ' R5 선 없는 달 한 줄 요약 미확보')
-    # rev11 REV11_COPY.C4 (rev10 R5 N2 대체): 운영 당시 n 근거는 유지.
-    want = f"이번 달 '전선에 안 닿은 설비'가 {n}기 있었으니 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인하세요."
+    # rev12 C4: 운영 당시 n 근거는 유지.
+    want = f"이번 달 '전선에 안 닿은 설비'가 {n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요."
     text = summary.inner_text()
     checks.ok(want in text and '정전 자체는 커요: ' in text, f'{label} R5 N2와 운영 당시 n={n}: {text}')
     # rev10 총괄 수정: 다음 달 계획 단계의 결과 서랍에는 지난달 S7 한 줄 요약이 다시 나오지 않아(빈 '결과')

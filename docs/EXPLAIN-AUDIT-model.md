@@ -1,5 +1,149 @@
 # 학생에게 보이는 모형 설명 전수 대조 — 품질 축 E
 
+2026-10-29 기준판 **`194cdf79199659a04bdacb9e61fa45f4b2c12c63` + 이 작업 트리의 rev12 미커밋 변경 + M-E2 표시 수정**. 브랜치 `wip/q8-rev8-fix`. 기존 rev12 변경 위에서 작업했으며 커밋하지 않았다. 아래 새 절의 위치는 이 기준판 작업 파일 기준이다. 기존 359항목은 이전 감사 결과를 승계하고, 이번에는 요청한 rev10·rev11·rev12 문형과 M-E2 세 항목만 후속 대조했다. 374항목 전체를 다시 수동 감사했다는 뜻은 아니다. 이전 머리말·합계·원문·검사·소스 해시는 맨 아래 **이전 판 — 2026-10-28** 절에 보존한다.
+
+**359 + 신규 대조 15 = 374항목. 이번 15항목에서 기본값의 문장–계산 불일치는 0건이다.** 이전 감사의 미해소 0건을 승계하므로 현재 집계도 0건이다. 기존 직접 기재 잔여 S18·S40·B16 가운데 S18·B16을 표시용 입력값으로 계산해 **추적 중인 잔여는 S40 1행**이다. 단위 정의·비교 입력·다른 중복 리터럴까지 모두 없어졌다는 뜻은 아니다. 평점 충족이나 브라우저 검증 완료를 선언하지 않는다.
+
+| 범주 | 기존 | D-87 | D-90·집단 후속 | rev10·11·12 추가 | 현재 항목 | 과거 불일치 해소 | 현재 불일치 | 기존 3행 중 직접 기재 잔여 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 배속표 | 41 | 2 | 0 | 0 | 43 | 0 | 0 | 1 |
+| 점수식 | 12 | 0 | 0 | 0 | 12 | 0 | 0 | 0 |
+| 원인 분해·결과 설명 | 94 | 3 | 2 | 15 | 114 | 11 | 0 | 0 |
+| 공기 주석 | 12 | 1 | 0 | 0 | 13 | 3 | 0 | 0 |
+| 사건 출처 | 63 | 1 | 3 | 0 | 67 | 4 | 0 | 0 |
+| 기술 카드 효과 | 74 | 0 | 0 | 0 | 74 | 6 | 0 | 0 |
+| 집단 만족 이유 | 47 | 1 | 3 | 0 | 51 | 1 | 0 | 0 |
+| 합계 | 343 | 8 | 8 | 15 | 374 | 25 | 0 | 1 |
+
+신규 집계 단위는 아래 M01~M15의 설명 대조 항목이다. 요청 1번 2개 + 2번 1개 + 3번 6개 + 4번의 중복 제외 3개(C3·C4·P1) + 5·6·7번 각 1개 = 15개. C5·C6은 요청 3·4번에 중복되므로 M06·M07에서만 센다. 같은 이름·값을 반복 출력하는 일지/장부 경로는 해당 행에 묶었다. S18·S40·B16은 기존 항목의 상태 갱신이며 신규 15개에 다시 더하지 않는다.
+
+## 남은 불일치와 수정 분류 — rev12 기준
+
+| 분류 | 현재 기본값 불일치 | 판단·남은 한계 |
+|---|---:|---|
+| (a) 문장 숫자를 자료에서 읽게 하는 코드 변경 | 0 | S18·B16 표시 계산 완료. S40 기간은 공유값 없음. M03의 build `outageCut` 및 core `gridFill` 내부 .02/.005 중복은 현재 원장과 같지만 원장 변경에 자동 추종하지 않는다. 후속 개선·변형 검사 대상으로 기록하며 이번에는 수정하지 않음 |
+| (b) 문장 뜻 변경 | 0 | 신규 15항목은 아래 조건·단위로 일치. B16은 기존의 v³ 근사 설명으로 유지하며, 정격 포화·cutin·cutout까지 예시 비율을 일반화할 수 없다는 이전 한계도 유지 |
+| (c) 계산이 틀림 — 엔진 변경 | 0 | 이번 범위에서 확인한 계산 불일치 없음. 계산 경로는 수정하지 않음 |
+
+기본값 일치와 계수 변형 시 동기화 보장은 다르다. 예컨대 `outageHourShare.v=.04`로 변형하면 core의 `outageFloor`와 S6 문장은 4%를 읽지만 build의 `outageCut`은 여전히 2%다. 이는 현재 기본값의 수치 불일치로 합산하지 않는다. 이전 감사의 외부 근거·근사 한계도 해소된 것으로 간주하지 않는다.
+
+## M-E2 표시 수치의 계산
+
+| ID | 변경 위치·표시 입력 | 기본 문구·표시 규칙 | 처리·근거 |
+|---|---|---|---|
+| S18 | `ui/league-core.js:528`, `:538`: `REVIEW_TERM_YEARS_DISPLAY=4`, `REVIEW_TERM_MONTHS_DISPLAY=REVIEW_TERM_YEARS_DISPLAY*12` | `주민 평가는 {reviewEvery}턴마다: 현실 임기 {years}년({months}달)을 ×{months/reviewEvery} 압축`. 배수는 `Number((months/reviewEvery).toFixed(1))`: 소수 1자리 반올림, 끝 `.0` 생략. 12→×4, 10→×4.8, 7→×6.9, 16→×3 | 표시만 계산. 근거 `ui/econ-data.js:423`의 reviewEvery note: 임기 4년, 48달×1/4=12턴, 배속 ×4. 값·등급·note 불변. 기본 UTF-8 동일 |
+| S40 | `ui/build.js:3963` 연구 서랍 | `리그는 {한 달마다/한 턴마다} {steps}주치 진척, 실증 1{달/턴}, 그다음 {달/턴}부터 효과.` | **유지**. core `advanceResearchAll`의 기존 demo→done·`adoptR=S.round+1`(`:350~355`), 연구 완료→demo(`:388~392`), `researchTurn`(`:400~405`)의 한 턴 단계 전환이며 기간 원장 없음. build 자유모드의 `demoLeft=1`(`:278`)은 별도 주 단위 규칙이라 빌려 쓰지 않음. core는 S18 외 수정 금지 |
+| B16 | `ui/build.js:333`, `:336`: `WIND_SPEED_EXAMPLE_RATIO=2` | `풍속이 {ratio}배면 풍력 출력은 약 {ratio**3}배(v³).`. 정수 예시 입력 2→8, VM에서 3→27 확인 | 표시 전용 입력 하나로 계산. 기본 UTF-8 동일. 풍력 계산은 불변. `renOut0`(`:653~658`)의 섬 v³·정격 상한, 도시 cutin 보정·정격 상한, cutout을 넘는 정지는 이 예시의 적용 한계이며 별도 개선 대상 |
+
+수정 전 작업 파일을 `/tmp/rev12-model-{core,build}-before.js`에 보관하고 비교했다. 허용한 표시 문자열·상수·주석만 제거/복원하면 두 파일이 수정 전과 바이트 단위로 동일하다. Node VM으로 기본 `econView` 전체 JSON과 `buildGame.tips()` 전체 JSON의 UTF-8 바이트도 전후 동일함을 확인했다. 따라서 기본 표시뿐 아니라 지정 표시 부분 밖의 계산 소스가 보존되었다. 새 상수는 엔진 계수나 공유 기간 규칙을 추가하지 않는다.
+
+### 같은 econView·배속표에서 남은 직접 기재(수정하지 않음)
+
+- `ui/league-core.js:534` 및 `ui/league.js:494`: `게임 1달 ≈ 현실 약 {speed}달`의 `1달`은 단위 기준.
+- `ui/league-core.js:539`: `이주에는 ×1`은 집단 만족 배속과 구분하는 고정 설명.
+- `ui/league-core.js:545`, `ui/league.js:500~501`: `정전 1%`/`정전 1% 환산`은 비교 기준. 환산 시간은 `outageHoursPerPercent.v`에서 읽음.
+- `ui/league-core.js:548`: `연구 기간 수십 배 압축`·`게임 수 달`은 수치 계수에서 계산하지 않는 정성 근사 표현.
+- 배속표가 덧붙이는 `buildLeadHTML`의 `ui/league.js:514`: SMR 기간 `TECH_DATA?.params.smrTurns.v ?? 12`의 `12`는 자료 부재 시 직접 기재 대체값. 정상 로딩 시 원장값 사용.
+- S18의 현실 비교 `4년`과 연→개월의 `12`는 새 표시 상수의 비교 입력·단위 정의로 남는다. 계산 결과인 `48달`·`×4`를 각각 직접 적던 중복은 제거했다.
+
+## rev10·rev11·rev12 설명 문형 대조
+
+`{…}`는 현재 코드가 넣는 값이다. 아래의 ‘일치’는 원장·계산·표시 경로의 대조 결과이며, 실제 브라우저의 배치·낭독 실행을 뜻하지 않는다. 기본 자료에서 읽은 경계는 `promiseSameDelta=.5`, `outageHourShare=.02`, `outageHourMinMW=.005`, `outageHighPct=5`, `outageHighDigits=2`다.
+
+| ID·요청 | 현재 문장(변수 중괄호)·코드 위치 | 원장·계산 경로 및 의미 | 판정 |
+|---|---|---|---|
+| M01 · 1 N1 | `판정 계산: {기준} Δ {Δ}%p · '같음' 범위 ±{tol}%p 미만(게임 비교 기준)` — `ui/league.js:78`, `:1952` | `promiseComparison(:1856)`의 실제 정전율−`outageBaseline` 기준율. 첫 달 시험/이후 지난달 등 실제 `comparison.label`을 사용. tol=`ECON_DATA.params.promiseSameDelta.v`(`econ-data.js:157`). `direction(:1226)`은 절댓값이 tol **미만**이면 same, 경계에서는 up/down. Δ·tol 모두 `calcLineTexts(:273)`를 거침 | 일치 |
+| M02 · 1 K5 | `판정 계산: 운영 전 대비 Δ {Δ}억 · '같음' 범위 ±{tol}억 미만(게임 비교 기준)` — `ui/league.js:61`, `:1950` | 공개 월말 `V.econ.cities[id].cash`−`V.econ.before[id].cash`; 빚 한도를 더한 ‘남은 돈’과 구별. tol은 M01과 같은 .5지만 단위는 억. 같은 `direction`과 `calcLineTexts` 사용 | 일치 |
+| M03 · 2 정전 시간 | `정전 시간은 도시 안 부족량의 합이 그 시각 도시 수요의 {share*100}%를 넘은 시간{의 합}이에요(최소 판정선 {minMW} MW, {이번 달 최대/누적 최대} {days*24}시간). 정전율은 못 보낸 전력의 비율이라 따로 읽어요.` — `ui/league.js:3311`; 머리 칩 `정전 {h}h` — `ui/build.js:3438`; 낭독은 M07 | 실제 `core.isOutHour(:22~23)` = `uns[k]-del[k] > max(minMW,share*dem[k])`, `run(:1295)`에서 시간 수를 센다. `build.cityOutageHours(:1359)`는 계통 보충 후 `hrDem[k]-hrSup[k] > outageCut(dem)`의 시간 수. 리그 도시 `outageCut(:421)`=.02/.005로 같은 문턱. 머리 칩·C6·시험 저장 `outH(:1369)`가 이 함수를 사용. S6 월 수치는 `outH*resultPeriod.mul`이므로 대표 7일 시간을 월 일수로 환산한 값, 직접 관측한 월 744시간 배열이 아님. 원장 `econ-data.js:177~178`. 자유모드의 수요지별 합 `outTotal`과는 구별 | 기본값 일치; 중복 계수 한계 (a) |
+| M04 · 3 건설 일지 | `정전 {out}h · CO₂ 소비(계통 포함) {co2} t · 비용 {cost}억 …` — `ui/build.js:4096` metricLine, `:4099` jStrip, `:4192~4193` 일지·회차 비교 | `addEntry(:3284~3291)`의 `m.co2=Math.round(res.co2)`. 리그 시험에서는 `gridFill`이 외부 계통 배출을 더한 `res.co2`, 자유모드에서는 자체+수입 배출. `res.tot.co2` 생산값으로 바꿔 읽지 않음 | 일치 |
+| M05 · 3 활동지 | `정전 {uns}% · CO₂ 소비(계통 포함) {co2} t · 비용 {cost}억` — `ui/league.js:2178` 건설 일지 활동지; build 활동지 `metricLine` 재사용 | 리그 활동지의 `e.m.co2`도 M04의 같은 저장값. 리그 운영 결과 내보내기는 `ui/league.js:6419`의 `CO₂ 생산 {co2Prod} t / CO₂ 소비(계통 포함) {co2Cons} t`로 각각 원값을 분리 | 일치 |
+| M06 · 3·4 C5 | `CO₂ 소비(계통 포함)가 {n} t인데 탄소세를 고르지 않았습니다. 왜였나요?` — `ui/build.js:18`, `:1016`; 동일 문형 `ui/league.js:88` | 실제 질문 생성은 build `questions`에서 `R.co2/R.days > 기준`이고 `!R.pol.tax`일 때. n=`fmt(R.co2)`, 즉 소비 배출. league의 COPY 선언만으로 사용을 추정하지 않고 실제 build 호출을 확인 | 일치 |
+| M07 · 3·4 C6 | `{d}일 운영 끝. 정전 {h}시간, 총비용 {c}억, CO₂ 소비(계통 포함) {n} t.` — `ui/build.js:19`, `:3277`; 동일 문형 `ui/league.js:89` | d=`R.res.days`; 리그 h=`cityOutageHours(R.res)`, 자유 h=`outTotal`; c=`fmt(cost.total,1)`; n=`fmt(R.res.co2)`. 시험 대표 기간 그대로 낭독하며 월 합계로 오인해 환산하지 않음 | 일치 |
+| M08 · 3 진행자 장부 | `CO₂ 생산(t/월)` / `CO₂ 생산 / CO₂ 소비(계통 포함)(t)` — `ui/league.js:3260~3262`, `:3290~3291`; 계절 장부·범례 `:3298~3306` | 월 장부는 `r.co2Prod*mul` / `r.co2Cons*mul`, 계절 장부는 대표 기간 원값. core `run(:1306)`에서 생산=`K.co2+o.co2X-o.saveCo2`, 소비=`생산-o.co2X+o.co2In`; 저장 때 각각 정수 반올림(`:1309`). 구매 배출과 외부 계통 배출은 `co2In`, 판매 추가 발전은 `co2X`로 소비에서 제외 | 일치 |
+| M09 · 3 끝 추이 그래프 | `CO₂ 생산 {value} t/일`; `CO₂는 생산(우리 도시 설비 배출) 기준이고, 달마다 일수가 달라 그달 합계를 일수로 나눈 하루 평균이에요.` — `ui/fx-end.js:8`, `:119` | `read(:69~73)`=`co2Prod*period.mul/period.days`, 공개 결과가 없으면 sessionStorage의 `{co2Prod,days}` 사본(`:24~27`). 결국 대표 기간 생산량/대표 일수. 소비값으로 대체하지 않으며 없는 달은 선을 끊음. league `trendHTML`은 정전·주민·지지·현금 그래프이고, CO₂ 그래프는 `KCP.fxEnd.html`(`league.js:2148`) | 일치 |
+| M10 · 4 C3 | `기존 {설비}도 전선에 안 닿으면 운영에서 못 써요. {설비} 칸, {마을} 칸을 차례로 누르고 '연결'을 눌러야 넘어가요.` — `ui/league.js:86`, `:667~683` | `BG.planIssues().unlinked[0]`와 `nearestTown`에서 이름을 읽고, 새로 지은 설비가 아닌 기존 시설 분기에서 사용. `network`의 `node.live`(`build.js:579`)는 같은 망에 수요지가 있는지 판정. 코치 자동 전환(`league.js:742`)은 `count>=1 && issues.unlinked===0` 상태를 확인하며 클릭 이력 자체를 판정값으로 저장하지 않음. 연결 방법을 안내하는 문장으로 읽음 | 일치 |
+| M11 · 4 C4 새 문형 | `이번 달 '전선에 안 닿은 설비'가 {n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요.` — `ui/league.js:87`, `:288` | n은 M14의 `operatingUnlinkedCount`; 현재 편집 지도나 접속 대기 수와 혼동하지 않음. 다음 달 계획 칩은 `planIssueCounts`→`BG.planIssues`의 현재 지도 값(`:575~577`, `:611`), 1주 버튼은 `data-run="7"`(`:690`) | 일치 |
+| M12 · 4 P1 | `{기준}에도 정전이 컸어요.` — `ui/league.js:93`, `:288` | `highOutageHintText`에서 unlinked≥1 및 `trialHigh`일 때 사용. 기준은 `monthly ? '지난달' : '시험'`; `trialHigh=outageHigh(a.trial)`. 현재 정전도 커야 호출됨(M14) | 일치 |
+| M13 · 5 C10 | `시험에는 폭염 때 줄어드는 LNG·일반 태양광 출력과 월말 공공시설 보수비도 들어 있지 않아요.` — `ui/league.js:33`, `:5234` | 아래 C10 경로 검증 참조. ‘일반 태양광’은 **solar·roof 포함, tandem·tandem_roof 제외**. LNG 감산은 기존·신규 LNG 모두. 시험은 사건 없는 mods와 build.simulate만 거치므로 폭염 감산·월말 repair 모두 제외 | 일치(글자뿐 아니라 사실 대조) |
+| M14 · 6 S7 요약 | `. 정전 자체는 커요: {기준에도 정전이 컸어요. }이번 달 '전선에 안 닿은 설비'가 {n}기 있었어요. 다음 달 계획 지도 칩과 '시험 1주'에서 설비·접속 상태를 확인해요.` — `ui/league.js:286~290`, `:4118~4120` | n=`operatingUnlinkedCount(:4065)`: 해당 운영의 일치하는 S7 snapshot.plan 우선, 없으면 월 기록 operatingPlan; `BG.network(plan).nodes` 중 town/import 제외·`!live` 개수. 계획 없으면 null, 0/null이면 설비 숫자 없는 대체 문장. 호출 문턱은 `a.target!=='grid' && outageHigh(a.actual)`; `outageHigh(:1571~1572)`는 유한한 값의 소수 `outageHighDigits`자리 반올림 후 `>=outageHighPct`(기본 5%) | 일치 |
+| M15 · 7 못 짓는 칸 | `{설비}: {지형}만` — `ui/build.js:446`, `siteRule(:449~461)` | 설비=`BLD[type].name`; 일반 분기 지형은 plain,hill,forest,beach,urban,river,mount 순서로 `Object.hasOwn(B.ok,key)`를 걸러 `BASE_TNAME[key]`를 `·`로 연결. 현 BLD.ok의 허용 지형과 같으며 도시별 TNAME/지명은 쓰지 않음. 지도 밖·냉각수·해상·시설·마을·산·지붕·소수력·물 분기는 기존 우선 규칙 | 일치 |
+
+### 판정 계산의 자릿수·자르기 규칙(M01·M02)
+
+`calcDigits(:256)`는 기본 소수 2자리에서 시작한다. Δ와 tol의 **표시한 절댓값**이 같지만 실제 절댓값은 다르면 3→4자리로 늘린다. 현금은 `cashText`의 `Math.round(x*10**digits)/10**digits`, 정전은 기본 `signed`/`fmt`, 확장 자리에서는 `Number(x.toFixed(digits))`를 쓴다. Δ는 부호 표시, 기본 tol은 끝 0을 생략(`0.5`), 늘린 자리에서는 0을 채운다. 비유한 값은 `–`; 실제 `abs(delta)===tol`이면 기본 자리수를 유지한다.
+
+4자리에서도 충돌하면 Δ만 판정 방향으로 자른다: 실제 `abs(delta)<tol`이면 `floor(abs(delta)*10⁴)/10⁴`, 밖이면 `ceil(...) /10⁴`; 부호를 복원하되 0에는 음수 부호를 붙이지 않는다. tol·실제 Δ·판정값은 변경하지 않는다. 예: ±.499999 → ±.4999, ±.500001 → ±.5001, tol=.5000. 58번·59번 경계/무작위 검증 및 추가 VM 경계 대조가 이를 확인한다.
+
+### C10 사실 확인 경로(M13)
+
+1. 원장 `ui/econ-data.js:213~218`: `heatLngSlope=0.226/30`, `heatAirDelta=3`, `heatPvSlope=.004165`, `heatModuleDelta=5`, `repairHeatwave=4`. 사건 `ui/league-data.js:68`은 오후 수요 배수와 `repairParam: 'repairHeatwave'`를 정의한다.
+2. 실제 월운영 `ui/league-core.js:946~949`: 폭염 x에서 LNG 용량 배수=`max(0,1-heatLngSlope*heatAirDelta*x)`, 일반 태양광 배수=`max(0,1-heatPvSlope*heatModuleDelta*x)`. x=1 VM 결과 .9774와 .979175. DR·절전 대응은 수요 손잡이이며 이 두 감산을 완화하지 않는다.
+3. 적용 `ui/build.js:635~636`: **solar·roof만** solarHeatMul을 곱한다. tandem·tandem_roof는 제외. 다른 사건의 solarMul(`:633`)이 탠덤도 포함하는 것과 구별한다. LNG는 `simulate`의 기존·신규 공통 gens 경로에서 g.kind==='lng'일 때만 cap에 곱함(`:718~722`). 폭염의 출력 감산은 다른 전원에 적용되지 않는다. 수요 증가에 따른 실제 급전량 변화까지 없다는 의미는 아니다.
+4. 시험 `ui/league.js:5202~5204` trialConditions → `core.trialMods(:894~917)` → events=[] → modsFor. `build.startRun(:3085~3089)`가 이를 simulate에 넣고 월 리그에서 gridFill만 더한다. 시험에는 폭염 감산이 없다. VM에서 trial의 lngCapMul·solarHeatMul 부재 및 solar/roof 감산·탠덤 제외를 확인했다.
+5. 보수비 `core.repairOf(:178~185)` → 실제 `run cost.repair(:1303)` → `econInputs energy.repair(:1433)` → `ui/econ.js:707`의 월말 `exp.repair`. 보수비는 대표 7일에서 월 일수로 배수 환산하지 않고 사건당 월 1회다. 시험 비용은 `build.js:914~922`의 capex+fuel+policy+research로 repair가 없다. VM에서 폭염 x=1의 repair=4, events=[]에서는 0을 확인했다.
+
+## 현재 기준판에서 실행한 검증
+
+실행일 2026-10-29. macOS **workspace-write 셸**, Node `v24.21.0`, pnpm `11.25.0`. package.json·lockfile·Node 버전 지정 파일 없음. Node 검사와 VM만 실행했다. 사용자 지시로 **브라우저·외부 네트워크·커밋 미실행**, `tests/**` 파일 수정 없음. 아래 결과는 과거 기록을 복사한 것이 아니라 현재 작업 파일에서 새로 실행했다.
+
+| 명령 | 실제 결과 | 종료 |
+|---|---|---:|
+| `node tests/league/review/56-e-audit.js` | assertions 1009 failures 0 | 0 |
+| `node tests/league/review/33-model-explanations.js` | W1 engine: 50 tests, 0 failures | 0 |
+| `node tests/league/review/34-model-copy.js` | W1 copy: 174 tests, 0 failures | 0 |
+| `node tests/league/review/57-rev10.js` | assertions 36 failures 0 | 0 |
+| `node tests/league/review/58-rev11.js` | assertions 2059 passes 2059 failures 0 | 0 |
+| `node tests/league/review/59-rev12.js` | assertions 2182 failures 0(e-audit 그룹 71단언 추가 뒤 재실행) | 0 |
+| `node tests/league/test-econ.js > /tmp/x` | 시험: 1304321 통과, 0 실패 | 0 |
+| `node tests/league/balance.js > /tmp/rev12-model-balance.log` | pass 826 fail 0 | 0 |
+| `node --check ui/league-core.js` 및 `node --check ui/build.js` | 문법 오류 없음 | 0 |
+| `git diff --check` | 공백 오류 없음 | 0 |
+| `node /tmp/rev12-model-check.cjs` | 45단언 / 실패 0: 허용 표시 외 소스 바이트 동일, 기본 econView·tips UTF-8 동일, 주기·풍속 예시 변형, C10 감산·시험·repair, 정전 문턱·판정 표시 경계 | 0 |
+
+`test-econ` 출력의 물리적 마지막 줄은 빈 줄이다. 마지막 비어 있지 않은 줄은 다음과 같다(총괄의 이전 결과 대조용).
+
+```text
+국제 지수 36턴: {"lng":0.685,"fx":1.016,"ship":1.02,"semi":0.957,"active":["EU 탄소국경조정(CBAM)","자동차 수출 둔화"]}
+```
+
+`balance` 끝줄:
+
+```text
+pass 826 fail 0
+```
+
+검사 통과와 수동 의미 대조는 별개다. 56번에는 이번 M-E2 신규 단언을 넣지 않았고 다른 세션이 작성한다. 브라우저 레이아웃·실제 낭독·터치와 외부 법령·논문 원문은 미검증이다. B16의 일반화 한계, S40 기간 공유값 부재, 정전 문턱 중복 숫자는 남는다.
+
+## 검사가 확인해야 할 항목 — 새 e-audit 단언 인계
+
+1. **S18 기본 바이트·변형:** 실제 `KCP.leagueCore.econView(S).speeds.items.find(x=>x.key==='reviewEvery').note`를 읽는다. 기본 12의 문구 바이트, `ECON_DATA.params.reviewEvery.v=10/7/16` 변형 때 ×4.8/×6.9/×3, 개월 수=표시 임기년×12를 검증한다. note를 파싱해 계산 계수로 사용하지 않는다. default econView의 다른 필드 불변도 확인한다.
+2. **B16·S40:** 실제 `KCP.buildGame.tips()`에서 풍속 문장을 찾고 기본 바이트와 소스 메모리 변형 `WIND_SPEED_EXAMPLE_RATIO=3`→27을 검증한다. `renOut0`의 계수 변경으로 오인하지 않는다. S40은 실제 연구 서랍 기본 글자를 보존하고 `advanceResearchAll/researchTurn`의 demo→done→다음 턴 도입과 대조한다. 자유모드 demoLeft를 리그 기간의 원장으로 쓰지 않는다.
+3. **N1·K5:** 원장 `params.promiseSameDelta.v`를 읽고 `promiseComparison`의 정전/현금 Δ와 `direction`을 기준으로 `calcLineTexts`를 대조한다. ±tol 바로 안/같음/밖, 2→3→4자리 충돌, 4자리 floor/ceil, 비유한 값·음의 0을 포함한다. 정전은 toFixed, 현금은 Math.round 경로의 반값 차이까지 확인한다.
+4. **정전 시간:** 원장 `outageHourShare/outageHourMinMW`와 실제 core `isOutHour/outageFloor`, build `cityOutageHours`를 VM에서 노출해 경계 초과/같음과 여러 수요지의 합을 대조한다. 머리 칩·C6·rememberTrial·S6가 수요지별 outTotal 대신 도시 outH를 쓰는지도 확인한다. 원장 변형 시 build.outageCut 및 core.gridFill의 .02/.005 비추종은 현재 알려진 개선 대상이므로 통과로 위장하지 않는다. 월 수치는 resultPeriod.mul을 적용한다.
+5. **CO₂ 전 경로:** core `co2Prod/co2Cons`, 시험 raw.tot.co2와 gridFill 뒤 res.co2를 서로 다른 값으로 만들어 일지·활동지·C5·C6·진행자 장부·fx-end의 실제 renderer 출력과 비교한다. 원장 normalCo2와 계통 수입을 사용하고, 끝 그래프는 co2Prod/result.days·공개 사본 누락 시 단절을 확인한다. 생산·소비 값을 우연히 같게 둔 표본만 검사하지 않는다.
+6. **C10 사실:** `params.heatLngSlope/heatAirDelta/heatPvSlope/heatModuleDelta`에서 배수를 계산해 `modsFor`와 실제 LNG cap·solar/roof 출력을 비교한다. tandem/tandem_roof 및 다른 전원 제외, trialMods(events=[]) 감산 부재, `repairOf`→econInputs→econ.monthStep의 월 1회 비용과 build 시험 비용 제외를 확인한다. C10 글자 포함 검사만으로 대체하지 않는다.
+7. **C3·C4·P1·S7:** C3 이름은 `BG.planIssues/nearestTown`, 연결은 `BG.network().nodes[].live`로 대조한다. C4의 n은 운영 당시 snapshot.plan/operatingPlan을 `BG.network`에 넣어 town/import 제외·!live 개수를 센다. 현재 편집 지도와 다르게 만든 표본, 계획 없음(null), 0/1/여러 기, monthly·trialHigh 조합을 포함한다. 문턱은 `outageHighPct/outageHighDigits`, P1의 기준은 monthly 플래그로 읽는다.
+8. **siteRule 일반 분기:** 각 지도·도입 기술의 실제 `BG.BLD[type].ok` 키와 허용 지형을 읽고 `BASE_TNAME` 일반 낱말로 기대 목록을 만든다. 지역 지명이 섞이지 않고 순서·구분자가 맞는지, 우선 분기와 일반 분기를 나눠 확인한다. 현재 .ok 값은 모두 양수지만 미래에 0인 키나 새 지형이 추가되면 `Object.hasOwn`·고정 키 목록의 의미도 다시 대조한다.
+
+## 현재 기준 소스 해시 — 194cdf7 + rev12 + M-E2
+
+동시 작업 이후 결과를 구별하기 위한 SHA-256이다. ui/league.js는 코치 8/8 서랍 열기 조건 수정(설명 문장 무관) 뒤 값이다. 이전 판의 해시는 이전 판 안에 그대로 남긴다.
+
+| 파일 | SHA-256 |
+|---|---|
+| ui/build.js | fe61aaa97acf1b949787dfbe10bd2b312acd79033faf234ccbdc8b606da0adf6 |
+| ui/league-core.js | cb1f929a178ebeac1ac393a9a7ba62fef4a1637f55f7e53eedc16dab2def044a |
+| ui/league.js | 5e3a8d96f1b81d167e86a360648b1b3e87cb33e8cfb7cabc50ae06f0b4db7ec8 |
+| ui/econ.js | 07d8760da006deac93d2b5e7878eb2d1657e4ba428a86ab5272688f1a375bf4a |
+| ui/econ-data.js | 1a5b99b0012cf031db0d08e5b50282f33c05e142ba6567cce308f58c90aa03da |
+| ui/league-data.js | e5094ea280cc11134159ca93bd8d790b6c0352218bc232a5e54cc26b6ee8854e |
+| ui/fx-end.js | e9c88f5e8e1fac50c470bffd175e97525a1cb3100f642752877966677d3d5bfb |
+
+## 이전 판 — 2026-10-28 원문 보존
+
+<details>
+<summary>137e0a9 + rev9-E 감사 및 그 이전 기록 펼치기</summary>
+
 2026-10-28 기준판 **`137e0a91d0ccf3a5ff7c57c2ebff003ce8aab10f` + rev9-E E3·E4 작업 변경**. 10-25 `186e182`의 351항목과 10-26 `d8a072d` 작업 파일에서 추가한 D-90·집단 전용 항 8개를 유지했다. 이번에는 직접 기재 14행 및 rev8(`19d4b17`·`9001423`·`6628ef9`)·rev9(`137e0a9`)에서 바뀐 설명을 후속 대조했다. 기존 359항목 전체를 새로 수동 감사했다는 뜻은 아니다.
 
 **기존 343 + D-87 8 + 이번 후속 8 = 359항목. 기존 불일치 25건은 해소됐고, 독립 검토가 찾은 V60도 수정됐다. 이번 추가 8항목의 불일치는 0건이며, 현재 대조표의 남은 불일치 합계도 0건이다.** `56-e-audit.js`(기존 `e-audit-probe.js` 진입 경로 유지)는 현재 작업 파일에서 **1009단언/실패0**. 수치 직접 기재 14행 중 11행을 자료·공유 상수에서 읽도록 바꿔 **3행(S18·S40·B16)이 남는다**. 평점 충족을 선언하지 않는다.
@@ -1309,3 +1453,5 @@ NODE
 
 </details>
 
+
+</details>

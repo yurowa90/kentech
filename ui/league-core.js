@@ -524,6 +524,8 @@
     });
     const report = S.econRep || null;
     const P = KCP.ECON_DATA.params, speed = P.eduSpeed.v;
+    // 표시 전용: reviewEvery.note의 현실 비교 임기. 배수는 소수 1자리 반올림, 끝 .0 생략.
+    const REVIEW_TERM_YEARS_DISPLAY = 4, REVIEW_TERM_MONTHS_DISPLAY = REVIEW_TERM_YEARS_DISPLAY * 12;
     const speeds = Object.fromEntries(["eduSpeed", "eduMemory", "reviewEvery", "eduCbam", "eduConn", "eduCurtail", "hazardFreq"].map(k => [k, P[k].v]));
     Object.assign(speeds, { monthsPerTurn: speed, smrConstruction: speed, eduAir: P.eduAir.v, eduAirSpecified: P.eduAir.v,
       smrTurns: KCP.TECH_DATA?.params.smrTurns.v ?? Math.round(P.smrMonthsReal.v / speed),
@@ -533,7 +535,7 @@
       items: [
         ["eduSpeed", `주민·기업 이동 시간 ×${speed}: 수업 안에서 변화 관찰`],
         ["eduMemory", `지지율 회복 시간 ×${P.eduMemory.v}: 회복 시간을 ${P.eduMemory.v}배 압축`],
-        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 4년(48달)을 ×4 압축`],
+        ["reviewEvery", `주민 평가는 ${P.reviewEvery.v}턴마다: 현실 임기 ${REVIEW_TERM_YEARS_DISPLAY}년(${REVIEW_TERM_MONTHS_DISPLAY}달)을 ×${Number((REVIEW_TERM_MONTHS_DISPLAY / P.reviewEvery.v).toFixed(1))} 압축`],
         ["eduAir", `대기 영향 ×${P.eduAir.v}(교육용·집단 만족만, 이주에는 ×1)`],
         ["eduCbam", `CBAM 효과 ×${P.eduCbam.v}: 교육용 확대`],
         ["eduConn", `재생 접속 속도 ×${P.eduConn.v}: 수업 기간 안에 접속`],
