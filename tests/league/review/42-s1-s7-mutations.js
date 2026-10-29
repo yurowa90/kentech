@@ -16,7 +16,7 @@ const cases = [
   { name: 'T 비율 문턱 설명을 항상 최소 크기로', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
     mutate: s => replaceOnce(s, 'const shareThreshold = Number.isFinite(difference)', 'const shareThreshold = false && Number.isFinite(difference)') },
   { name: 'T 절댓값 설명에 부호 있는 차이 사용', harness: '40-v5-s7.js', regression: 'T S7 부호·기준 문구 trial/grid/negative',
-    mutate: s => s.replaceAll('outageValue(Math.abs(difference), unit)', 'outageValue(difference, unit)') },
+    mutate: s => s.replaceAll('outageValue(Math.abs(outageShownTotal(a)), unit)', 'outageValue(outageShownTotal(a), unit)') }, // rev13 R2: 차이 글자가 표시 합계로 바뀌어 변이 대상 식을 옮김
   { name: 'T 최소 크기 동률을 비율 쪽으로', harness: '40-v5-s7.js', regression: 'T S7 부호·기준 문구 trial/grid/equal',
     mutate: s => replaceOnce(s, 'params("outageCardShareMin") * Math.abs(difference) > outageMinPart(a)', 'params("outageCardShareMin") * Math.abs(difference) >= outageMinPart(a)') },
   { name: 'N2 문턱만 반올림으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',

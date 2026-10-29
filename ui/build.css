@@ -726,7 +726,7 @@ html.bd-drawer-open .bd-confirm { left: calc((100vw - 354px) / 2); }
   font-weight: 600;
   opacity: 0;
   transform: translate(-50%, -6px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity 0.18s ease;
   pointer-events: none;
 }
 .bd-toast[data-show="true"] { opacity: 1; transform: translate(-50%, 0); }

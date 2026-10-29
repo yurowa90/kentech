@@ -2785,11 +2785,13 @@
     S.pending = null; S.lineStart = null; S.preview = null;
     showConfirm();
     changed(`송전선 연결 · ${P.p.length - 1}칸 · ${fmt(P.cost, 1)}억`);
+    hideTouchTip();
     S.opts.onFx?.("line");
   }
   function cancelLine() {
     S.pending = null; S.lineStart = null; S.preview = null;
     showConfirm();
+    hideTouchTip();
     request();
   }
   function act(i) {
@@ -2801,7 +2803,8 @@
     if (tool === "remove") removeAt(i);
     else if (tool === "line") lineClick(i);
     else place(tool, i);
-    showTip(i);
+    // 끝점을 다시 탭해 연결·취소한 경우에도 바로 아래에서 말풍선을 다시 열지 않는다.
+    if (!(tool === "line" && S.pointerType === "touch" && S.hover == null)) showTip(i);
   }
   function setTool(id) {
     if (toolLocked(id)) { toast(toolLocked(id)); return; }
@@ -3755,7 +3758,7 @@
       const toastEl = $("#bd-toast");
       const shownPhase = !!toastEl?.dataset.phase && toastEl.dataset.warn !== "true";
       const pendingPhase = S.toastPending?.opts?.phase && !S.toastPending.opts.warn;
-      if (shownPhase) toastEl.dataset.show = "false";
+      if (shownPhase) { toastEl.dataset.show = "false"; syncResultToastPosition(); }
       if (pendingPhase || shownPhase && !S.toastPending) { clearTimeout(toastTimer); S.toastPending = null; }
       // 대기하던 단계 알림을 버리면, 그 대기 때문에 닫기 타이머를 잃은 피드백 알림을 원래 수명(2.2초) 뒤 닫는다(rev11 검토 minor).
       if (pendingPhase && !shownPhase && toastEl?.dataset.show === "true" && toastEl.dataset.warn !== "true") {
@@ -3766,6 +3769,12 @@
     }
   }
   function hideTip() { const el = $("#bd-tip"); if (el) el.hidden = true; }
+  function hideTouchTip() {
+    if (!S?.alive || S.pointerType !== "touch") return;
+    S.hover = null;
+    hideTip();
+    request();
+  }
 
   function showConfirm() {
     const el = $("#bd-confirm");
@@ -3788,18 +3797,46 @@
   }
 
   // 기존 도크·운영 띠·서랍 배치를 먼저 사용하고, 결과 알림이 여유 줄과 겹칠 때만 빈 세로 구간으로 옮긴다.
+  function stopResultToastPosition() {
+    if (S?.toastPositionRaf) cancelAnimationFrame(S.toastPositionRaf);
+    if (S) S.toastPositionRaf = 0;
+  }
   function syncResultToastPosition() {
-    if (!S?.opts.league) return;
+    if (!S?.alive || !S.opts.league) { stopResultToastPosition(); return; }
     const el = $("#bd-toast");
-    if (!el || el.dataset.phase !== "result" || el.dataset.show !== "true") return;
+    if (!el || el.dataset.phase !== "result" || el.dataset.show !== "true") { stopResultToastPosition(); return; }
+    // 글자·렌즈·서랍이 같은 작업의 뒤쪽에서 바뀌어도 다음 그림 전에 다시 잰다.
+    if (!S.toastPositionRaf) {
+      const state = S;
+      S.toastPositionRaf = requestAnimationFrame(() => {
+        state.toastPositionRaf = 0;
+        if (S === state && state.alive) syncResultToastPosition();
+      });
+    }
+    const openPanel = S.root.dataset.resultDrawer === "true" && S.root.querySelector('#lg-panel:not([hidden]):not([data-folded="true"])');
+    // 폰(760px 이하)은 CSS의 '서랍 머리' 자리를 따른다.
+    if (openPanel && window.matchMedia("(max-width: 760px)").matches) {
+      delete el.dataset.clearPanel; delete el.dataset.clearKeys;
+      return;
+    }
     const rect = node => {
       const r = node?.getBoundingClientRect();
       return r?.width > 0 && r.height > 0 ? r : null;
     };
+    const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    // 넓은 화면에서 옆 서랍이 열려 있으면 알림을 서랍 왼쪽 빈 지도 가운데로 옮긴다(rev13 R1, 1024 서랍 본문 겹침).
+    const panelRect = openPanel ? rect(openPanel) : null;
+    if (!panelRect) delete el.dataset.clearPanel;
+    else if (el.dataset.clearPanel !== "true") {
+      const t0 = rect(el);
+      if (t0 && intersects(t0, panelRect) && panelRect.left - 16 >= t0.width) {
+        S.root.style.setProperty("--lg-result-toast-left", `${Math.round(Math.max(8, (panelRect.left - t0.width) / 2))}px`);
+        el.dataset.clearPanel = "true";
+      }
+    }
     const shown = selectors => [...S.root.querySelectorAll(selectors)].map(rect).filter(Boolean);
     const t = rect(el), keys = shown("#lg-lens-grid, #lg-map-key-toggle");
     if (!t) return;
-    const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const obstacles = shown('#lg-lens-grid, #lg-map-key-toggle, #bd-town-look-key, #bd-hud, .lg-bar, #lg-panel:not([hidden]):not([data-folded="true"]), .lg-ptabs, #lg-result-heading, #bd-mapbar, .lg-map-guidance, #bd-dock, #bd-run');
     if (!keys.some(k => intersects(t, k)) && !(el.dataset.clearKeys === "true" && obstacles.some(k => intersects(t, k)))) return;
     const across = obstacles.filter(r => t.left < r.right && t.right > r.left);
@@ -3842,6 +3879,7 @@
     if (opts?.phase) el.dataset.phase = opts.phase;
     else delete el.dataset.phase;
     delete el.dataset.clearKeys;
+    delete el.dataset.clearPanel;
     syncResultToastPosition();
     clearTimeout(toastTimer);
     const state = S;
@@ -3853,6 +3891,7 @@
       // 단계 알림이 먼저 뜬 뒤 곧바로 카드가 열린 경우만 보류해 카드가 닫힌 뒤 다시 보인다.
       if (!warn && hiddenEarly && toastBlocked()) { toast(msg, opts); return; }
       const e2 = $("#bd-toast"); if (e2) e2.dataset.show = "false";
+      syncResultToastPosition();
     }, 2200);
     S.timers.push(toastTimer);
   }
@@ -4315,6 +4354,7 @@
     S.run = null;
     S.mapFx = []; S.flowView = null;
     S.alive = false;
+    stopResultToastPosition();
     if (S.raf) cancelAnimationFrame(S.raf);
     clearAmbientFrame();
     S.timers.forEach(t => clearTimeout(t));
@@ -4544,7 +4584,7 @@
   KCP.route("build", app => mount(app, {}));
   // 멀티플레이 팀 화면이 쓰는 도구: 화면 띄우기, 지금 칸, 예산·잠금 바뀐 뒤 다시 그리기, 계절 맞추기
   Object.assign(KCP.buildGame, {
-    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset, syncLensKeyTop,
+    powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset, syncLensKeyTop, syncResultToastPosition, hideTouchTip,
     finishTrial: () => { if (!S?.alive || !S.run || S.run.replay) return false; S.run.k = S.run.res.H - 1; updateRunPanel(1); finishRun({ quiet: true }); return true; },
     mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues, townLook, nearestTown, focusTiles,
