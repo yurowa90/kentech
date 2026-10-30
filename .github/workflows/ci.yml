@@ -161,7 +161,7 @@ jobs:
       - name: 브라우저 결과 판정
         # 서버 기동 실패·파이썬 없음·포트 충돌·시간 제한으로 실행 단계가 멈춰도 돈다.
         if: always()
-        run: python tests/ci/judge.py --kind browser --logs tests/results/ci/browser --title "browser 검사 판정(샤드 ${{ matrix.shard }})"
+        run: python tests/ci/judge.py --kind browser --logs tests/results/ci/browser --advisory tests/ci/ci-advisory.txt --title "browser 검사 판정(샤드 ${{ matrix.shard }})"
       - name: 브라우저 로그 보관
         if: always()
         uses: actions/upload-artifact@v4

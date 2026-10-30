@@ -368,12 +368,14 @@ def classify(failures, patterns):
 
 
 def blank(name, code=None, seconds=None):
+    # advisory: CI 전용 참고 줄(시간 민감)
     return dict(name=name, code=code, seconds=seconds, verdict="통과", new=[], known=[], resolved=[],
-                issue="", details=[], summary=None, counts=None)
+                issue="", details=[], summary=None, counts=None, advisory=[])
 
 
-def evaluate(kind, logs, records, baseline, counts, credits=None):
+def evaluate(kind, logs, records, baseline, counts, credits=None, advisory=None):
     credits = credits or {}
+    advisory = advisory or {}
     results = []
     for name, (code, seconds, state) in records.items():
         result = blank(name, code, seconds)
@@ -398,6 +400,11 @@ def evaluate(kind, logs, records, baseline, counts, credits=None):
         failures = failure_lines(kind, name, text)
         patterns = [pattern for test, pattern in baseline if test == name]
         result["known"], result["new"], result["resolved"] = classify(failures, patterns)
+        # CI 전용 참고 줄: 공유 실행기 속도에 걸리는 시간 단언. 맥 로컬 최종 확인(advisory 없이 판정)에서 판정한다.
+        line_rules = [pattern for pattern in advisory.get(name, []) if pattern]
+        if line_rules:
+            result["advisory"] = [line for line in result["new"] if any(matches(line, rule) for rule in line_rules)]
+            result["new"] = [line for line in result["new"] if line not in result["advisory"]]
         expect = result["counts"]
         summary = read_summary(kind, name, text) if expect else None
         if summary is not None:
@@ -437,7 +444,33 @@ def evaluate(kind, logs, records, baseline, counts, credits=None):
             result["verdict"] = f"통과(알려진 실패 {len(result['known'])}줄)"
         if result["issue"] and not result["details"]:
             result["details"] = text.splitlines()[-5:]
+        # 검사 전체가 CI 참고인 경우(advisory 파일에 이름만 적은 줄): 파일·로그·크래시 문제가 아니면 실패로 치지 않는다.
+        hard = ("검사 파일 없음", "로그 없음", "빈 로그", "크래시")
+        if result["verdict"] == "실패" and "" in advisory.get(name, []) and not str(result["issue"] or "").startswith(hard):
+            result["verdict"] = "참고(CI 시간 민감 — 맥 로컬 최종 확인에서 판정)"
+            result["advisory"] = result["new"] + ([result["issue"]] if result["issue"] else [])
+        elif result.get("advisory") and result["verdict"] != "실패":
+            result["verdict"] = f"{result['verdict']} · 참고 {len(result['advisory'])}줄(CI 시간 민감)"
     return results
+
+
+def read_advisory(path, kind):
+    """CI 전용 참고 목록. 줄 형식: '<종류>\t<검사 이름>' 또는 '<종류>\t<검사 이름>\t<실패 줄 패턴>'."""
+    rules = {}
+    for number, raw in enumerate(read_text(path).splitlines(), 1):
+        line = raw.rstrip("\n")
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) not in (2, 3) or parts[0] not in ("browser", "node"):
+            raise ValueError(f"참고 목록 형식 오류 {path}:{number}: {line}")
+        if parts[0] != kind:
+            continue
+        pattern = parts[2] if len(parts) == 3 else ""
+        if pattern and (len(pattern.rstrip('*')) < 20 or not pattern.startswith(("FAIL", "BLOCKED"))):
+            raise ValueError(f"참고 패턴은 FAIL·BLOCKED로 시작하는 20자 이상이어야 함 {path}:{number}")
+        rules.setdefault(parts[1], []).append(pattern)
+    return rules
 
 
 def cell(value):
@@ -470,7 +503,7 @@ def render(title, results, max_lines):
                   f"{len(item['new'])}/{len(item['known'])}",
                   against(item, "assertions"), against(item, "skips"))
         lines.append("| " + " | ".join(cell(value) for value in values) + " |")
-    for title, key in (("새 실패", "new"), ("해소 경고", "resolved"),
+    for title, key in (("새 실패", "new"), ("CI 참고(시간 민감, 맥 로컬 최종 확인에서 판정)", "advisory"), ("해소 경고", "resolved"),
                        ("비정상 종료·크래시·시간 초과·파일·로그·요약·실행 누락", "issue")):
         lines.extend(("", f"### {title}", ""))
         found = False
@@ -510,6 +543,8 @@ def main():
     parser.add_argument("--counts", type=Path, default=here / "baseline-counts.txt", help="검사별 기준 수치")
     parser.add_argument("--credits", type=Path, default=here / "baseline-credit.txt",
                         help="조건부 단언 보정(없으면 보정 없음)")
+    parser.add_argument("--advisory", type=Path,
+                        help="CI 전용 참고 목록(시간 민감 검사). 맥 로컬 최종 확인에서는 주지 않는다")
     parser.add_argument("--title", help="요약 제목")
     parser.add_argument("--summary-out", type=Path, help="요약을 덧붙일 파일")
     parser.add_argument("--max-lines", type=int, default=20, help="검사별 표시 줄 수")
@@ -540,7 +575,8 @@ def main():
             results.append(item)
         results += evaluate(args.kind, args.logs, records, read_baseline(args.baseline),
                             read_counts(args.counts, args.kind) if args.counts.is_file() else {},
-                            read_credits(args.credits, args.kind) if args.credits.is_file() else {})
+                            read_credits(args.credits, args.kind) if args.credits.is_file() else {},
+                            read_advisory(args.advisory, args.kind) if args.advisory else {})
         if expected is not None:
             for item in results:
                 if item["name"] != RUNNER and item["name"] not in expected:

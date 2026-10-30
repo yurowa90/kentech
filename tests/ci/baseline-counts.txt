@@ -24,7 +24,7 @@ browser  d80b               358   0 0
 browser  econui            2052   0 0
 browser  solo               480   0 0
 browser  score1             196   0 0
-browser  ux_s2fix           543   0 0
+browser  ux_s2fix           542   0 0
 browser  ux_s2fix2          736   0 0
 browser  ux_coach             8   0 0
 browser  ux_task:desktop     10   0 0
