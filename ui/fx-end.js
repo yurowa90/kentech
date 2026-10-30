@@ -108,7 +108,12 @@
     }).join("");
     const strip = months.map(t => {
       const res = byRound.get(t), eventIds = [...new Set([...(V.events || []).filter(e => e.round === t).map(e => e.id), ...(res?.events || [])])];
-      const events = eventIds.map(id => ICON[KCP.fxTurn?.eventMood?.[id]] || ["•", "일반 사건"]);
+      const events = eventIds.map(id => {
+        const icon = ICON[KCP.fxTurn?.eventMood?.[id]] || ["•", "일반 사건"];
+        const reg = typeof C.regionOf === "function" ? C.regionOf(V.region) : null;
+        const name = reg && typeof C.eventDef === "function" ? C.eventDef(reg, id)?.name : null;
+        return [icon[0], name || icon[1] || "일반 사건"];
+      });
       const outage = (opts.allCities ? ids : [team]).some(id => res?.team?.[id]?.outH > 0 || res?.team?.[id]?.unsPct > 0);
       const known = (opts.allCities ? ids : [team]).every(id => valid(res?.team?.[id]?.outH) || valid(res?.team?.[id]?.unsPct));
       const label = `${month(t)} · ${events.map(e => e[1]).join("·") || "사건 없음"} · ${outage ? "정전 있음" : known ? "정전 없음" : "정전 자료 없음"}`;

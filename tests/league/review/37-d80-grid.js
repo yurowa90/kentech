@@ -43,6 +43,10 @@ function load() {
         L = { room: V.room, team: id, role: 'solo', snap: V, interview: {} };
         return gridReliance(V, res, id);
       };
+      KCP.__promiseGrid = (V, res, id, n) => {
+        L = { room: V.room, team: id, role: 'solo', snap: V, interview: {} };
+        return promiseGridReliance(V, res, id, n);
+      };
       KCP.__gridSameTol = gridSameTol;
       KCP.__zeroOutagePct = ZERO_OUTAGE_PCT;
     `);
@@ -76,12 +80,33 @@ function putTrial(V, trial) {
 function expectedMWh(r, days, representativeDays) {
   return Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub) * days / representativeDays;
 }
+// rev14b B: 표시값은 월 환산을 거치지 않고 공개 gridFill 합계/대표 일수를 먼저 나눈다.
+function shownExpectation(V, res, team, trial) {
+  const perDay = result => {
+    const r = result?.team?.[team];
+    return r && [r.uns, r.imp, r.sub, r.isolated?.uns, result.days].every(Number.isFinite) && result.days > 0
+      ? Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub) / result.days : null;
+  };
+  const previous = V.results.find(r => r.round === res.round - 1);
+  const validTrial = trial && trial.map === map && trial.scope === scopeOf(V, team) &&
+    ['year', 'month', 'season'].every(k => trial[k] === res[k]) && Number.isFinite(trial.gridMWh) &&
+    Number.isFinite(trial.days) && trial.days > 0;
+  const base = previous ? perDay(previous) : validTrial ? trial.gridMWh / trial.days : null;
+  const actual = perDay(res);
+  return { base, delta: actual === null || base === null ? null : actual - base };
+}
+function inspectShown(a, expected, label) {
+  // 연산 순서도 계약이므로 허용 오차 없이 비교한다.
+  eq(a.shownBasePerDay, expected.base, `${label}: B 표시 기준 = 합계/원래 일수`);
+  eq(a.shownDeltaPerDay, expected.delta, `${label}: B 표시 차이 = 이번 달 하루 평균 − 기준`);
+}
 function inspect(V, res, expected, team = id) {
   const before = JSON.stringify(V), saved = JSON.stringify([...storage]);
   const a = K.__grid(V, res, team), b = K.__grid(V, res, team);
   // D-82: 기존 월 합계 필드는 아래 산식 단언을 유지하고 일평균 필드만 추가한다.
   eq(Object.keys(a).sort(), ['mwh', 'cost', 'base', 'delta', 'deltaCost', 'tol',
-    'days', 'perDay', 'deltaPerDay', 'deltaPerDayCost', 'tolPerDay', 'unit'].sort(), 'D-82 반환 키');
+    'days', 'perDay', 'deltaPerDay', 'deltaPerDayCost', 'tolPerDay', 'unit',
+    'shownBasePerDay', 'shownDeltaPerDay'].sort(), 'D-82 반환 키'); // rev14b B 표시 전용 2키 추가.
   eq(Object.keys(a.base).sort(), ['kind', 'label', 'mwh', 'cost', 'days', 'perDay'].sort(), 'D-82 base 반환 키');
   eq(a, b, '같은 입력 두 번 호출 값 동일');
   eq(JSON.stringify(V), before, '호출 전후 V 직렬화 불변');
@@ -96,6 +121,14 @@ function inspect(V, res, expected, team = id) {
     if (expected.base[key] === null) eq(a.base[key], null, `base.${key} null 규칙`);
     else near(a.base[key], expected.base[key], `base.${key} 계약 산식`);
   }
+  const trial = Object.values(JSON.parse(storage.get(TRIAL_KEY) || '{}'))[0];
+  const shown = shownExpectation(V, res, team, trial);
+  inspectShown(a, shown, 'gridReliance');
+  const promise = K.__promiseGrid(V, res, team, {});
+  eq(Object.keys(promise).sort(), Object.keys(a).sort(), 'promiseGridReliance도 B 표시 전용 키 포함');
+  inspectShown(promise, shown, 'promiseGridReliance');
+  eq(JSON.stringify(V), before, '표시 전용 필드 호출 뒤 V 불변');
+  eq(JSON.stringify([...storage]), saved, '표시 전용 필드 호출 뒤 저장 불변');
   return a;
 }
 function expectation(mwh, kind = null, label = '비교 없음(첫 결과)', baseMWh = null) {
@@ -113,6 +146,15 @@ test('이번 달 시험 기준: trial.days로 이번 달 환산', () => {
   const { V, res } = fixture(), trial = trialFor(V, res, { days: 9 }); putTrial(V, trial);
   // 총괄 10-22 녹화 전 점검: 기준 이름은 실제로 읽은 시험 기록의 9일을 따른다.
   inspect(V, res, expectation(58 * 31 / 5, 'trial', '시험 9일 대비', 19 * 31 / 9));
+});
+test('rev14b B 첫 달 약속 시험 우선·각 시험 원래 일수', () => {
+  const { V, res } = fixture(), saved = trialFor(V, res, { days: 9 });
+  putTrial(V, saved);
+  const n = { trial: { ...saved, days: 11, gridMWh: 13 } };
+  const before = JSON.stringify({ V, n, storage: [...storage] });
+  inspectShown(K.__grid(V, res, id), shownExpectation(V, res, id, saved), 'gridReliance 저장 시험');
+  inspectShown(K.__promiseGrid(V, res, id, n), shownExpectation(V, res, id, n.trial), 'promiseGridReliance 약속 시험');
+  eq(JSON.stringify({ V, n, storage: [...storage] }), before, '표시값 계산이 약속·시험·공개 결과를 바꾸지 않음');
 });
 test('옛 시험 gridMWh 누락: lastTrial 호환과 비교 불가', () => {
   const { V, res } = fixture(), trial = trialFor(V, res); delete trial.gridMWh; putTrial(V, trial);
@@ -153,6 +195,9 @@ test('지난달 공개 값 누락: null 규칙과 전용 label', () => {
   for (const value of [a.base.mwh, a.base.cost, a.delta, a.deltaCost]) eq(value, null, '기준 없으면 null');
   near(a.tol, 1, '기준 없으면 문턱 1');
   eq(a.base.label, '비교 없음(지난달 계통 값 없음)', '지난달 결과는 있으나 공개 값이 빠진 경우의 계약 label');
+  const shown = shownExpectation(V, res, id, null);
+  inspectShown(a, shown, 'gridReliance 지난달 값 누락');
+  inspectShown(K.__promiseGrid(V, res, id, {}), shown, 'promiseGridReliance 지난달 값 누락');
 });
 test('normalCost와 gridImportMarkup은 params 변경을 읽음', () => {
   const { V, res } = fixture(); putTrial(V, trialFor(V, res));

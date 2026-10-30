@@ -23,7 +23,9 @@ import calendar  # D-80: 계약 A, 월 일수 독립 계산.
 import math
 import re
 import sys
-from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR
+from decimal import Decimal, ROUND_HALF_UP
+from functools import lru_cache, reduce
+from itertools import product
 
 from playwright.sync_api import sync_playwright
 from league_flow import confirm_seat, select_mode, start_solo
@@ -42,56 +44,139 @@ MONTHLY_NAMES = {"choice": "내 선택", "weather": "날씨·계절·운전 기�
 # D-80: C-4, 옛 기록 표시 이름은 새 계산 후보와 분리해서 보존.
 LEGACY_NAMES = {**NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
 LEGACY_MONTHLY_NAMES = {**MONTHLY_NAMES, "gridImport": "계통 수입"}  # D-80: C-1·2·4·5 대상별 검사.
-S7_MWH = re.compile(r"[+−]?[\d,]+\.\d MWh/일")  # D-82: 새 S7의 표시 단위.
 
 
 def part_min(a):  # D-80: C-5, 독립 문턱 식.
     return max(max(.05, .05 * abs(a["trial"])) / 10, .05) if a.get("target") == "grid" else .05  # D-82 수정 2(총괄 결정): 하한 0.05 = 표시 눈금 절반.
 
 
-def rounded_share(value, a):  # D-80: C-4, 허용 오차 확대 없이 표시 반올림값과 대조.
-    step = ".1" if a.get("target") == "grid" else ".01"  # D-80: C-1·2·4·5 대상별 검사.
-    return float(Decimal(str(value)).quantize(Decimal(step), rounding=ROUND_HALF_UP))  # D-80: C-1·2·4·5 대상별 검사.
+def outage_digits(a):
+    if a.get('target') != 'grid':
+        return 2
+    if a.get('unit') != 'MWh/일':
+        return 1
+    base = a.get('trial') if a.get('trial') is not None else a.get('base')
+    return 2 if isinstance(base, (int, float)) and math.isfinite(base) and abs(base) < 2 else 1
 
 
-# spec-C §M5: 원값·카드 순서는 유지하고 표시 눈금만 최대 나머지로 배분한다.
+def rounded_share(value, a):
+    # JS toFixed와 같이 입력 이진 실수의 정확한 값을 0에서 먼 쪽으로 반올림한다.
+    step = Decimal('.01' if outage_digits(a) == 2 else '.1')
+    return float(Decimal.from_float(float(value)).quantize(step, rounding=ROUND_HALF_UP)) + 0.0
+
+
+def _tick(value, digits):
+    step = Decimal('.01' if digits == 2 else '.1')
+    return int(Decimal.from_float(float(value)).quantize(step, rounding=ROUND_HALF_UP) * 10**digits)
+
+
+@lru_cache(maxsize=64)
+def _allocation_serialized(serialized):
+    """rev14b A2: 원값의 lo/lo+1 조합을 전부 훑는다. 구현 Map은 읽지 않는다."""
+    a = json.loads(serialized)
+    digits = outage_digits(a)
+    scale = 10**digits
+    total = a.get('total')
+    if total is None:
+        total = a['actual'] - (a.get('trial') if a.get('trial') is not None else a.get('base'))
+    head = _tick(total, digits)
+    parts = list(a['parts'])
+    replay = a.get('replay', 0)
+    # rev14b A2: 계통은 min(기존 .05, 표시 반 눈금), 정전은 기존 .005.
+    replay_min = min(.05, .5 / scale) if a.get('target') == 'grid' else .005
+    if not a.get('replayOutsideSum') and abs(replay) >= replay_min:
+        parts.append({'key': 'replay', 'value': replay})
+    raw = [p['value'] * scale for p in parts]
+    near = tuple(_tick(p['value'], digits) for p in parts)
+    # rev14b A2 원값 합 가드: 옛 사본의 누락은 각자 반올림·gap 0·안내 없음.
+    if abs(sum(p['value'] for p in parts) - total) >= .5 / scale:
+        return {'digits': digits, 'scale': scale, 'head': head, 'parts': parts, 'best': None,
+                'solutions': [near], 'fallback': True, 'guarded': True}
+    lo = [math.floor(v + 1e-9) for v in raw]
+    options = [(v,) if raw[i] - v <= 1e-9 else (v, v+1) for i, v in enumerate(lo)]
+    causes = a['parts']
+    # 순위 판정은 앞 명세의 고정 문턱. replay는 c1/c2/c3 원인 후보에서 제외한다.
+    threshold = max(part_min(a), .05 * abs(total))
+    top = max((abs(p['value']) for p in causes), default=0)
+    tied = [i for i, p in enumerate(causes) if abs(p['value']) >= threshold and
+            abs(rounded_share(p['value'], a)) == abs(rounded_share(top, a))]
+    allowed = []
+    best = None
+    for candidate in product(*options):
+        if any(abs(p['value']) >= part_min(a) and abs(candidate[i]) < 1 for i, p in enumerate(causes)):
+            continue
+        if any(abs(raw[i]) > abs(raw[j]) + 1e-9 and abs(candidate[i]) < abs(candidate[j])
+               for i in range(len(causes)) for j in range(len(causes))):
+            continue
+        if tied and any((abs(candidate[i]) != abs(candidate[tied[0]]) if i in tied else
+                         abs(candidate[i]) >= abs(candidate[tied[0]])) for i in range(len(causes))):
+            continue
+        cost = (abs(head - sum(candidate)), sum((v == 0) != (near[i] == 0) for i, v in enumerate(candidate)),
+                reduce(lambda n, pair: n + abs(pair[1] - raw[pair[0]]), enumerate(candidate), 0.0))
+        if best is None or cost < best:
+            best, allowed = cost, [candidate]
+        elif cost == best:
+            allowed.append(candidate)
+    return {'digits': digits, 'scale': scale, 'head': head, 'parts': parts, 'best': best,
+            'solutions': allowed if allowed else [near], 'fallback': best is None}
+
+
+def allocation_oracle(a):
+    return _allocation_serialized(json.dumps(a, sort_keys=True))
+
+
 def display_shares(a):
-    scale = Decimal(10 if a.get("target") == "grid" else 100)
-    values = {p["key"]: Decimal(str(p["value"])) * scale for p in a["parts"]}
-    replay = a.get("replay", 0)
-    if not a.get("replayOutsideSum") and abs(replay) >= (.05 if a.get("target") == "grid" else .005):
-        values = {"replay": Decimal(str(replay)) * scale, **values}
-    floors = {k: int(v.to_integral_value(rounding=ROUND_FLOOR)) for k, v in values.items()}
-    # rev14 M1 §1·2: 이진 float 정확값을 반올림(정확한 중간값은 0에서 먼 쪽).
-    digits = 1 if a.get("target") == "grid" else 2
-    target = int(Decimal.from_float(float(a["total"])).quantize(
-        Decimal('.1' if digits == 1 else '.01'), rounding=ROUND_HALF_UP) * scale)
-    remainder = target - sum(floors.values())
-    # rev10 검토 M1(총괄 수정): 음수 나머지는 각자 반올림(빈 맵)으로 둔다.
-    if remainder < 0 or remainder > len(values):
+    """호환용 첫 최적해. 동률의 실제 단언은 share_matches/전체 조합 검사로 한다."""
+    o = allocation_oracle(a)
+    if o['fallback']:
         return {}
-    ranked = sorted(values, key=lambda k: values[k] - floors[k], reverse=True)
-    for k in ranked[:remainder]:
-        floors[k] += 1
-    result = {k: float(Decimal(v) / scale) for k, v in floors.items()}
-    parts = a["parts"]
-    threshold = max(part_min(a), .05 * abs(a.get("total", a["actual"] - a.get("trial", a.get("base", 0)))))
-    largest = max((abs(p["value"]) for p in parts), default=0)
-    tied = [p["key"] for p in parts if abs(p["value"]) >= threshold and
-            abs(rounded_share(abs(p["value"]), a)) == abs(rounded_share(largest, a))]
-    if tied:
-        top = abs(result[tied[0]])
-        if any((abs(result[k]) != top if k in tied else abs(result[k]) >= top) for k in result):
-            return {}
-    return result
+    return {p['key']: o['solutions'][0][i] / o['scale'] for i, p in enumerate(o['parts'])}
 
 
-def displayed_share(value, a, key):
-    return display_shares(a).get(key, rounded_share(value, a))
+def share_matches(shown_value, raw_value, a, key):
+    o = allocation_oracle(a)
+    index = next((i for i, p in enumerate(o['parts']) if p['key'] == key), None)
+    if index is None:
+        return shown_value == rounded_share(raw_value, a)
+    return any(shown_value == candidate[index] / o['scale'] for candidate in o['solutions'])
 
 
-def share_pattern(a):  # D-80: target 없는 옛 기록은 %p.
-    return S7_MWH if a.get("target") == "grid" else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
+def _outage_value(value, unit, signed, digits):
+    prefix = ('+' if value > 0 else '−') if signed and value else ''
+    return prefix + f'{abs(value):,.{digits}f}' + (' ' if unit.startswith('MWh') else '') + unit
+
+
+def assert_allocation_dom(checks, page, a, visible, label):
+    """전체 표시 조합이 최소 비용인지와 gap/W1/W2를 함께 검사한다(동률은 모두 허용)."""
+    o = allocation_oracle(a)
+    keys = [p['key'] for p in o['parts']]
+    checks.ok(all(k in visible for k in keys), label + ' A2 보이는 몫 모두 확보')
+    if not all(k in visible for k in keys):
+        return
+    candidate = tuple(round(visible[k] * o['scale']) for k in keys)
+    checks.ok(candidate in o['solutions'], label + ' A2 c1/c2/N1 허용·사전순 최소 비용 조합')
+    guarded = o.get('guarded', False)
+    gap = 0 if guarded else o['head'] - sum(candidate)
+    note = page.locator('#lg-outage-round-note')
+    trial, actual = a.get('trial'), a.get('actual')
+    w1 = not guarded and not gap and all(isinstance(x, (int, float)) and math.isfinite(x) for x in (trial, actual)) and \
+        _tick(trial, o['digits']) + o['head'] != _tick(actual, o['digits'])
+    checks.ok(note.count() == int(bool(gap or w1)), label + ' A3 W1/W2 배타적 조건')
+    if note.count() != 1:
+        return
+    kind = 'w2' if gap else 'w1'
+    checks.ok(note.get_attribute('data-round-note') == kind, label + ' A3 data-round-note=' + kind)
+    unit = a.get('unit', 'MWh') if a.get('target') == 'grid' else '%p'
+    value = lambda v, sign: _outage_value(v, unit, sign, o['digits'])
+    diff = value(o['head'] / o['scale'], True)
+    expected = (f'몫마다 표시 눈금에 맞춰 보여서, 몫의 합({value(sum(candidate)/o["scale"], True)})이 '
+                f'차이({diff})와 {value(abs(gap)/o["scale"], False)} 달라요.') if gap else \
+        f'몫의 합은 {diff}에 맞췄어요. 시작·끝 값은 따로 반올림해 {value(1/o["scale"], False)}만큼 어긋날 수 있어요.'
+    checks.ok(note.inner_text().strip() == expected, label + ' A3 W1/W2 글자·세 자리 채움')
+
+
+def share_pattern(a):
+    return re.compile(r'[+−]?[\d,]+\.\d{' + str(outage_digits(a)) + r'} MWh/일') if a.get('target') == 'grid' else S7_SHARE
 
 
 def attribution_endpoints(page, a):  # D-80: C-1·계약 A, 공개 결과/시험에서 독립 계산.
@@ -499,7 +584,7 @@ def bottleneck(checks, page, a, label):
 def number_format(checks, row, key, label, page):  # D-80: C-1·2·4·5 대상별 검사.
     text = row.locator("b").inner_text()
     a = current_attribution(page)  # D-80: C-4, 행이 속한 현재 대상.
-    pattern = S7_MWH if a.get("target") == "grid" else S7_RATE if key in ("trial", "previous", "actual") else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
+    pattern = share_pattern(a) if a.get("target") == "grid" else S7_RATE if key in ("trial", "previous", "actual") else S7_SHARE  # D-80: C-1·2·4·5 대상별 검사.
     raw = float(row.get_attribute("data-out-value"))
     valid = pattern.fullmatch(text) is not None if math.isfinite(raw) else text == ("– MWh/일" if a.get("target") == "grid" else "–%" if key in ("trial", "previous", "actual") else "–%p")  # D-82
     checks.ok(valid, f"{label} {key} 숫자 형식·비유한 숫자는 –")
@@ -733,7 +818,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         match = VALUE.search(c.locator(".lg-out-size").inner_text())  # D-80: C-1·2·4·5 대상별 검사.
         raw = c.get_attribute("data-out-value")
         checks.ok(match is not None and share_pattern(current_attribution(page)).fullmatch(c.locator('.lg-out-size').inner_text()) is not None and raw not in (None, "") and  # D-80: C-1·2·4·5 대상별 검사.
-                  abs(float(match[1].replace("−", "-").replace(",", "")) - displayed_share(float(raw), current_attribution(page), c.get_attribute('data-missed'))) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+                  share_matches(float(match[1].replace("−", "-").replace(",", "")), float(raw), current_attribution(page), c.get_attribute('data-missed')),  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} 열린 카드 %p와 속성 크기 일치 [I22]")
     checks.ok(page.locator('[data-out-tag="picked"]').inner_text() == "내가 고름" and
               page.locator(f'[data-missed="{picked}"] [data-out-tag="picked"]').count() == 1,
@@ -751,7 +836,7 @@ def scene(checks, page, requests, label, width, trial, actual):
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {key} 화면 수치 한 개")
         visible[key] = float(matches[0].replace("−", "-").replace(",", ""))
-        checks.ok(abs(visible[key] - displayed_share(values[key], current_attribution(page), key)) <= 1e-9, f"{label} {key} 표시 반올림")  # D-80: C-1·2·4·5 대상별 검사.
+        checks.ok(share_matches(visible[key], values[key], current_attribution(page), key), f"{label} {key} 표시 반올림")  # D-80: C-1·2·4·5 대상별 검사.
         number_format(checks, row, key, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         if values[key] < 0:
             checks.ok(row.locator('[data-negative="true"]').count() == 1, f"{label} {key} 감소 막대")
@@ -783,12 +868,7 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
     checks.ok(abs(sum(v for k, v in values.items() if k != "actual") + (replay if "replay" not in values else 0) - values["actual"]) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 생략 재현 복원 뒤 폭포 원시 합계 1e-9")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
-    # rev14 M1 §2: 배분 맵이 있을 때 몫 합은 원 Δ 반올림.
-    if display_shares(current_attribution(page)):
-        scale = 10 if current_attribution(page).get("target") == "grid" else 100
-        checks.ok(sum(round(v * scale) for k,v in visible.items()
-                  if k not in ("actual", "trial")) == sum(round(v * scale) for v in display_shares(current_attribution(page)).values()),
-                  f"{label} rev14 표시 몫 합 = 원 Δ 반올림")
+    assert_allocation_dom(checks, page, current_attribution(page), visible, label)
     largest = max(NAMES, key=lambda k: abs(values[k]))
     top = sorted((k for k in NAMES if abs(values[k]) >= part_min(current_attribution(page))), key=lambda k: abs(values[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
@@ -1052,18 +1132,13 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         matches = VALUE.findall(row.inner_text())
         required(checks, len(matches) == 1, f"{label} {k} 표시 숫자 1개")
         visible[k] = float(matches[0].replace('−', '-').replace(',', ''))
-        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and abs(visible[k] - displayed_share(raw[k], a, k)) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
+        checks.ok(abs(raw[k] - expected_values[k]) <= 1e-9 and share_matches(visible[k], raw[k], a, k),  # D-80: C-1·2·4·5 대상별 검사.
                   f"{label} {k} API/DOM 원시값·반올림")
         number_format(checks, row, k, label, page)  # D-80: C-1·2·4·5 대상별 검사.
         track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
-    # rev14 M1 §2: 끝점과 독립적으로 원 Δ를 반올림한다.
-    if display_shares(a):
-        scale = 10 if a.get("target") == "grid" else 100
-        checks.ok(sum(round(v * scale) for k,v in visible.items()
-                  if k not in ('actual', 'previous')) == sum(round(v * scale) for v in display_shares(a).values()),
-                  f"{label} rev14 표시 몫 합 = 원 Δ 반올림")
+    assert_allocation_dom(checks, page, a, visible, label)
     waterfall = page.locator('#lg-outage-waterfall')
     aria = waterfall.get_attribute('aria-label') or ''
     aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]

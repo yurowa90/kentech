@@ -3410,7 +3410,7 @@
     return root;
   }
 
-  const powerChipDefinition = `설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(${PLAIN_DAY.m + 1}월, 폭염·한파 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.`;
+  const powerChipDefinition = `설비/피크 = 수요지와 선으로 연결된 발전 설비의 정격 MW 합 / 기준 날(${PLAIN_DAY.m + 1}월, 무더위·사건 제외)의 최대 시간 수요. 설비는 접속 대기·공사 중 SMR·저장·외부 수입을 제외하고, 피크는 현재 인구·산업·정책·증설을 반영하되 대학·연구소 추가 부하는 제외해요. 날씨·충전·송전 손실에 따라 실제 공급은 달라져요. 초록은 지난 운영과 이번 달 시험(했다면)의 정전율이 모두 목표 이하일 때만 표시해요.`;
   function refreshHUD() {
     refreshUndo();
     const set = (k, v, tone) => {
@@ -3834,14 +3834,14 @@
     const shown = selectors => [...S.root.querySelectorAll(selectors)].map(rect).filter(Boolean);
     if (endPanel) {
       // 끝 화면은 전폭 서랍 자체가 아니라 본문 카드·머리의 실제 요소를 장애물로 삼는다.
-      // 폰에서는 머리의 빈 가로 구간도 후보라 제목과 접기·닫기 사이에 놓을 수 있다.
+      // 제목은 잠깐 덮어도 되지만 접기·닫기·탭 단추와 본문 카드는 피한다.
       const initial = rect(el);
       if (!initial) return;
       S.root.style.setProperty("--lg-result-toast-left", `${Math.round(Math.max(8, Math.min(initial.left, window.innerWidth - initial.width - 8)))}px`);
       el.dataset.clearPanel = "true";
       const t = rect(el);
       if (!t) return;
-      const obstacles = shown('#bd-hud, .lg-bar, #lg-panel[data-stage="end"] .lg-pbody > *, .lg-ptabs > *');
+      const obstacles = shown('#bd-hud, .lg-bar, #lg-panel[data-stage="end"] .lg-pbody > :not(.lg-end-more), #lg-final-summary, #lg-decisions, .lg-fx-end, #lg-rank, #lg-trends, .lg-end-more > *, #lg-panel[data-stage="end"] .lg-pbody :is(section, article, .lg-sec), #lg-panel-fold, .lg-px, .lg-ptabs button');
       const strip = rect(document.getElementById("strip"));
       if (strip) obstacles.push(strip);
       const xs = [t.left, 8, window.innerWidth - t.width - 8, ...obstacles.flatMap(r => [r.left - t.width - 8, r.right + 8])].map(Math.round);

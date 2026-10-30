@@ -1346,7 +1346,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
   margin: 0 0 4px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 /* 영상 판정 S4 근거 줄: 지난달 놓친 것은 강조선을 유지한다. */
-.lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 4px 8px; border-left: 3px solid var(--ui-gold); }
+.lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { display: block; -webkit-line-clamp: unset; overflow: visible; padding: 4px 8px; border-left: 3px solid var(--ui-gold); }
 .lg-team-map #lg-panel #lg-predict { margin: 0 0 4px; padding: 8px; }
 .lg-team-map #lg-panel #lg-predict h3 { margin: 0 0 4px; }
 .lg-team-map #lg-panel #lg-predict h4 { margin: 0 0 4px; }
@@ -1362,7 +1362,7 @@ html.v2-league-lobby #lg-solo .lg-launch { margin-top: 0; padding-top: 0; border
 .lg-team-map #lg-panel .lg-promise-confidence button { min-width: 44px; padding: 4px 8px; }
 @media (max-width: 760px) {
   /* 폰: 지난달 두 줄·근거 세 줄 뒤에도 방향과 확신이 본문 첫 화면에 들어가게 한다. */
-  /* 지난달 두 줄은 폰에서도 두 줄까지 보인다. '가장 큰 몫' 숫자와 학생이 쓴 문장이 말줄임으로 사라지지 않게(터치 기기는 title을 못 본다). */
+  /* 지난달 바꾼 것 줄은 폰에서도 두 줄까지, '지난달 놓친 것'(#lg-missed-carry)은 말줄임 없이 다 보인다(rev14b V5: 가장 큰 몫·비용 숫자가 잘리지 않게, 터치 기기는 title을 못 본다). */
   .lg-team-map #lg-panel .lg-promise-carry > #lg-missed-carry { padding: 2px 8px; }
   .lg-team-map #lg-panel #lg-predict { display: grid; grid-template-columns: minmax(0, 1fr) 140px; column-gap: 8px; }
   .lg-team-map #lg-panel #lg-predict > * { grid-column: 1 / -1; min-width: 0; }
@@ -1638,13 +1638,14 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
 .lg-result-deltas .lg-result-note { font-size: 12px; font-weight: 400; }
 
 /* F1: 교부세 설명은 HUD 높이에 참여하지 않는다. 빈 달에도 같은 글자 폭을 확보한다. */
-.lg-money-info { position: fixed; z-index: 60; width: 44px; height: 44px; }
+.lg-money-info { position: fixed; z-index: 60; width: 44px; height: var(--lg-money-hit-h, 44px); }
 /* '!'는 키보드 순서 때문에 HUD 안(쌓임 맥락 z 30)에 있다. 설명이 열린 동안만 HUD를 리그 막대(z 32) 위, 서랍(46) 아래로 올린다. */
 #bd-hud:has(.lg-money-info[open]) { z-index: 33; }
 .lg-money-info[open] { display: block; width: 44px; }
 .lg-money-info .lg-info-pop { position: fixed; top: calc(var(--bd-hudb, 120px) - var(--lg-money-origin-top, 0px)); left: calc(8px - var(--lg-money-origin-left, 0px)); width: min(360px, calc(100vw - 16px)); max-width: none; box-shadow: var(--ui-shadow); }
 /* 보이는 원은 작게(지름 18px), 누름 영역은 44px. 배지는 칩 오른쪽 위 모서리에 걸쳐 금액을 가리지 않는다. */
-.lg-money-info > .lg-info-btn { color: #06202a; font-size: 12px; background: radial-gradient(circle at center, var(--ui-gold) 0 9px, transparent 9.5px); }
+/* 누름 영역 위끝을 화면 안(0 이상)으로 맞춘 만큼 점과 '!' 글자는 원래 자리(--lg-money-dot-y)에 둔다. */
+.lg-money-info > .lg-info-btn { height: var(--lg-money-hit-h, 44px); padding: 0; align-items: start; text-align: center; line-height: calc(var(--lg-money-dot-y, 22px) * 2); color: #06202a; font-size: 12px; background: radial-gradient(circle at 50% var(--lg-money-dot-y, 22px), var(--ui-gold) 0 9px, transparent 9.5px); }
 
 /* F2: 결과를 읽은 뒤에는 다음 달 진행이 주 동작이다. */
 /* 혼자 하기의 '다음 달'·'최종 결과'는 늘 주 동작. 멀티 팀은 누르기 전 '준비'만 금색이고 누른 '준비 ✓'는 기존 청록을 유지한다. */
@@ -1769,8 +1770,6 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   width: auto; max-width: none; max-height: none; box-sizing: border-box;
 }
 .lg-team-map #lg-panel .lg-end-more { min-width: 0; }
-/* 끝 알림이 머리의 빈 가로 구간을 쓸 수 있게 제목 요소는 글자 너비만 차지한다. */
-@media (max-width: 760px) { .lg-team-map #lg-panel[data-stage="end"] .lg-ptabs strong { flex: 0 0 auto; margin-right: auto; } }
 @media (min-width: 761px) {
   .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 20px; align-items: start;
@@ -1782,8 +1781,8 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   .lg-team-map #lg-panel[data-stage="end"] .lg-fx-end { grid-column: 1; grid-row: 3; }
   .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-column: 2; grid-row: 2 / 4; }
 }
-@media (min-width: 761px) {
-  /* 1180 팀 화면도 요약·순위를 위에 붙이고, 긴 결정 기록의 초과 높이는 2행에서만 받는다. */
+@media (min-width: 1200px) {
+  /* DOM 순서를 유지하고, 긴 결정 기록의 초과 높이는 2행에서만 받는다. */
   .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
     grid-template-rows: auto 1fr auto auto;
   }

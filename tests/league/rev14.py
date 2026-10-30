@@ -23,7 +23,7 @@ from fx_end import dismiss_guide
 from fx_replay import reach_result
 from league_flow import pass_issue_check, select_mode, start_solo, wait_unfolded
 from rev11 import DOM, InputBrowser, press
-from s7 import plan_and_trial
+from s7 import plan_and_trial, current_attribution, assert_allocation_dom
 from solo import click_next, close_drawer, read
 
 G1 = '남은 특별교부세 {n}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말에 사라져요.'
@@ -33,7 +33,7 @@ VALUE = r'([+−-]?\d[\d,]*(?:\.\d+)?)\s*(MWh/일|%p)'
 HEADER = r'(?:지난달 실제\s*→\s*이번 달 실제|시험\s*→\s*실제)\s*' + VALUE
 # 기존 fx_end 검사에서 확인한 본문 카드. 끝 화면의 다른 펼친 카드도 함께 측정한다.
 # .lg-end-more는 접힘 감싸개이므로 본문 장애물은 그 안의 .lg-sec/section/article이다.
-END_CARDS = ('#lg-final-summary, #lg-decisions, .lg-fx-end, #lg-rank, '
+END_CARDS = ('#lg-final-summary, #lg-decisions, .lg-fx-end, #lg-rank, #lg-trends, .lg-end-more > *, '
              '#lg-panel .lg-pbody section, #lg-panel .lg-pbody article, '
              '#lg-panel .lg-pbody .lg-sec')
 
@@ -186,7 +186,7 @@ def evidence(checks, page, label, s6, target):
     if '직접 연결 몫' in summary:
         checks.ok(prediction is not None and direct is not None,
                   label + ' m3 화면에서 예측 방향·직접 연결 표시 몫 추출: ' + s6 + ' / ' + summary)
-    checks.ok(summary.endswith(' ' + expected) if expected else T1 not in summary and T2 not in summary,
+    checks.ok(bool(re.search(re.escape(' ' + expected) + r'(?: 외 \d+개)?$', summary)) if expected else T1 not in summary and T2 not in summary,
               f'{label} m3 꼬리 {expected or "없음"}: {summary}')
     return summary
 
@@ -206,17 +206,12 @@ def compare_month(checks, page, month, width, touch, capture):
         values = list(re.finditer(VALUE, verdict[1])) if verdict else []
         # 같음 괄호 안 첫 값은 ±0.5%p 범위다. 실제 Δ는 마지막 값이다.
         delta = number(values[-1][0]) if values else None
-    raw = re.search(r'하루 평균\s*(?:Δ\s*)?' + VALUE, s6)
-    outside = raw and raw[2] == 'MWh/일' and '.' in raw[1] and len(raw[1].split('.')[1]) > 1
     cards = page.locator('#lg-outage-cards [data-missed]')
     share, card_month = None, cards.count() > 0
     if card_month:
         checks.ok(delta is not None and head is not None, label + ' M1 S6 Δ·S7 머리 숫자 추출: ' + s6)
         if delta and head:
-            if outside:
-                print(f'INFO {label} M1 명세 범위 밖: S6 계통 두 자리 {raw[1]} / S7 {head}', flush=True)
-            else:
-                checks.ok(delta == head, f'{label} M1 S6 = S7: {delta} / {head}')
+            checks.ok(delta == head, f'{label} M1 S6 = S7: {delta} / {head}')
         first = cards.first
         first.scroll_into_view_if_needed()
         first.tap() if touch else first.click()
@@ -228,8 +223,8 @@ def compare_month(checks, page, month, width, touch, capture):
         parts = [number(row['text']) for row in rows if row['key'] not in ('previous', 'trial', 'actual')]
         checks.ok(bool(parts) and all(p is not None for p in parts), label + ' M1 폭포 모든 몫 숫자 추출')
         if head and parts and all(p is not None for p in parts):
-            checks.ok(all(p[1] == head[1] for p in parts) and sum(round(p[0] * 100) for p in parts) == round(head[0] * 100),
-                      f'{label} M1 폭포 몫 표시 합 = 머리: {parts} / {head}')
+            visible = {row['key']: number(row['text'])[0] for row in rows if number(row['text'])}
+            assert_allocation_dom(checks, page, current_attribution(page), visible, label)
         leader = page.locator('#lg-outage-cards [data-missed]').filter(
             has=page.locator('[data-out-tag="largest"]')).first
         checks.ok(leader.count() > 0, label + ' M1 가장 큰 것 카드 있음')
@@ -243,11 +238,8 @@ def compare_month(checks, page, month, width, touch, capture):
     elif page.locator('#lg-outage-single').count():
         single = text(page, '#lg-outage-single')
         diff = number(single, r'(?:이번 )?차이\s*' + VALUE)
-        # M1 계약 3: 단일 요약의 차이는 머리가 없는 달에도 같은 달 S6 Δ의 절댓값이다.
-        # 같은 계약에서 제외한 S6 계통 두 자리 달은 기존처럼 INFO만 남긴다.
-        if outside:
-            print(f'INFO {label} M1 명세 범위 밖: S6 계통 두 자리 {raw[1]} / 단일 요약 {diff}', flush=True)
-        elif diff is None and '카드 최소 크기' in single:
+        # rev14b A1: 두 자리 계통 달도 S6/S7 같은 숫자다.
+        if diff is None and '카드 최소 크기' in single:
             # 문턱이 '차이의 5%'가 아니라 카드 최소 크기인 달은 요약에 차이 숫자가 없다(비교 대상 없음).
             print(f'INFO {label} M1 단일 요약에 차이 숫자 없음(카드 최소 크기 문턱): {single}', flush=True)
         else:
@@ -257,7 +249,7 @@ def compare_month(checks, page, month, width, touch, capture):
     else:
         # rev14 검사 고침 지시 2: 카드·단일 요약이 모두 없는 달은 비교 대상이 없다.
         print(f'INFO {label} M1 원인 비교 제외: #lg-outage-single 없음, 원인 카드 없음', flush=True)
-    w1 = shown(page, '#lg-outage-round-note')
+    w1 = shown(page, '#lg-outage-round-note[data-round-note="w1"]')
     if w1:
         capture['w1'] += 1
     chosen = card_month and (not capture['kind'] or w1 and capture['kind'] != 'W1')
