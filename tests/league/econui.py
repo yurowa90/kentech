@@ -23,7 +23,9 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 SCORES = {"pop": "주민", "ind": "산업", "fin": "재정", "co2": "탄소",
           "appr": "지지", "rel": "전력 신뢰"}
 POLICIES = ("taxRes", "taxInd", "service", "incentive")
-WAIT = 12000  # 실행기 대기 한도. 경제 모형 계수가 아니다.
+# 실행기 대기 한도. 경제 모형 계수가 아니다. 검사가 멈추는 것을 막는 상한일 뿐 판정 기준이 아니다.
+# 맥 로컬 기본 12초. 느린 공유 실행기(CI)는 KCP_WAIT로 늘린다(.github/workflows/ci.yml).
+WAIT = int(os.environ.get("KCP_WAIT", "12000"))
 # 2026-10-13: 결과 서랍 0.43~0.69초, CPU 4배 감속 2.1~2.8초. 그리기 여유 포함.
 # 2026-10-17: CPU 4배 감속 전체 실행에서는 도시·도움말 서랍이 5초를 넘는 경우가 있었다(부하 116→46, 실패 5).
 # 감속 실행에서는 KCP_UI_WAIT로 늘린다. 기본은 감속 없는 실행 기준이다.

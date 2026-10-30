@@ -19,6 +19,9 @@ defaults:
 env:
   PYTHONUNBUFFERED: "1"
   KCP_MAX_LOAD: "0"
+  # 공유 실행기는 맥 로컬보다 느려 검사 도우미의 대기 상한(판정 기준 아님)만 2.5배로 둔다. 맥 로컬 기본은 12초·5초.
+  KCP_WAIT: "30000"
+  KCP_UI_WAIT: "12500"
 
 jobs:
   syntax:
