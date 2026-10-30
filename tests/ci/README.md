@@ -1,0 +1,123 @@
+# 검사 실행과 판정(CI·로컬 공용)
+
+앱은 빌드하지 않는다. 기존 Node 검사와 브라우저 검사를 그대로 돌리고, 실행기는 로그와 상태만 남긴다. 성공 여부는 `judge.py`가 로그 전체와 종료 코드를 알려진 실패 목록에 대조해 정한다.
+
+## 파일
+
+| 파일 | 용도 |
+|---|---|
+| `browser.sh` | 정적 서버를 띄우고 끄며 브라우저 검사를 차례로 실행, 상태 기록. `--check`·`--shards`로 목록만 확인 |
+| `node-all.sh` | Node 검사 전체(또는 heavy/rest 묶음) 실행, 상태 기록. `--check`로 목록과 파일만 대조 |
+| `lib.sh` | 두 실행기의 공통 함수: 부하 대기, 검사 하나의 시간 제한, 자식 프로세스 정리 |
+| `judge.py` | 판정과 마크다운 요약 |
+| `suites.txt` | 브라우저 검사 이름·샤드·예상초·선택 여부. CI 매트릭스도 여기서 만든다 |
+| `node-suites.txt` | Node 검사 경로와 묶음(heavy·rest·ignore) |
+| `baseline-fail.txt` | 사람이 확인한 알려진 실패 줄 |
+| `baseline-counts.txt` | 사람이 확인한 검사별 기준 수치(최소 단언·최대 SKIP·알려진 실패 때 종료 코드) |
+| `requirements.txt` | Playwright와 의존 패키지 판 고정(로컬 `tests/.venv`와 같은 판) |
+| `../../.github/workflows/ci.yml` | PR마다 도는 작업 다섯 |
+
+## 로컬에서 돌리기(맥)
+
+저장소 루트에서 실행한다. 처음 한 번 검사 환경을 만든다.
+
+```bash
+uv venv tests/.venv
+uv pip install --python tests/.venv/bin/python -r tests/ci/requirements.txt
+tests/.venv/bin/playwright install chromium-headless-shell webkit
+```
+
+`tests/.venv`가 없는 워크트리에서는 `PY`로 다른 워크트리의 환경을 가리켜도 된다. 브라우저 검사는 서버를 실행기가 직접 띄우므로 다른 워크트리의 서버·검사와 겹치지 않는 포트를 고른다. 그 포트에 이미 무엇이 응답하면 종료 코드 2로 멈춘다(다른 워크트리의 판을 검사하는 사고를 막는다). 서버가 내준 `index.html`이 작업 루트 파일과 바이트 단위로 같은지도 확인한다.
+
+```bash
+# 브라우저: 이름을 직접 주거나, 샤드 하나, 또는 전체
+PY=tests/.venv/bin/python tests/ci/browser.sh --port 9980 --out /tmp/br snaprender
+PY=tests/.venv/bin/python tests/ci/browser.sh --port 9980 --shard 2 --out /tmp/br2
+PY=tests/.venv/bin/python tests/ci/browser.sh --port 9980 --all --out /tmp/br-all
+tests/ci/browser.sh --list --shard 2          # 고른 검사 이름만 찍고 끝(서버 안 띄움)
+tests/ci/browser.sh --check                   # suites.txt 칸·중복·기준 수치 누락 확인
+python3 tests/ci/judge.py --kind browser --logs /tmp/br
+
+# Node: 전체 또는 묶음
+tests/ci/node-all.sh --out /tmp/node
+tests/ci/node-all.sh --part heavy --out /tmp/node-heavy
+tests/ci/node-all.sh --part rest --out /tmp/node-rest
+tests/ci/node-all.sh --check                  # node-suites.txt와 파일 대조(어긋나면 1)
+python3 tests/ci/judge.py --kind node --logs /tmp/node
+```
+
+기본 결과 폴더는 `tests/results/ci/browser`, `tests/results/ci/node`(git 무시 경로)다. 실행할 때마다 그 폴더의 `status.tsv`·`summary.txt`와 이번에 돌릴 이름 목록 `expected.txt`를 새로 만든다. 판정은 `status.tsv`의 검사를 보고, `expected.txt`에 있는데 상태가 없는 검사는 '실행 안 됨'으로 실패시킨다(중간에 끊긴 실행). 결과 폴더를 만든 뒤의 실행기 오류(파이썬 없음, 포트 충돌, 서버 기동 실패, 중단 신호, 목록 형식 오류)는 `runner-error.txt`에 남고 판정 요약에 실린다. 지난 로그는 지우지 않으므로 실행을 따로 보관하려면 `--out`을 바꾼다.
+
+환경 변수는 다음과 같다. `PORT`(기본 8000, `--port`가 우선), `PY`(브라우저 검사 파이썬, 기본 `tests/.venv/bin/python`), `SRV_PY`(서버 파이썬, 기본 `python3`), `NODE`(기본 `node`), `COUNT_PY`(node-all.sh 요약 줄의 실패 표지 집계, 기본 `python3`), `KCP_MAX_LOAD`(브라우저 검사 전 1분 부하 한도, 기본 150, 0이면 대기 없음), `KCP_TEST_TIMEOUT`(검사 하나의 제한 초, 브라우저 기본 2400·Node 기본 5400). 제한에 걸리면 자손 프로세스까지 TERM, 10초 뒤 KILL하고 종료 코드 124로 기록한다. 맥에는 `timeout` 명령이 없어 셸 안에서 직접 감시한다. 스크립트는 맥 기본 bash 3.2와 리눅스 bash 5에서 모두 돈다.
+
+실행기는 검사가 실패해도 다음 검사를 계속하고 0으로 끝난다. 서버·인자·목록 오류만 2다. 그러므로 판정은 반드시 `judge.py`로 한다. `judge.py`는 통과 0, 실패 1, 인자·파일·형식 오류 2로 끝난다. `--status`로 탭 4칸 상태 파일이나 `이름 exit=N …` 요약 파일(실행기의 `summary.txt`, 옛 br.sh·node-all.sh 형식)을 줄 수 있다. 요약 파일에서 `이름 exit=` 모양인데 읽지 못하는 줄은 건너뛰지 않고 형식 오류로 멈추며, `exit=- … state=missing`은 파일 없음으로 읽는다. 상태 파일이 없으면 판정하지 않는다(로그만으로는 시간 초과·크래시·비정상 종료를 알 수 없다). `--expect`로 기대 목록을, `--counts`로 기준 수치 파일을 바꿀 수 있다. 요약은 표준 출력에 찍고, `--summary-out` 파일 또는 `GITHUB_STEP_SUMMARY`에 덧붙인다. 형식 오류로 판정하지 못할 때도 그 이유를 요약에 남긴다.
+
+로그 파일 이름의 `:`는 `__`로 바꾼다(`ux_task:desktop` → `ux_task__desktop.log`). GitHub 결과 보관이 `:`를 받지 않기 때문이다. 판정기는 두 표기를 같은 검사로 읽는다.
+
+## CI에서 도는 방식
+
+작업 줄기(`claude/kentech-league-econ-balance`)나 `main`을 대상으로 한 PR과 수동 실행에서 작업 다섯이 돈다.
+
+| 작업 | 내용 |
+|---|---|
+| `syntax` | `node --check *.js ext/*.js games/*.js ui/*.js`와 `node-all.sh --check`(Node 목록과 파일 대조) |
+| `plan` | `browser.sh --shards`로 `suites.txt`를 확인하고 샤드 번호 목록(JSON)을 만든다. `browser`의 매트릭스가 이것이다 |
+| `node` | `node-suites.txt`의 heavy(`review/11-tech-balance.js` 하나)와 rest(나머지 93개) 두 묶음을 동시에. 옛 커밋을 `git show`로 읽는 검사가 많아 전체 이력을 받는다 |
+| `browser` | `plan`이 만든 샤드(지금 여덟)를 동시에. 한글·이모지 글꼴(`fonts-noto-cjk`, `fonts-noto-color-emoji`)을 깔고, `webkit`이 든 샤드만 WebKit을 더 설치한다 |
+| `gate` | 앞의 넷이 모두 성공이어야 성공. 보호 규칙에는 이것 하나만 걸면 된다. 취소·건너뜀은 성공으로 치지 않는다 |
+
+Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝자리 판은 실행기 이미지가 고른다), Playwright는 1.63.0이며 의존 패키지(greenlet·pyee·typing_extensions)도 로컬 판으로 고정했다. CI에서는 부하 대기를 끈다(`KCP_MAX_LOAD=0`). 실행 단계에는 작업보다 짧은 시간 제한(노드 130분, 브라우저 70분)을 걸고, 판정·보관 단계는 실행 단계가 실패하거나 시간 제한에 걸려도 돈다. 로그·상태·요약은 늘 14일 보관하고, 화면 캡처 같은 검사 부산물(`tests/results/` 나머지)은 실패한 샤드만 올린다. 비밀값은 쓰지 않는다.
+
+예상 시간은 맥 로컬 실측이다. 브라우저는 통합 검사 18(322bc7c)의 검사별 시간을 샤드로 더해 샤드당 약 600초다. Node는 `node-all.sh` 전체를 차례로 돌린 10-30 기록(de44631, 코드는 322bc7c와 같음, 실행 중 부하는 기록하지 않음)에서 heavy 2,065초, rest 합 1,642초(전체 94개 합 3,707초)다. CI 실행 장비는 이보다 느릴 수 있으니 첫 실행 기록을 보고 `suites.txt`의 예상초를 고친다.
+
+### 샤드 배분
+
+`suites.txt`의 예상초 합이다. `rev14`는 선택 검사라 파일이 없으면 건너뛴다(예상초는 rev13 시간으로 둔 추정).
+
+| 샤드 | 검사 | 예상초 합 |
+|---|---|---|
+| 1 | fx_event | 594 |
+| 2 | ux_task:desktop, webkit, storage | 603 |
+| 3 | s7, d82ux, solo, next | 603 |
+| 4 | rev11, rev8c, ux_s2fix2, ux_coach | 602 |
+| 5 | rev10, d80b, econui, ux_task:tablet, peek | 604 |
+| 6 | rev12, s8n, fx_replay, v3a, snaprender | 604 |
+| 7 | rev13, fx_end, fx_map, fx_town, endgrid | 603 |
+| 8 | rev14, rev9, score1, ux_s2fix, ux_task:mobile | 604 |
+
+새 브라우저 검사는 `suites.txt`에 이름·샤드·예상초를 한 줄로 넣고, `baseline-counts.txt`에 맥 로컬 첫 실행의 단언 수·SKIP 수를 넣은 뒤, 샤드 합이 고르게 되도록 옮기고 이 표를 다시 계산한다. 아직 파일이 없는 검사를 미리 넣을 때만 넷째 칸에 `optional`을 쓴다(기준 수치는 필수로 바꿀 때 넣는다). `optional`이 없는 검사의 파일이 사라지면 '검사 파일 없음'으로 실패한다. 줄 순서가 샤드 안 실행 순서다. CI 매트릭스는 `suites.txt`에 적힌 샤드 번호로 만들어지므로 `ci.yml`을 고칠 필요가 없다. `browser.sh`는 칸 수, 샤드(1 이상의 정수), 예상초, 넷째 칸, 이름 중복, 필수 검사의 기준 수치 누락을 확인하고 어긋나면 2로 멈춘다.
+
+새 Node 검사(`tests/league/*.js`, `tests/league/review/[0-9]*.js`)는 `node-suites.txt`에 경로와 묶음을 넣는다. 넣지 않으면 '목록에 없는 검사 파일'로, 목록에 있는 파일을 지우거나 이름을 바꾸면 '검사 파일 없음'으로 실패한다. 검사가 아닌 보조 파일은 묶음을 `ignore`로 둔다.
+
+## 판정 규칙
+
+검사마다 위에서부터 처음 걸리는 것으로 정한다. 기준 수치는 `baseline-counts.txt`에 그 검사의 줄이 있을 때만 본다(지금 `suites.txt`의 필수 검사 31종).
+
+1. 상태 `missing`(필수 검사 파일 없음)과 `unlisted`(Node 목록에 없는 검사 파일)는 실패, `skip`(선택 검사 파일 없음)은 건너뜀이다.
+2. 로그가 없거나 비어 있으면 실패다.
+3. 시간 초과(124)와 크래시(128 초과, 예 139 세그폴트)는 실패 줄이 기준선에 있어도 실패다. 종료 코드를 모르면 실패다.
+4. 로그 전체에서 실패 줄을 모아, 기준선에 없는 줄이 하나라도 있으면 실패다. 기준선 줄 하나는 실패 줄 하나에만 대응한다(같은 줄이 두 번 나오면 하나는 새 실패).
+5. 기준 수치가 있는 검사는 마지막 요약 줄(`assertions N failures M`, `checks N fail M [SKIP K]`, `PASS N / FAIL M`, `pass N fail M`, `ux_task`는 장면 줄 수, `ux_coach`는 `reachedStep`)이 있어야 하고, 단언 N이 기준 이상, SKIP(줄머리 `SKIP` 줄 수와 요약의 K 중 큰 쪽)이 기준 이하, 요약의 실패 수 M이 실패 줄 수와 같아야 한다. 하나라도 어긋나면 실패다. 중간에 멈춘 실행, 리눅스에서 다른 분기로 빠져 단언이 줄거나 SKIP이 늘어난 실행이 여기서 걸린다.
+6. 알려진 실패가 남았으면 그 검사의 기준 수치가 있어야 하고, 종료 코드가 기준판 종료 코드(0이 아닌 값)와 같아야 한다.
+7. 실패 줄이 없는데 종료 코드가 0이 아니면 실패다(로그 끝 몇 줄을 보여 준다).
+8. 실패 줄이 없는데 요약 줄의 실패 수(`failures 2`, `failures: 2`, `fail=3`, `3 failed`, `PASS 540 / FAIL 3`, `problems: 4`, `PROBLEMS 4`, `실패 2`, `실패 1건`, `실패 3개` 등)가 0보다 크면 실패다. `PASS N / FAIL M` 꼴이 아닌 `PASS`와 `INFO`·`OBS`·`SKIP`·`DETECTED` 줄의 본문은 요약으로 보지 않는다.
+9. 실패 줄이 모두 기준선에 있으면 '통과(알려진 실패 n줄)'다.
+10. 그 밖은 통과다.
+
+검사별 판정과 별도로, 실행기의 `expected.txt`에 있는데 상태가 없는 검사는 '실행 안 됨', 상태는 있는데 `expected.txt`에 없는 검사는 '기대 목록에 없는 검사', `runner-error.txt`가 있으면 '(실행기)' 줄로 실패한다.
+
+이번에 돌린 검사의 기준선 줄이 로그에 안 나오면 '해소 경고'로 따로 알린다(실패 아님). 샤드마다 따로 판정하므로 그 샤드에서 돌리지 않은 검사의 기준선 줄은 비교하지 않는다. 요약 표의 '단언/기준'·'SKIP/기준' 칸은 이번 값과 기준값이다.
+
+실패 줄은 다음과 같다. 공통: 로그 첫 줄의 `MISSING `·`UNLISTED `(실행기가 검사 대신 남긴 표지). 브라우저: 줄머리 `FAIL`·`BLOCKED`(`FAIL BLOCKED` 포함, `PASS BLOCKED`는 통과), 파이썬 최상위 `Traceback`, `ux_task`의 ` 막힘:` 줄과 `넘침 True`(문서 가로 넘침) 장면 줄, 비어 있지 않은 `errors [...]` 줄(`rules`·`econint`가 페이지 오류를 이 한 줄로만 찍고 0으로 끝난다. `errors []`는 통과). `ux_task`는 실패해도 0으로 끝나므로 `cfg`가 든 첫 JSON 줄(표준 오류가 앞에 섞여도 찾는다)의 `completed`가 true가 아니거나, `error`가 있거나, `console`(콘솔 error·warning·페이지 오류)이 비어 있지 않거나 없으면 실패로 본다. `ux_coach`는 JSON의 `error`와 ` console: […]` 줄을 본다. Node: 줄머리 `FAIL`·`BLOCKED`·`not ok`·`✖`·`✗`·`실패 `(모형 검산의 실패 항목), `ℹ fail N`(N>0), 비어 있지 않은 `FAILURE_COUNTS {…}`. review 42번의 `DETECTED … FAIL …` 변이 탐지 줄(줄 가운데 FAIL)과 48번의 `FAILURE_COUNTS {}`는 실패가 아니다.
+
+## 기준선(`baseline-fail.txt`)과 기준 수치(`baseline-counts.txt`) 고치는 규칙
+
+- **사람이 로그를 직접 읽고 원인을 확인한 뒤에만** 고친다. CI를 통과시키려고 새 실패를 넣거나 기준 수치를 낮추지 않는다.
+- 기준선에 넣어도 되는 것은 검사기가 장면을 만들지 못한 `BLOCKED`처럼 앱 결함이 아니라고 확인된 줄뿐이다. 넣는 커밋 본문에 근거 로그(어느 실행의 어느 줄)와 판단 이유를 적는다. 예외(`Traceback`) 줄은 넣지 못한다.
+- '해소 경고'가 나오면 원인을 확인하고 그 줄을 지운다.
+- 기준선 형식: 검사 이름<TAB>실패 줄 전체. 앞뒤 공백은 무시하고, 줄 끝 `*`만 앞부분 일치로 쓴다. 숫자가 실행마다 바뀌는 줄이 아니면 `*`를 쓰지 않는다. `*` 앞부분은 `FAIL`·`BLOCKED`로 시작해 장면 라벨과 콜론까지 포함한 20자 이상이어야 한다(`FAIL BLOCKED 390x844-light-mobile:*`). 아니면 판정기가 형식 오류로 멈춘다.
+- 기준 수치는 검사를 바꿔 단언이 줄었거나 SKIP이 늘었을 때, 또는 환경 차이(리눅스 글꼴 등)로 확인됐을 때만 고친다. 커밋 본문에 바꾸기 전후의 요약 줄과 까닭을 적는다. 단언이 늘어난 것은 고치지 않아도 통과다.
+
+## 최종 판정은 맥 로컬
+
+CI는 리눅스(ubuntu)에서 돈다. 글꼴 대체·글자 폭·스크롤 막대·WebKit 판이 맥과 달라 말줄임·가로 넘침·가림 같은 화면 측정 검사가 처음에 어긋날 수 있다. 어긋나면 기준선에 넣기 전에 맥 로컬 결과와 비교한다. 병합·릴리스 직전에는 맥 로컬에서 `--all`과 Node 전체를 한 번 더 돌려 그 결과를 최종 판정으로 쓴다. `--all`은 `suites.txt`의 32줄, 곧 필수 31종과 아직 파일이 없는 선택 검사 `rev14`(건너뜀으로 남는다)다. 목록 밖 리그 브라우저 검사(`rules`·`e2e3`·`econint` 등 16종)는 이름으로 돌리며, 어느 PR에서 돌리는지는 `docs/DEV-WORKFLOW.md` §8이 정한다.

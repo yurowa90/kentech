@@ -1,0 +1,40 @@
+# 브라우저 검사 목록과 CI 샤드 배분.
+# 칸(공백 구분): 이름  샤드  예상초  [optional]
+#   이름    tests/league/<이름>.py. ux_task:<cfg>는 ux_task.py --cfg <cfg>로 돈다.
+#   샤드    1 이상의 정수. CI의 browser 매트릭스는 이 칸에 적힌 번호로 만든다(browser.sh --shards, 지금 1~8).
+#   예상초  맥 로컬 통합 검사 18(작업 줄기 322bc7c, rev13 병합)의 실행 시간. rev14는 rev13 시간으로 추정했다.
+#   optional  파일이 없으면 SKIP으로 남기고 실패로 치지 않는다. 표시가 없는 검사의 파일이 없으면 실패다.
+# 필수 검사(optional 표시 없음)는 baseline-counts.txt에 기준 수치 줄이 있어야 한다. browser.sh가 칸·중복과 함께 확인한다.
+# 줄 순서가 샤드 안 실행 순서다. 샤드 합(예상초)은 README의 배분표와 맞춘다.
+rev14             8   211  optional
+rev13             7   211
+rev12             6   117
+rev11             4   111
+rev10             5   114
+rev9              8   181
+rev8c             4   311
+s7                3   322
+s8n               6   229
+d82ux             3    93
+d80b              5    48
+econui            5   265
+solo              3   143
+score1            8    60
+ux_s2fix          8   136
+ux_s2fix2         4   151
+ux_coach          4    29
+ux_task:desktop   2    16
+ux_task:tablet    5    15
+ux_task:mobile    8    16
+fx_event          1   594
+fx_end            7   182
+fx_map            7    61
+fx_replay         6   165
+fx_town           7    19
+endgrid           7   130
+peek              5   162
+next              3    45
+v3a               6    67
+snaprender        6    26
+webkit            2    80
+storage           2   507
