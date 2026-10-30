@@ -5,6 +5,7 @@
 ## 1. 사용자 목표와 방향(원문 요지)
 - 연도마다 '기출 충실판 + 지역사회·현재 이슈 확장판' 짝을 완성한다(ROADMAP). 2022 짝 먼저: 충실판 `g2022`, 확장판 '전력 리그'(#league, 혼자 하기·멀티).
 - 2026-10-13 사용자 요청: 2022 확장판을 상용 시뮬레이션 게임과 같은 저울로 매겨 **모형·근거, 교육 설계, 시각·연출, 조작감·UX, 안정성을 모두 8점 이상**으로. 총괄 기준선은 7·7·4·4·6이었다.
+- 일하는 방식(D-92, 10-30부터): 총괄이 범위·지시서·판정·병합·통합 검사·사용자 보고를 맡는다. 이슈 브랜치마다 작업 세션이 구현 담당 → 다른 세션의 검사 담당 → 맥락 없는 독립 검토자를 돌리고 자기 브랜치에 커밋한 뒤 총괄에 보고한다. push·PR·리뷰 글·병합·태그는 총괄만 한다(절차 `docs/DEV-WORKFLOW.md`). 아래 줄은 그 전 방식이다.
 - 일하는 방식: 이 세션(총괄, `~/Projects/kentech-wt/econ`, 작업 줄기 `claude/kentech-league-econ-balance`)이 범위·판정·병합·통합 검사·push·사용자 보고. 갈래는 **Claude Desktop 앱 세션**(작업 칩 `spawn_task`로 띄움, 앱 kentech 그룹에 보임)이 자기 워크트리(`~/Projects/kentech/.claude/worktrees/<이름>`)에서 Codex(Sol·Astra) 구현 → 다른 Codex 검사 → opus-reviewer 검토 → 커밋 → 총괄에 SendMessage 보고. 갈래는 push·작업 줄기 병합 금지.
 - 공통 규칙: `_briefs/lanes/COMMON.md`, 품질 8 공통 `_briefs/lanes/q8/COMMON-Q8.md`(독립 채점·파일 소유표·병합 규칙), 부하 규칙 `_briefs/lanes/LOAD.md`(브라우저 검사 한 번에 하나, 1분 부하 150 넘으면 브라우저 미루기, Codex 동시 2개, 부하 150 이상의 시간 초과는 판정에 안 씀).
 
