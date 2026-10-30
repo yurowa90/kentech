@@ -502,15 +502,19 @@ test('1 §1·5 교부세 달: 안내·D-90 폭염 도움말 외 서랍 HTML = 9c
   // D90-screen-report의 승인 연결: 기존 사건 본문·why 보존 + 폭염 추가 감산·한계 설명.
   // 렌더 출력에서 기대 HTML을 복사하지 않는다. 고정 승인 문구와 기존 입력 자료로 만든다.
   const E = h.R.events.find(e => e.id === 'heatwave_peak');
+  // rev14 m4: 허용된 변경은 H1 카드 앞면 한 문구뿐이다.
+  const H1 = '오후 냉방 수요가 늘고 LNG·일반 태양광 출력이 조금 줄며 공공시설 보수비가 한 번 들어요. 재난이라 특별교부세가 나와요.';
+  assert.equal(E.text, H1, 'rev14 H1 글자 그대로');
+  const beforeHeat = old.R.events.find(e => e.id === 'heatwave_peak');
   const heat = '폭염 달엔 바깥 공기와 패널이 더워져 LNG와 일반 태양광 출력이 조금 줄어요(연구 근거). 얼마나 더 더운지는 게임 가정이에요.';
   const limitation = '석탄·SMR·디젤과 탠덤 태양광은 넣을 근거 값을 못 찾아 이 게임에선 폭염 때 출력을 줄이지 않아요.';
   const tip = `<div class="lg-info-line"><p>${escape(E.text)}</p><details class="lg-info" data-fold="event-disaster-heatwave_peak"><summary class="lg-info-btn" data-info-key="event-disaster-heatwave_peak" aria-label="설명 보기: ${escape(E.name)}">!</summary><div class="lg-info-pop" role="note">${escape([E.why, heat, limitation].join(' '))}</div></details></div>`;
   assert.equal(current.html.split(tip).length - 1, 1, '승인된 폭염 설명·접근성 속성·접힘 키를 가진 블록 정확히 하나');
   assert.ok(!baseline.html.includes('event-disaster-heatwave_peak'), '변경 전 폭염 도움말 없음');
   // 명세 rev8 B4: 서랍 제목 '이웃·거래' → '사건·거래'. 제목 한 곳만 기준판 이름으로 되돌려 나머지 바이트를 비교한다.
-  const normalized = current.html.replace(tip, `<span>${escape(E.text)}</span>`).replace(grantNotice, '').replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
+  const normalized = current.html.replace(tip, `<span>${escape(beforeHeat.text)}</span>`).replace(grantNotice, '').replace('<strong>사건·거래</strong>', '<strong>이웃·거래</strong>');
   assert.deepEqual(Buffer.from(normalized, 'utf8'), Buffer.from(baseline.html, 'utf8'),
-    '사건 자료·교부세 안내·승인 폭염 도움말 외 개행·공백 포함 전체 UTF-8 바이트 동일');
+    '사건 자료·교부세 안내·승인 폭염 도움말·rev14 H1 교체 외 전체 UTF-8 바이트 동일');
 });
 test('1 §1·5 교부세 0 달: 서랍 HTML 바이트 동일성 유지', () => {
   // Q8 예외는 교부세 달에 한정된다. 0 달까지 안내 정규화로 숨기면 회귀를 놓친다.

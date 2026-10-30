@@ -492,7 +492,8 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   rendered.forEach(r => {
     near(r.raw, expectedRows[r.key], `${r.key} 독립 기대값 vs DOM 원시값`);
     // rev10 R7: 원시 기대 몫으로 명세의 배분값을 계산. 동점 보호는 각자 반올림.
-    near(r.visible, displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).get(r.key)
+    near(r.visible, displayContract({...a, trial:expected.base, actual:expected.actual,
+      total:expected.actual-expected.base, parts:expected.parts}).get(r.key)
       ?? Number(expectedRows[r.key].toFixed(digits)), `${r.key} 명세 표시 배분/각자 반올림`);
   });
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g))
@@ -500,10 +501,11 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
       `${m[1]} 대상별 소수 자릿수·유니코드 마이너스·단위 붙임`); // spec-C §M5: 배분된 표시값에도 기존 숫자 형식 엄격 비교 유지.
   near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.raw, 0), expected.actual, '폭포 원시 합계 1e-9'); // D-80: 단위 전환에도 합계 정밀도 유지.
   const displayedParts = rendered.filter(r => causes.includes(r.key));
-  // rev10 R7: 배분 맵이 있을 때 표시 출발 + 표시 몫 합 = 표시 실제.
-  if (displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).size)
-    eq(Math.round(Number(expected.base.toFixed(digits))*scale)+displayedParts.reduce((sum,r)=>sum+Math.round(r.visible*scale),0),
-      Math.round(Number(expected.actual.toFixed(digits))*scale), '표시 시작 + 표시 몫 = 표시 실제');
+  // rev14 M1 §2: 배분 맵이 있을 때 표시 몫 합 = 원 Δ 반올림.
+  if (displayContract({...a, trial:expected.base, actual:expected.actual,
+    total:expected.actual-expected.base, parts:expected.parts}).size)
+    eq(displayedParts.reduce((sum,r)=>sum+Math.round(r.visible*scale),0),
+      Math.round(Number((expected.actual-expected.base).toFixed(digits))*scale), 'rev14 표시 몫 합 = 원 Δ 반올림');
   ok(html.includes('약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)'), '판정·분해 기준 안내');
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
   eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= (target === 'grid' ? .05 : .005), '대상별 재현 설명 표시 문턱'); // D-82: 계통 표시 반 눈금 0.05 MWh/일, 정전 유지.

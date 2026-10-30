@@ -418,7 +418,13 @@
     return v;
   }
   const PLAIN_DAY = { w: 0, hot: false, m: 6, coolF: 0, winter: false };
-  const outageCut = dem => PK.climate ? Math.max(0.005, 0.02 * dem) : 0.05;
+  // 정전 시간 판정선: 설명 문장(league.js outageHoursDef)·league-core outageFloor와 같은 params를 부를 때마다 읽는다(기본 0.005 MW·2%).
+  const outageFloorOf = dem => {
+    const P = KCP.ECON_DATA?.params;
+    return Math.max(P?.outageHourMinMW?.v ?? 0.005, (P?.outageHourShare?.v ?? 0.02) * dem);
+  };
+  // 병원 정전 시간은 팩과 관계없이 같은 판정선(params)을 쓴다. 일반 정전은 기후 팩이 아니면 옛 0.05 MW 그대로.
+  const outageCut = dem => PK.climate ? outageFloorOf(dem) : 0.05;
   const peakDemand = (pol, fab2) => { let p = 0; for (let h = 0; h < 24; h++) p = Math.max(p, TOWNS.reduce((a, W, ti) => a + demand(ti, h, PLAIN_DAY, pol, fab2), 0)); return p; };
   const polOf = st => ({ tax: st.policies.includes("tax"), dr: st.policies.includes("dr"), share: st.policies.includes("share"), save: st.policies.includes("save") });
   // HUD와 같은 보통 날의 하루 최대 수요를 비교한다. 저녁 계약량의 합은 하루 피크 감축이 아니다.
@@ -886,7 +892,7 @@
         });
         rem.forEach((r, ti) => {
           const Dt = town[ti];
-          if (hospTi[ti]) { hrHospDem[k] += dem[ti]; hrHospUns[k] += Math.max(0, r); if (r > Math.max(0.005, dem[ti] * 0.02)) hrHosp[k] = 1; }
+          if (hospTi[ti]) { hrHospDem[k] += dem[ti]; hrHospUns[k] += Math.max(0, r); if (r > outageFloorOf(dem[ti])) hrHosp[k] = 1; }
           Dt.dem += dem[ti];
           hrUns[k * NT + ti] = Math.max(0, r);
           if (r > outageCut(dem[ti])) {
@@ -3193,7 +3199,7 @@
     if (S.lastTick !== tick) {
       S.lastTick = tick;
       $("#bd-run-day").textContent = tick;
-      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${PK.climate ? (leagueMonth() ? `${leagueMonth()}월 (날씨는 ${monthName(wx.m)} 기준)` : monthName(wx.m)) + " · " : ""}${WX[wx.w].name}${wx.hot ? " · 폭염" : ""}</span>`;
+      $("#bd-run-wx").innerHTML = ico(WX[wx.w].k) + `<span>${PK.climate ? (leagueMonth() ? `${leagueMonth()}월 (날씨는 ${monthName(wx.m)} 기준)` : monthName(wx.m)) + " · " : ""}${WX[wx.w].name}${wx.hot ? " · 무더위" : ""}</span>`;
       const bar = $("#bd-run-bar");
       bar.style.width = `${Math.round(p * 100)}%`;
       $("#bd-run-prog").setAttribute("aria-valuenow", String(Math.round(p * 100)));
@@ -3804,7 +3810,7 @@
   function syncResultToastPosition() {
     if (!S?.alive || !S.opts.league) { stopResultToastPosition(); return; }
     const el = $("#bd-toast");
-    if (!el || el.dataset.phase !== "result" || el.dataset.show !== "true") { stopResultToastPosition(); return; }
+    if (!el || el.dataset.phase !== "result" || (el.dataset.show !== "true" && !(Number(window.getComputedStyle?.(el)?.opacity) > 0))) { stopResultToastPosition(); return; }
     // 글자·렌즈·서랍이 같은 작업의 뒤쪽에서 바뀌어도 다음 그림 전에 다시 잰다.
     if (!S.toastPositionRaf) {
       const state = S;
@@ -3814,8 +3820,9 @@
       });
     }
     const openPanel = S.root.dataset.resultDrawer === "true" && S.root.querySelector('#lg-panel:not([hidden]):not([data-folded="true"])');
+    const endPanel = !!openPanel && openPanel.dataset.stage === "end" && openPanel.dataset.tab === "result";
     // 폰(760px 이하)은 CSS의 '서랍 머리' 자리를 따른다.
-    if (openPanel && window.matchMedia("(max-width: 760px)").matches) {
+    if (openPanel && !endPanel && window.matchMedia("(max-width: 760px)").matches) {
       delete el.dataset.clearPanel; delete el.dataset.clearKeys;
       return;
     }
@@ -3824,6 +3831,35 @@
       return r?.width > 0 && r.height > 0 ? r : null;
     };
     const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const shown = selectors => [...S.root.querySelectorAll(selectors)].map(rect).filter(Boolean);
+    if (endPanel) {
+      // 끝 화면은 전폭 서랍 자체가 아니라 본문 카드·머리의 실제 요소를 장애물로 삼는다.
+      // 폰에서는 머리의 빈 가로 구간도 후보라 제목과 접기·닫기 사이에 놓을 수 있다.
+      const initial = rect(el);
+      if (!initial) return;
+      S.root.style.setProperty("--lg-result-toast-left", `${Math.round(Math.max(8, Math.min(initial.left, window.innerWidth - initial.width - 8)))}px`);
+      el.dataset.clearPanel = "true";
+      const t = rect(el);
+      if (!t) return;
+      const obstacles = shown('#bd-hud, .lg-bar, #lg-panel[data-stage="end"] .lg-pbody > *, .lg-ptabs > *');
+      const strip = rect(document.getElementById("strip"));
+      if (strip) obstacles.push(strip);
+      const xs = [t.left, 8, window.innerWidth - t.width - 8, ...obstacles.flatMap(r => [r.left - t.width - 8, r.right + 8])].map(Math.round);
+      const ys = [t.top, 8, window.innerHeight - t.height - 8, ...obstacles.flatMap(r => [r.top - t.height - 8, r.bottom + 8])].map(Math.round);
+      const positions = xs.flatMap(left => ys.map(top => ({ left, top, right: left + t.width, bottom: top + t.height })))
+        .filter(p => p.left >= 8 && p.right <= window.innerWidth - 8 && p.top >= 8 && p.bottom <= window.innerHeight - 8 && obstacles.every(r => !intersects(p, r)))
+        .sort((a, b) => Math.abs(a.left - t.left) + Math.abs(a.top - t.top) - Math.abs(b.left - t.left) - Math.abs(b.top - t.top));
+      const position = positions[0];
+      if (position) {
+        S.root.style.setProperty("--lg-result-toast-left", `${position.left}px`);
+        S.root.style.setProperty("--lg-result-toast-top", `${position.top}px`);
+        el.dataset.clearKeys = "true";
+      } else {
+        // 빈 자리가 없으면 직전 프레임 자리를 끌고 가지 않고 기본 자리로 되돌린다.
+        delete el.dataset.clearKeys; delete el.dataset.clearPanel;
+      }
+      return;
+    }
     // 넓은 화면에서 옆 서랍이 열려 있으면 알림을 서랍 왼쪽 빈 지도 가운데로 옮긴다(rev13 R1, 1024 서랍 본문 겹침).
     const panelRect = openPanel ? rect(openPanel) : null;
     if (!panelRect) delete el.dataset.clearPanel;
@@ -3834,7 +3870,6 @@
         el.dataset.clearPanel = "true";
       }
     }
-    const shown = selectors => [...S.root.querySelectorAll(selectors)].map(rect).filter(Boolean);
     const t = rect(el), keys = shown("#lg-lens-grid, #lg-map-key-toggle");
     if (!t) return;
     const obstacles = shown('#lg-lens-grid, #lg-map-key-toggle, #bd-town-look-key, #bd-hud, .lg-bar, #lg-panel:not([hidden]):not([data-folded="true"]), .lg-ptabs, #lg-result-heading, #bd-mapbar, .lg-map-guidance, #bd-dock, #bd-run');

@@ -1,5 +1,5 @@
 'use strict';
-// rev10 R7: 명세로 작성한 표시 전용 기대값. ui 함수·표시 맵을 읽지 않는다.
+// rev14 M1 §1·2: 원 Δ 반올림이 목표. ui 함수·표시 맵을 읽지 않는다.
 module.exports = function displayContract(a) {
   const digits=a.target==='grid'?1:2, scale=10**digits;
   const parts=[...a.parts];
@@ -7,7 +7,7 @@ module.exports = function displayContract(a) {
     parts.push({key:'replay',value:a.replay});
   const start=a.trial??a.base;
   if(!parts.length||![start,a.actual,...parts.map(p=>p.value)].every(Number.isFinite)) return new Map();
-  const target=Math.round(Number(a.actual.toFixed(digits))*scale)-Math.round(Number(start.toFixed(digits))*scale);
+  const target=Math.round((Number(a.total.toFixed(digits))+0)*scale);
   const ticks=parts.map(p=>Math.floor(p.value*scale)), left=target-ticks.reduce((s,x)=>s+x,0);
   // rev10 검토 M1(총괄 수정): 음수 나머지는 내림 아래로 깎지 않고 각자 반올림(빈 Map).
   if(left<0||left>parts.length) return new Map();

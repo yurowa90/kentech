@@ -62,9 +62,10 @@ def display_shares(a):
     if not a.get("replayOutsideSum") and abs(replay) >= (.05 if a.get("target") == "grid" else .005):
         values = {"replay": Decimal(str(replay)) * scale, **values}
     floors = {k: int(v.to_integral_value(rounding=ROUND_FLOOR)) for k, v in values.items()}
-    # rev10 R7: 표시 시작/실제를 따로 반올림한 차가 목표다. 혼합 부호와 동점 보호 포함.
-    target = int((Decimal(str(rounded_share(a["actual"], a))) -
-                  Decimal(str(rounded_share(a.get("trial", a.get("base", 0)), a)))) * scale)
+    # rev14 M1 §1·2: 이진 float 정확값을 반올림(정확한 중간값은 0에서 먼 쪽).
+    digits = 1 if a.get("target") == "grid" else 2
+    target = int(Decimal.from_float(float(a["total"])).quantize(
+        Decimal('.1' if digits == 1 else '.01'), rounding=ROUND_HALF_UP) * scale)
     remainder = target - sum(floors.values())
     # rev10 검토 M1(총괄 수정): 음수 나머지는 각자 반올림(빈 맵)으로 둔다.
     if remainder < 0 or remainder > len(values):
@@ -782,12 +783,12 @@ def scene(checks, page, requests, label, width, trial, actual):
               f"{label} 배선 일치: 재현 차이를 포함한 원시 합계 항등식")
     checks.ok(abs(sum(v for k, v in values.items() if k != "actual") + (replay if "replay" not in values else 0) - values["actual"]) <= 1e-9,  # D-80: C-1·2·4·5 대상별 검사.
               f"{label} 생략 재현 복원 뒤 폭포 원시 합계 1e-9")  # D-80: C-4, 단위별 표시 반올림과 원시 합계를 구분.
-    # rev10 R7: 배분 맵이 있는 경우만 합 항등식. 빈 맵은 위의 각자 반올림 검사로 확인한다.
+    # rev14 M1 §2: 배분 맵이 있을 때 몫 합은 원 Δ 반올림.
     if display_shares(current_attribution(page)):
         scale = 10 if current_attribution(page).get("target") == "grid" else 100
-        checks.ok(round(visible["trial"] * scale) + sum(round(v * scale) for k,v in visible.items()
-                  if k not in ("actual", "trial")) == round(visible["actual"] * scale),
-                  f"{label} 표시 시작 + 표시 몫 = 표시 실제")
+        checks.ok(sum(round(v * scale) for k,v in visible.items()
+                  if k not in ("actual", "trial")) == sum(round(v * scale) for v in display_shares(current_attribution(page)).values()),
+                  f"{label} rev14 표시 몫 합 = 원 Δ 반올림")
     largest = max(NAMES, key=lambda k: abs(values[k]))
     top = sorted((k for k in NAMES if abs(values[k]) >= part_min(current_attribution(page))), key=lambda k: abs(values[k]), reverse=True)[:3]  # D-80: C-1·2·4·5 대상별 검사.
     card_keys = [c.get_attribute("data-missed") for c in cards.all()]
@@ -1057,12 +1058,12 @@ def monthly_scene(checks, page, requests, label, width, expected):  # D-80: 약�
         track_drawn(checks, page, k, f"{label} {width}px {k} 실제 막대 칸")
     checks.ok(abs(sum(v for k,v in raw.items() if k != 'actual') - actual) <= 1e-9,
               f"{label} 배선 일치: 재현 제외 DOM 원시 합계 1e-9")
-    # rev10 R7: 끝점을 각각 표시한 값으로 합을 검사한다(원시 Δ 반올림 금지).
+    # rev14 M1 §2: 끝점과 독립적으로 원 Δ를 반올림한다.
     if display_shares(a):
         scale = 10 if a.get("target") == "grid" else 100
-        checks.ok(round(visible['previous'] * scale) + sum(round(v * scale) for k,v in visible.items()
-                  if k not in ('actual', 'previous')) == round(visible['actual'] * scale),
-                  f"{label} 표시 시작 + 표시 몫 = 표시 실제")
+        checks.ok(sum(round(v * scale) for k,v in visible.items()
+                  if k not in ('actual', 'previous')) == sum(round(v * scale) for v in display_shares(a).values()),
+                  f"{label} rev14 표시 몫 합 = 원 Δ 반올림")
     waterfall = page.locator('#lg-outage-waterfall')
     aria = waterfall.get_attribute('aria-label') or ''
     aria_values = [float(v.replace('−','-').replace(',','')) for v in VALUE.findall(aria)]

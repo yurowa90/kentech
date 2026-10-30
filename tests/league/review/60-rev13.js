@@ -77,9 +77,8 @@ function allocation(a) {
   const original = JSON.stringify(a), digits = a.target === 'grid' ? 1 : 2;
   const display = need('outageDisplayValues')(a), part = need('outagePartShown'), total = need('outageShownTotal')(a);
   assert.equal(Object.prototype.toString.call(display), '[object Map]', '표시 배분 Map');
-  // 명세 R2: 배분 Map이 없는 옛 기록은 원값 반올림 경로를 유지한다.
-  near(total, display.size ? rounded(a.actual,digits)-rounded(a.trial,digits) : a.actual-a.trial,
-    display.size ? 'S7 표시 실제 − 표시 시작' : '빈 Map 원값 차이 유지');
+  // rev14 M1 §1·2: 빈 Map도 머리는 같은 원 Δ 반올림.
+  near(total, Number(a.total.toFixed(digits))+0, 'rev14 S7 원 Δ 반올림');
   const shown = a.parts.map(p => {
     const x = part(a,p.key,p.value);
     near(x, display.get(p.key) ?? p.value, `몫 ${p.key} 배분/옛 기록 원값`);
@@ -89,7 +88,8 @@ function allocation(a) {
   if (display.size) {
     allocated++;
     const replay = a.replayOutsideSum ? 0 : (display.get('replay') ?? rounded(a.replay,digits));
-    near(shown.reduce((s,x)=>s+x,0)+replay, total, '네 몫 + 표시 재현 차이 = 표시 차이');
+    near(shown.reduce((s,x)=>s+x,0)+replay, Number(a.total.toFixed(digits))+0,
+      'rev14 네 몫 + 합 안 표시 재현 차이 = 원 Δ 반올림');
   } else fallback++;
   const max = Math.max(...a.parts.map(p=>Math.abs(p.value)));
   const largest = a.parts.map((p,i)=>({p,i})).filter(({p})=>Math.abs(p.value) === max);
@@ -131,9 +131,9 @@ try {
   record=ctx.__rev13.missedText(note);
   if (!record || !record.includes('가장 큰 몫')) throw new Error('합성 기록으로 가장 큰 몫 분기 미확보');
 } catch(error) { recordError=error; }
-if (!recordError) test('R2 missedText 1.6626 → 표시 +1.6', () => {
-  assert.match(record,/가장 큰 몫[^]*?\+1\.6(?:\s|MWh)/);
-  assert.doesNotMatch(record,/\+1\.7(?:\s|MWh)/);
+if (!recordError) test('rev14 R2 missedText 1.6626 → 표시 +1.7', () => {
+  assert.match(record,/가장 큰 몫[^]*?\+1\.7(?:\s|MWh)/);
+  assert.doesNotMatch(record,/\+1\.6(?:\s|MWh)/);
 });
 else console.log(`INFO R2 missedText VM 호출 미확보 → 위 원문 단언 사용: ${recordError.message}`);
 

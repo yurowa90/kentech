@@ -275,18 +275,17 @@ for (const [basis,cut,policy] of [['monthly',true,false],['monthly',true,true],[
     assert.doesNotMatch(clue,/전선 변경|전선·정책 변경/);
   });
 
-// rev10 R7: 기대 목표는 각 끝점의 표시 정수 차. 표시 함수의 배분값을 기대값으로 복제하지 않는다.
+// rev14 M1 §1·2: 기대 목표는 원 Δ를 반올림한 눈금 수.
 function checkSum(a, requireMap=false) {
   const before=JSON.stringify(a), m=api('outageDisplayValues')(a), digits=a.target==='grid'?1:2, scale=10**digits;
   assert.equal(JSON.stringify(a),before,'원값·순서 불변');
   if(requireMap) assert.ok(m.size,'이 fixture는 배분 맵이 있어야 함');
   if(!m.size) return false; // 동점 보호/불완전 옛 기록 fallback은 아래 표시 검사로 별도 확인.
-  const start=a.trial??a.base;
   const shownParts=[...a.parts,...(!a.replayOutsideSum && Math.abs(a.replay)>=(digits===1?.05:.005)?[{key:'replay',value:a.replay}]:[])];
   assert.equal(m.size,shownParts.length,'폭포에 보이는 몫만 포함');
-  assert.equal(Math.round(Number(start.toFixed(digits))*scale)+shownParts.reduce((s,p)=>{
+  assert.equal(shownParts.reduce((s,p)=>{
     assert.ok(m.has(p.key),p.key); return s+Math.round(m.get(p.key)*scale);
-  },0)+0,Math.round(Number(a.actual.toFixed(digits))*scale)+0,'표시 정수 눈금 합 = 표시 실제'); // rev10 R7: −0과 0은 같은 표시(총괄 판정)
+  },0)+0,Math.round(Number(a.total.toFixed(digits))*scale)+0,'rev14 표시 몫 눈금 합 = 원 Δ 반올림 눈금');
   return true;
 }
 for(const row of [
@@ -300,7 +299,7 @@ for(const row of [
   a.actual=row.start+row.values.reduce((s,v)=>s+v,0)+a.replay;
   a.total=a.actual-a.trial;
   checkSum(a,true);
-  if(row.values[0]===1.663) assert.equal(api('outageDisplayValues')(a).get('choice'),1.6,'1.9 + 1.6 = 3.5');
+  if(row.values[0]===1.663) assert.equal(api('outageDisplayValues')(a).get('choice'),1.7,'rev14 원 Δ 1.663 → 1.7');
 });
 // rev10 R7: 같은 배분 맵을 카드·폭포 낭독·근거 한 줄이 함께 사용한다.
 test('R7 비어 있지 않은 배분의 카드/낭독/한 줄 일치',()=>{
@@ -318,8 +317,8 @@ test('R7 비어 있지 않은 배분의 카드/낭독/한 줄 일치',()=>{
   }
   for(const fn of ['outageEvidenceSummary','outageEvidenceText']) {
     const text=api(fn)(n,a,a.parts[1]);
-    assert.ok(text.includes('+0.9 MWh/일'),text);
-    assert.doesNotMatch(text,/\+1\.0 MWh\/일/);
+    assert.ok(text.includes('+1.0 MWh/일'),text);
+    assert.doesNotMatch(text,/\+0\.9 MWh\/일/);
   }
 });
 test('R7 동점 보호: 빈 Map이면 카드/폭포/낭독 각자 반올림',()=>{

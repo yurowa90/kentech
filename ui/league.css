@@ -1502,6 +1502,9 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
 #lg-coach { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; max-width: 680px; padding: 4px; border: 1px solid var(--ui-gold); border-radius: 8px; background: var(--ui-panel); color: var(--ui-text); pointer-events: auto; }
 #lg-coach-task { min-width: 0; overflow-wrap: anywhere; }
 #lg-coach button { min-height: 44px; min-width: 44px; padding: 0 6px; }
+/* rev14: 코치 띠의 행동 단추만 주 단추 계열 채움(건너뛰기·닫기와 위계 구분). #71dceb 위 #0d2a33 대비 약 9.4:1. */
+#lg-coach #lg-coach-action { background: #71dceb; color: #0d2a33; border-color: #71dceb; }
+#lg-coach #lg-coach-action:hover { background: #8fe6f1; border-color: #8fe6f1; }
 #lg-guide-close { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .lg-coach-target { outline: 3px solid var(--ui-gold); outline-offset: 2px; }
 .lg-team-map[data-coach-line="true"] .lg-map-keys { display: none; }
@@ -1766,6 +1769,8 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   width: auto; max-width: none; max-height: none; box-sizing: border-box;
 }
 .lg-team-map #lg-panel .lg-end-more { min-width: 0; }
+/* 끝 알림이 머리의 빈 가로 구간을 쓸 수 있게 제목 요소는 글자 너비만 차지한다. */
+@media (max-width: 760px) { .lg-team-map #lg-panel[data-stage="end"] .lg-ptabs strong { flex: 0 0 auto; margin-right: auto; } }
 @media (min-width: 761px) {
   .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 20px; align-items: start;
@@ -1777,8 +1782,8 @@ html.v2-still #bd-hud :is(.fx-flash-up, .fx-flash-down) :is(.v2-cap-k, .v2-cap-v
   .lg-team-map #lg-panel[data-stage="end"] .lg-fx-end { grid-column: 1; grid-row: 3; }
   .lg-team-map #lg-panel[data-stage="end"] .lg-end-more { grid-column: 2; grid-row: 2 / 4; }
 }
-@media (min-width: 1200px) {
-  /* DOM 순서를 유지하고, 긴 결정 기록의 초과 높이는 2행에서만 받는다. */
+@media (min-width: 761px) {
+  /* 1180 팀 화면도 요약·순위를 위에 붙이고, 긴 결정 기록의 초과 높이는 2행에서만 받는다. */
   .lg-team-map #lg-panel[data-stage="end"][data-tab="result"] .lg-pbody {
     grid-template-rows: auto 1fr auto auto;
   }
@@ -1872,6 +1877,7 @@ html.v2-league-host #lg-next { font-size: 16px; }
 #app #bd-root.lg-team-map #bd-toast[data-phase="result"][data-clear-keys="true"] { top: var(--lg-result-toast-top); bottom: auto; }
 /* rev13 R1: 넓은 화면에서 옆 서랍이 열려 있으면 서랍 왼쪽 빈 자리로(가로 위치만, 미끄러짐 없이 한 번에). */
 #app #bd-root.lg-team-map #bd-toast[data-phase="result"][data-clear-panel="true"] { left: var(--lg-result-toast-left); right: auto; transform: none; }
+#app #bd-root.lg-team-map[data-lg-phase="end"] #bd-toast[data-phase="result"][data-clear-panel="true"] { box-sizing: border-box; max-width: calc(100vw - 16px); }
 
 /* 상세 높이는 syncRunStrip이 머리를 뺀 40vh 이내로 계산한다. */
 #bd-root.lg-team-map #bd-run { max-height: 40vh; max-height: 40dvh; overflow-y: auto; }
