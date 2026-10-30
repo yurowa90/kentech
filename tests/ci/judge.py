@@ -290,6 +290,53 @@ def read_counts(path, kind):
     return counts
 
 
+CREDIT_MAX = 50
+
+
+def read_credits(path, kind):
+    """조건부 단언 보정. 앱 상태에 따라 묶음째 돌지 않는 단언을, 그 분기를 탔다는 통과 줄로 센다.
+
+    칸(탭 하나로 구분): 종류<TAB>검사 이름<TAB>한 줄당 단언 수<TAB>정규식. 정규식은 줄머리 `^PASS `로
+    시작해야 하고 줄 전체(앞뒤 공백 제거)에 맞춘다. 실패 줄·요약 줄을 보정으로 세지 않기 위해서다.
+    """
+    credits = {}
+    for number, raw in enumerate(read_text(path).splitlines(), 1):
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        parts = raw.split("\t")
+        if len(parts) != 4:
+            raise ValueError(f"단언 보정 {number}번째 줄: 탭 4칸(종류·이름·단언 수·정규식) 필요")
+        group, name, amount, pattern = (item.strip() for item in parts)
+        if group not in ("browser", "node") or not name:
+            raise ValueError(f"단언 보정 {number}번째 줄: 종류는 browser·node, 이름 필요")
+        try:
+            amount = int(amount)
+        except ValueError:
+            raise ValueError(f"단언 보정 {number}번째 줄: 단언 수는 정수 필요") from None
+        if not 1 <= amount <= CREDIT_MAX:
+            raise ValueError(f"단언 보정 {number}번째 줄: 단언 수는 1~{CREDIT_MAX}")
+        if not pattern.startswith("^PASS "):
+            raise ValueError(f"단언 보정 {number}번째 줄: 정규식은 ^PASS 로 시작해야 함")
+        try:
+            compiled = re.compile(pattern)
+        except re.error:
+            raise ValueError(f"단언 보정 {number}번째 줄: 정규식 오류") from None
+        if group == kind:
+            credits.setdefault(normalize(name), []).append((amount, compiled))
+    return credits
+
+
+def credit_of(rules, text):
+    """보정 단언 수. 줄 하나는 규칙 하나에만 쓴다."""
+    total = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        hit = next((amount for amount, pattern in rules if pattern.fullmatch(line)), None)
+        if hit:
+            total += hit
+    return total
+
+
 def read_names(path):
     names = []
     for raw in read_text(path).splitlines():
@@ -325,7 +372,8 @@ def blank(name, code=None, seconds=None):
                 issue="", details=[], summary=None, counts=None)
 
 
-def evaluate(kind, logs, records, baseline, counts):
+def evaluate(kind, logs, records, baseline, counts, credits=None):
+    credits = credits or {}
     results = []
     for name, (code, seconds, state) in records.items():
         result = blank(name, code, seconds)
@@ -352,6 +400,9 @@ def evaluate(kind, logs, records, baseline, counts):
         result["known"], result["new"], result["resolved"] = classify(failures, patterns)
         expect = result["counts"]
         summary = read_summary(kind, name, text) if expect else None
+        if summary is not None:
+            # 기준 단언 수와 비교하는 값은 요약의 단언 수에 조건부 보정(baseline-credit.txt)을 더한 것이다.
+            summary["credit"] = credit_of(credits.get(name, []), text)
         result["summary"] = summary
         if state == "timeout" or code == 124:
             result.update(verdict="실패", issue="시간 초과")
@@ -363,8 +414,9 @@ def evaluate(kind, logs, records, baseline, counts):
             result["verdict"] = "실패"
         elif expect and summary is None:
             result.update(verdict="실패", issue="요약 줄 없음(중간에 멈췄거나 출력 형식이 바뀜)")
-        elif expect and summary["assertions"] < expect["assertions"]:
-            result.update(verdict="실패", issue=f"단언 수 {summary['assertions']} < 기준 {expect['assertions']}"
+        elif expect and summary["assertions"] + summary["credit"] < expect["assertions"]:
+            credit = f" + 보정 {summary['credit']}" if summary["credit"] else ""
+            result.update(verdict="실패", issue=f"단언 수 {summary['assertions']}{credit} < 기준 {expect['assertions']}"
                                                f"({summary['line']})")
         elif expect and summary["skips"] > expect["skips"]:
             result.update(verdict="실패", issue=f"SKIP {summary['skips']} > 기준 {expect['skips']}")
@@ -396,6 +448,8 @@ def against(item, key):
     if not item["counts"]:
         return "-"
     have = item["summary"][key] if item["summary"] else "없음"
+    if key == "assertions" and item["summary"] and item["summary"].get("credit"):
+        have = f"{have}+{item['summary']['credit']}"
     return f"{have}/{item['counts'][key]}"
 
 
@@ -454,6 +508,8 @@ def main():
                         help="실행해야 할 검사 이름 목록(기본: 로그 폴더에 expected.txt가 있으면 그것)")
     parser.add_argument("--baseline", type=Path, default=here / "baseline-fail.txt", help="알려진 실패 기준선")
     parser.add_argument("--counts", type=Path, default=here / "baseline-counts.txt", help="검사별 기준 수치")
+    parser.add_argument("--credits", type=Path, default=here / "baseline-credit.txt",
+                        help="조건부 단언 보정(없으면 보정 없음)")
     parser.add_argument("--title", help="요약 제목")
     parser.add_argument("--summary-out", type=Path, help="요약을 덧붙일 파일")
     parser.add_argument("--max-lines", type=int, default=20, help="검사별 표시 줄 수")
@@ -483,7 +539,8 @@ def main():
             item.update(verdict="실패", issue="실행기 오류로 멈춤(runner-error.txt)", details=runner_error)
             results.append(item)
         results += evaluate(args.kind, args.logs, records, read_baseline(args.baseline),
-                            read_counts(args.counts, args.kind) if args.counts.is_file() else {})
+                            read_counts(args.counts, args.kind) if args.counts.is_file() else {},
+                            read_credits(args.credits, args.kind) if args.credits.is_file() else {})
         if expected is not None:
             for item in results:
                 if item["name"] != RUNNER and item["name"] not in expected:

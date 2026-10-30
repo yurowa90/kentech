@@ -230,8 +230,8 @@ CI는 작업 줄기와 main을 대상으로 한 PR마다, 그리고 수동 실�
 작업 줄기에 push될 때는 따로 돌지 않는다. PR은 작업 줄기 머리를 포함하거나, 포함하지 않은 쪽이 인계 문서 직접 커밋뿐일 때만 병합하므로(§9의 4), 병합 결과의 코드는 PR에서 검사한 것과 같다. 인계 문서 직접 커밋(§9 끝)은 CI 밖이다.
 
 ### 7.1 환경과 작업
-- 실행기 ubuntu, Node 24.21.0(맥 로컬과 같은 판), Python 3.14(맥 로컬 `tests/.venv`는 3.14.7, 끝자리 판은 실행기 이미지가 고른다)와 `tests/ci/requirements.txt`(Playwright 1.63.0과 그 의존 패키지, 맥 로컬과 같은 판). 모든 묶음에 Chromium, `webkit` 검사가 든 묶음에만 WebKit을 설치한다.
-- 한글 글꼴: `fonts-noto-cjk`(와 이모지 글꼴)를 설치한다. 앱은 Google Fonts를 불러오지만 늦거나 막히면 시스템 글꼴로 그린다. 한글 글꼴이 없으면 글자 폭이 달라져 넘침·가림 판정과 캡처가 맥과 달라진다.
+- 실행기: 문법·Node 작업은 ubuntu, 리그 브라우저 작업은 macOS(`macos-15`). Node 24.21.0(맥 로컬과 같은 판), Python 3.14(맥 로컬 `tests/.venv`는 3.14.7, 끝자리 판은 실행기 이미지가 고른다)와 `tests/ci/requirements.txt`(Playwright 1.63.0과 그 의존 패키지, 맥 로컬과 같은 판). 모든 묶음에 Chromium, `webkit` 검사가 든 묶음에만 WebKit을 설치한다.
+- 글꼴: 브라우저 검사 대부분은 Google Fonts CSS를 빈 응답으로 막아 운영체제의 대체 글꼴로 그린다. 리눅스에서는 `fonts-noto-cjk`를 깔아도 한글 폭·기본 줄 높이가 맥(Apple SD Gothic Neo)과 달라 CI 첫 실행에서 화면 측정 검사 8종이 리눅스에서만 실패했다. 애플 글꼴은 리눅스에 재배포할 수 없어 브라우저 작업을 macOS로 옮겼다(근거와 되돌리는 방법은 `tests/ci/README.md` '최종 판정은 맥 로컬'). 연결된 기기가 내려받는 배포 글꼴(IBM Plex Sans KR 등)로 재는 검사는 아직 없다.
 - 권한은 `contents: read`, 비밀값은 쓰지 않는다. 실제 Supabase에 붙는 검사(`tests/league/live.py` 등)와 외부 API는 CI에서 돌리지 않는다.
 
 | 작업 | 내용 |
