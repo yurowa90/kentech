@@ -140,7 +140,8 @@ fi
 PROBE="$OUT/.index.$$"
 "$SRV_PY" tests/srv.py "$PORT" "$ROOT" > "$OUT/srv.log" 2>&1 &
 SERVER_PID=$!
-deadline=$(( $(date +%s) + 15 ))
+# 새 실행기(macOS 등)는 첫 파이썬 기동이 느릴 수 있어 60초까지 기다린다(서버 준비 확인일 뿐 검사 대기 상한이 아니다).
+deadline=$(( $(date +%s) + 60 ))
 ready=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
   kill -0 "$SERVER_PID" 2>/dev/null || ci_error '서버 시작 실패: srv.log 확인 필요'
@@ -151,7 +152,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
   fi
   sleep 1
 done
-[ "$ready" -eq 1 ] || ci_error '15초 안에 서버가 준비되지 않음'
+if [ "$ready" -ne 1 ]; then
+  { echo '--- curl -v'; curl -v --max-time 3 "$URL" -o /dev/null 2>&1 | tail -15; echo '--- lsof'; lsof -nP -iTCP:"$PORT" 2>&1 | head; echo '--- srv.log'; cat "$OUT/srv.log"; } > "$OUT/server-diag.txt" 2>&1 || true
+  ci_error '60초 안에 서버가 준비되지 않음(server-diag.txt 참고)'
+fi
 rm -f "$PROBE"
 PROBE=''
 
