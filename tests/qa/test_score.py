@@ -33,6 +33,7 @@ ok(item_score(bands, {'a8': PASS, 'b8': PASS, 'c8': PASS}) == 4, '6 미확인이
 ok(item_score(bands, {'a6': PASS, 'a8': PASS, 'b8': PASS, 'c8': NA}) == 8, '해당 없음은 셈에서 뺌')
 ok(item_score({'6': [c('a6')], '8': [c('a8')]}, {'a6': PASS, 'a8': PASS}) == 8, '10 구간이 없으면 8이 최고')
 ok(item_score({'8': [c('a8')]}, {'a8': PASS}) == 8, '원문에 6 조건이 없는 항목은 6 구간을 채운 것으로 봄')
+ok(item_score({'6': [c('a6')], '8': [c('n8'), c('m8')]}, {'a6': PASS, 'n8': NA, 'm8': NA}) == 8, '체크가 모두 해당 없음인 구간은 채운 것으로 봄')
 
 field = {'6': [c('a6')], '8': [c('a8'), c('d8', 'device')]}
 ok(item_score(field, {'a6': PASS, 'a8': PASS}) == 6, '실기기 확인 못 함이 섞인 8 구간(1/2) → 6')
@@ -45,6 +46,7 @@ shared = [c('g1'), c('g2')]
 own = {'6': [c('o6')], '8': [c('o8')]}
 ok(item_score(own, {'g1': PASS, 'g2': PASS, 'o6': PASS, 'o8': PASS}, gates=shared) == 8, '공통 전제 통과면 항목 고유 체크로 셈')
 ok(item_score(own, {'g1': PASS, 'g2': FAIL, 'o6': PASS, 'o8': PASS}, gates=shared) == 4, '공통 전제 하나라도 실패면 4')
+ok(item_score(own, {'g1': PASS, 'g2': NA, 'o6': PASS, 'o8': PASS}, gates=shared) == 4, '공통 전제는 해당 없음도 통과가 아님')
 ok(item_score(own, {'g1': PASS, 'g2': PASS, 'o6': FAIL, 'o8': PASS}, gates=shared) == 4, '항목 고유 6 실패는 공통 전제 수와 상관없이 4(과반을 부풀리지 않음)')
 
 ok(axis_score('ux', {'A': 8, 'B': 8}, gates_ok=False) == 7.0, 'UX 관문 실패면 7 이하')

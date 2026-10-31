@@ -20,36 +20,38 @@ BANDS = ('6', '8', '10')
 
 
 def counted(checks, status, skip_field):
-    """구간 하나에서 셈할 체크. 해당 없음과(개발 단계 계산이면) 현장 확인 전 체크는 뺀다."""
-    out = []
+    """구간 하나에서 셈할 체크의 통과 여부 목록과, 현장 확인 전이라 뺀 체크가 있었는지.
+    해당 없음과(개발 단계 계산이면) 현장 확인 전 체크는 뺀다."""
+    out, skipped = [], False
     for check in checks:
         state = status.get(check['id'], UNKNOWN)
-        if state == NA or (skip_field and state == UNKNOWN and check['method'] in FIELD):
+        if state == NA:
+            continue
+        if skip_field and state == UNKNOWN and check['method'] in FIELD:
+            skipped = True
             continue
         out.append(state == PASS)
-    return out
+    return out, skipped
 
 
 def item_score(bands, status, skip_field=False, gates=()):
     """항목 점수. bands: {'6': [...], '8': [...], '10': [...]}(항목 고유 + 공통 구간 체크), gates: 6 구간 전제(공통 조건).
 
-    - 전제(gates) 가운데 하나라도 통과가 아니면 4(원문 '모든 구간의 관문'). 해당 없음은 통과로 본다.
+    - 전제(gates) 가운데 하나라도 '통과'가 아니면 4(원문 '모든 구간의 관문'). 전제는 늘 해당하는 조건이라 해당 없음도 통과로 보지 않는다.
     - 구간 누적: 아래 구간을 모두 통과하고 위 구간을 절반 넘게 통과하면 사이 홀수.
     - 셈할 체크가 처음부터 없는 구간은 채운 것으로 본다(원문에 그 구간 조건이 없음).
-      현장 확인 전 체크를 빼서 비게 된 구간은 채우지 않은 것으로 본다.
+      체크가 모두 해당 없음인 구간도 채운 것으로 본다. 현장 확인 전 체크를 빼서 비게 된 구간만 채우지 않은 것으로 본다.
     - 10 구간 체크가 없는 항목의 최고는 8이다.
     """
     for check in gates:
-        if status.get(check['id'], UNKNOWN) not in (PASS, NA):
+        if status.get(check['id'], UNKNOWN) != PASS:
             return 4
 
     def state(band):
         checks = bands.get(band, [])
-        marks = counted(checks, status, skip_field)
-        if not checks:
-            return True, False
+        marks, skipped = counted(checks, status, skip_field)
         if not marks:
-            return False, False  # 현장 확인 전으로 비었음
+            return (False, False) if skipped else (True, False)  # 현장 확인 전으로 비었음 / 원래 없거나 모두 해당 없음
         return all(marks), sum(marks) * 2 > len(marks)
 
     full6, half6 = state('6')
@@ -166,8 +168,8 @@ def main():
         items = table.get(axis, {})
         names = sorted(set(items) | set(pre.get(axis, {})))
         gate_checks = gates.get(axis, [])
-        gates_ok = all(status.get(c['id']) in (PASS, NA) for c in gate_checks)
-        gates_dev = all(status.get(c['id']) in (PASS, NA) or (status.get(c['id'], UNKNOWN) == UNKNOWN and c['method'] in FIELD)
+        gates_ok = all(status.get(c['id']) == PASS for c in gate_checks)
+        gates_dev = all(status.get(c['id']) == PASS or (status.get(c['id'], UNKNOWN) == UNKNOWN and c['method'] in FIELD)
                         for c in gate_checks)
         scores = {n: item_score(items.get(n, {}), status, gates=pre[axis].get(n, ())) for n in names}
         dev = {n: item_score(items.get(n, {}), status, skip_field=True, gates=pre[axis].get(n, ())) for n in names}
@@ -179,7 +181,7 @@ def main():
         print(f'## {axis}: {total} · 개발 단계 {total_dev}{tag}')
         print('| 항목 | 점수 | 개발 단계 | 실패·확인 못 함 |\n|---|---|---|---|')
         for n in names:
-            open_ids = [c['id'] for c in pre[axis].get(n, []) if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
+            open_ids = [c['id'] for c in pre[axis].get(n, []) if status.get(c['id'], UNKNOWN) != PASS]
             open_ids += [c['id'] for b in BANDS for c in items.get(n, {}).get(b, []) if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
             shown = ', '.join(open_ids[:12]) + (f' 외 {len(open_ids) - 12}개' if len(open_ids) > 12 else '')
             print(f'| {n} | {scores[n]} | {dev[n]} | {shown} |')
