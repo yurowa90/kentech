@@ -341,6 +341,13 @@
   const validRoom = r => typeof r === "string" && (newRoom(r) || /^[A-Z2-9]{4,6}$/.test(r));
   const displayRoom = r => newRoom(r) ? r.slice(0, 4) + "-" + r.slice(4) : r;
   const netCfg = () => store.get(K_NET) || { kind: "local", url: "", key: "" };
+  function buildNetDefault() {
+    const cfg = KCP.BUILD?.supabase;
+    if (!cfg || typeof cfg !== "object" || ![Object.prototype, null].includes(Object.getPrototypeOf(cfg)) ||
+      typeof cfg.url !== "string" || typeof cfg.key !== "string" || !cfg.key.trim() ||
+      NET.publicKeyProblem(cfg.key) !== null || NET.wsUrl(cfg.url.trim(), cfg.key.trim()) === null) return null;
+    return { url: cfg.url.trim(), key: cfg.key.trim() };
+  }
   const b64e = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const b64d = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
 
@@ -603,8 +610,23 @@
     return loss > 0 ? `<span class="lg-demolition">철거 손실 ${esc(fmt(loss, 1))}억</span>` : "";
   }
   const subsidyText = () => { const months = params("subsidyPayMonths"), quarterly = months.join() === "1,4,7,10"; return `국가 재정지원금은 연초에 연액을 정하고 ${quarterly ? "분기 초" : "지급 월"}(${months.join("·")}월)${quarterly ? "에" : "마다"} 1/${months.length}씩 받아요.`; };
+  function feedbackContext() {
+    const V = L?.role === "host" && L.S ? C.publicView(L.S, Date.now()) : L?.snap;
+    const round = Number.isInteger(V?.round) ? V.round : 0;
+    const drawers = { deal: DEAL_PANEL_NAME, region: "지역 지도", tech: "연구", result: "결과", journal: "일지", city: "도시", rank: "순위", help: "도움말" };
+    return {
+      mode: { solo: "혼자 하기", host: "진행자", team: "팀" }[L?.role] || "",
+      city: L?.role !== "host" && L?.team ? C.teamDef(R(), L.team)?.name || "" : "",
+      month: round,
+      total: V ? C.roundsOf(V).length : 0,
+      monthLabel: V && round ? monthName(V, round) : "",
+      phase: V?.phase === "review" ? KCP.fxTurn?.state?.()?.playing ? "운영" : "결과" : { lobby: "로비", plan: "계획", run: "운영", end: "끝" }[V?.phase] || "",
+      drawer: drawers[L?.panel] || L?.panel || "없음"
+    };
+  }
+
   function helpHTML() {
-    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><button type="button" class="v2-btn" id="lg-coach-again">첫 달 코치 다시 보기</button><p>${esc(SUPPLY_ASSUMPTION())}</p><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>${esc(subsidyText())} 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], [DEAL_PANEL_NAME, "사건을 보고 대응, 전기값, 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<span id="lg-sound-controls"><button type="button" class="v2-btn" id="lg-sound" aria-pressed="${KCP.fxAudio?.enabled() === true}">소리</button><input type="range" id="lg-sound-vol" min="0" max="100" step="10" aria-label="소리 크기" value="${Math.round((KCP.fxAudio?.volume() ?? .6) * 100)}"${KCP.fxAudio?.enabled() ? "" : " hidden"}></span><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
+    return `<section id="lg-help" class="lg-sec"><h3>이번 달에 할 일</h3><button type="button" class="v2-btn" id="lg-coach-again">첫 달 코치 다시 보기</button><p>${esc(SUPPLY_ASSUMPTION())}</p><ol><li>배치: 설비를 고르고 지도에 놓아요. 민원·전력망 렌즈를 봐요.</li><li>송전: 발전소와 마을을 선으로 이어요. 이웃 거래는 노란 연결점까지.</li><li>시험 운전: 아래 시험 버튼으로 내 도시를 먼저 돌려 봐요.</li><li>준비: 근거 하나·방향·확신으로 약속하고 준비를 눌러요.</li></ol><h4>재정지원금과 남은 돈</h4><p>${esc(subsidyText())} 남은 돈에는 지방채 한도를 포함해요. 건설·연구·대응 예약과 지원금·연계선 정산을 반영해요. 지방채는 빚이에요.</p><h4>막대 버튼</h4>${[["소리", "신호음을 켜거나 꺼요."], [DEAL_PANEL_NAME, "사건을 보고 대응, 전기값, 연계선을 정해요."], ["지역 지도", "이웃 도시를 보고 돌아와요."], ["연구", "연구 → 실증 → 도입을 살펴요."], ["결과", "숫자 → 원인 → 자세히를 봐요."], ["일지", "기준·약속·유지와 변경을 남겨요."], ["도시", "주민·지지율·정책·추이를 봐요."], ["순위", "도시별 점수 항목을 비교해요."], ["준비", "진행자에게 준비를 알리고, 혼자 할 때는 바로 이 달을 운영해요."]].map(([name, text]) => `<p><b>${name}</b> ${text}</p>`).join("")}<span id="lg-sound-controls"><button type="button" class="v2-btn" id="lg-sound" aria-pressed="${KCP.fxAudio?.enabled() === true}">소리</button><input type="range" id="lg-sound-vol" min="0" max="100" step="10" aria-label="소리 크기" value="${Math.round((KCP.fxAudio?.volume() ?? .6) * 100)}"${KCP.fxAudio?.enabled() ? "" : " hidden"}></span><button type="button" class="v2-btn" id="lg-build-help">모형 숫자와 자료 출처</button><button type="button" class="v2-btn" id="lg-feedback">의견 보내기(테스터)</button>${L.role === "solo" ? '<h4>판 다시 시작</h4><p>저장된 진행과 일지를 지우고 새 판을 시작해요.</p><button type="button" class="v2-btn" id="lg-solo-restart">처음부터</button>' : ""}${L.snap?.econ?.cities[L.team] ? `<p>지지율 ${esc(fmt(L.snap.econ.cities[L.team].approval, 1))}% · 주민 변화 ${esc(signed(L.snap.econ.report?.cities?.[L.team]?.dPop || 0))}명(지난달 대비)</p>` : ""}${speedsHTML(L.snap?.econ)}</section>`;
   }
   function planIssueCounts() {
     const issues = BG.planIssues();
@@ -1696,10 +1718,15 @@
     const rows = Object.entries(tdata().interview?.months || {}).filter(([, n]) => n.evidence);
     return rows.length ? `<details id="lg-promise-history"><summary>약속 일지 · 근거 유지와 변경</summary><ul>${rows.map(([t, n], i) => `<li>${esc(t)}달 · ${esc(n.evidence.text)} · ${i ? n.evidence.key === rows[i - 1][1].evidence.key ? "근거 유지" : "근거 변경" : "첫 근거"}${missedText(n) ? ` · ${esc(missedText(n))}` : ""}</li>`).join("")}</ul></details>` : "";
   }
+  function calibrationRows() {
+    return Object.values(tdata().interview?.months || {}).filter(n => n.outcome && Object.hasOwn(CONFIDENCE, n.confidence || ""));
+  }
   function calibrationHTML(id = "lg-calibration") {
     if (!["solo", "team"].includes(L.role)) return "";
-    const rows = Object.values(tdata().interview?.months || {}).filter(n => n.outcome && Object.hasOwn(CONFIDENCE, n.confidence || ""));
-    return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · 기기에만</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
+    const rows = calibrationRows();
+    // 시트 판의 끝 화면(접힌 지난달 결과 안 사본 포함)은 [결과 보내기]로 횟수가 나가므로 '기기에만'이라고 쓰지 않는다(D-94). 그 밖은 그대로.
+    const tag = KCP.feedback?.sheetUrl() && (L.S || L.snap)?.phase === "end" ? KCP.feedback.RESULT_TEXT.calibrationTag : "기기에만";
+    return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · ${esc(tag)}</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
       const group = rows.filter(n => n.confidence === key), wins = group.filter(n => n.outcome.hit).length;
       const brier = group.length ? group.reduce((sum, n) => sum + (p - Number(n.outcome.hit)) ** 2, 0) / group.length : null;
       return `<p data-calibration="${key}">'${label}'${withParticle(label, '을를').slice(label.length)} 고른 달 중 맞은 비율 ${group.length ? fmt(wins / group.length * 100, 1) + "%" : "기록 없음"} · ${group.length}번${brier == null ? "" : ` · 확신 점수 ${fmt(brier, 3)}(0에 가까울수록 정확)`}</p><meter min="0" max="1" value="${group.length ? wins / group.length : 0}" aria-label="${label} 적중 비율"></meter>`;
@@ -2212,11 +2239,71 @@
     const items = rounds.map(item).filter(Boolean), recent = items.slice(-3).join(""), older = items.slice(0, -3).join("");
     return `<section id="lg-decisions" class="lg-sec"><h3>결정과 결과 · 기기에 남은 기록</h3><ul>${recent || "<li>기기에 남은 결정 기록 없음</li>"}</ul>${older ? `<details data-decision-detail="older-months"><summary>앞의 ${items.length - 3}달 기록</summary><ul>${older}</ul></details>` : ""}</section>`;
   }
+  // 보내는 중·상태 글은 이 판·이 도시(방:도시)의 모듈 메모리에 둔다(떠났다 돌아와 L이 새로 생겨도 유지).
+  // '같은 조건으로 다시'는 방 코드가 같으므로 replaySolo가 진행 중인 상태에 replaced를 표시하고 떼어 낸다.
+  let sheetState = { key: "", sending: false, status: "", replaced: false };
+  function sheetResultFields(V) {
+    const own = V.econ.score.by[L.team], rows = calibrationRows();
+    return {
+      "판": KCP.feedback.buildLabel(), "모드": L.role === "solo" ? "혼자 하기" : "팀", "도시": teamName(L.team),
+      "게임 길이(달)": C.roundsOf(V).length, "종합 점수": fmt(own.score, 1), "순위": own.rank,
+      "참가 도시 수": V.econ.score.rank.length, "예측 맞은 달": rows.filter(n => n.outcome.hit === true).length,
+      "예측한 달": rows.length,
+      "확신 보정": Object.entries(CONFIDENCE).map(([key, [label]]) => {
+        const group = rows.filter(n => n.confidence === key);
+        return `${label} ${group.filter(n => n.outcome.hit === true).length}/${group.length}`;
+      }).join(" · ")
+    };
+  }
+  function sheetResultHTML(V) {
+    if (!KCP.feedback?.sheetUrl() || !["solo", "team"].includes(L.role)) return "";
+    const RT = KCP.feedback.RESULT_TEXT, key = L.room + ":" + L.team, sent = !!tdata().sheetResultSent;
+    if (sheetState.key !== key) sheetState = { key, sending: false, status: "", replaced: false };
+    const fields = sheetResultFields(V);
+    return `<section id="lg-sheet" class="lg-sec"><h3>${esc(RT.title)}</h3><p id="lg-sheet-note">${esc(RT.note)}</p><dl id="lg-sheet-values" aria-label="${esc(RT.valuesLabel)}">${Object.entries(fields).map(([name, value]) => `<div data-sheet-field="${esc(name)}"><dt>${esc(name)}</dt><dd>${esc(String(value))}</dd></div>`).join("")}</dl><button type="button" class="v2-btn primary" id="lg-sheet-send" aria-disabled="${sent || sheetState.sending}">${esc(sent ? RT.sentButton : RT.button)}</button><p id="lg-sheet-status" role="status" aria-live="polite">${esc(sheetState.status)}</p></section>`;
+  }
+  async function sendSheetResult(button) {
+    if (!L || !["solo", "team"].includes(L.role) || L.snap?.phase !== "end" || !KCP.feedback?.sheetUrl() ||
+      button.getAttribute("aria-disabled") === "true" || tdata().sheetResultSent) return;
+    const session = L, key = L.room + ":" + L.team, savedKey = dataKey(), RT = KCP.feedback.RESULT_TEXT;
+    if (sheetState.key === key && sheetState.sending) return;
+    const fields = sheetResultFields(L.snap);
+    const state = sheetState = { key, sending: true, status: RT.sending, replaced: false };
+    const update = sent => {
+      if (sheetState !== state || !L || L.room + ":" + L.team !== key) return;
+      const current = document.getElementById("lg-sheet-send"), status = document.getElementById("lg-sheet-status");
+      if (current) {
+        current.setAttribute("aria-disabled", String(sent || state.sending));
+        current.textContent = sent ? RT.sentButton : RT.button;
+      }
+      if (status) status.textContent = state.status;
+    };
+    update(false);
+    const sent = await KCP.feedback.send("result", fields);
+    state.sending = false;
+    state.status = sent ? RT.sent : RT.fail;
+    // 기다리는 사이 같은 조건으로 다시 시작했으면 앞 판은 사라졌으니 어디에도 기록하지 않는다.
+    if (sent && !state.replaced) {
+      // 같은 판이 끝 화면에 있을 때만 지금 세션에 기록한다.
+      if (L?.role === session.role && L.room + ":" + L.team === key && (L.S || L.snap)?.phase === "end") {
+        const d = tdata(); d.sheetResultSent = true; putData(d);
+      } else if (session.role === "team") {
+        const d = store.get(savedKey) || {}; d.sheetResultSent = true; teamSet(savedKey, d);
+      } else {
+        // 떠난 뒤에는 남아 있는 같은 판에만 기록해 새 판을 덮어쓰지 않는다.
+        const save = store.get(K_SOLO);
+        if (save?.state?.room === session.room && save.team === session.team && save.state.phase === "end") {
+          writeSolo({ ...save, interview: { ...save.interview, sheetResultSent: true } });
+        }
+      }
+    }
+    update(sent);
+  }
   function endHTML(V) {
     const { d } = monthNote(), inv = d.interview, end = inv.end || {};
     const crit = V.teams[L.team].crit, own = V.econ.score.by[L.team], top = V.econ.score.rank[0];
     const summary = `<section id="lg-final-summary" class="lg-sec"><h2>${esc(rev8Copy("M4Title"))}</h2><p>${esc(teamName(L.team))} ${esc(own.rank)}위 · ${esc(fmt(own.score, 1))}점 / 종합 1위 ${esc(top.name)} ${esc(fmt(top.score, 1))}점</p></section>`;
-    return `${summary}${decisionsHTML(V)}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team, L.role === "team" ? { savedGrid: tdata().interview?.metrics } : {}) || ""}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
+    return `${summary}${decisionsHTML(V)}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team, L.role === "team" ? { savedGrid: tdata().interview?.metrics } : {}) || ""}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>${sheetResultHTML(V)}`;
   }
   function finalCausesHTML(V) {
     // 혼자 하기·진행자는 전체 보고서를 보관한다. 공개 스냅에는 마지막 보고서만 있어
@@ -2481,6 +2568,7 @@
   function replaySolo() {
     if (L.role !== "solo" || L.snap.phase !== "end" || !L.initial) return;
     const app = L.app, save = { v: 1, state: structuredClone(L.initial), initial: structuredClone(L.initial), previous: soloSummary(L.snap), team: L.team, style: L.style, interview: { docs: {}, journal: {}, freeExperiment: L.interview?.freeExperiment }, aiRound: 0 };
+    if (sheetState.key === L.room + ":" + L.team) { sheetState.replaced = true; sheetState = { key: "", sending: false, status: "", replaced: false }; }
     close(); writeSolo(save); startSolo(app, save);
   }
 
@@ -2649,6 +2737,11 @@
     const soloSave = store.get(K_SOLO);
     const net = { ...netCfg() }, hostSave = store.get(K_HOST), lastTeam = store.get(K_TEAM);
     if (NET.publicKeyProblem(net.key)) net.key = ""; // 저장에 실패해도 거부 대상 키는 화면에 넣지 않는다.
+    const netDefault = buildNetDefault();
+    if (netDefault) {
+      if (!store.get(K_NET)) Object.assign(net, { kind: "supabase", ...netDefault });
+      else if (!String(net.url || "").trim() && !String(net.key || "").trim()) Object.assign(net, netDefault);
+    }
     const reg = R();
     let syncLobby = null;
     const mustCity = id => (reg.must || []).includes(id);
@@ -6532,6 +6625,10 @@
       return;
     }
     if (e.target.closest("#lg-build-help")) { closePanel(); BG.openHelp?.(document.getElementById("bd-help")); return; }
+    const feedback = e.target.closest("#lg-feedback");
+    if (feedback) { KCP.feedback?.open({ league: feedbackContext() }, feedback); return; }
+    const sheetSend = e.target.closest("#lg-sheet-send");
+    if (sheetSend) { sendSheetResult(sheetSend); return; }
     if (e.target.closest("#lg-panel-fold")) { L.panelFolded = !L.panelFolded; document.getElementById("lg-panel").dataset.folded = String(L.panelFolded); renderPanel(); return; }
     if (techClick(e)) return;
     if (econClick(e)) return;
