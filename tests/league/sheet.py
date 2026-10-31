@@ -821,13 +821,28 @@ def replay(checks, run, page):
     button.click()
     expect_result_status(page, 'sending')
     count_requests(checks, page, run.requests, before + 1, '다시 한 판 경합 보내기 시작')
-    # 보내는 중에 또 같은 조건으로 다시 시작한다. 늦게 온 성공이 새 판에 기록되면 안 된다.
+    # 보내는 중에 또 같은 조건으로 다시 시작하고, 새 판이 먼저 끝난 뒤에 앞 판의 성공이 온다
+    # (총괄 보강, 3차 검토 minor 1: 새 판이 끝 단계여도 앞 판의 늦은 성공을 새 판에 기록하면 안 된다).
     page.locator('#lg-solo-same').click()
     page.wait_for_function("()=>KCP.league.state().S.phase!=='end'")
+    try:
+        play_to_end(page)
+        end_panel(page)
+    except Exception as exc:
+        run.requests.release()
+        checks.blocked('경합 새 판 끝 화면: ' + str(exc).splitlines()[0][:180])
+        return
     run.requests.release()
     run.requests.wait_done(page, len(run.requests.records))
-    checks.ok(page.evaluate(sent_flag, SOLO_KEY) is False, '보내는 중 다시 시작한 새 판에 보냄 기록 없음')
+    checks.ok(page.evaluate(sent_flag, SOLO_KEY) is False, '보내는 중 다시 시작한 새 판(먼저 끝남)에 보냄 기록 없음')
     count_requests(checks, page, run.requests, before + 1, '다시 시작 경합 요청')
+    checks.ok(button.get_attribute('aria-disabled') == 'false' and button.inner_text() == rt['button'] and
+              page.locator('#lg-sheet-status').inner_text() == '', '경합 새 판 단추 활성·상태 글 빈 글')
+    button.click()
+    expect_result_status(page, 'sent')
+    count_requests(checks, page, run.requests, before + 2, '경합 새 판은 따로 보냄')
+    page.wait_for_function(sent_flag, arg=SOLO_KEY)
+    checks.ok(True, '경합 새 판 자기 보냄 기록')
 
 
 def result_mobile(checks, run, base):
