@@ -206,6 +206,7 @@ class Suite:
     def __init__(self, cfg, out):
         self.cfg, self.out = cfg, out
         self.rows, self.events, self.cases = [], [], []
+        self.freeze_shots = False
         out.mkdir(parents=True, exist_ok=True)
 
     def check(self, condition, name, detail=None):
@@ -227,18 +228,48 @@ class Suite:
         except Exception as exc:
             self.check(False, name + " 캡처", str(exc))
 
+    def window_shot(self, page, name):
+        """시험 운전 창 안의 증거 캡처. 이 판에 가짜 시계가 있으면 캡처하는 동안만 앱 시간을 멈춘다.
+
+        움직임 줄이기 시험은 앱 설계상 약 0.57초 만에 끝난다(150ms 간격 4번 + 120ms). 캡처 한 장은 맥에서
+        80~95ms, CI 리눅스에서 그보다 길어 캡처가 그 창을 써 버리면 뒤의 조작·단언 전에 띠가 사라진다.
+        시계는 캡처 앞뒤에서만 멈추므로 조작·관측·단언은 그대로 실제 시간 흐름에서 돈다.
+        """
+        if not self.freeze_shots:
+            self.shot(page, name)
+            return
+        for attempt in range(5):
+            try:
+                # 페이지 시계의 지금보다 1ms 뒤에서 멈춘다. 그사이 시계가 지나가 '과거' 오류가 나면 다시 읽는다.
+                page.clock.pause_at(page.evaluate('() => Date.now()') / 1000 + 0.001)
+                break
+            except Exception as exc:
+                if 'past' not in str(exc) or attempt == 4:
+                    raise
+        try:
+            self.shot(page, name)
+        finally:
+            page.clock.resume()
+
     def overflow(self, page, name):
         size = page.evaluate("() => ({width:innerWidth,scroll:Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)})")
         self.check(size['scroll'] <= size['width'], name + " 가로 스크롤 0", size)
 
-    def case(self, browser, base, name, fn, reduced=False):
+    def case(self, browser, base, name, fn, reduced=False, freeze_shots=False):
         ctx = page = None
+        self.freeze_shots = False
         try:
             ctx = browser.new_context(**CFG[self.cfg], color_scheme="light", locale="ko-KR",
                                       reduced_motion="reduce" if reduced else "no-preference")
             ctx.add_init_script(PROBE_JS)
             page = ctx.new_page()
             page.set_default_timeout(15000)
+            if freeze_shots:
+                # 문서가 열리기 전에 설치한다. 판 중간에 설치하면 performance.now()가 0부터 다시 시작해
+                # 앱이 미리 잰 시각보다 작아진다. 설치 뒤 시계는 실제 시간과 같은 속도로 흐르며
+                # window_shot의 캡처 동안에만 멈춘다.
+                page.clock.install()
+                self.freeze_shots = True
             def event(kind, message):
                 rec = {"case": name, "kind": kind, "message": str(message)}
                 self.events.append(rec)
@@ -275,6 +306,7 @@ class Suite:
                     self.check(False, name + " 종료 검사 예외", str(exc))
             if ctx is not None:
                 ctx.close()
+            self.freeze_shots = False
 
     def summary(self):
         passed = sum(r['pass'] for r in self.rows)
@@ -381,7 +413,7 @@ class Suite:
             self.overflow(page, name)
             return
         if trial:
-            self.shot(page, name + '-collapsed')
+            self.window_shot(page, name + '-collapsed')
         current = page.evaluate('() => (' + DOM_JS + ').run()')
         self.strip_assert(current['shown'], name + ' A3 조작할 띠가 재생 중 보임', current, trial)
         if not current['shown']:
@@ -410,7 +442,7 @@ class Suite:
                        expanded['controls'] == controls and expanded['visible'] and expanded['spark'],
                        name + ' A3 그래프 접기·true·제어 영역 spark 보임', expanded['run'], trial, expanded)
             if trial:
-                self.shot(page, name + '-expanded')
+                self.window_shot(page, name + '-expanded')
             fold = page.locator('#bd-run').get_by_role('button', name='그래프 접기', exact=True)
             if fold.count() and fold.is_visible():
                 self.strip_click(page, fold, trial)
@@ -732,7 +764,9 @@ def main():
                 for suite in suites:
                     for reduced in (False, True):
                         label = 'reduce' if reduced else 'motion'
-                        suite.case(browser, args.base, label+'-trial', suite.trial, reduced)
+                        # 움직임 줄이기 시험(약 0.57초)만 창 안 캡처 동안 앱 시계를 멈춘다(window_shot).
+                        suite.case(browser, args.base, label+'-trial', suite.trial, reduced,
+                                   freeze_shots=reduced)
                         def month_case(page, name, reduced=reduced, suite=suite):
                             suite.month(page, name, reduced)
                         suite.case(browser, args.base, label, month_case, reduced)
