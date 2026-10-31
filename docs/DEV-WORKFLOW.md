@@ -239,7 +239,7 @@ CI는 작업 줄기와 main을 대상으로 한 PR마다, 그리고 수동 실�
 | 문법 | `for f in *.js ext/*.js games/*.js ui/*.js; do node --check "$f"; done`와 `tests/ci/node-all.sh --check`(Node 목록과 파일 대조) |
 | 브라우저 목록 확인 | `tests/ci/browser.sh --shards`가 `suites.txt`의 칸·중복·기준 수치 누락을 확인하고 샤드 번호 목록을 만든다. 리그 브라우저 작업의 묶음이 이것이다 |
 | Node 전체 | `tests/ci/node-all.sh`가 `tests/ci/node-suites.txt`의 검사 전체(`ignore` 묶음 제외)를 두 묶음(heavy·rest)으로. 목록에 있는데 파일이 없거나, `tests/league/*.js`·`tests/league/review/[0-9]*.js`인데 목록에 없으면 실패다 |
-| 리그 브라우저 | `tests/ci/browser.sh`가 `tests/ci/suites.txt`의 목록(10-30 통합 검사 18의 31종에 `rev14`·`rev14b`를 더한 33종에서 맥 전용 `fx_map`을 뺀 것)을 여덟 묶음으로 동시에. 묶음 목록은 `suites.txt`의 샤드 번호에서 만든다. 리그 브라우저 검사 전부가 아니다. 목록 밖 16종은 §8 |
+| 리그 브라우저 | `tests/ci/browser.sh`가 `tests/ci/suites.txt`의 목록(10-30 통합 검사 18의 31종에 `rev14`·`rev14b`·`rev15`를 더한 34종에서 맥 전용 `fx_map`을 뺀 것)을 여덟 묶음으로 동시에. 묶음 목록은 `suites.txt`의 샤드 번호에서 만든다. 리그 브라우저 검사 전부가 아니다. 목록 밖 16종은 §8 |
 | 최종 판정 | 앞의 작업(문법, 브라우저 목록 확인, Node 전체, 리그 브라우저)이 모두 성공이어야 성공. 취소·건너뜀도 실패로 본다 |
 
 묶음 배분과 예상 시간은 `tests/ci/suites.txt`와 `tests/ci/README.md`의 표가 원본이다. 새 리그 브라우저 검사를 만들면 그 목록에 넣는다. 검사 결과(`tests/results/`와 캡처)는 워크플로 결과물로 남는다(14일).
@@ -329,7 +329,7 @@ CI 통과는 병합의 필요조건이고, 최종 판정은 맥 로컬 브라우
      git diff --name-only <검사한 SHA>...origin/claude/kentech-league-econ-balance
      ```
      GitHub가 충돌로 병합을 막으면(PR도 `docs/DECISIONS.md`를 고친 경우 등) 작업 줄기를 병합해 받는다. 그리고 `git diff --name-only <검사한 SHA> <새 머리>`도 세 파일 가운데 것뿐임을 PR 댓글에 남긴다. 이때 맥 로컬 확인은 다시 하지 않고 새 머리의 CI 녹색만 기다린다.
-   - 다른 PR의 코드·검사 변경이 작업 줄기에 들어왔으면 작업 줄기를 받고 CI와 맥 로컬 확인을 다시 한다. 맥 로컬 한 번은 `suites.txt` 33종만으로 예상초 합 약 85분(5,095초)이다. 그래서 같은 날 합칠 PR은 순서를 정한다. 앞 PR을 병합한 뒤에 다음 PR이 작업 줄기를 받아 맥 로컬 확인을 시작한다. 맥 로컬 확인은 한 번에 하나다.
+   - 다른 PR의 코드·검사 변경이 작업 줄기에 들어왔으면 작업 줄기를 받고 CI와 맥 로컬 확인을 다시 한다. 맥 로컬 한 번은 `suites.txt` 34종만으로 예상초 합 약 86분(5,188초)이다. 그래서 같은 날 합칠 PR은 순서를 정한다. 앞 PR을 병합한 뒤에 다음 PR이 작업 줄기를 받아 맥 로컬 확인을 시작한다. 맥 로컬 확인은 한 번에 하나다.
 5. 사용자 결정이 필요한 변경은 결정 기록(D-번호)이 있다.
 
 ```bash
