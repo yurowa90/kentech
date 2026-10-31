@@ -331,6 +331,9 @@ def credit_of(rules, text):
     total = 0
     for raw in text.splitlines():
         line = raw.strip()
+        if not line.startswith("PASS "):
+            # 정규식 최상위 '|'로 ^PASS 머리를 우회해도 PASS 줄 밖에는 보정하지 않는다.
+            continue
         hit = next((amount for amount, pattern in rules if pattern.fullmatch(line)), None)
         if hit:
             total += hit
@@ -371,6 +374,32 @@ def blank(name, code=None, seconds=None):
     # advisory: CI 전용 참고 줄(시간 민감)
     return dict(name=name, code=code, seconds=seconds, verdict="통과", new=[], known=[], resolved=[],
                 issue="", details=[], summary=None, counts=None, advisory=[])
+
+
+ADVISORY_BLOCK = ("Traceback", "errors [", "막힘:", "페이지 오류", "pageerror", "콘솔", "console")
+
+
+def shortfall(expect, summary):
+    if expect and summary and summary["assertions"] + summary["credit"] < expect["assertions"]:
+        return f"단언 수 {summary['assertions']} + 보정 {summary['credit']} < 기준 {expect['assertions']}"
+    return ""
+
+
+def whole_advisory_ok(result, expect, summary):
+    """검사 전체 참고로 돌려도 되는 실패인가: 시간 단언 FAIL·BLOCKED 줄만 있고 다른 문제가 없을 때."""
+    new = result["new"]
+    if result["issue"] or not new:
+        return False
+    if any(not line.startswith(("FAIL ", "BLOCKED ")) or any(word in line for word in ADVISORY_BLOCK)
+           for line in new):
+        return False
+    if expect and summary is None:
+        return False
+    if expect and summary["skips"] > expect["skips"]:
+        return False
+    if shortfall(expect, summary) and not any("TimeoutError" in line for line in new):
+        return False
+    return True
 
 
 def evaluate(kind, logs, records, baseline, counts, credits=None, advisory=None):
@@ -444,11 +473,15 @@ def evaluate(kind, logs, records, baseline, counts, credits=None, advisory=None)
             result["verdict"] = f"통과(알려진 실패 {len(result['known'])}줄)"
         if result["issue"] and not result["details"]:
             result["details"] = text.splitlines()[-5:]
-        # 검사 전체가 CI 참고인 경우(advisory 파일에 이름만 적은 줄): 파일·로그·크래시 문제가 아니면 실패로 치지 않는다.
-        hard = ("검사 파일 없음", "로그 없음", "빈 로그", "크래시")
-        if result["verdict"] == "실패" and "" in advisory.get(name, []) and not str(result["issue"] or "").startswith(hard):
+        # 검사 전체가 CI 참고인 경우(advisory 파일에 이름만 적은 줄): 시간 단언 실패만 참고로 돌린다.
+        # 새 실패 줄이 모두 FAIL·BLOCKED이고 앱 오류·예외 추적이 없을 때만이다. 단언 부족은 그 실패 줄 가운데
+        # TimeoutError가 있을 때만(대기 시간 초과로 뒤 단언이 돌지 못한 경우) 받아들인다. 시간 초과(124)·크래시·
+        # 요약 없는 중단·SKIP 초과·종료 코드 불일치 같은 issue가 있으면 CI에서도 실패다.
+        if result["verdict"] == "실패" and "" in advisory.get(name, []) and whole_advisory_ok(result, expect, summary):
             result["verdict"] = "참고(CI 시간 민감 — 맥 로컬 최종 확인에서 판정)"
-            result["advisory"] = result["new"] + ([result["issue"]] if result["issue"] else [])
+            short = shortfall(expect, summary)
+            result["advisory"] = result["new"] + ([short] if short else [])
+            result["new"] = []
         elif result.get("advisory") and result["verdict"] != "실패":
             result["verdict"] = f"{result['verdict']} · 참고 {len(result['advisory'])}줄(CI 시간 민감)"
     return results
@@ -466,9 +499,13 @@ def read_advisory(path, kind):
             raise ValueError(f"참고 목록 형식 오류 {path}:{number}: {line}")
         if parts[0] != kind:
             continue
+        if len(parts) == 3 and not parts[2].strip():
+            raise ValueError(f"참고 목록 형식 오류 {path}:{number}: 셋째 칸(실패 줄 패턴)이 비었음")
         pattern = parts[2] if len(parts) == 3 else ""
-        if pattern and (len(pattern.rstrip('*')) < 20 or not pattern.startswith(("FAIL", "BLOCKED"))):
-            raise ValueError(f"참고 패턴은 FAIL·BLOCKED로 시작하는 20자 이상이어야 함 {path}:{number}")
+        # 줄 패턴은 기준선 줄처럼 장면 이름표와 단언 설명, 콜론까지 담아야 한다(장면 전체를 삼키지 않게).
+        if pattern and (len(pattern.rstrip('*')) < 20 or
+                        not re.match(r"^(?:FAIL|BLOCKED)\s+\S+\s+\S.*:", pattern)):
+            raise ValueError(f"참고 패턴은 'FAIL|BLOCKED <장면> <설명>:' 꼴의 20자 이상이어야 함 {path}:{number}")
         rules.setdefault(parts[1], []).append(pattern)
     return rules
 
