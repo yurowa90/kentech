@@ -724,10 +724,12 @@
       <footer class="home-foot">
         <p class="small muted">입력한 내용은 이 브라우저에만 저장됩니다. 학교 공용 컴퓨터라면 연습을 마친 뒤 지우세요.</p>
         <button class="btn small ghost" id="wipeAll" type="button">이 기기 기록 모두 지우기</button>
-        <div id="wipeConfirm" class="caution" hidden>이 브라우저에 저장된 연습실 기록이 모두 지워집니다(다섯 해${(KCP.ORIGINAL_ORDER || []).length ? "와 창작 게임" : ""}의 입력과 판단 노트·반문·짝 관찰, 훈련장 기록, 지난 목표, 시간 설정). 되돌릴 수 없습니다.
+        <button type="button" id="fb-open-home" class="btn small ghost">테스터 의견 보내기</button>
+        <div id="wipeConfirm" class="caution" hidden>이 브라우저에 저장된 연습실 기록이 모두 지워집니다(다섯 해${(KCP.ORIGINAL_ORDER || []).length ? "와 창작 게임" : ""}의 입력과 판단 노트·반문·짝 관찰, 훈련장 기록, 지난 목표, 시간 설정, 의견 보내기에 쓰던 글). 되돌릴 수 없습니다.
           <div class="row"><button class="btn small" id="wipeYes" type="button">지우기</button><button class="btn small ghost" id="wipeNo" type="button">취소</button></div>
         </div>
       </footer>`;
+    KCP.$("#fb-open-home", app).onclick = e => KCP.feedback?.open(undefined, e.currentTarget);
     KCP.$("#wipeAll", app).onclick = () => {
       KCP.$("#wipeConfirm", app).hidden = false;
       KCP.$("#wipeNo", app).focus();
@@ -809,6 +811,7 @@
           <div class="row"><button class="btn small" id="tm-yes" type="button">바꾸기</button><button class="btn small ghost" id="tm-no" type="button">취소</button></div>
         </div>
         <p class="small muted" id="tm-url" hidden></p>
+        <div class="row fb-entry"><button type="button" id="fb-open-settings" class="btn small ghost">테스터 의견 보내기</button></div>
       </section>
       <div class="brief">${meta.original ? '<p class="small original-notice"><span class="tag-mine">창작 게임 · 가상 자료</span></p>' : ""}${game.brief(state)}</div>
       <p class="small muted tm-tip" id="tm-tip">시간이 부족하면 [시간 설정]에서 연장하거나 시간 제한 없이 연습할 수 있습니다. <span class="tag-mine">연습용 조언</span></p>
@@ -820,6 +823,7 @@
     const tlabel = KCP.$("#tlabel");
     const tmode = KCP.$("#tmode");
     const timeset = KCP.$("#timeset");
+    KCP.$("#fb-open-settings", timeset).onclick = e => KCP.feedback?.open(undefined, e.currentTarget);
     const tset = KCP.$("#tset");
     let timePatch = null;
     const paintTimeMode = () => {

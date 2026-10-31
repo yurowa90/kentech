@@ -73,12 +73,12 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 
 ### 샤드 배분
 
-`suites.txt`의 예상초 합이다. `rev14`·`rev14b`의 예상초는 #54 맥 최종 확인(0405541), `rev15`는 갈래 맥 로컬 실측의 실행 시간이다.
+`suites.txt`의 예상초 합이다. `rev14`·`rev14b`의 예상초는 #54 맥 최종 확인(0405541), `rev15`·`feedback`은 갈래 맥 로컬 실측의 실행 시간이다.
 
 | 샤드 | 검사 | 예상초 합 |
 |---|---|---|
 | 1 | fx_event, endgrid | 724 |
-| 2 | ux_task:desktop, webkit, storage | 603 |
+| 2 | ux_task:desktop, webkit, storage, feedback | 616 |
 | 3 | s7, d82ux, solo, next | 603 |
 | 4 | rev15, rev11, rev8c, ux_s2fix2, ux_coach | 695 |
 | 5 | rev10, d80b, econui, ux_task:tablet, peek | 604 |
@@ -92,7 +92,7 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 
 ## 판정 규칙
 
-검사마다 위에서부터 처음 걸리는 것으로 정한다. 기준 수치는 `baseline-counts.txt`에 그 검사의 줄이 있을 때만 본다(지금 `suites.txt`의 모든 줄, 34종).
+검사마다 위에서부터 처음 걸리는 것으로 정한다. 기준 수치는 `baseline-counts.txt`에 그 검사의 줄이 있을 때만 본다(지금 `suites.txt`의 모든 줄, 35종).
 
 1. 상태 `missing`(필수 검사 파일 없음)과 `unlisted`(Node 목록에 없는 검사 파일)는 실패, `skip`(선택 검사 파일 없음)은 건너뜀이다.
 2. 로그가 없거나 비어 있으면 실패다.
@@ -122,7 +122,7 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 
 ## 최종 판정은 맥 로컬
 
-Node·문법 작업은 리눅스(ubuntu)에서, 브라우저 작업은 macOS 실행기에서 돈다. 브라우저 검사 대부분은 Google Fonts CSS를 빈 응답으로 막으므로(`econui.context_for`) 글자는 운영체제의 대체 글꼴로 그려진다. 맥은 Apple SD Gothic Neo, 리눅스는 Liberation Sans와 Noto Sans CJK라 한글 폭과 기본 줄 높이가 달라, CI 첫 실행(리눅스)에서 화면 측정 검사 8종(`d82ux`·`rev11`·`rev8c`·`rev10`·`econui`·`rev12`·`v3a`·`score1`)이 리눅스에서만 실패했다. 애플 글꼴은 리눅스에 재배포할 수 없어 브라우저 작업을 macOS로 옮겼다. 공개 저장소의 표준 실행기는 과금이 없지만, 계정 등급에 따라 macOS 작업의 동시 실행 수가 리눅스보다 적어 샤드 일부가 줄을 설 수 있다. 실행기 이미지의 macOS·WebKit 판이 맥 로컬과 같지는 않으므로 어긋나면 기준선에 넣기 전에 맥 로컬 결과와 비교한다. 글꼴을 막지 않는 검사(`ux_s2fix2`·`ux_task` 등)는 실제 Google Fonts를 내려받아 그리므로 네트워크와 글꼴 교체 시점의 영향을 받을 수 있다. 병합·릴리스 직전에는 맥 로컬에서 `--all`과 Node 전체를 한 번 더 돌려 그 결과를 최종 판정으로 쓴다. `--all`은 `suites.txt`의 34줄 전부다(CI 샤드에서 빼는 `fx_map` 포함). 목록 밖 리그 브라우저 검사(`rules`·`e2e3`·`econint` 등 16종)는 이름으로 돌리며, 어느 PR에서 돌리는지는 `docs/DEV-WORKFLOW.md` §8이 정한다.
+Node·문법 작업은 리눅스(ubuntu)에서, 브라우저 작업은 macOS 실행기에서 돈다. 브라우저 검사 대부분은 Google Fonts CSS를 빈 응답으로 막으므로(`econui.context_for`) 글자는 운영체제의 대체 글꼴로 그려진다. 맥은 Apple SD Gothic Neo, 리눅스는 Liberation Sans와 Noto Sans CJK라 한글 폭과 기본 줄 높이가 달라, CI 첫 실행(리눅스)에서 화면 측정 검사 8종(`d82ux`·`rev11`·`rev8c`·`rev10`·`econui`·`rev12`·`v3a`·`score1`)이 리눅스에서만 실패했다. 애플 글꼴은 리눅스에 재배포할 수 없어 브라우저 작업을 macOS로 옮겼다. 공개 저장소의 표준 실행기는 과금이 없지만, 계정 등급에 따라 macOS 작업의 동시 실행 수가 리눅스보다 적어 샤드 일부가 줄을 설 수 있다. 실행기 이미지의 macOS·WebKit 판이 맥 로컬과 같지는 않으므로 어긋나면 기준선에 넣기 전에 맥 로컬 결과와 비교한다. 글꼴을 막지 않는 검사(`ux_s2fix2`·`ux_task` 등)는 실제 Google Fonts를 내려받아 그리므로 네트워크와 글꼴 교체 시점의 영향을 받을 수 있다. 병합·릴리스 직전에는 맥 로컬에서 `--all`과 Node 전체를 한 번 더 돌려 그 결과를 최종 판정으로 쓴다. `--all`은 `suites.txt`의 35줄 전부다(CI 샤드에서 빼는 `fx_map` 포함). 목록 밖 리그 브라우저 검사(`rules`·`e2e3`·`econint` 등 16종)는 이름으로 돌리며, 어느 PR에서 돌리는지는 `docs/DEV-WORKFLOW.md` §8이 정한다.
 
 ## CI 참고 목록(ci-advisory.txt)
 GitHub Actions 공유 실행기는 맥 로컬보다 느리고 흔들려서, 짧은 시간 안의 조작·표시를 재는 단언(ux_s2fix2 0.57초 재생 안 조작,
