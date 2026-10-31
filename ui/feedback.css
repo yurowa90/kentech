@@ -1,0 +1,107 @@
+#kcp-feedback .v2-modal-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#kcp-feedback fieldset {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+}
+
+#kcp-feedback legend,
+#kcp-feedback label {
+  color: var(--ui-text);
+}
+
+#kcp-feedback legend {
+  max-width: 100%;
+  padding: 0 4px;
+}
+
+#kcp-feedback .fb-options,
+#kcp-feedback .fb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#kcp-feedback .fb-options label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#kcp-feedback input[type="radio"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--ui-cyan);
+}
+
+#kcp-feedback .fb-field {
+  margin: 16px 0;
+}
+
+#kcp-feedback textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: #102338;
+  color: var(--ui-text);
+  caret-color: var(--ui-cyan);
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+#kcp-feedback button {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+}
+
+#kcp-feedback :is(button, textarea, input):focus-visible,
+#kcp-feedback .fb-options label:focus-within {
+  outline: 2px solid var(--ui-cyan);
+  outline-offset: 2px;
+}
+
+#kcp-feedback #fb-warn,
+#kcp-feedback #fb-pii-title {
+  color: var(--ui-gold);
+  font-weight: 700;
+}
+
+#kcp-feedback #fb-pii {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--ui-danger);
+  border-radius: 10px;
+}
+
+#kcp-feedback .fb-actions {
+  margin-top: 16px;
+}
+
+#kcp-feedback #fb-clear {
+  margin-left: auto;
+}
+
+#kcp-feedback #fb-status {
+  color: var(--ui-text);
+}
