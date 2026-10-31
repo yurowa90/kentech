@@ -2239,8 +2239,9 @@
     const items = rounds.map(item).filter(Boolean), recent = items.slice(-3).join(""), older = items.slice(0, -3).join("");
     return `<section id="lg-decisions" class="lg-sec"><h3>결정과 결과 · 기기에 남은 기록</h3><ul>${recent || "<li>기기에 남은 결정 기록 없음</li>"}</ul>${older ? `<details data-decision-detail="older-months"><summary>앞의 ${items.length - 3}달 기록</summary><ul>${older}</ul></details>` : ""}</section>`;
   }
-  // 보내는 중·상태 글은 이 리그 세션(L)에만 묶는다. '같은 조건으로 다시'는 방 코드가 같아 방·도시만으로는 판을 가르지 못한다.
-  let sheetState = { session: null, key: "", sending: false, status: "" };
+  // 보내는 중·상태 글은 이 판·이 도시(방:도시)의 모듈 메모리에 둔다(떠났다 돌아와 L이 새로 생겨도 유지).
+  // '같은 조건으로 다시'는 방 코드가 같으므로 replaySolo가 진행 중인 상태에 replaced를 표시하고 떼어 낸다.
+  let sheetState = { key: "", sending: false, status: "", replaced: false };
   function sheetResultFields(V) {
     const own = V.econ.score.by[L.team], rows = calibrationRows();
     return {
@@ -2257,7 +2258,7 @@
   function sheetResultHTML(V) {
     if (!KCP.feedback?.sheetUrl() || !["solo", "team"].includes(L.role)) return "";
     const RT = KCP.feedback.RESULT_TEXT, key = L.room + ":" + L.team, sent = !!tdata().sheetResultSent;
-    if (sheetState.session !== L || sheetState.key !== key) sheetState = { session: L, key, sending: false, status: "" };
+    if (sheetState.key !== key) sheetState = { key, sending: false, status: "", replaced: false };
     const fields = sheetResultFields(V);
     return `<section id="lg-sheet" class="lg-sec"><h3>${esc(RT.title)}</h3><p id="lg-sheet-note">${esc(RT.note)}</p><dl id="lg-sheet-values" aria-label="${esc(RT.valuesLabel)}">${Object.entries(fields).map(([name, value]) => `<div data-sheet-field="${esc(name)}"><dt>${esc(name)}</dt><dd>${esc(String(value))}</dd></div>`).join("")}</dl><button type="button" class="v2-btn primary" id="lg-sheet-send" aria-disabled="${sent || sheetState.sending}">${esc(sent ? RT.sentButton : RT.button)}</button><p id="lg-sheet-status" role="status" aria-live="polite">${esc(sheetState.status)}</p></section>`;
   }
@@ -2265,11 +2266,11 @@
     if (!L || !["solo", "team"].includes(L.role) || L.snap?.phase !== "end" || !KCP.feedback?.sheetUrl() ||
       button.getAttribute("aria-disabled") === "true" || tdata().sheetResultSent) return;
     const session = L, key = L.room + ":" + L.team, savedKey = dataKey(), RT = KCP.feedback.RESULT_TEXT;
-    if (sheetState.session === L && sheetState.key === key && sheetState.sending) return;
+    if (sheetState.key === key && sheetState.sending) return;
     const fields = sheetResultFields(L.snap);
-    const state = sheetState = { session, key, sending: true, status: RT.sending };
+    const state = sheetState = { key, sending: true, status: RT.sending, replaced: false };
     const update = sent => {
-      if (L !== session || L.room + ":" + L.team !== key) return;
+      if (sheetState !== state || !L || L.room + ":" + L.team !== key) return;
       const current = document.getElementById("lg-sheet-send"), status = document.getElementById("lg-sheet-status");
       if (current) {
         current.setAttribute("aria-disabled", String(sent || state.sending));
@@ -2281,8 +2282,9 @@
     const sent = await KCP.feedback.send("result", fields);
     state.sending = false;
     state.status = sent ? RT.sent : RT.fail;
-    if (sent) {
-      // 같은 판이 끝 화면에 있을 때만 지금 세션에 기록한다(기다리는 사이 같은 방으로 다시 시작한 새 판에는 쓰지 않는다).
+    // 기다리는 사이 같은 조건으로 다시 시작했으면 앞 판은 사라졌으니 어디에도 기록하지 않는다.
+    if (sent && !state.replaced) {
+      // 같은 판이 끝 화면에 있을 때만 지금 세션에 기록한다.
       if (L?.role === session.role && L.room + ":" + L.team === key && (L.S || L.snap)?.phase === "end") {
         const d = tdata(); d.sheetResultSent = true; putData(d);
       } else if (session.role === "team") {
@@ -2566,6 +2568,7 @@
   function replaySolo() {
     if (L.role !== "solo" || L.snap.phase !== "end" || !L.initial) return;
     const app = L.app, save = { v: 1, state: structuredClone(L.initial), initial: structuredClone(L.initial), previous: soloSummary(L.snap), team: L.team, style: L.style, interview: { docs: {}, journal: {}, freeExperiment: L.interview?.freeExperiment }, aiRound: 0 };
+    if (sheetState.key === L.room + ":" + L.team) { sheetState.replaced = true; sheetState = { key: "", sending: false, status: "", replaced: false }; }
     close(); writeSolo(save); startSolo(app, save);
   }
 

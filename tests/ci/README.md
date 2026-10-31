@@ -79,7 +79,7 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 |---|---|---|
 | 1 | fx_event, endgrid | 724 |
 | 2 | ux_task:desktop, webkit, storage, feedback | 616 |
-| 3 | s7, d82ux, solo, next, sheet | 700 |
+| 3 | s7, d82ux, solo, next, sheet | 727 |
 | 4 | rev15, rev11, rev8c, ux_s2fix2, ux_coach | 695 |
 | 5 | rev10, d80b, econui, ux_task:tablet, peek | 604 |
 | 6 | rev12, s8n, fx_replay, v3a, snaprender | 604 |

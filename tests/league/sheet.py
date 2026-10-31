@@ -750,9 +750,18 @@ def play_to_end(page):
     raise AssertionError('다시 한 판 12달 완주 실패')
 
 
+def end_panel(page):
+    wait_unfolded(page)
+    if not page.locator('#lg-sheet-send').is_visible():
+        open_panel(page, 'result')
+    page.wait_for_selector('#lg-sheet-send')
+
+
 def replay(checks, run, page):
-    """총괄 보강(독립 검토 minor 1): '같은 조건으로 다시'는 방 코드가 같다. 새 판은 보낸 상태·상태 글을
-    물려받지 않고, 보내는 중에 다시 시작해도 새 판에 보냄이 기록되지 않아야 한다."""
+    """총괄 보강(독립 검토 minor 1, 재검토 minor 1·2): '같은 조건으로 다시'는 방 코드가 같다.
+    - 보내는 중에 리그를 떠났다 이어서 하면 보내는 중 상태가 그대로이고 요청이 하나만 나간다.
+    - 보낸 뒤 새로고침 없이 다시 한 판은 보낸 상태·상태 글을 물려받지 않는다.
+    - 보내는 중에 다시 시작해도 새 판에 보냄이 기록되지 않는다."""
     rt = page.evaluate('() => KCP.feedback.RESULT_TEXT')
     sent_flag = 'k=>JSON.parse(localStorage.getItem(k))?.interview?.sheetResultSent===true'
     before = len(run.requests.records)
@@ -761,21 +770,57 @@ def replay(checks, run, page):
     checks.ok(page.evaluate(sent_flag, SOLO_KEY) is False, '다시 한 판 저장값에 보냄 표시 없음')
     try:
         play_to_end(page)
-        wait_unfolded(page)
-        if not page.locator('#lg-sheet-send').is_visible():
-            open_panel(page, 'result')
-        page.wait_for_selector('#lg-sheet-send')
+        end_panel(page)
     except Exception as exc:
         checks.blocked('다시 한 판 끝 화면: ' + str(exc).splitlines()[0][:180])
         return
     button = page.locator('#lg-sheet-send')
     checks.ok(button.get_attribute('aria-disabled') == 'false' and button.inner_text() == rt['button'],
               '다시 한 판 결과 단추 처음 활성·원래 글')
-    checks.ok(page.locator('#lg-sheet-status').inner_text() == '', '다시 한 판 상태 글 물려받지 않음')
+    # 보내는 중에 홈으로 떠났다가 이어서 하기(같은 페이지 메모리, 리그 세션 객체는 새로 생김).
     run.requests.hold = True
     button.click()
     expect_result_status(page, 'sending')
     count_requests(checks, page, run.requests, before + 1, '다시 한 판 보내기 시작')
+    try:
+        page.evaluate("()=>{location.hash='#home';}")
+        page.wait_for_selector('#fb-open-home')
+        page.evaluate("()=>{location.hash='#league/solo';}")
+        page.wait_for_function("()=>{const L=KCP.league.state();return L?.role==='solo'&&(L.S||L.snap)?.phase==='end';}")
+        end_panel(page)
+    except Exception as exc:
+        run.requests.release()
+        checks.blocked('보내는 중 떠났다 이어서 하기: ' + str(exc).splitlines()[0][:180])
+        return
+    checks.ok(button.get_attribute('aria-disabled') == 'true' and
+              page.locator('#lg-sheet-status').inner_text() == rt['sending'],
+              '떠났다 돌아와도 보내는 중 상태 유지')
+    button.click(force=True)
+    count_requests(checks, page, run.requests, before + 1, '떠났다 돌아온 뒤 다시 눌러도')
+    run.requests.release()
+    run.requests.wait_done(page, len(run.requests.records))
+    expect_result_status(page, 'sent')
+    checks.ok(button.inner_text() == rt['sentButton'] and button.get_attribute('aria-disabled') == 'true',
+              '떠났다 돌아온 화면에 보낸 결과 반영')
+    page.wait_for_function(sent_flag, arg=SOLO_KEY)
+    checks.ok(True, '떠났다 돌아온 같은 판에 보냄 기록')
+    # 보낸 직후 새로고침 없이 같은 조건으로 다시.
+    before = len(run.requests.records)
+    page.locator('#lg-solo-same').click()
+    page.wait_for_function("()=>KCP.league.state().S.phase!=='end'")
+    try:
+        play_to_end(page)
+        end_panel(page)
+    except Exception as exc:
+        checks.blocked('보낸 뒤 다시 한 판 끝 화면: ' + str(exc).splitlines()[0][:180])
+        return
+    checks.ok(button.get_attribute('aria-disabled') == 'false' and button.inner_text() == rt['button'],
+              '보낸 뒤 다시 한 판 단추 활성·원래 글')
+    checks.ok(page.locator('#lg-sheet-status').inner_text() == '', '보낸 뒤 다시 한 판 상태 글 물려받지 않음')
+    run.requests.hold = True
+    button.click()
+    expect_result_status(page, 'sending')
+    count_requests(checks, page, run.requests, before + 1, '다시 한 판 경합 보내기 시작')
     # 보내는 중에 또 같은 조건으로 다시 시작한다. 늦게 온 성공이 새 판에 기록되면 안 된다.
     page.locator('#lg-solo-same').click()
     page.wait_for_function("()=>KCP.league.state().S.phase!=='end'")
