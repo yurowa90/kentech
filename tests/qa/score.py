@@ -1,20 +1,10 @@
-"""QA 체크 결과로 항목·축 점수와 출시 판정을 낸다(D-93).
+"""QA 체크 결과로 항목·축 점수와 출시 판정을 낸다(D-93, 규칙 원본은 docs/QA-CHECKLIST.md §2).
 
 사용: python3 tests/qa/score.py <결과 JSON> [--checklist tests/qa/checklist.json] [--open-severe N]
 
 결과 JSON: {"sha": "...", "date": "...", "checks": {"<체크 ID>": {"status": "통과|실패|확인 못 함|해당 없음", "evidence": "..."}}}
 결과 파일에는 점수가 드러나므로 저장소 밖에 둔다. 이 스크립트는 표준출력에만 쓴다.
-
-점수 규칙(docs/QA-CHECKLIST.md §2):
-- 구간은 누적. 항목 점수 = 6 구간 체크를 모두 통과하면 6, 6·8 모두면 8, 6·8·10 모두면 10.
-  아래 구간을 모두 통과하고 위 구간 체크를 절반 넘게 통과하면 사이 홀수(5·7·9). 6을 절반 넘게 못 채우면 4.
-- '해당 없음'은 그 구간 계산에서 뺀다. '확인 못 함'은 통과가 아니다.
-- method가 device·live·classroom인 체크의 '확인 못 함'은 '현장 확인 전'으로 따로 묶고,
-  그 체크를 뺀 '개발 단계 점수'도 낸다.
-- proposal 구간은 계산하지 않는다.
-- 축 점수 = 항목 평균. UX: 공통 휴리스틱 관문(axis_gates)이 실패하면 8 이상을 7로 내리고,
-  한 항목이라도 4 이하면 전체를 5 이하로. 안정성: 가장 낮은 두 항목 평균을 넘지 않음.
-- 출시 판정 = 릴리스 관문(축 'release') 체크 모두 통과 + 다섯 축 8 이상 + 열린 blocker·major 0.
+종료 코드: 정식판 가능 0, 그 밖 1, 입력 오류 2.
 """
 import argparse
 import json
@@ -23,86 +13,115 @@ from collections import defaultdict
 from pathlib import Path
 
 PASS, FAIL, UNKNOWN, NA = '통과', '실패', '확인 못 함', '해당 없음'
+STATES = {PASS, FAIL, UNKNOWN, NA}
 FIELD = {'device', 'live', 'classroom'}
 QUALITY_AXES = ('ux', 'edu', 'model', 'visual', 'stability')
+BANDS = ('6', '8', '10')
 
 
-def band_state(checks, status, skip_field):
-    """구간 하나의 (통과 수, 셈 대상 수). 해당 없음과(개발 단계 계산이면) 현장 확인 전 체크는 뺀다."""
-    passed = total = 0
+def counted(checks, status, skip_field):
+    """구간 하나에서 셈할 체크. 해당 없음과(개발 단계 계산이면) 현장 확인 전 체크는 뺀다."""
+    out = []
     for check in checks:
         state = status.get(check['id'], UNKNOWN)
         if state == NA or (skip_field and state == UNKNOWN and check['method'] in FIELD):
             continue
-        total += 1
-        passed += state == PASS
-    return passed, total
+        out.append(state == PASS)
+    return out
 
 
-def item_score(bands, status, skip_field=False):
-    def full(band):
-        passed, total = band_state(bands.get(band, []), status, skip_field)
-        return passed == total
+def item_score(bands, status, skip_field=False, gates=()):
+    """항목 점수. bands: {'6': [...], '8': [...], '10': [...]}(항목 고유 + 공통 구간 체크), gates: 6 구간 전제(공통 조건).
 
-    def over_half(band):
-        passed, total = band_state(bands.get(band, []), status, skip_field)
-        return total > 0 and passed * 2 > total
+    - 전제(gates) 가운데 하나라도 통과가 아니면 4(원문 '모든 구간의 관문'). 해당 없음은 통과로 본다.
+    - 구간 누적: 아래 구간을 모두 통과하고 위 구간을 절반 넘게 통과하면 사이 홀수.
+    - 셈할 체크가 처음부터 없는 구간은 채운 것으로 본다(원문에 그 구간 조건이 없음).
+      현장 확인 전 체크를 빼서 비게 된 구간은 채우지 않은 것으로 본다.
+    - 10 구간 체크가 없는 항목의 최고는 8이다.
+    """
+    for check in gates:
+        if status.get(check['id'], UNKNOWN) not in (PASS, NA):
+            return 4
 
-    if not full('6'):
-        return 5 if over_half('6') else 4
-    if not full('8'):
-        return 7 if over_half('8') else 6
+    def state(band):
+        checks = bands.get(band, [])
+        marks = counted(checks, status, skip_field)
+        if not checks:
+            return True, False
+        if not marks:
+            return False, False  # 현장 확인 전으로 비었음
+        return all(marks), sum(marks) * 2 > len(marks)
+
+    full6, half6 = state('6')
+    if not full6:
+        return 5 if half6 else 4
+    full8, half8 = state('8')
+    if not full8:
+        return 7 if half8 else 6
     if not bands.get('10'):
         return 8
-    if not full('10'):
-        return 9 if over_half('10') else 8
+    full10, half10 = state('10')
+    if not full10:
+        return 9 if half10 else 8
     return 10
 
 
 def axis_score(axis, scores, gates_ok):
+    """원문 기준표의 축 규칙. UX: 관문 실패면 7 이하, 한 항목 4 이하면 6 미만. 모형: 한 항목 6 이하면 7 이하. 안정성: 가장 낮은 두 항목 평균 상한."""
     if not scores:
         return None
-    mean = sum(scores.values()) / len(scores)
+    values = list(scores.values())
+    mean = sum(values) / len(values)
     if axis == 'ux':
-        if not gates_ok and mean >= 8:
-            mean = 7.0
-        if min(scores.values()) <= 4:
-            mean = min(mean, 5.0)
-    if axis == 'stability' and len(scores) >= 2:
-        low = sorted(scores.values())[:2]
+        if not gates_ok:
+            mean = min(mean, 7.0)
+        if min(values) <= 4:
+            mean = min(mean, 5.9)
+    if axis == 'model' and min(values) <= 6:
+        mean = min(mean, 7.0)
+    if axis == 'stability' and len(values) >= 2:
+        low = sorted(values)[:2]
         mean = min(mean, sum(low) / 2)
     return round(mean, 3)
 
 
 def collect(checklist):
-    """축·항목·구간별 체크 목록, 축 관문, 채점 유효 조건, 릴리스 관문(단계별)을 모은다.
+    """축·항목·구간별 체크, 항목별 6 구간 전제, 축 관문, 채점 유효 조건, 릴리스 관문(단계별)을 모은다.
 
-    축 체크는 item(기본) 또는 targets(항목 이름 목록, '*'는 그 축의 모든 항목)에 들어간다.
-    공통 체크는 applies_to의 (축, 항목 또는 '*', 구간)에 들어가고, release가 참이면 릴리스 관문에도 든다.
-    validity가 참인 체크는 점수에 넣지 않고 채점 유효 조건으로만 본다.
+    - 축 체크: item에 들어간다. targets가 있으면 그 항목들('*'는 그 축의 모든 항목)에 들어가는데,
+      '*'로 걸린 6 구간 체크는 항목마다의 전제(gate)가 된다(원문 '공통 조건: 모든 구간의 관문').
+    - 공통 체크: applies_to의 (축, 항목, 구간)에 들어간다. 항목이 '*'이고 구간이 6이면 전제다.
+      release가 참이면 그 stage(rc·formal·after)의 릴리스 관문에도 든다.
+    - validity가 참인 공통 체크는 점수에 넣지 않고 채점 유효 조건으로만 본다.
+    - gate가 참인 축 체크는 축 관문(UX 휴리스틱)이다.
     """
     parts = {part['axis']: part for part in checklist['axes']}
-    plain = {axis: sorted({c['item'] for c in part['items'] if c['band'] != 'proposal' and not c.get('gate')
-                           and not c.get('validity') and not c.get('targets') and axis not in ('common', 'release')})
-             for axis, part in parts.items()}
+    names = {axis: sorted({c['item'] for c in part['items'] if c['band'] != 'proposal' and not c.get('gate')
+                           and not c.get('validity') and not c.get('targets')})
+             for axis, part in parts.items() if axis in QUALITY_AXES}
     table = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    gates, validity, release = defaultdict(list), [], {'rc': [], 'formal': []}
+    pre = defaultdict(lambda: defaultdict(list))
+    gates, validity = defaultdict(list), []
+    release = {'rc': [], 'formal': [], 'after': []}
 
     def put(axis, item, band, check):
-        for name in (plain.get(axis, []) if item == '*' else [item]):
-            table[axis][name][band].append(check)
+        if item == '*':
+            for name in names.get(axis, []):
+                (pre[axis][name].append(check) if band == '6' else table[axis][name][band].append(check))
+        else:
+            table[axis][item][band].append(check)
 
     for axis, part in parts.items():
         for check in part['items']:
             if check['band'] == 'proposal':
                 continue
-            if check.get('validity'):
-                validity.append(check)
             if axis == 'release' or check.get('release'):
                 release[check.get('stage', 'rc')].append(check)
-            if axis == 'release' or check.get('validity') and axis != 'common':
+            if axis == 'release':
                 continue
             if axis == 'common':
+                if check.get('validity'):
+                    validity.append(check)
                 for target in check.get('applies_to', []):
                     put(target['axis'], target['item'], target['band'], check)
             elif check.get('gate'):
@@ -110,7 +129,7 @@ def collect(checklist):
             else:
                 for item in check.get('targets') or [check['item']]:
                     put(axis, item, check['band'], check)
-    return table, gates, validity, release
+    return table, pre, gates, validity, release
 
 
 def main():
@@ -121,35 +140,51 @@ def main():
     args = parser.parse_args()
     checklist = json.loads(Path(args.checklist).read_text(encoding='utf-8'))
     result = json.loads(Path(args.results).read_text(encoding='utf-8'))
-    status = {key: value['status'] for key, value in result.get('checks', {}).items()}
-    bad = sorted({s for s in status.values()} - {PASS, FAIL, UNKNOWN, NA})
-    if bad:
-        sys.exit(f'알 수 없는 상태: {bad}')
-    table, gates, validity, release_sets = collect(checklist)
+    known = {c['id']: c for part in checklist['axes'] for c in part['items']}
+    status, warnings = {}, []
+    for key, value in result.get('checks', {}).items():
+        state = value.get('status') if isinstance(value, dict) else None
+        if key not in known:
+            warnings.append(f'체크리스트에 없는 ID(무시): {key}')
+            continue
+        if state not in STATES:
+            warnings.append(f'{key}: 상태 없음 또는 알 수 없음({state!r}) → 확인 못 함으로 셈')
+            state = UNKNOWN
+        status[key] = state
+    table, pre, gates, validity, release = collect(checklist)
     invalid = [c['id'] for c in validity if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
 
     print(f"# QA 판정 — {result.get('sha', '?')} ({result.get('date', '?')})\n")
+    for line in warnings:
+        print(f'경고: {line}')
+    if warnings:
+        print()
     if invalid:
         print(f"**채점 유효 조건 미통과 {len(invalid)}개 — 아래 점수는 참고값이다(판정 무효):** {', '.join(invalid)}\n")
     verdict, verdict_dev = {}, {}
     for axis in QUALITY_AXES:
         items = table.get(axis, {})
+        names = sorted(set(items) | set(pre.get(axis, {})))
         gate_checks = gates.get(axis, [])
-        gates_ok = all(status.get(c['id']) == PASS for c in gate_checks)
-        gates_dev = all(status.get(c['id']) == PASS or (status.get(c['id'], UNKNOWN) == UNKNOWN and c['method'] in FIELD)
+        gates_ok = all(status.get(c['id']) in (PASS, NA) for c in gate_checks)
+        gates_dev = all(status.get(c['id']) in (PASS, NA) or (status.get(c['id'], UNKNOWN) == UNKNOWN and c['method'] in FIELD)
                         for c in gate_checks)
-        scores = {name: item_score(bands, status) for name, bands in items.items()}
-        dev = {name: item_score(bands, status, skip_field=True) for name, bands in items.items()}
+        scores = {n: item_score(items.get(n, {}), status, gates=pre[axis].get(n, ())) for n in names}
+        dev = {n: item_score(items.get(n, {}), status, skip_field=True, gates=pre[axis].get(n, ())) for n in names}
         total, total_dev = axis_score(axis, scores, gates_ok), axis_score(axis, dev, gates_dev)
         verdict[axis], verdict_dev[axis] = total, total_dev
-        print(f'## {axis}: {total} (개발 단계 {total_dev})')
+        field_wait = any(status.get(c['id'], UNKNOWN) == UNKNOWN and c['method'] in FIELD
+                         for n in names for b in BANDS for c in items.get(n, {}).get(b, []))
+        tag = ' (현장 확인 전)' if field_wait else ''
+        print(f'## {axis}: {total} · 개발 단계 {total_dev}{tag}')
         print('| 항목 | 점수 | 개발 단계 | 실패·확인 못 함 |\n|---|---|---|---|')
-        for name in sorted(items):
-            open_ids = [c['id'] for band in ('6', '8', '10') for c in items[name].get(band, [])
-                        if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
-            print(f"| {name} | {scores[name]} | {dev[name]} | {', '.join(open_ids[:12])}{' …' if len(open_ids) > 12 else ''} |")
+        for n in names:
+            open_ids = [c['id'] for c in pre[axis].get(n, []) if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
+            open_ids += [c['id'] for b in BANDS for c in items.get(n, {}).get(b, []) if status.get(c['id'], UNKNOWN) not in (PASS, NA)]
+            shown = ', '.join(open_ids[:12]) + (f' 외 {len(open_ids) - 12}개' if len(open_ids) > 12 else '')
+            print(f'| {n} | {scores[n]} | {dev[n]} | {shown} |')
         if gate_checks:
-            print(f"\n관문: {'통과' if gates_ok else '실패'} ({', '.join(c['id'] for c in gate_checks)})")
+            print(f"\n축 관문: {'통과' if gates_ok else '미통과'} ({', '.join(c['id'] for c in gate_checks)})")
         print()
 
     def gate_report(name, checks):
@@ -159,8 +194,9 @@ def main():
             print(f"미통과: {', '.join(failed)}")
         return failed
 
-    rc_fail = gate_report('rc — 후보 태그 전', release_sets['rc'])
-    formal_fail = gate_report('정식판 — 실기기·실연결·교실 포함', release_sets['rc'] + release_sets['formal'])
+    rc_fail = gate_report('rc — 시점 A·B', release['rc'])
+    formal_fail = gate_report('정식판 — 시점 A~D, 실기기·실연결 포함', release['rc'] + release['formal'])
+    gate_report('출시 판정 밖 — 시점 E·F(첫 시범 수업 전, 2022 짝 완성)', release['after'])
     axes_ok = all(v is not None and v >= 8 for v in verdict.values())
     axes_dev_ok = all(v is not None and v >= 8 for v in verdict_dev.values())
     severe_ok = args.open_severe == 0 if args.open_severe is not None else None
