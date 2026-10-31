@@ -32,6 +32,12 @@ browser	fx_map	FAIL build-1280x900-reduce 송전선 채집 시각 ±35ms: {'done
 browser	fx_map	FAIL build-1280x900-reduce 시험 1주 채집 시각 ±35ms: {'done': True, 'error': None,*
 browser	fx_map	FAIL build-1280x900-reduce 설치·철거 5회 + 최종 설치, 간격 50±35ms:*
 browser	fx_map	FAIL build-1280x900-reduce 진행 예외 TimeoutError:*
+# fx_map 움직임 줄이기: 시험 1주 50ms·100ms 표본 비교. 느린 실행기에서 50ms 표본 때 전선이 아직 한 번도 그려지지 않아
+# (위상 None) 첫 그림이 두 표본 사이에 들어가는 경우(CI 7차 build-reduce, 재실행에서는 통과, #56).
+browser	fx_map	FAIL solo-1280x900-reduce reduce 시험 중 선 픽셀 고정:*
+browser	fx_map	FAIL solo-1280x900-reduce reduce 전선 위상 불변:*
+browser	fx_map	FAIL build-1280x900-reduce reduce 시험 중 선 픽셀 고정:*
+browser	fx_map	FAIL build-1280x900-reduce reduce 전선 위상 불변:*
 # ux_s2fix2: 0.57초 재생 창 안 조작. 검사 전체 항목이지만 실패 줄이 모두 TimeoutError일 때만, 단언 부족 40 이하.
 browser	ux_s2fix2
 # rev11: 알림 수명(약 2.2초) 안 알림·말풍선 동시 표시(1280 마우스). 390 줄은 #56에서 판단.
