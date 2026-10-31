@@ -278,7 +278,7 @@ for (const [perDay, text] of [[0, '0.1 MWh/일 미만'], [.04, '0.1 MWh/일 미�
     S.phase = 'review';
     const verdict = api.promiseResultHTML(S, n);
     assert.ok(verdict.includes(`이번 달 하루 평균 ${text} · 월 합계`));
-    assert.ok(verdict.includes('시험 1주 대비 같음(±0.05 안, 하루 평균 0 MWh/일 변화) · 예상과 같음')); // 총괄 10-23 아르곤 문구(UX 갈래)
+    assert.ok(verdict.includes('시험 1주 대비 같음(±0.05 안, 하루 평균 0.00 MWh/일 변화) · 예상과 같음')); // rev14b A1·B: 같음 범위 < 0.1인 달의 S6 Δ는 소수 둘째 자리.
     assert.ok(api.reasonStartsHTML(S).includes(`이번 달 계통이 메운 전기가 평균 ${text}이어서 `)); // 총괄 10-23 아르곤 문구(UX 갈래)
     assert.equal(api.gridFillHTML(S, S.results[0], id) === '', perDay < .05);
     S.phase = 'plan';

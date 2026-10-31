@@ -26,7 +26,7 @@ Closes #
 ### CI
 - [ ] 문법
 - [ ] Node 전체(heavy·rest)
-- [ ] 리그 브라우저(`suites.txt` 31종, 여덟 묶음)
+- [ ] 리그 브라우저(`suites.txt`에서 맥 전용을 뺀 목록, 여덟 묶음)
 - [ ] 최종 판정
 
 기준선(`tests/ci/baseline-fail.txt`) 변화: 없음 <!-- 있으면 검사 이름·실패 줄, 앱 결함이 아니라고 본 근거 로그, 이슈 번호 -->
@@ -34,7 +34,7 @@ Closes #
 ### 맥 로컬(샌드박스 밖, 최종 판정)
 - 검사한 SHA:
 - 머리가 검사 뒤 바뀌었으면 그 차이(인계 문서뿐인지, DEV-WORKFLOW §9의 4):
-- [ ] 리그 브라우저 `suites.txt` 31종(`tests/ci/browser.sh --all` + `judge.py`)
+- [ ] 리그 브라우저 `suites.txt` 전체(`tests/ci/browser.sh --all` + `judge.py`)
 - [ ] 목록 밖 리그 기본 검사(`rules`·`e2e`·`e2e2`·`e2e3`·`econint`·`ai-check`) — 엔진·자료 파일이나 섞인 파일의 계산·판정 구간을 바꿨을 때. `ui/league-net.js`면 `mocktest`·`recover`·`chanlimit`도
 - [ ] 회귀 20종(한 종씩, DEV-WORKFLOW §8) — 리그 밖 파일을 바꿨을 때
 - [ ] 모형 검산(`tests/model_*.mjs`, 종료 코드와 로그 전체를 `judge.py --kind node`로) — 리그 밖 파일을 바꿨을 때

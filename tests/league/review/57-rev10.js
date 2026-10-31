@@ -7,6 +7,7 @@
 // 41/32번 VM 방식. 원본 ui/** 수정 없음. 브라우저·네트워크 실행 없음.
 // 선택 인자는 기준판/변이 사본 경로. API 부재는 BLOCKED 실패이며 skip 없음.
 const assert = require('node:assert/strict');
+const O = require('./rev14b-contract.cjs');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
 const ROOT = path.resolve(__dirname, '../../..');
@@ -124,7 +125,7 @@ try {
   if (source.split('let L = null;').length !== 2 || source.split('KCP.league = {').length !== 2)
     blocked('기준판 VM 연결점이 없어 화면 함수 실행 불가');
   // 기준판에 존재하는 진입점만 메모리에서 노출한다. 새 구현의 함수명을 추측하지 않는다.
-  const names = ['outageCardsHTML', 'outageShareThresholdText', 'outageEvidenceSummary', 'outageDisplayValues',
+  const names = ['outageDisplay','outageShownTotal','outagePartRanking','outageCardMin','outageReplayShown','outageWaterfallHTML','outageCardsHTML', 'outageShareThresholdText', 'outageEvidenceSummary', 'outageDisplayValues',
     'promiseVerdictText', 'direction', 'rev10Copy', 'rev11Copy', 'rev8Copy', 'outageRememberIntl', 'outageSnapshot', 'outageAttribution', 'outageAttributionMonthly', 'cityHTML', 'groupCauseHTML', 'hostOverviewHTML', 'trialGoals', 'promiseTopic', 'predictionHTML', 'promiseComparison', 'promiseResultHTML', // rev11 REV11_COPY.C4 (rev10 R5 N2 대체) 접근 함수.
     'reasonStartsHTML', 'evidenceCandidates', 'evidenceFocusHTML', 'outageEvidenceText',
     'outageEventClue', 'resultHTML', 'decisionsHTML', 'evidenceEffect', 'OUTAGE_EVIDENCE_LINKS'];
@@ -275,19 +276,10 @@ for (const [basis,cut,policy] of [['monthly',true,false],['monthly',true,true],[
     assert.doesNotMatch(clue,/전선 변경|전선·정책 변경/);
   });
 
-// rev10 R7: 기대 목표는 각 끝점의 표시 정수 차. 표시 함수의 배분값을 기대값으로 복제하지 않는다.
-function checkSum(a, requireMap=false) {
-  const before=JSON.stringify(a), m=api('outageDisplayValues')(a), digits=a.target==='grid'?1:2, scale=10**digits;
-  assert.equal(JSON.stringify(a),before,'원값·순서 불변');
-  if(requireMap) assert.ok(m.size,'이 fixture는 배분 맵이 있어야 함');
-  if(!m.size) return false; // 동점 보호/불완전 옛 기록 fallback은 아래 표시 검사로 별도 확인.
-  const start=a.trial??a.base;
-  const shownParts=[...a.parts,...(!a.replayOutsideSum && Math.abs(a.replay)>=(digits===1?.05:.005)?[{key:'replay',value:a.replay}]:[])];
-  assert.equal(m.size,shownParts.length,'폭포에 보이는 몫만 포함');
-  assert.equal(Math.round(Number(start.toFixed(digits))*scale)+shownParts.reduce((s,p)=>{
-    assert.ok(m.has(p.key),p.key); return s+Math.round(m.get(p.key)*scale);
-  },0)+0,Math.round(Number(a.actual.toFixed(digits))*scale)+0,'표시 정수 눈금 합 = 표시 실제'); // rev10 R7: −0과 0은 같은 표시(총괄 판정)
-  return true;
+// rev14 M1 §1·2: 기대 목표는 원 Δ를 반올림한 눈금 수.
+function checkSum(a,requireMap=false) {
+ const L=Object.fromEntries(['outageDisplay','outageDisplayValues','outageShownTotal','outagePartRanking','outageCardMin','outageReplayShown','outageWaterfallHTML'].map(n=>[n,api(n)]));
+ O.check(a,L,{html:true});const m=L.outageDisplayValues(a);if(requireMap)assert.ok(m.size,'허용 조합 있음');return m.size>0;
 }
 for(const row of [
   {start:1.886,values:[1.663,0,0,0,0,0],target:'grid'},
@@ -300,7 +292,7 @@ for(const row of [
   a.actual=row.start+row.values.reduce((s,v)=>s+v,0)+a.replay;
   a.total=a.actual-a.trial;
   checkSum(a,true);
-  if(row.values[0]===1.663) assert.equal(api('outageDisplayValues')(a).get('choice'),1.6,'1.9 + 1.6 = 3.5');
+  if(row.values[0]===1.663) assert.equal(api('outageDisplayValues')(a).get('choice'),1.66,'rev14b 두 자리 달 원 Δ 1.663 → 1.66');
 });
 // rev10 R7: 같은 배분 맵을 카드·폭포 낭독·근거 한 줄이 함께 사용한다.
 test('R7 비어 있지 않은 배분의 카드/낭독/한 줄 일치',()=>{
@@ -311,27 +303,27 @@ test('R7 비어 있지 않은 배분의 카드/낭독/한 줄 일치',()=>{
   n.outageFrozen=a;n.outageOpened=true;n.missed='weather';
   const html=api('outageCardsHTML')(S,S.results.at(-1),id,n), root=htmlTree(html);
   for(const key of ['choice','weather','event']) {
-    const shown=(m.get(key)>0?'+':m.get(key)<0?'−':'')+Math.abs(m.get(key)).toFixed(1)+' MWh/일';
+    const shown=(m.get(key)>0?'+':m.get(key)<0?'−':'')+Math.abs(m.get(key)).toFixed(O.digits(a))+' MWh/일';
     assert.equal(element(html,`[data-missed="${key}"] .lg-out-size`).textContent,shown);
     assert.ok(element(html,`[data-out-step="${key}"]`).textContent.includes(shown));
     assert.ok((root.querySelector('#lg-outage-waterfall').getAttribute('aria-label')||'').includes(shown));
   }
   for(const fn of ['outageEvidenceSummary','outageEvidenceText']) {
     const text=api(fn)(n,a,a.parts[1]);
-    assert.ok(text.includes('+0.9 MWh/일'),text);
+    assert.ok(text.includes('+0.96 MWh/일'),text);
     assert.doesNotMatch(text,/\+1\.0 MWh\/일/);
   }
 });
-test('R7 동점 보호: 빈 Map이면 카드/폭포/낭독 각자 반올림',()=>{
+test('R7 rev14b 두 자리 동점: 허용 조합·카드/폭포/낭독 일치',()=>{
   const {S,n}=setup({phase:'review'}), a=attribution([.26,.26,0,0,0,0]);
   a.trial=a.base=1.96;a.actual=2.48;a.total=.52;
-  const m=api('outageDisplayValues')(a); assert.equal(m.size,0,'공동 최대 두 몫에 .2/.3을 나누지 않음');
+  checkSum(a,true); const m=api('outageDisplayValues')(a); assert.equal(m.get('choice'),.26); assert.equal(m.get('weather'),.26);
   n.outageFrozen=a;n.outageOpened=true;n.missed='choice';
   const root=htmlTree(api('outageCardsHTML')(S,S.results.at(-1),id,n));
   for(const key of ['choice','weather']) {
-    assert.match(element(root.innerHTML||api('outageCardsHTML')(S,S.results.at(-1),id,n),`[data-missed="${key}"] .lg-out-size`).textContent,/\+0\.3 MWh\/일/);
+    assert.match(element(root.innerHTML||api('outageCardsHTML')(S,S.results.at(-1),id,n),`[data-missed="${key}"] .lg-out-size`).textContent,/\+0\.26 MWh\/일/);
     const row=element(api('outageCardsHTML')(S,S.results.at(-1),id,n),`[data-out-step="${key}"]`);
-    assert.ok((row.getAttribute('aria-label')||row.textContent).includes('+0.3'),row.textContent);
+    assert.ok((row.getAttribute('aria-label')||row.textContent).includes('+0.26'),row.textContent);
   }
 });
 test('R7 고정 난수 2,000건: 비어 있지 않은 모든 표시 맵 합',()=>{

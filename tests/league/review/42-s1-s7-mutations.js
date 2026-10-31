@@ -12,15 +12,26 @@ function replaceOnce(text, from, to) {
   assert.equal(text.split(from).length, 2, `변이 연결점 정확히 하나: ${from}`);
   return text.replace(from, to);
 }
+function removeThresholdCeiling(text) {
+  // rev14b A1: 문턱 표시에도 자릿수 인수가 전달된다. 올림만 제거하고 그 인수는 보존한다.
+  const pattern = /return outageValue\(rounded \+ epsilon < magnitude \? rounded \+ 1 \/ scale : rounded, unit(, false, (?:outageDigits\(a\)|digits|d))?\);/g;
+  assert.equal([...text.matchAll(pattern)].length, 1, '변이 연결점 정확히 하나: 문턱 올림 outageValue');
+  return text.replace(pattern, (_, suffix = '') => `return outageValue(rounded, unit${suffix});`);
+}
 const cases = [
   { name: 'T 비율 문턱 설명을 항상 최소 크기로', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
     mutate: s => replaceOnce(s, 'const shareThreshold = Number.isFinite(difference)', 'const shareThreshold = false && Number.isFinite(difference)') },
   { name: 'T 절댓값 설명에 부호 있는 차이 사용', harness: '40-v5-s7.js', regression: 'T S7 부호·기준 문구 trial/grid/negative',
-    mutate: s => s.replaceAll('outageValue(Math.abs(outageShownTotal(a)), unit)', 'outageValue(outageShownTotal(a), unit)') }, // rev13 R2: 차이 글자가 표시 합계로 바뀌어 변이 대상 식을 옮김
+    mutate: s => {
+      // rev14b A1은 같은 호출에 자릿수 인수를 더한다. 절댓값 제거 변이는 그대로 유지한다.
+      const pattern=/outageValue\(Math\.abs\(outageShownTotal\(a\)\), unit(?:, false, (?:outageDigits\(a\)|digits|d))?\)/g;
+      const matches=[...s.matchAll(pattern)];assert.ok(matches.length>0,'변이 연결점: 요약 차이 절댓값');
+      return s.replace(pattern,x=>x.replace('Math.abs(outageShownTotal(a))','outageShownTotal(a)'));
+    } }, // rev13 R2: 차이 글자가 표시 합계로 바뀌어 변이 대상 식을 옮김
   { name: 'T 최소 크기 동률을 비율 쪽으로', harness: '40-v5-s7.js', regression: 'T S7 부호·기준 문구 trial/grid/equal',
     mutate: s => replaceOnce(s, 'params("outageCardShareMin") * Math.abs(difference) > outageMinPart(a)', 'params("outageCardShareMin") * Math.abs(difference) >= outageMinPart(a)') },
   { name: 'N2 문턱만 반올림으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
-    mutate: s => replaceOnce(s, 'return outageValue(rounded + epsilon < magnitude ? rounded + 1 / scale : rounded, unit);', 'return outageValue(rounded, unit);') }, // spec-C §M5b: epsilon 추가 후에도 문턱 올림 제거 변이 유지.
+    mutate: removeThresholdCeiling },
   { name: 'N2 문장만 미만으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
     mutate: s => s.replaceAll(' 이하라', ' 미만이라') },
   { name: 'N1 S6 비교를 클릭 값·옛 지난달 값으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N1 S6·S7 S1 값끼리 비교',
@@ -34,8 +45,7 @@ const cases = [
   { name: 'N1 덧붙임 줄 같음 조건 반대로', harness: '41-v5-s1.js', regression: 'V8 N1 S4 시작 3.65 → 지금 7.65/team',
     mutate: s => replaceOnce(s, 'fmt(start, 2) === fmt(nowValue, 2)', 'fmt(start, 2) !== fmt(nowValue, 2)') },
   { name: 'N2 이하를 미만·문턱 올림을 반올림으로 복귀', harness: '40-v5-s7.js', regression: 'V8 N2 grid/고르기 건너뜀 무작위·경계',
-    mutate: s => replaceOnce(s, 'return outageValue(rounded + epsilon < magnitude ? rounded + 1 / scale : rounded, unit);', // spec-C §M5b: 같은 올림 제거 연결점을 복합 변이에도 적용.
-      'return outageValue(rounded, unit);').replaceAll(' 이하라', ' 미만이라').replaceAll(' 이하)</p>', ' 미만)</p>') },
+    mutate: s => removeThresholdCeiling(s).replaceAll(' 이하라', ' 미만이라').replaceAll(' 이하)</p>', ' 미만)</p>') },
   { name: 'N6 지난달 값 없는 후보를 세 장까지 채움으로 복귀', harness: '41-v5-s1.js', regression: 'V8 N6 두 장이면 지난달 값 없는 세 번째는 채우지 않음/team',
     mutate: s => replaceOnce(s, 'if (!Number.isFinite(item.before)) { missing.push(item); continue; }', '') },
   { name: '문구 14 꼬리말 길이 조건 제거', harness: '40-v5-s7.js', regression: 'V8 문구 14 꼬리말 71자 경계',

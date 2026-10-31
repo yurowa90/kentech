@@ -238,8 +238,8 @@ CI는 작업 줄기와 main을 대상으로 한 PR마다, 그리고 수동 실�
 |---|---|
 | 문법 | `for f in *.js ext/*.js games/*.js ui/*.js; do node --check "$f"; done`와 `tests/ci/node-all.sh --check`(Node 목록과 파일 대조) |
 | 브라우저 목록 확인 | `tests/ci/browser.sh --shards`가 `suites.txt`의 칸·중복·기준 수치 누락을 확인하고 샤드 번호 목록을 만든다. 리그 브라우저 작업의 묶음이 이것이다 |
-| Node 전체 | `tests/ci/node-all.sh`가 `tests/ci/node-suites.txt`의 94개를 두 묶음(heavy·rest)으로. 목록에 있는데 파일이 없거나, `tests/league/*.js`·`tests/league/review/[0-9]*.js`인데 목록에 없으면 실패다 |
-| 리그 브라우저 | `tests/ci/browser.sh`가 `tests/ci/suites.txt`의 31종(10-30 통합 검사 18과 같은 목록, 아직 없는 `rev14`는 선택)을 여덟 묶음으로 동시에. 묶음 목록은 `suites.txt`의 샤드 번호에서 만든다. 리그 브라우저 검사 전부가 아니다. 목록 밖 16종은 §8 |
+| Node 전체 | `tests/ci/node-all.sh`가 `tests/ci/node-suites.txt`의 검사 전체(`ignore` 묶음 제외)를 두 묶음(heavy·rest)으로. 목록에 있는데 파일이 없거나, `tests/league/*.js`·`tests/league/review/[0-9]*.js`인데 목록에 없으면 실패다 |
+| 리그 브라우저 | `tests/ci/browser.sh`가 `tests/ci/suites.txt`의 목록(10-30 통합 검사 18의 31종에 `rev14`·`rev14b`를 더한 33종에서 맥 전용 `fx_map`을 뺀 것)을 여덟 묶음으로 동시에. 묶음 목록은 `suites.txt`의 샤드 번호에서 만든다. 리그 브라우저 검사 전부가 아니다. 목록 밖 16종은 §8 |
 | 최종 판정 | 앞의 작업(문법, 브라우저 목록 확인, Node 전체, 리그 브라우저)이 모두 성공이어야 성공. 취소·건너뜀도 실패로 본다 |
 
 묶음 배분과 예상 시간은 `tests/ci/suites.txt`와 `tests/ci/README.md`의 표가 원본이다. 새 리그 브라우저 검사를 만들면 그 목록에 넣는다. 검사 결과(`tests/results/`와 캡처)는 워크플로 결과물로 남는다(14일).
@@ -268,8 +268,8 @@ CI 통과는 병합의 필요조건이고, 최종 판정은 맥 로컬 브라우
 
 - 언제: PR 병합 직전, 릴리스 후보 태그 직전, 녹화·독립 평가용 고정본을 정하기 전. 검사한 SHA는 병합할 머리와 같아야 한다. 머리가 작업 줄기의 인계 문서 직접 커밋을 받느라 바뀌었으면, 그 차이가 인계 문서뿐임을 §9의 4 명령으로 보이고 PR 댓글에 남긴다. 이때는 다시 돌리지 않는다.
 - 범위:
-  - 화면·엔진 코드(`*.js`, `*.css`, `index.html`)를 바꾼 PR: `tests/ci/suites.txt`의 31종(`browser.sh --all`).
-  - 엔진·자료 파일이나 섞인 파일의 계산·판정 구간(§4.3)을 바꾼 PR: 31종에 더해 목록 밖 리그 기본 검사 `rules`·`e2e`·`e2e2`·`e2e3`·`econint`·`ai-check`. `ui/league-net.js`를 바꿨으면 `mocktest`·`recover`·`chanlimit`도.
+  - 화면·엔진 코드(`*.js`, `*.css`, `index.html`)를 바꾼 PR: `tests/ci/suites.txt` 전체(`browser.sh --all`).
+  - 엔진·자료 파일이나 섞인 파일의 계산·판정 구간(§4.3)을 바꾼 PR: `suites.txt` 전체에 더해 목록 밖 리그 기본 검사 `rules`·`e2e`·`e2e2`·`e2e3`·`econint`·`ai-check`. `ui/league-net.js`를 바꿨으면 `mocktest`·`recover`·`chanlimit`도.
   - 리그 밖 파일(`app.js`, `styles.css`, `index.html`, `data.js`, `practice-data.js`, `g20xx.js`, `games/`, `ext/`, `ui/v2*`, `ui/skin-*`, `ui/stage-*`)을 바꾼 PR: 회귀 20종과 모형 검산도.
   - 검사 파일만 바꾼 PR: 바뀐 검사와 그 검사가 보는 화면의 검사. 문서만 바꾼 PR: 하지 않는다. 범위를 줄였으면 PR 댓글에 적는다.
 - `suites.txt` 밖의 리그 브라우저 검사 16종: `rules`·`e2e`·`e2e2`·`e2e3`·`econint`·`ai-check`·`mocktest`·`recover`·`long36`·`chanlimit`·`tech`·`s1cards`·`phonedrawer`·`snapcompat`·`weights`·`fx_region`. 통합 검사 14(25ac06b)에는 있었고 15부터 빠졌다. 지금 판에서 통과하는지는 확인하지 않았다. `CLAUDE.md`, `docs/HANDOFF-econ.md` §5, 검사 실행 에이전트가 여전히 리그 화면 검사로 적는 검사들이다. 기본은 CI 목록에 넣는 것이다. 총괄이 맥 로컬에서 한 번 돌려 시간과 결과를 확인한 뒤, 통과하는 것은 `suites.txt`에 넣고 샤드를 다시 나눈다. 실패는 이슈로 만든다. 빼려면 이름마다 이유(같은 계약을 단언하는 다른 검사의 위치 등)를 CI 도입 이슈에 적고, 은퇴로 정하면 `CLAUDE.md`·`docs/HANDOFF-econ.md` §5·`.claude/agents/test-runner.md`에서도 지운다. 그때까지 이 16종은 위 범위의 모형·엔진 PR과 통합 검사(§10)에서 이름으로 돌린다. `judge.py`는 이 검사들의 `PROBLEMS N` 요약 줄과 `errors [...]` 페이지 오류 줄을 실패로 읽는다.
@@ -329,7 +329,7 @@ CI 통과는 병합의 필요조건이고, 최종 판정은 맥 로컬 브라우
      git diff --name-only <검사한 SHA>...origin/claude/kentech-league-econ-balance
      ```
      GitHub가 충돌로 병합을 막으면(PR도 `docs/DECISIONS.md`를 고친 경우 등) 작업 줄기를 병합해 받는다. 그리고 `git diff --name-only <검사한 SHA> <새 머리>`도 세 파일 가운데 것뿐임을 PR 댓글에 남긴다. 이때 맥 로컬 확인은 다시 하지 않고 새 머리의 CI 녹색만 기다린다.
-   - 다른 PR의 코드·검사 변경이 작업 줄기에 들어왔으면 작업 줄기를 받고 CI와 맥 로컬 확인을 다시 한다. 맥 로컬 한 번은 `suites.txt` 31종만으로 예상초 합 약 77분(4,606초)이다. 그래서 같은 날 합칠 PR은 순서를 정한다. 앞 PR을 병합한 뒤에 다음 PR이 작업 줄기를 받아 맥 로컬 확인을 시작한다. 맥 로컬 확인은 한 번에 하나다.
+   - 다른 PR의 코드·검사 변경이 작업 줄기에 들어왔으면 작업 줄기를 받고 CI와 맥 로컬 확인을 다시 한다. 맥 로컬 한 번은 `suites.txt` 33종만으로 예상초 합 약 85분(5,095초)이다. 그래서 같은 날 합칠 PR은 순서를 정한다. 앞 PR을 병합한 뒤에 다음 PR이 작업 줄기를 받아 맥 로컬 확인을 시작한다. 맥 로컬 확인은 한 번에 하나다.
 5. 사용자 결정이 필요한 변경은 결정 기록(D-번호)이 있다.
 
 ```bash
@@ -348,7 +348,7 @@ squash·rebase는 쓰지 않는다(D-78). 머리가 적은 SHA와 다르면 병�
 ## 10. 작업 줄기 통합 검사
 
 - 병합은 §9의 4를 지킨 PR만 하므로, 병합 결과는 그 PR의 CI·맥 로컬 확인이 본 코드에 인계 문서 직접 커밋을 더한 것과 같다. 작업 줄기에 따로 CI를 돌리고 싶으면 수동 실행을 쓴다.
-- 맥 로컬 전체 검사는 고정본(녹화·독립 평가·릴리스 후보)을 정하기 전과, 하루에 PR을 여러 개 합친 뒤에 돌린다. 문법, Node 전체(`tests/ci/node-all.sh`와 `judge.py --kind node`), 모형 검산(§8 명령), 회귀 20종(한 종씩, §8 명령), 리그 브라우저 `suites.txt` 31종, 목록 밖 리그 브라우저 16종(CI에 넣기 전까지, §8)이다. 밸런스를 건드린 PR이 들어왔으면 `bots36.py --node --months 36`도 돌린다.
+- 맥 로컬 전체 검사는 고정본(녹화·독립 평가·릴리스 후보)을 정하기 전과, 하루에 PR을 여러 개 합친 뒤에 돌린다. 문법, Node 전체(`tests/ci/node-all.sh`와 `judge.py --kind node`), 모형 검산(§8 명령), 회귀 20종(한 종씩, §8 명령), 리그 브라우저 `suites.txt` 전체, 목록 밖 리그 브라우저 16종(CI에 넣기 전까지, §8)이다. 밸런스를 건드린 PR이 들어왔으면 `bots36.py --node --months 36`도 돌린다.
 - Node와 브라우저를 둘 다 돌린다. 10-25에 브라우저만 돌리고 push했다가 sec·d75 대역 결함을 늦게 찾았다.
 - 결과 원본은 총괄의 저장소 밖 작업 폴더에 둔다. `docs/PROGRESS.md` '이어받을 곳'에는 판(SHA)과 결과만 적는다. 돌리지 않은 검사는 '돌리지 않음'으로 적는다.
 

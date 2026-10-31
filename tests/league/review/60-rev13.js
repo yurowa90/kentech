@@ -2,6 +2,7 @@
 // 기대값의 유일한 근거: _briefs/lanes/q8/rev13-fix/spec.md.
 // 구현의 계산식을 기대값으로 가져오지 않는다. 브라우저·네트워크·원본 수정 없음.
 const assert = require('node:assert/strict');
+const O = require('./rev14b-contract.cjs');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
 const ROOT = path.resolve(__dirname, '../../..');
@@ -39,7 +40,7 @@ try {
       assert.ok(end >= 0, '기존 IIFE 연결점 없음');
       // 기존 함수만 메모리에서 공개한다. 새 계약 함수는 실제 KCP.league 공개를 요구한다.
       text = text.slice(0, end) + '\nglobalThis.__rev13 = {' +
-        ['missedText','promiseVerdictText'].map(n => `${n}: typeof ${n} === "function" ? ${n} : undefined`).join(',') +
+        ['missedText','promiseVerdictText','outageReplayShown'].map(n => `${n}: typeof ${n} === "function" ? ${n} : undefined`).join(',') +
         '};\n' + text.slice(end);
     }
     vm.runInContext(text, ctx, { filename: `ui/${name}.js`, timeout: 10000 });
@@ -53,14 +54,14 @@ for (const name of ['outageDisplayValues','outageShownTotal','outagePartShown','
 const cards = body(source, 'outageCardsHTML');
 test('R2 한 줄 요약 차이는 outageShownTotal 절댓값', () => {
   assert.ok(cards, 'outageCardsHTML 함수 없음');
-  assert.match(cards, /outageValue\(\s*Math\.abs\(\s*outageShownTotal\(\s*a\s*\)\s*\)\s*,\s*(?:a\.unit|unit)\s*\)/);
+  assert.match(cards, /outageValue\(\s*Math\.abs\(\s*outageShownTotal\(\s*a\s*\)\s*\)\s*,\s*(?:a\.unit|unit)\s*(?:,\s*false\s*,\s*(?:digits|d|outageDigits\(a\)))?\s*\)/);
   // 단순히 같은 함수의 다른 분기에서 호출하는 것으로 통과시키지 않는다.
   assert.match(cards, /(?:차이|이번 차이)[^\n]{0,220}outageShownTotal\(a\)|outageShownTotal\(a\)[^\n]{0,220}(?:차이|이번 차이)/);
 });
 for (const name of ['outageCardsHTML','missedCarryHTML','missedText']) test(`R2 ${name} 몫 표시 연결`, () => {
   const text = body(source, name);
   assert.ok(text, `${name} 함수 없음`);
-  assert.match(text, /outageValue\(\s*outagePartShown\([^;\n]*?\)\s*,\s*[\w.?]+\s*,\s*true\s*\)/);
+  assert.match(text, /outageValue\(\s*outagePartShown\([^;\n]*?\)\s*,\s*[\w.?]+\s*,\s*true\s*(?:,\s*(?:digits|d|outageDigits\([\w.]+\)))?\s*\)/);
 });
 // fmt/outageValue 구현 대신 명세의 표시 눈금을 독립 사용한다.
 const rounded = (x, digits) => Number(x.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: digits }));
@@ -74,30 +75,9 @@ function attribution(trial, actual, values, replay=0, grid=true) {
 }
 let allocated=0, fallback=0;
 function allocation(a) {
-  const original = JSON.stringify(a), digits = a.target === 'grid' ? 1 : 2;
-  const display = need('outageDisplayValues')(a), part = need('outagePartShown'), total = need('outageShownTotal')(a);
-  assert.equal(Object.prototype.toString.call(display), '[object Map]', '표시 배분 Map');
-  // 명세 R2: 배분 Map이 없는 옛 기록은 원값 반올림 경로를 유지한다.
-  near(total, display.size ? rounded(a.actual,digits)-rounded(a.trial,digits) : a.actual-a.trial,
-    display.size ? 'S7 표시 실제 − 표시 시작' : '빈 Map 원값 차이 유지');
-  const shown = a.parts.map(p => {
-    const x = part(a,p.key,p.value);
-    near(x, display.get(p.key) ?? p.value, `몫 ${p.key} 배분/옛 기록 원값`);
-    near(rounded(x,digits),x === p.value && !display.size ? rounded(p.value,digits) : x, '표시 눈금');
-    return x;
-  });
-  if (display.size) {
-    allocated++;
-    const replay = a.replayOutsideSum ? 0 : (display.get('replay') ?? rounded(a.replay,digits));
-    near(shown.reduce((s,x)=>s+x,0)+replay, total, '네 몫 + 표시 재현 차이 = 표시 차이');
-  } else fallback++;
-  const max = Math.max(...a.parts.map(p=>Math.abs(p.value)));
-  const largest = a.parts.map((p,i)=>({p,i})).filter(({p})=>Math.abs(p.value) === max);
-  for (const {i} of largest) for (let j=0;j<shown.length;j++)
-    assert.ok(Math.abs(rounded(shown[i],digits)) >= Math.abs(rounded(shown[j],digits)), '가장 큰 몫의 표시 크기 유지');
-  for (const x of largest) for (const y of largest)
-    near(Math.abs(rounded(shown[x.i],digits)),Math.abs(rounded(shown[y.i],digits)),'공동 가장 큼 표시 동률');
-  assert.equal(JSON.stringify(a),original,'고정본 원값 불변');
+ const L={...ctx.KCP.league,outageReplayShown:ctx.__rev13.outageReplayShown};
+ O.check(a,L,{html:true});const map=L.outageDisplayValues(a);if(map.size)allocated++;else fallback++;
+ for(const p of a.parts)near(need('outagePartShown')(a,p.key,p.value),map.get(p.key)??p.value,'같은 배분 몫 소비');
 }
 let seed=0x13c0ffee;
 const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/2**32);
@@ -131,9 +111,9 @@ try {
   record=ctx.__rev13.missedText(note);
   if (!record || !record.includes('가장 큰 몫')) throw new Error('합성 기록으로 가장 큰 몫 분기 미확보');
 } catch(error) { recordError=error; }
-if (!recordError) test('R2 missedText 1.6626 → 표시 +1.6', () => {
-  assert.match(record,/가장 큰 몫[^]*?\+1\.6(?:\s|MWh)/);
-  assert.doesNotMatch(record,/\+1\.7(?:\s|MWh)/);
+if (!recordError) test('rev14b R2 missedText 두 자리 달 1.6626 → +1.66', () => {
+  assert.match(record,/가장 큰 몫[^]*?\+1\.66(?:\s|MWh)/);
+  assert.doesNotMatch(record,/\+1\.6(?:\s|MWh)/);
 });
 else console.log(`INFO R2 missedText VM 호출 미확보 → 위 원문 단언 사용: ${recordError.message}`);
 

@@ -199,7 +199,11 @@ def grant(checks, page, before, label, width):
         checks.ok(tip.locator(':scope > summary').inner_text() == '!', label + ' F1 설명 summary !')
         tip.locator(':scope > summary').click()
         # 지시서 T 1번: 좁은 화면 설명은 용도 제한과 소멸을 포함한 문장 그대로다(문구는 아르곤 2차 확정안).
-        explanation = f'남은 특별교부세 {value:g}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요.'
+        # rev14 M2: 보수비 사건이 없는 재난 달(한파 등)은 보수비를 말하지 않는 갈래(textNoRepair, 아르곤 확정안)다.
+        # 갈래는 위의 독립 판정 repair로 고르고, 구현 함수와의 일치는 따로 단언한다.
+        checks.ok(page.evaluate('() => KCP.league.grantHasRepair()') == repair, label + ' F1 보수비 갈래 판정 일치')
+        explanation = (f'남은 특별교부세 {value:g}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말 재난 보수비에 먼저 쓰이고, 그래도 남으면 사라져요.'
+                       if repair else f'남은 특별교부세 {value:g}억은 새 설비·선로·재난 대응에 써요. 계획에 쓰고 남은 돈은 이달 말에 사라져요.')
         pop = tip.locator('.lg-info-pop')
         checks.ok(explanation == pop.inner_text(), label + ' F1 설명 확정 교부세 문구')
         # 지시서 T 1번: 설명 상자 전체가 viewport 안에 보인다(경계 오차 없음).

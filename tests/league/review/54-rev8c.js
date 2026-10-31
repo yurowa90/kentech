@@ -1,11 +1,13 @@
 'use strict';
 // 기대값 출처: spec-C.md M1·M2·M3·M5·M5b·M6·M10, impl-C.md 및 rev9 R4.
+// M5 배분은 rev14b/spec.md A의 완전 탐색·최소 비용·W2로 대체한다.
 // --head는 git show만 사용한다. 기본 실행은 구현 병합 후 작업판 검증용이다.
 // 잡는 회귀: 월 길이에 뒤집히는 깜빡임, 교부세 용도 오안내, 음수 부호,
 // 표시 합계 불일치·원값 변형, 문턱/같음 정밀도, 현금 음수 위험 오분류.
 // 41/32번 VM 방식. 원본 ui/** 수정 없음. 브라우저·네트워크 실행 없음.
 // API 부재는 BLOCKED 실패이며 skip 없음. 작업판은 다른 세션에서 실행한다.
 const assert = require('node:assert/strict');
+const O = require('./rev14b-contract.cjs');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
 const ROOT = path.resolve(__dirname, '../../..');
@@ -114,6 +116,7 @@ try {
   // 기준판에 존재하는 진입점만 메모리에서 노출한다. 새 구현의 함수명을 추측하지 않는다.
   const names = ['phaseChanged', 'grantMoneyNote', 'cityHTML', 'resultHTML', 'promiseVerdictText',
     'promiseResultHTML', 'outageWaterfallHTML', 'outageCardsHTML', 'outagePartRanking',
+    'outageShownTotal', 'outageDisplayValues', 'outageDisplay', 'outageCardMin', 'outageReplayShown',
     'hostRisk', 'hostRiskHTML', 'trialCompareHTML', 'mountCity'];
   const start = source.indexOf('  function mountCity(');
   const adapter = source.slice(start).split('\n').find(x => x.trim().startsWith('budget:'));
@@ -288,47 +291,12 @@ function shownParts(a) {
     assert.ok(m, text); return Number(m[1].replace('−', '-').replaceAll(',', ''));
   });
 }
-function rankingMatchesDisplay(a, displayed, tied) {
-  if (!tied.length) return true;
-  const size = Math.abs(displayed[a.parts.findIndex(p => p.key === tied[0])]);
-  return a.parts.every((p, i) => tied.includes(p.key)
-    ? Math.abs(displayed[i]) === size : Math.abs(displayed[i]) < size);
-}
-function checkDisplayedRanking(a, displayed, tied) {
-  if (!tied.length) return;
-  const size = Math.abs(displayed[a.parts.findIndex(p => p.key === tied[0])]);
-  for (const [i, p] of a.parts.entries()) {
-    if (tied.includes(p.key)) assert.equal(Math.abs(displayed[i]), size, `(a) tied ${p.key}의 표시 절댓값 일치`);
-    else assert.ok(Math.abs(displayed[i]) < size, `(b) tied 밖 ${p.key}의 표시 절댓값 < tied ${size}: ${displayed[i]}`);
-  }
-}
+function contractAPI() {return Object.fromEntries(['outageShownTotal','outageDisplayValues','outageDisplay','outageCardMin','outagePartRanking','outageReplayShown','outageWaterfallHTML'].map(n=>[n,api(n)]));}
 function checkAllocation(a) {
-  const before = JSON.stringify(a), scale = a.target === 'grid' ? 10 : 100;
-  const digits = a.target === 'grid' ? 1 : 2;
-  const displayed = shownParts(a).map(v => Math.round(v * scale) + 0);
-  const want = Math.round(Number((a.actual - a.trial).toFixed(digits)) * scale) + 0; // spec-C §M5: 표시 Δ의 0과 -0은 같은 표시.
-  const floors = a.parts.map(p => Math.floor(p.value * scale));
-  const fractions = a.parts.map((p, i) => p.value * scale - floors[i]);
-  // spec-C §M5·C6: 배분이 최대 몫 판정과 모순되면 그 달 전체를 각자 반올림한다.
-  // 실제 표시를 보고 합계 검사를 생략하지 않고, 원값에서 배분 후보를 독립 계산한다.
-  const candidate = floors.slice(), remaining = want - floors.reduce((x, y) => x + y, 0);
-  const order = fractions.map((_, i) => i).sort((i, j) => fractions[j] - fractions[i] || i - j);
-  assert.ok(remaining >= 0 && remaining <= order.length, '배분할 표시 눈금 범위');
-  for (const i of order.slice(0, remaining)) candidate[i]++;
-  const tied = Array.from(api('outagePartRanking')(a).tied);
-  checkDisplayedRanking(a, displayed, tied);
-  if (!rankingMatchesDisplay(a, candidate, tied)) {
-    const rounded = a.parts.map(p => Math.round(Number(p.value.toFixed(digits)) * scale) + 0);
-    assert.deepEqual(displayed, rounded, '판정과 모순되면 모든 몫을 각자 반올림');
-  } else {
-    assert.equal(displayed.reduce((x, y) => x + y, 0), want, '모순이 없는 사례: 표시 몫 합 = 표시 Δ');
-    const awards = displayed.map((v, i) => v - floors[i]);
-    assert.ok(awards.every(v => v === 0 || v === 1), '각 몫은 인접한 표시 눈금');
-    for (let i = 0; i < awards.length; i++) for (let j = 0; j < awards.length; j++)
-      if (awards[i] > awards[j]) assert.ok(fractions[i] + 1e-9 >= fractions[j], '큰 나머지가 먼저 배분됨');
-  }
-  assert.equal(JSON.stringify(a), before, '저장 원값·parts 순서 불변');
-  return displayed.map(v => v / scale);
+ const L=contractAPI(),o=O.check(a,L,{html:true}),out=O.actualDisplay(a,L);
+ const shown=shownParts(a),d=O.digits(a);
+ assert.deepEqual(shown,a.parts.map(p=>O.rounded(out.values.get(p.key)??p.value,d)),'폭포 줄 = A2 선택 조합/각자 반올림');
+ return shown;
 }
 // M5·C6: 음수·혼합·동률에서 합계 배분 또는 판정 일치를 위한 각자 반올림을 확인한다.
 for (const values of [[.06, .06, .06], [-.06, -.06, -.06], [1.24, -.17, .06, -.12, .01, .02]])
@@ -347,16 +315,28 @@ test('M5 고정 씨앗 무작위 1,000건 모두 (a)(b)·조건부 합계·원�
   }
   assert.equal(errors.length, 0, `1,000건 검사 중 ${errors.length}개 단언 실패; ${errors.slice(0, 3).join('; ')}`);
 });
-for (const [values, expected, tied] of [
-  [[.524, .521, .003, 0, 0, 0], [.52, .52, 0, 0, 0, 0], ['choice', 'weather']],
-  [[.5251, .5211, .006, 0, 0, 0], [.53, .52, .01, 0, 0, 0], ['choice']],
-  [[-.524, .5235, .103, .103, .103, 0], [-.52, .52, .1, .1, .1, 0], ['choice', 'weather']]
-]) test(`M5 C6 uns 각자 반올림 ${values}`, () => {
-  const a = attribution(values, 'uns'), before = JSON.stringify(a);
-  assert.deepEqual(Array.from(api('outagePartRanking')(a).tied).sort(), tied.slice().sort());
-  assert.deepEqual(shownParts(a), expected, '그 달 모든 몫은 각자 반올림');
-  checkAllocation(a);
-  assert.equal(JSON.stringify(a), before, '원값·parts 순서 불변');
+for(const [label,values,target,start] of [
+ ['공동 최대',[.524,.521,.003,0,0,0],'uns',20],
+ ['카드 비영',[.5251,.5211,.006,0,0,0],'uns',20],
+ ['부호 혼합',[-.524,.5235,.103,.103,.103,0],'uns',20],
+ ['합 .8 순서 보호',[.27,.24,.24,0,0,0],'grid',20],
+ ['옛 탐욕 한계',[.042,.094,-.209,-.151],'grid',20],
+ ['부호 반전',[-.042,-.094,.209,.151],'grid',20],
+ ['두 자리 달',[.042,.094,-.209,-.151],'grid',0]
+])test('M5 rev14b '+label,()=>checkAllocation(attribution(values,target,start)));
+test('M5 rev14 목표는 표시 끝−시작 대신 원 total 반올림', () => {
+  const endpoint = attribution([.06, 0, 0, 0, 0, 0], 'grid', 100.06);
+  assert.equal(Math.round(Number(endpoint.actual.toFixed(1)) * 10) -
+    Math.round(Number(endpoint.trial.toFixed(1)) * 10), 0, '독립 반올림한 시작·끝 눈금 차이는 0');
+  assert.deepEqual(checkAllocation(endpoint), [.1, 0, 0, 0, 0, 0], 'total 0.06의 머리는 0.1');
+  const a = attribution([.15, 0, 0, 0, 0, 0], 'grid', 100.06);
+  assert.equal(Number((a.actual - a.trial).toFixed(1)), .2, '끝−시작 재계산의 부동소수 차이는 total과 다른 반올림');
+  assert.deepEqual(checkAllocation(a), [.1, 0, 0, 0, 0, 0], 'total 0.15의 toFixed(1)은 0.1');
+});
+for (const missing of [null, undefined]) test(`M5 rev14 보완 3 total=${missing} 옛 기록`, () => {
+  const a = attribution([1.06, 0, 0, 0, 0, 0]);
+  a.total = missing;
+  assert.deepEqual(checkAllocation(a), [1.1, 0, 0, 0, 0, 0], 'total 부재 시 끝−시작 반올림');
 });
 test('M5 C6 공동 가장 큼 꼬리표·판정 숫자 = 폭포 표시', () => {
   const { S, n } = setup({ phase: 'review', topic: 'uns' });

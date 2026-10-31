@@ -1,6 +1,6 @@
 'use strict';
 const weatherShort = require('./v8-weather-contract');
-const displayContract = require('./rev10-display-contract'); // rev10 R7
+const displayContract = require('./rev14b-contract.cjs'); // rev14b A1–A4: 명세의 완전 탐색 oracle.
 // 기준: ../_briefs/lanes/league/V3B-fix5.md + V3B-fix4.md + V3B-fix3.md + V3B-fix2.md + C-fix3.md + V3B-s7.md(영상 3차), 여섯 단계·호출 상한·0.005%p 재현 문턱. // D-80: C-1·2·4·5 대상별 검사.
 // 예상값은 S7 반환값/사본/호출 로그가 아니라 운영 직전 상태와 build/core 모델로 만든다.
 // 잡는 회귀: 시험 기준 회귀, 단계 교환/입력 조기 변경, 재현의 합계/후보 혼입,
@@ -118,11 +118,11 @@ function simulation(plan, seed, season, days, mods) {
 }
 const uns = s => s.tot.dem > 0 ? 100 * s.unsTotal / s.tot.dem : 0;
 const pct = (...args) => uns(simulation(...args));
-const number = (v, sign = false, digits = 2) => { // D-80: C-4의 MWh 한 자리.
+const number = (v, sign = false, digits = 2, grouped = false) => {
   if (!Number.isFinite(v)) return '–';
   const rounded = Number(v.toFixed(digits)) + 0; // D-80: C-4.
   // D-80: MWh(한 자리)는 같은 카드의 단서 숫자처럼 천 단위 쉼표를 쓴다(검토 minor 2, 총괄 승인 전 리그 갈래 판단).
-  const body = digits === 1 ? Math.abs(rounded).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : Math.abs(rounded).toFixed(digits);
+  const body = grouped || digits === 1 ? Math.abs(rounded).toLocaleString('ko-KR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : Math.abs(rounded).toFixed(digits);
   return `${rounded < 0 ? '−' : sign && rounded > 0 ? '+' : ''}${body}`; // D-80: C-4.
 };
 const publicMWh = r => Math.max(0, r.isolated.uns - r.uns - r.imp + r.sub); // D-80: 계약 A, 공개 필드만.
@@ -133,12 +133,21 @@ function filledValue(raw, target, mul) { // D-80: S7 대신 core 공개 모델�
   return target === 'grid' ? (filled.tot.by.import - raw.tot.by.import) * mul : uns(filled); // D-80: C §2, 기존 수입 설비 제외.
 } // D-80: 독립 단계 값.
 const minPart = a => a?.target === 'grid' ? Math.max(Math.max(.05, .05 * Math.abs(a.trial ?? a.base)) / 10, .05) : .05; // D-82: 기준 하루 평균의 같음 문턱/10, 정전은 유지.
-const unitNumber = (a, value, sign = false, rate = false) => a.target === 'grid' ? number(value, sign, 1) + ' MWh/일' : number(value, sign) + (rate ? '%' : '%p'); // D-82: 계통 하루 평균 표시.
+const unitNumber = (a, value, sign = false, rate = false) => a.target === 'grid' ? number(value, sign, displayContract.digits(a), true) + ' MWh/일' : number(value, sign) + (rate ? '%' : '%p'); // rev14b A1: 2자리 달도 모든 계통 숫자에 적용.
 const eventText = (text, target) => target === 'grid' ? text.replaceAll('우리 도시 정전에 닿는', '우리 도시가 바깥 계통에 기댄 전기에 닿는') : text; // D-82: 명세 (b)의 표시 기대 문구, 사본 원문은 유지.
 // V7 A: 카드에만 Δ의 5%를 더한다. 병목·재현·분해의 기존 눈금은 유지한다.
 const cardMin = a => {
   const total = a.total ?? (a.actual - (a.trial ?? a.base));
   return Number.isFinite(total) ? Math.max(minPart(a), .05 * Math.abs(total)) : minPart(a);
+};
+// oracle의 판정 입력도 명세·합성 원값에서 구한다. 구현의 ranking/cardMin은 호출하지 않는다.
+const displayRules = {
+  outageCardMin: cardMin,
+  outagePartRanking: a => {
+    const candidates = a.parts.filter(p => Math.abs(p.value) >= cardMin(a));
+    const d = displayContract.digits(a), maximum = Math.max(...candidates.map(p => Math.abs(p.value)));
+    return { tied: candidates.filter(p => Math.abs(Number(p.value.toFixed(d))) === Number(maximum.toFixed(d))).map(p => p.key) };
+  }
 };
 const topCards = (parts, a) => [...parts].filter(p => Math.abs(p.value) >= cardMin(a)) // D-80: 대상별 문턱.
   .sort((x, y) => Math.abs(y.value) - Math.abs(x.value)).slice(0, 3);
@@ -240,7 +249,7 @@ function bottleneck(html, grid, label, a = {}) { // D-80: C-1·4·5, 같은 대�
   ok(html.indexOf(box[0]) < html.indexOf(html.includes('id="lg-outage-cards"') ? 'id="lg-outage-cards"' : 'id="lg-outage-single"'),
     `${label}: 카드/요약 위 별도 상자`);
   const textNumbers = box[1].replace(/<[^>]*>/g, '').match(/[+−-]?\d[\d,]*(?:\.\d+)?/g) || [];
-  eq(textNumbers, [grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 }), number(grid.value, true, isGrid ? 1 : 2)], // D-80: C-1·2·4·5 대상별 검사.
+  eq(textNumbers, [grid.waitingMW.toLocaleString('ko-KR', { maximumFractionDigits: 1 }), number(grid.value, true, displayContract.digits(a), isGrid)], // rev14b A1: 같은 달의 자릿수.
     `${label}: 병목 텍스트 숫자는 대기 MW와 별도 반사실만`);
   ok([...box[0].matchAll(/\b(aria-[\w-]+|title|data-[\w-]+)="([^"]*)"/g)]
     .every(m => m[1] === 'data-out-grid' || !/\d|가장 큰|가장 큼/.test(m[2])),
@@ -488,25 +497,38 @@ function validate(old, current, replayOffset = 0, oracleOptions = {}) {
   eq(rendered.map(r => r.key), ['previous', ...causes, 'actual'], '폭포 분해 순서');
   const expectedRows = { previous: expected.base, // D-80: C-4, 대상별 출발/도착.
     ...Object.fromEntries(expected.parts.map(p => [p.key, p.value])), actual: expected.actual }; // D-80: C-1·2.
-  const digits = target === 'grid' ? 1 : 2, scale = 10 ** digits;
+  const displayInput = { target, unit: target === 'grid' ? 'MWh/일' : '%p', trial: expected.base,
+    actual: expected.actual, total: expected.actual - expected.base, parts: expected.parts, replayOutsideSum: true };
+  const allocation = displayContract.oracle(displayInput, displayRules);
+  const { d: digits, s: scale } = allocation;
   rendered.forEach(r => {
     near(r.raw, expectedRows[r.key], `${r.key} 독립 기대값 vs DOM 원시값`);
-    // rev10 R7: 원시 기대 몫으로 명세의 배분값을 계산. 동점 보호는 각자 반올림.
-    near(r.visible, displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).get(r.key)
-      ?? Number(expectedRows[r.key].toFixed(digits)), `${r.key} 명세 표시 배분/각자 반올림`);
+    const index = expected.parts.findIndex(p => p.key === r.key);
+    if (index >= 0 && allocation.best)
+      ok(allocation.choices[index].includes(Math.round(r.visible * scale) + 0), `${r.key} 명세 표시 배분 눈금`);
+    else near(r.visible, Number(expectedRows[r.key].toFixed(digits)), `${r.key} 명세 표시 배분/각자 반올림`);
   });
   for (const m of html.matchAll(/data-out-step="([^"]+)" data-out-value="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>/g))
     eq(m[3], unitNumber(a, rendered.find(r => r.key === m[1]).visible, causes.includes(m[1]), !causes.includes(m[1])),
       `${m[1]} 대상별 소수 자릿수·유니코드 마이너스·단위 붙임`); // spec-C §M5: 배분된 표시값에도 기존 숫자 형식 엄격 비교 유지.
   near(rendered.filter(r => r.key !== 'actual').reduce((s, r) => s + r.raw, 0), expected.actual, '폭포 원시 합계 1e-9'); // D-80: 단위 전환에도 합계 정밀도 유지.
   const displayedParts = rendered.filter(r => causes.includes(r.key));
-  // rev10 R7: 배분 맵이 있을 때 표시 출발 + 표시 몫 합 = 표시 실제.
-  if (displayContract({...a, trial:expected.base, actual:expected.actual, parts:expected.parts}).size)
-    eq(Math.round(Number(expected.base.toFixed(digits))*scale)+displayedParts.reduce((sum,r)=>sum+Math.round(r.visible*scale),0),
-      Math.round(Number(expected.actual.toFixed(digits))*scale), '표시 시작 + 표시 몫 = 표시 실제');
+  // rev14b A2: 조합 전체의 c1~c3와 비용 최소를 검사한다. 같은 비용의 조합은 모두 허용한다.
+  const ticks = displayedParts.map(r => Math.round(r.visible * scale) + 0);
+  const gap = allocation.H - ticks.reduce((sum, t) => sum + t, 0);
+  if (allocation.best) {
+    ok(allocation.allowed(ticks), 'rev14b 표시 배분: 크기 순서·공동 최대·후보 1눈금 보존');
+    eq(allocation.cost(ticks), allocation.best, 'rev14b 표시 배분 비용 사전순 최소');
+    if (allocation.best[0] === 0)
+      eq(ticks.reduce((sum, t) => sum + t, 0), allocation.H, 'rev14b 허용 조합으로 합을 맞출 수 있으면 표시 몫 합 = 머리');
+    else ok(allocation.gaps.has(gap), 'rev14b 합을 맞출 수 없을 때만 최적 gap 허용');
+  }
+  const shownGap = allocation.guarded || allocation.invalid ? 0 : gap;
+  eq((html.match(/data-round-note="w2"/g) || []).length, shownGap ? 1 : 0, 'rev14b 원값 합 가드·표시 어긋남 W2 조건');
+  if (shownGap) ok(html.includes(`몫의 합(${unitNumber(displayInput, (allocation.H - gap) / scale, true)})이 차이(${unitNumber(displayInput, Number(displayInput.total.toFixed(digits)), true)})와 ${unitNumber(displayInput, Math.abs(gap) / scale)} 달라요.`), 'rev14b W2 합·차이·어긋남의 자릿수·부호·단위');
   ok(html.includes('약속 판정과 같은 기준(지난달 실제 → 이번 달 실제)'), '판정·분해 기준 안내');
   ok(!html.includes('lg-outage-prior-trade') && !html.includes('지난달 거래 되돌림') && !html.includes('시험 1주 대비'), '되돌림 줄·설명 폐기');
-  eq(html.includes('id="lg-outage-replay"'), Math.abs(a.replay) >= (target === 'grid' ? .05 : .005), '대상별 재현 설명 표시 문턱'); // D-82: 계통 표시 반 눈금 0.05 MWh/일, 정전 유지.
+  eq(html.includes('id="lg-outage-replay"'), displayContract.replayShown(displayInput, a.replay), '대상별 재현 설명 표시 문턱'); // rev14b A2: 해당 달의 반 눈금, 정전 유지.
   ok(html.includes(`이번 달 계산 순서: ${causes.map(k => names[k]).join(' → ')}`) &&
     html.includes('순서를 바꾸면 몫이 달라질 수 있는 추정이에요. 게임에서 정한 순서예요.'), '실제 여섯 단계 계산 순서·순서 의존 안내'); // D-80: C-1·2·4·5 대상별 검사.
   for (const m of html.matchAll(/data-missed="([^"]+)"[^>]*><strong>([^<]+)<\/strong>/g))

@@ -83,20 +83,23 @@ function firstVerdict(html) {
   return textOf(html.match(/<div\b[^>]*id="lg-outage-verdict"[^>]*>\s*<p>([\s\S]*?)<\/p>/)?.[1] || '');
 }
 // outageValue를 호출하지 않고 계약의 표시 자릿수·부호·단위를 독립적으로 계산한다.
-function valueText(value, target) {
-  const digits = target === 'grid' ? 1 : 2, rounded = Number(value.toFixed(digits)) + 0;
+// rev14b A1: 기본 params의 같음 문턱이 0.1 미만인 하루 평균 계통 기록만 2자리.
+const displayDigits = a => a.target !== 'grid' ? 2 : a.unit !== 'MWh/일' ? 1 :
+  Number.isFinite(a.trial ?? a.base) && Math.abs(a.trial ?? a.base) < 2 ? 2 : 1;
+function valueText(value, target, a = { target }) {
+  const digits = displayDigits(a), rounded = Number(value.toFixed(digits)) + 0;
   const body = target === 'grid' ? Math.abs(rounded).toLocaleString('ko-KR',
-    { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : Math.abs(rounded).toFixed(2);
+    { minimumFractionDigits: digits, maximumFractionDigits: digits }) : Math.abs(rounded).toFixed(2);
   return `${rounded < 0 ? '−' : rounded > 0 ? '+' : ''}${body}${target === 'grid' ? ' MWh/일' : '%p'}`; // D-82: 합성 기록도 계약의 하루 평균 단위로 표시를 독립 계산.
 }
 function displayedPartText(html, a, key) {
   const row = html.match(new RegExp(`<div\\b[^>]*data-out-step="${key}"[^>]*>([\\s\\S]*?)<\\/div>`))?.[1] || '';
   const text = textOf(row.match(/<b>([^<]*)<\/b>/)?.[1] || '');
   const value = Number(text.match(/^[+−-]?\d[\d,.]*/)?.[0].replace('−', '-').replaceAll(',', ''));
-  const scale = a.target === 'grid' ? 10 : 100, ticks = Math.round(value * scale);
+  const scale = 10 ** displayDigits(a), ticks = Math.round(value * scale);
   const floor = Math.floor(a.parts.find(p => p.key === key).value * scale);
   assert.ok(ticks === floor || ticks === floor + 1, `${key} 표시값은 원값의 내림 또는 내림+1 눈금`); // spec-C §M5: 독립 반올림 대신 배분 가능한 두 눈금 검증.
-  assert.equal(text, valueText(value, a.target), `${key} 표시 자릿수·부호·단위`); // spec-C §M5: 배분 이후에도 숫자 형식은 그대로.
+  assert.equal(text, valueText(value, a.target, a), `${key} 표시 자릿수·부호·단위`); // rev14b A1: 배분 뒤에도 해당 달의 자릿수를 엄격 비교.
   return text;
 }
 function reset() { session.outCache = {}; session.outFailures = {}; session.outShownPending = null; }
@@ -416,9 +419,12 @@ for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달
     assert.ok(text.includes('우리 도시 정전에 닿는 사건 없음(해당 2건)') && text.includes('우리 도시 정전에 닿는 효과 없음'), '옛 정전 단서 그대로'); // D-82: (b)의 정전 호환.
     assert.ok(!text.includes('우리 도시가 바깥 계통에 기댄 전기에 닿는') && !text.includes('(비용 '), '옛 정전에 계통 문구·비용 없음'); // D-82: (a)(b)의 옛 정전 호환.
   }); // D-82: 옛 정전 기록 검사 끝.
-  for (const sign of [-1, 1]) for (const row of [{ choice: 9.44, event: 9.43, tied: true }, { choice: 9.46, event: 9.44, tied: false }]) { // D-82: 원시값은 다르되 표시가 같거나 달라지는 양·음 경계.
-    check(`20 D-82 ${basis}/${sign}/${row.choice} 표시 반올림 동점`, () => { // D-82: 화면과 저장 판정의 일치.
-      const a = partRecord(f, basis, 'grid', 0, { ...allZero, choice: sign * row.choice, event: -sign * row.event }); // D-82: 두 몫만 있는 독립 입력.
+  // rev14b A1: 기존 1자리 경계는 기준 2로 옮기고 2자리 달의 0.01 경계도 별도로 고정한다.
+  for (const base of [2, 0]) for (const sign of [-1, 1]) for (const row of (base === 2 ?
+    [{ choice: 9.44, event: 9.43, tied: true }, { choice: 9.46, event: 9.44, tied: false }] :
+    [{ choice: 9.444, event: 9.443, tied: true }, { choice: 9.446, event: 9.444, tied: false }])) {
+    check(`20 D-82 ${basis}/base=${base}/${sign}/${row.choice} 표시 반올림 동점`, () => {
+      const a = partRecord(f, basis, 'grid', base, { ...allZero, choice: sign * row.choice, event: -sign * row.event });
       const html = opened(f, a, evidenceCases[0], 'event'), first = firstVerdict(html); // D-82: 원시값이 작은 event를 선택.
       assert.ok(first.includes(displayedPartText(html, a, 'event')), '선택값은 폭포와 같은 배분 표시'); // spec-C §M5: 카드·폭포 값은 최대 나머지 표시, 동점 판정은 아래 원값 계약 유지.
       assert.ok(first.endsWith(row.tied ? ' · 크기가 같은 가장 큰 몫 중 하나예요' : ' · 몫은 있지만 가장 크지 않았어요'), '표시 눈금에서만 동점 판정'); // D-82: 원시값 비교 회귀 방지.
@@ -431,31 +437,43 @@ for (const basis of ['trial', 'monthly']) { // D-82: 첫 달 시험과 지난달
       } // D-82: 기록 동점 검사 끝.
     }); // D-82: 반올림 동점 검사 끝.
   } // D-82: 부호·눈금 순회 끝.
-  for (const replay of [.049999, .05, .050001, -.049999, -.05, -.050001]) check(`21 D-82 ${basis}/${replay} 계통 재현 반 눈금`, () => { // D-82: 정전 경계 검사는 기존 그대로 두고 하루 평균 경계를 추가.
-    const a = partRecord(f, basis, 'grid', 10, { ...allZero, choice: 2, event: -1 }); // D-82: 공개 가능한 여러 원인 합성 입력.
+  for (const base of [10, 0]) for (const replay of (base === 10 ?
+    [.049999, .05, .050001, -.049999, -.05, -.050001] :
+    [.004999, .005, .005001, -.004999, -.005, -.005001])) check(`21 D-82 ${basis}/base=${base}/${replay} 계통 재현 반 눈금`, () => {
+    const a = partRecord(f, basis, 'grid', base, { ...allZero, choice: 2, event: -1 });
     a.replay = replay; // D-82: 정확한 경계값 직접 주입.
     if (basis === 'trial') { a.actual += replay; a.total += replay; } // D-82: 시험은 재현 포함 합계, 월간은 합계 밖 진단 유지.
-    const html = opened(f, a, evidenceCases[0]), shown = Math.abs(replay) >= .05; // D-82: 0.1 MWh/일 표시 반 눈금의 독립 기대값.
+    const html = opened(f, a, evidenceCases[0]), shown = Math.abs(replay) >= (base === 10 ? .05 : .005); // rev14b A2: 각 자릿수의 반 눈금.
     assert.equal(html.includes('id="lg-outage-replay"'), shown, '계통 재현 설명 경계'); // D-82: 양·음 경계 모두 정확 대조.
     assert.equal(html.includes('data-out-step="replay"'), basis === 'trial' && shown, '시험만 재현 폭포 줄, 월간은 합계 밖'); // D-82: 재현의 합계 위치 보존.
   }); // D-82: 계통 재현 경계 검사 끝.
+  for (const base of [2, 0]) check(`rev14b A2 ${basis}/base=${base} 원인 빠진 옛 사본 합 가드`, () => {
+    const a = partRecord(f, basis, 'grid', base, { ...allZero, event: .1234 });
+    a.total = .5; a.actual = base + .5; // 빠진 원인 몫을 반올림 배분으로 메우면 안 된다.
+    const before = clone(a), html = opened(f, a, evidenceCases[0], 'event');
+    assert.equal(displayedPartText(html, a, 'event'), valueText(.1234, 'grid', a), '가드된 사본은 각자 반올림');
+    assert.ok(!html.includes('id="lg-outage-round-note"'), '원인 누락을 표시 눈금 안내로 설명하지 않음');
+    assert.deepEqual(a, before, '가드된 사본 원값 불변');
+  });
 } // D-82: 추가 계약 순회 끝.
 // V8 N2: 원자료·params로 문턱과 표시값을 별도로 계산한다.
 const param = k => D.params[k].v;
-const ceilText = (threshold, target) => {
-  const scale = target === 'grid' ? 10 : 100;
+const ceilText = (threshold, target, a = { target }) => {
+  const digits = displayDigits(a), scale = 10 ** digits;
   // 십진 지수 이동으로 0.07×100의 부동소수 오차를 피한다. 허용 오차는 두지 않는다.
   const [coefficient, exponent = '0'] = String(threshold).split('e');
-  const shown = Math.ceil(Number(`${coefficient}e${Number(exponent) + (target === 'grid' ? 1 : 2)}`)) / scale;
-  return shown.toFixed(target === 'grid' ? 1 : 2) + (target === 'grid' ? ' MWh/일' : '%p');
+  const shown = Math.ceil(Number(`${coefficient}e${Number(exponent) + digits}`)) / scale;
+  return shown.toFixed(digits) + (target === 'grid' ? ' MWh/일' : '%p');
 };
 function thresholdBasis(a) {
   const delta = a.total ?? a.actual - (a.trial ?? a.base);
-  const limit = ceilText(cardMin(a), a.target);
-  const magnitude = valueText(Math.abs(delta), a.target).replace(/^\+/, '');
+  const limit = ceilText(cardMin(a), a.target, a);
+  const magnitude = valueText(Math.abs(delta), a.target, a).replace(/^\+/, '');
   const threshold = param('outageCardShareMin') * Math.abs(delta);
-  // rev9 R4: 실제 문턱도 표시 눈금(계통 1자리·정전 2자리)을 쓴다.
-  const actual = threshold.toLocaleString('ko-KR', { maximumFractionDigits: a.target === 'grid' ? 1 : 2 });
+  // rev14b A1: 실제 비율 문턱도 해당 달의 표시 자릿수를 쓴다.
+  const digits = displayDigits(a);
+  const actual = threshold.toLocaleString('ko-KR', {
+    minimumFractionDigits: a.target === 'grid' && digits === 2 ? 2 : 0, maximumFractionDigits: digits });
   const ceiling = Number(limit.replace(/ MWh\/일|%p|,/g, ''));
   const share = Number(actual.replaceAll(',', '')) === ceiling ?
     `5%(${limit})` : `5%(${actual}, 표시 눈금으로 올려 ${limit})`; // spec-C §M5b: 실제 문턱·올림값을 함께, 같으면 기존 단위 포함 한 값.
@@ -507,7 +525,7 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
     for (const [route, raw] of Object.entries(records(f, a))) {
       const text = textOf(raw);
       assert.ok(text.includes(route === 'carry' ? '지난달 원인 고르기: 건너뜀' : '고르기 생략'), `${route} 생략 기록`);
-      assert.ok(!text.includes(names(basis).weather + ' ' + valueText(4, target)), `${route} 4%를 최대처럼 기록하지 않음`);
+      assert.ok(!text.includes(names(basis).weather + ' ' + valueText(4, target, a)), `${route} 4%를 최대처럼 기록하지 않음`);
     }
   });
   for (const edge of [.049, .05, .052]) check(`V7 A 작은 Δ 하한 ${basis}/${target}/${edge}`, () => {
@@ -522,13 +540,13 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
     const a = record({ choice: 90, weather: 4, event: 6 }); a.hasConnectedWind = true;
     const evidence = { key: 'wind', text: '풍속', value: 5 };
     const html = render(a, { evidence });
-    assert.equal(summaryBody(html), `고른 근거 ‘풍속’ · 직접 연결 몫 사건·대응 ${valueText(6, target)}`, '4%는 외 n개에서도 제외');
+    assert.equal(summaryBody(html), `고른 근거 ‘풍속’ · 직접 연결 몫 사건·대응 ${valueText(6, target, a)}`, '4%는 외 n개에서도 제외');
     const b = record({ choice: 96, weather: 4 }); b.hasConnectedWind = true;
     const tiny = render(b, { evidence });
     assert.equal(summaryBody(tiny), '고른 근거 ‘풍속’ · 직접 연결 몫은 거의 0');
     assert.ok(textOf(tiny).includes('이 몫들은 이번 차이에 거의 기여하지 않았어요.'), 'minPart 이상인 4%도 기여 문장은 cardMin 판정');
     const c = record({ choice: 88, weather: 6, event: 6 }); c.hasConnectedWind = true;
-    assert.equal(summaryBody(render(c, { evidence })), `고른 근거 ‘풍속’ · 직접 연결 몫 날씨·${basis === 'monthly' ? '계절·' : ''}운전 기간 ${valueText(6, target)} 외 1개`, '6% 둘은 외 1개로 집계');
+    assert.equal(summaryBody(render(c, { evidence })), `고른 근거 ‘풍속’ · 직접 연결 몫 날씨·${basis === 'monthly' ? '계절·' : ''}운전 기간 ${valueText(6, target, c)} 외 1개`, '6% 둘은 외 1개로 집계');
   });
   check(`V7 A 고정본 4% 선택 보존 ${basis}/${target}`, () => {
     const a = record({ choice: 90, weather: 4, event: 6 }), before = clone(a);
@@ -549,14 +567,14 @@ for (const basis of ['trial', 'monthly']) for (const target of ['uns', 'grid']) 
     const html = render(a);
     assert.equal(html.includes('id="lg-outage-grid-bottleneck"'), effect >= .05, '5%보다 작은 반사실도 minPart 이상이면 표시');
     assert.equal(html.includes('id="lg-outage-grid-small"'), effect < .05);
-    if (effect < .05) assert.ok(textOf(html).includes(`효과 ${target === 'grid' ? '0.1 MWh/일' : '0.05%p'} 이하`), '효과 이하 문구도 minPart');
+    if (effect < .05) assert.ok(textOf(html).includes(`효과 ${target === 'grid' ? '0.05 MWh/일' : '0.05%p'} 이하`), '효과 이하 문구도 minPart'); // rev14b A1: 기준 0인 계통 달은 2자리.
     if (effect >= .05) assert.ok(html.includes(`data-out-grid="${effect}"`), '반사실 원시값 유지');
   });
-  for (const replay of [target === 'grid' ? .049 : .0049, target === 'grid' ? .05 : .005])
+  for (const replay of (target === 'grid' ? [.0049, .005, .049, .05] : [.0049, .005]))
     check(`V7 A 재현 기존 눈금 ${basis}/${target}/${replay}`, () => {
       const a = record({ choice: 94, event: 6 }); a.replay = replay;
       if (basis === 'trial') { a.total += replay; a.actual += replay; }
-      const html = render(a), shown = replay >= (target === 'grid' ? .05 : .005);
+      const html = render(a), shown = replay >= .005; // rev14b A2: 기준 0인 2자리 달도 반 눈금은 0.005.
       assert.equal(html.includes('id="lg-outage-replay"'), shown, '재현 표시 눈금에 5%를 적용하지 않음');
       assert.equal(html.includes('data-out-step="replay"'), shown && basis === 'trial', '폭포 재현 위치 유지');
     });
@@ -759,7 +777,7 @@ for (const target of ['grid', 'uns']) {
       a.parts = trialKeys.map(key => ({ key, value: key === 'choice' && mode === '고르기 건너뜀' ? a.total : key === 'weather' ? below : 0 }));
       a.grid = { waitingMW: 12, value: mode === '접속 대기' ? below : 0 };
       const html = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
-      const text = textOf(html), expected = ceilText(limit, target);
+      const text = textOf(html), expected = ceilText(limit, target, a);
       assert.ok(text.includes(mode === '접속 대기' ? `접속 대기 12 MW(효과 ${expected} 이하)` :
         mode === '원인 없음' ? `네 원인의 몫이 모두 이번 ${thresholdBasis(a)} 이하라, 바뀐 조건 하나하나는` :
           `네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요`), `${mode}/${threshold}: ${text}`);
@@ -796,7 +814,7 @@ for (const [cause, ending] of [['event', '이에요'], ['trade', '예요']]) che
   const f = fixture('trial', 'grid'), zeros = Object.fromEntries(trialKeys.map(k => [k, 0]));
   const a = partRecord(f, 'trial', 'grid', 0, { ...zeros, [cause]: 12.34 });
   const cost = Number((12.34 * param('normalCost') * param('gridImportMarkup')).toFixed(2)).toFixed(2);
-  const expected = `이번 차이의 가장 큰 몫은 ${names('trial')[cause]}(+12.3 MWh/일, 비용 +${cost}억/일)${ending}. 네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요.`;
+  const expected = `이번 차이의 가장 큰 몫은 ${names('trial')[cause]}(+12.34 MWh/일, 비용 +${cost}억/일)${ending}. 네 원인 중 나머지 몫은 모두 ${thresholdBasis(a)} 이하라 고르기를 건너뛰어요.`; // rev14b A1: 기준 0, 2자리 달.
   const html = M.outageCardsHTML(f.V, f.res, id, { outageOpened: true, outageFrozen: a });
   assert.ok(textOf(html).includes(expected), textOf(html));
 });
@@ -835,7 +853,7 @@ for (const target of ['uns', 'grid']) check(`V8 문구 1·3·4 ${target} 단독 
   const f = fixture('trial', target), zero = Object.fromEntries(trialKeys.map(k => [k, 0]));
   const a = partRecord(f, 'trial', target, 0, { ...zero, event: 12.34, choice: 2 });
   const money = target === 'grid' ? `, 비용 +${(12.34 * param('normalCost') * param('gridImportMarkup')).toFixed(2)}억/일` : '';
-  const part = valueText(12.34, target), name = names('trial').event;
+  const part = valueText(12.34, target, a), name = names('trial').event;
   const record = records(f, a, 'event');
   assert.equal(textOf(record.carry), `지난달 내가 고른 원인: ${name} · 실제 가장 큰 몫과 같음(${name} ${part}${money})`);
   for (const route of ['journal', 'timeline']) assert.ok(textOf(record[route]).includes(
@@ -846,7 +864,7 @@ for (const legacy of [false, true]) check(`V8 문구 2 ${legacy ? '이름 없는
   const f = fixture('trial', 'grid'), zero = Object.fromEntries(trialKeys.map(k => [k, 0]));
   const a = partRecord(f, 'trial', 'grid', 0, { ...zero, event: 12.34 });
   const money = `, 비용 +${(12.34 * param('normalCost') * param('gridImportMarkup')).toFixed(2)}억/일`;
-  const expected = `지난달 원인 고르기: 건너뜀(가장 큰 몫 ${names('trial').event} ${valueText(12.34, 'grid')}${money})`;
+  const expected = `지난달 원인 고르기: 건너뜀(가장 큰 몫 ${names('trial').event} ${valueText(12.34, 'grid', legacy ? { target: 'grid' } : a)}${money})`; // rev14b A1: 기준 없는 옛 carry는 1자리 유지.
   if (legacy) storage.set(teamKey, JSON.stringify({ interview: { months: { [f.res.round]: {
     outageSingleShown: true, missedCarry: { basis: 'trial', target: 'grid', unit: 'MWh/일', missed: '이름 없는 옛 기록', largest: { key: 'event', value: 12.34 } }
   } } } }));
@@ -873,8 +891,8 @@ for (const basis of ['trial', 'monthly']) for (const target of ['grid', 'uns']) 
     if (edge === 'unknown') { delete a.total; delete a.actual; delete a.trial; delete a.base; }
     const html = M.outageCardsHTML(f.V,f.res,id,{outageOpened:true,outageFrozen:a});
     const count = basis === 'trial' ? '네' : '여섯';
-    const limit = target === 'grid' ? (edge === 'negative' ? '5.0 MWh/일' : '0.1 MWh/일') : (edge === 'negative' ? '5.00%p' : '0.05%p');
-    const magnitude = target === 'grid' ? '100.0 MWh/일' : '100.00%p';
+    const limit = target === 'grid' ? (edge === 'negative' ? '5.00 MWh/일' : edge === 'unknown' ? '0.1 MWh/일' : '0.05 MWh/일') : (edge === 'negative' ? '5.00%p' : '0.05%p'); // rev14b A1: 기준이 유한한 0이면 2자리, 누락이면 1자리.
+    const magnitude = target === 'grid' ? '100.00 MWh/일' : '100.00%p';
     const reason = edge === 'negative' ? `차이 ${magnitude}의 5%(${limit})` : `카드 최소 크기(${limit})`;
     const sentence = noCause ? `${count} 원인의 몫이 모두 ${edge === 'negative' ? '이번 ' : ''}${reason} 이하라, 바뀐 조건 하나하나는 ${target === 'grid' ? '바깥 계통에 기댄 전기를' : '정전을'} 거의 바꾸지 않았어요` :
       `${count} 원인 중 나머지 몫은 모두 ${reason} 이하라 고르기를 건너뛰어요`;
