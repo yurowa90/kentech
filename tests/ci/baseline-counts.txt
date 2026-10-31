@@ -1,4 +1,4 @@
-# 검사별 기준 수치(기준판: 맥 로컬 통합 검사 18, 작업 줄기 322bc7c. rev14·rev14b는 #54 맥 최종 확인 0405541, rev15는 갈래 맥 로컬 fb25f8a, feedback은 갈래 맥 로컬 실측). judge.py가 --kind와 같은 종류의 줄만 읽는다.
+# 검사별 기준 수치(기준판: 맥 로컬 통합 검사 18, 작업 줄기 322bc7c. rev14·rev14b는 #54 맥 최종 확인 0405541, rev15는 갈래 맥 로컬 fb25f8a, feedback은 이 줄을 넣은 커밋의 갈래 맥 로컬 실측, 로그에 HEAD 기록). judge.py가 --kind와 같은 종류의 줄만 읽는다.
 # 칸(공백 구분): 종류  이름  최소단언  최대SKIP  기준판종료코드
 #   최소단언       마지막 요약 줄의 단언 수(assertions N·checks N·PASS N / FAIL M·pass N fail M).
 #                  ux_task:<cfg>는 장면 줄 수, ux_coach는 JSON의 reachedStep이다.
@@ -51,6 +51,6 @@ browser  v3a                956   0 0
 browser  snaprender          22   0 0
 browser  webkit             148   0 0
 browser  storage           1837   0 0
-# feedback은 SKIP 경로가 없다. 맥 로컬 세 번 모두 472(헤드리스 크로미움에 navigator.share가 없는 경우). share가 기본으로
-# 있는 브라우저면 layout 네 크기에서 공유 단추 44px 단언이 하나씩 늘 뿐 줄지 않으므로 472를 하한으로 둔다.
-browser  feedback           472   0 0
+# feedback은 SKIP 경로가 없다. 맥 로컬 세 번 모두 480(헤드리스 크로미움에 navigator.share가 없는 경우). share가 기본으로
+# 있는 브라우저면 layout 네 크기에서 공유 단추 44px 단언이 하나씩 늘 뿐 줄지 않으므로 480을 하한으로 둔다.
+browser  feedback           480   0 0

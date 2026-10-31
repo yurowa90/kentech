@@ -196,6 +196,11 @@ def units(checks, page, base):
             actual = page.evaluate('a => KCP.feedback.compose(...a)', [case, values])
             checks.ok(actual == expected_text(case, values),
                       f'compose §4.3 전체 문자열 build 조합 {i} 리그 {with_league}')
+    # 총괄 보강(재검토 minor 2, 명세 §9-4): label이 빠진 판 정보는 "개발판"으로 쓴다.
+    for build, line in (({}, '판: 개발판'), ({'sha': '0123456789abcdef'}, '판: 개발판 · 커밋 0123456789ab')):
+        case = dict(deepcopy(info), build=build)
+        third = page.evaluate('a => KCP.feedback.compose(...a)', [case, blank]).split('\n')[2]
+        checks.ok(third == line, 'label 없는 판 정보 기본 이름 ' + line)
 
 
 def home(checks, page, base):
@@ -210,6 +215,8 @@ def home(checks, page, base):
               bool(page.locator('#kcp-feedback-title').inner_text().strip()), '창 제목 aria-labelledby 연결·글')
     warn = page.locator('#fb-warn').inner_text()
     checks.ok(all(word in warn for word in ('이름', '학번', '학교', '연락처')), '경고 네 낱말')
+    # 총괄 보강(재검토 minor 2, 명세 §9-3): 창을 열면 낭독기가 경고 줄을 함께 읽는다.
+    checks.ok(page.locator(DIALOG).get_attribute('aria-describedby') == 'fb-warn', '창 aria-describedby=fb-warn')
     for key in TEXT_IDS:
         checks.ok(page.locator('#fb-' + key).evaluate("""e => e.tagName==='TEXTAREA' &&
           [...e.labels].some(l=>l.getAttribute('for')===e.id && l.textContent.trim())"""),
@@ -262,7 +269,7 @@ def settings(checks, page, base):
     checks.ok(page.locator('#fb-open-settings').inner_text() == '테스터 의견 보내기', '설정 단추 고정 글')
     checks.ok(page.locator('#fb-open-settings').evaluate(
         "e => e.parentElement.matches('div.row.fb-entry') && e.parentElement.previousElementSibling?.id==='tm-url' && "
-        "!e.parentElement.nextElementSibling && e.closest('#timeset')"), '설정 창 맨 끝(#tm-url 뒤) 진입점')
+        "!e.parentElement.nextElementSibling && !!e.closest('#timeset')"), '설정 창 맨 끝(#tm-url 뒤) 진입점')
     page.locator('#fb-open-settings').click()
     opened(checks, page)
     checks.ok('화면: #y2022' in output(page).split('\n'), '설정에서 연 화면 #y2022')
@@ -539,6 +546,8 @@ def share_present(checks, page, base):
     checks.test('공유 확인 초점', lambda: focus(page, '#fb-pii-edit'))
     page.locator('#fb-pii-go').click()
     page.wait_for_function('() => window.__feedbackShare.calls.length===4')
+    # 총괄 보강(재검토 minor 1): 숨은 확인 단추에서 초점이 빠지지 않고 공유 단추로 돌아온다.
+    checks.test('그대로 공유 뒤 초점 #fb-share', lambda: focus(page, '#fb-share'))
     checks.ok(page.evaluate('() => window.__feedbackShare.calls.at(-1).text') == output(page),
               '그대로 공유 text = 출력')
     page.locator('#fb-share').click()
@@ -635,6 +644,9 @@ def layout_case(checks, page, base, width, height, scheme, touch):
     require(checks, len(data['contrasts']) >= 21, '경고·legend·label·출력 대비 대상 확보')
     for target in data['contrasts']:
         checks.ok(target['ratio'] >= 4.5, f"대비 {target['id']} {target['ratio']:.3f}:1 ≥4.5")
+    # 총괄 보강(재검토 minor 2, 명세 §9-3): iOS 확대를 막는 글 칸 16px.
+    checks.ok(page.evaluate("() => [...document.querySelectorAll('#kcp-feedback textarea')]"
+                            ".every(e => getComputedStyle(e).fontSize === '16px')"), '글 칸 네 개 16px')
     name = 'dlg-dark-390' if scheme == 'dark' else f'dlg-{width}'
     checks.shot(page, name)
 
