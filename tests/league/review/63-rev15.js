@@ -1,5 +1,5 @@
 'use strict';
-// 기대값의 유일한 근거: _briefs/lanes/q8/rev15/spec.md #57~#60.
+// 기대값의 유일한 근거: 총괄 명세(이슈 #53·#57~#60 항목별, 저장소 밖 보관).
 // ui/**는 VM 적재·공개 API 연결·최소 입력 모양 확인에만 사용한다.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
