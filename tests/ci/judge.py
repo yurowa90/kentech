@@ -376,7 +376,8 @@ def blank(name, code=None, seconds=None):
                 issue="", details=[], summary=None, counts=None, advisory=[])
 
 
-ADVISORY_BLOCK = ("Traceback", "errors [", "막힘:", "페이지 오류", "pageerror", "콘솔", "console")
+# 검사 전체 참고의 단언 부족 상한. CI 3차 ux_s2fix2 713/736(부족 23)·5차 714/736(22)에 여유를 둔 값(G).
+ADVISORY_SHORTFALL_MAX = 40
 
 
 def shortfall(expect, summary):
@@ -385,19 +386,25 @@ def shortfall(expect, summary):
     return ""
 
 
-def whole_advisory_ok(result, expect, summary):
-    """검사 전체 참고로 돌려도 되는 실패인가: 시간 단언 FAIL·BLOCKED 줄만 있고 다른 문제가 없을 때."""
+def whole_advisory_ok(result, expect, summary, failures):
+    """검사 전체 참고로 돌려도 되는 실패인가: 대기 시간 초과로 장면이 끊긴 FAIL·BLOCKED 줄만 있을 때.
+
+    값·레이아웃·콘솔·다른 예외 줄이 하나라도 있으면 실패다. 요약 없음·SKIP 초과·요약 실패 수와 줄 수 불일치,
+    상한을 넘는 단언 부족도 실패다.
+    """
     new = result["new"]
     if result["issue"] or not new:
         return False
-    if any(not line.startswith(("FAIL ", "BLOCKED ")) or any(word in line for word in ADVISORY_BLOCK)
-           for line in new):
+    if any(not line.startswith(("FAIL ", "BLOCKED ")) or "TimeoutError" not in line for line in new):
         return False
     if expect and summary is None:
         return False
     if expect and summary["skips"] > expect["skips"]:
         return False
-    if shortfall(expect, summary) and not any("TimeoutError" in line for line in new):
+    if expect and summary["failures"] is not None and summary["failures"] != len(failures):
+        return False
+    if shortfall(expect, summary) and \
+            expect["assertions"] - summary["assertions"] - summary["credit"] > ADVISORY_SHORTFALL_MAX:
         return False
     return True
 
@@ -473,11 +480,9 @@ def evaluate(kind, logs, records, baseline, counts, credits=None, advisory=None)
             result["verdict"] = f"통과(알려진 실패 {len(result['known'])}줄)"
         if result["issue"] and not result["details"]:
             result["details"] = text.splitlines()[-5:]
-        # 검사 전체가 CI 참고인 경우(advisory 파일에 이름만 적은 줄): 시간 단언 실패만 참고로 돌린다.
-        # 새 실패 줄이 모두 FAIL·BLOCKED이고 앱 오류·예외 추적이 없을 때만이다. 단언 부족은 그 실패 줄 가운데
-        # TimeoutError가 있을 때만(대기 시간 초과로 뒤 단언이 돌지 못한 경우) 받아들인다. 시간 초과(124)·크래시·
-        # 요약 없는 중단·SKIP 초과·종료 코드 불일치 같은 issue가 있으면 CI에서도 실패다.
-        if result["verdict"] == "실패" and "" in advisory.get(name, []) and whole_advisory_ok(result, expect, summary):
+        # 검사 전체가 CI 참고인 경우(advisory 파일에 이름만 적은 줄): 새 실패 줄이 모두 대기 시간 초과
+        # (TimeoutError)일 때만 참고로 돌린다(whole_advisory_ok). 시간 초과(124)·크래시 같은 issue가 있으면 실패다.
+        if result["verdict"] == "실패" and "" in advisory.get(name, []) and whole_advisory_ok(result, expect, summary, failures):
             result["verdict"] = "참고(CI 시간 민감 — 맥 로컬 최종 확인에서 판정)"
             short = shortfall(expect, summary)
             result["advisory"] = result["new"] + ([short] if short else [])
