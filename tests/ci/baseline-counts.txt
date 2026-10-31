@@ -1,4 +1,4 @@
-# 검사별 기준 수치(기준판: 맥 로컬 통합 검사 18, 작업 줄기 322bc7c). judge.py가 --kind와 같은 종류의 줄만 읽는다.
+# 검사별 기준 수치(기준판: 맥 로컬 통합 검사 18, 작업 줄기 322bc7c. rev14·rev14b는 #54 맥 최종 확인 0405541). judge.py가 --kind와 같은 종류의 줄만 읽는다.
 # 칸(공백 구분): 종류  이름  최소단언  최대SKIP  기준판종료코드
 #   최소단언       마지막 요약 줄의 단언 수(assertions N·checks N·PASS N / FAIL M·pass N fail M).
 #                  ux_task:<cfg>는 장면 줄 수, ux_coach는 JSON의 reachedStep이다.
@@ -11,6 +11,8 @@
 # 고치는 규칙은 baseline-fail.txt와 같다. 사람이 로그를 보고 까닭(검사 변경, 환경 차이)을 확인한 뒤에만 고치고,
 # 커밋 본문에 근거 로그(어느 실행의 어느 요약 줄)와 이유를 적는다. 단언이 늘어난 것은 고치지 않아도 통과다.
 # suites.txt의 선택 검사(optional)는 파일이 생겨 필수로 바꿀 때 이 목록에 넣는다.
+browser  rev14              176   0 0
+browser  rev14b             158   0 0
 browser  rev13              800   4 0
 browser  rev12              361   3 0
 browser  rev11              285   0 0

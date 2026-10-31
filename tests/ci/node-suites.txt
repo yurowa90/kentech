@@ -96,6 +96,8 @@ tests/league/review/58-rev11.js                      rest
 tests/league/review/59-rev12.js                      rest
 tests/league/review/6-ind-jump.js                    rest
 tests/league/review/60-rev13.js                      rest
+tests/league/review/61-rev14.js                      rest
+tests/league/review/62-rev14b.js                     rest
 tests/league/review/7-fiscal-approval.js             rest
 tests/league/review/8-offers.js                      rest
 tests/league/review/9-grid.js                        rest
