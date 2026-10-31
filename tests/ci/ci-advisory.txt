@@ -6,32 +6,6 @@
 #              <종류>	<검사 이름>	<실패 줄 패턴>   그 줄만('FAIL|BLOCKED <장면> <설명>:' 꼴 20자 이상, 끝 *는 앞부분 일치)
 # 자세한 규칙은 tests/ci/README.md 'CI 참고 목록'. 줄을 더하려면 CI 로그와 맥 로그를 대조해 시간 차이 때문임을
 # 사람이 확인한 뒤에만, 근거 이슈와 함께(지금 항목의 근거: #56, PR #51 CI 3~5차).
-# fx_map: 수십 ms 단위 채집 시각·간격 단언과 그 대기 시간 초과만(장면 4 × 단언 5 + 진행 예외). 채집 시각 줄은
-# 채집이 끝나고 오류가 없는 줄({'done': True, 'error': None)만 — 채집 실패·오류는 CI에서도 실패.
-browser	fx_map	FAIL solo-1280x900-motion 설치 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-motion 철거 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-motion 송전선 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-motion 시험 1주 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-motion 설치·철거 5회 + 최종 설치, 간격 50±35ms:*
-browser	fx_map	FAIL solo-1280x900-motion 진행 예외 TimeoutError:*
-browser	fx_map	FAIL solo-1280x900-reduce 설치 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-reduce 철거 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-reduce 송전선 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-reduce 시험 1주 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL solo-1280x900-reduce 설치·철거 5회 + 최종 설치, 간격 50±35ms:*
-browser	fx_map	FAIL solo-1280x900-reduce 진행 예외 TimeoutError:*
-browser	fx_map	FAIL build-1280x900-motion 설치 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-motion 철거 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-motion 송전선 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-motion 시험 1주 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-motion 설치·철거 5회 + 최종 설치, 간격 50±35ms:*
-browser	fx_map	FAIL build-1280x900-motion 진행 예외 TimeoutError:*
-browser	fx_map	FAIL build-1280x900-reduce 설치 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-reduce 철거 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-reduce 송전선 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-reduce 시험 1주 채집 시각 ±35ms: {'done': True, 'error': None,*
-browser	fx_map	FAIL build-1280x900-reduce 설치·철거 5회 + 최종 설치, 간격 50±35ms:*
-browser	fx_map	FAIL build-1280x900-reduce 진행 예외 TimeoutError:*
 # ux_s2fix2: 0.57초 재생 창 안 조작. 검사 전체 항목이지만 실패 줄이 모두 TimeoutError일 때만, 단언 부족 40 이하.
 browser	ux_s2fix2
 # rev11: 알림 수명(약 2.2초) 안 알림·말풍선 동시 표시(1280 마우스). 390 줄은 #56에서 판단.

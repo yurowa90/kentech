@@ -69,13 +69,13 @@ problems=$(awk '
   }
   /^[[:space:]]*(#|$)/ { next }
   {
-    if (NF < 3 || NF > 4) { printf "%d번째 줄: 이름·샤드·예상초[·optional] 칸 수 오류\n", FNR; next }
+    if (NF < 3 || NF > 4) { printf "%d번째 줄: 이름·샤드·예상초[·optional|mac] 칸 수 오류\n", FNR; next }
     if ($1 !~ /^[A-Za-z0-9_][A-Za-z0-9_.:-]*$/) printf "%d번째 줄: 잘못된 검사 이름 %s\n", FNR, $1
     if ($2 !~ /^[1-9][0-9]*$/) printf "%d번째 줄: 샤드는 1 이상의 정수 필요(%s)\n", FNR, $2
     if ($3 !~ /^[0-9]+$/) printf "%d번째 줄: 예상초는 0 이상의 정수 필요(%s)\n", FNR, $3
-    if (NF == 4 && $4 != "optional") printf "%d번째 줄: 넷째 칸은 optional만 허용(%s)\n", FNR, $4
+    if (NF == 4 && $4 != "optional" && $4 != "mac") printf "%d번째 줄: 넷째 칸은 optional·mac만 허용(%s)\n", FNR, $4
     if (seen[$1]++) printf "%d번째 줄: 중복된 검사 이름 %s\n", FNR, $1
-    if (NF == 3 && !($1 in counted)) printf "%d번째 줄: %s 의 기준 수치가 baseline-counts.txt에 없음\n", FNR, $1
+    if ((NF == 3 || $4 == "mac") && !($1 in counted)) printf "%d번째 줄: %s 의 기준 수치가 baseline-counts.txt에 없음\n", FNR, $1
   }' "$COUNTS" "$SUITES")
 [ -z "$problems" ] || ci_error "suites.txt 확인 실패: $(printf '%s' "$problems" | tr '\n' ' ')"
 
@@ -95,7 +95,8 @@ if [ -n "$MODE" ]; then
   [ "${#NAMES[@]}" -eq 0 ] || ci_error '이름과 샤드·전체 선택은 함께 쓸 수 없음'
   while IFS= read -r name; do
     NAMES[${#NAMES[@]}]=$name
-  done < <(awk -v mode="$MODE" -v shard="$SHARD" '!/^[[:space:]]*(#|$)/ && (mode == "all" || $2 == shard) {print $1}' "$SUITES")
+    # mac 표시 검사는 CI 샤드에서 돌리지 않고 --all(맥 로컬 최종 확인)에서만 돈다(README 'CI에서 빼는 검사').
+done < <(awk -v mode="$MODE" -v shard="$SHARD" '!/^[[:space:]]*(#|$)/ && (mode == "all" || ($2 == shard && $4 != "mac")) {print $1}' "$SUITES")
 fi
 if [ "$MODE" = shard ]; then
   [ "${#NAMES[@]}" -gt 0 ] || ci_error "suites.txt에 샤드 $SHARD 검사가 없음"

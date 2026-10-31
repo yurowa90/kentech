@@ -1052,8 +1052,18 @@ def ui_fixes(checks, context, base, label, pages):
     }""", other)
     checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
     # 4배 감속에서 bounding_box가 다시 그려지는 순간의 옛 노드를 잡아 None을 돌려준 기록이 있다(같은 순간
-    # 새 노드는 231×44). 크기 판정은 연결된 노드의 실제 사각형으로 한다. 44px 기준은 그대로다.
-    box = proposal.evaluate("el => el.isConnected ? el.getBoundingClientRect().toJSON() : null")
+    # 새 노드는 231×44). locator로 잡은 뒤 재면 그 사이 다시 그리기로 떨어진 노드를 읽을 수 있으므로(CI 8·10차,
+    # #56), 연결된 노드를 찾아 재는 일을 한 번의 페이지 안 판정으로 한다. 44px 기준은 그대로다.
+    try:
+        box = team.wait_for_function("""other => {
+          const node = [...document.querySelectorAll(`[data-kind="hvdc"][data-other="${other}"][data-cap="2"]`)]
+            .find(el => el.isConnected);
+          if (!node) return false;
+          const rect = node.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 ? rect.toJSON() : false;
+        }""", arg=other, timeout=UI_WAIT).json_value()
+    except PlaywrightTimeoutError:
+        box = None
     checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
     proposal.focus(); proposal.press('Enter')
     host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>

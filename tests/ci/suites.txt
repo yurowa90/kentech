@@ -4,6 +4,8 @@
 #   샤드    1 이상의 정수. CI의 browser 매트릭스는 이 칸에 적힌 번호로 만든다(browser.sh --shards, 지금 1~8).
 #   예상초  맥 로컬 통합 검사 18(작업 줄기 322bc7c, rev13 병합)의 실행 시간. rev14는 rev13 시간으로 추정했다.
 #   optional  파일이 없으면 SKIP으로 남기고 실패로 치지 않는다. 표시가 없는 검사의 파일이 없으면 실패다.
+#   mac       CI 샤드에서는 돌리지 않고 --all(맥 로컬 최종 확인)에서만 돈다. 수십 ms 단위 애니메이션 시간 계약처럼
+#             공유 실행기에서 판정할 수 없는 검사(지금 fx_map, #56). 기준 수치 줄은 필수 검사와 같이 필요하다.
 # 필수 검사(optional 표시 없음)는 baseline-counts.txt에 기준 수치 줄이 있어야 한다. browser.sh가 칸·중복과 함께 확인한다.
 # 줄 순서가 샤드 안 실행 순서다. 샤드 합(예상초)은 README의 배분표와 맞춘다.
 rev14             8   211  optional
@@ -28,7 +30,7 @@ ux_task:tablet    5    15
 ux_task:mobile    8    16
 fx_event          1   594
 fx_end            7   182
-fx_map            7    61
+fx_map            7    61  mac
 fx_replay         6   165
 fx_town           7    19
 endgrid           7   130
