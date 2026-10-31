@@ -5,6 +5,7 @@
     http://127.0.0.1:<포트>/index.html
 결과/문구/DOM/CSS를 주입하지 않는다. M2/m4만 기존 events.push fixture 방식으로
 해당 달 사건 입력을 바꾼다(결과 계산 전). M1은 로비 기본 room 씨앗으로 실제 12달 진행.
+M1에서 2~11월에 원인 카드 달이 하나도 없는 방(씨앗)이면 새 컨텍스트·새 방으로 최대 3번 다시 시작한다(#63).
 SKIP 허용: M2 사건·교부세 생성 불가, M3 무더위 날 없음. 나머지 미확보는 BLOCKED.
 캡처 파일의 존재/브라우저 통과는 py_compile로 확인되지 않는다.
 """
@@ -342,7 +343,8 @@ def months(checks, page, base, width, touch, last=True):
             click_next(page, state)
         attempt(checks, f'{width} {month}월 다음 carry', lambda: next_carry(checks, page, width, month, result))
     checks.ok(compared >= (10 if width == 390 else 3), f'{width} M1 월별 검사 확보 수 {compared}')
-    if capture['kind'] is None and not last:
+    # 달 비교가 예외(BLOCKED)로 빠진 실행은 씨앗 탓이 아니므로 다시 시작하지 않는다.
+    if capture['kind'] is None and compared == 10 and not last:
         print(f'INFO {width} M1 원인 카드 달 없음(room 씨앗) — 새 방으로 다시 시작', flush=True)
         return False
     checks.ok(capture['kind'] is not None and capture['summary'], f'{width} M1 카드·m3 캡처 장면 확보')
@@ -479,8 +481,8 @@ def main():
                         (390, 844, True, 'M3', 1, lambda p, last: summer(checks, p, base)),
                         (390, 844, True, 'm4', 1, lambda p, last: event_case(checks, p, base, 'heatwave_peak', 7))]
                 for width, height, touch, task, tries, run in runs:
-                    label = f'{width}x{height} {task}'
                     for n in range(tries):
+                        label = f'{width}x{height} {task}' + (f' (시도 {n + 1}/{tries})' if n else '')
                         # 다시 시작은 새 컨텍스트에서 한다(저장된 혼자 하기 판이 남지 않게).
                         context, external = context_for(InputBrowser(browser, touch), base, width, height, 'light')
                         page, logs = monitored_page(context)
@@ -493,6 +495,8 @@ def main():
                             context.close()
                         if done is not False:
                             break
+                    if tries > 1:
+                        print(f'INFO {width}x{height} {task} M1 시도 {n + 1}회', flush=True)
             finally:
                 browser.close()
     except Exception as exc:
