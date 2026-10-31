@@ -238,7 +238,7 @@ CI는 작업 줄기와 main을 대상으로 한 PR마다, 그리고 수동 실�
 |---|---|
 | 문법 | `for f in *.js ext/*.js games/*.js ui/*.js; do node --check "$f"; done`와 `tests/ci/node-all.sh --check`(Node 목록과 파일 대조) |
 | 브라우저 목록 확인 | `tests/ci/browser.sh --shards`가 `suites.txt`의 칸·중복·기준 수치 누락을 확인하고 샤드 번호 목록을 만든다. 리그 브라우저 작업의 묶음이 이것이다 |
-| Node 전체 | `tests/ci/node-all.sh`가 `tests/ci/node-suites.txt`의 94개를 두 묶음(heavy·rest)으로. 목록에 있는데 파일이 없거나, `tests/league/*.js`·`tests/league/review/[0-9]*.js`인데 목록에 없으면 실패다 |
+| Node 전체 | `tests/ci/node-all.sh`가 `tests/ci/node-suites.txt`의 검사 전체(`ignore` 묶음 제외)를 두 묶음(heavy·rest)으로. 목록에 있는데 파일이 없거나, `tests/league/*.js`·`tests/league/review/[0-9]*.js`인데 목록에 없으면 실패다 |
 | 리그 브라우저 | `tests/ci/browser.sh`가 `tests/ci/suites.txt`의 목록(10-30 통합 검사 18의 31종에 `rev14`·`rev14b`를 더한 33종에서 맥 전용 `fx_map`을 뺀 것)을 여덟 묶음으로 동시에. 묶음 목록은 `suites.txt`의 샤드 번호에서 만든다. 리그 브라우저 검사 전부가 아니다. 목록 밖 16종은 §8 |
 | 최종 판정 | 앞의 작업(문법, 브라우저 목록 확인, Node 전체, 리그 브라우저)이 모두 성공이어야 성공. 취소·건너뜀도 실패로 본다 |
 
