@@ -73,13 +73,13 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 
 ### 샤드 배분
 
-`suites.txt`의 예상초 합이다. `rev14`·`rev14b`의 예상초는 #54 맥 최종 확인(0405541), `rev15`·`feedback`은 갈래 맥 로컬 실측의 실행 시간이다.
+`suites.txt`의 예상초 합이다. `rev14`·`rev14b`의 예상초는 #54 맥 최종 확인(0405541), `rev15`·`feedback`·`sheet`는 갈래 맥 로컬 실측의 실행 시간이다.
 
 | 샤드 | 검사 | 예상초 합 |
 |---|---|---|
 | 1 | fx_event, endgrid | 724 |
 | 2 | ux_task:desktop, webkit, storage, feedback | 616 |
-| 3 | s7, d82ux, solo, next | 603 |
+| 3 | s7, d82ux, solo, next, sheet | 679 |
 | 4 | rev15, rev11, rev8c, ux_s2fix2, ux_coach | 695 |
 | 5 | rev10, d80b, econui, ux_task:tablet, peek | 604 |
 | 6 | rev12, s8n, fx_replay, v3a, snaprender | 604 |
@@ -92,7 +92,7 @@ Node는 24.21.0, 브라우저 검사 파이썬은 3.14(맥 로컬은 3.14.7, 끝
 
 ## 판정 규칙
 
-검사마다 위에서부터 처음 걸리는 것으로 정한다. 기준 수치는 `baseline-counts.txt`에 그 검사의 줄이 있을 때만 본다(지금 `suites.txt`의 모든 줄, 35종).
+검사마다 위에서부터 처음 걸리는 것으로 정한다. 기준 수치는 `baseline-counts.txt`에 그 검사의 줄이 있을 때만 본다(지금 `suites.txt`의 모든 줄, 36종).
 
 1. 상태 `missing`(필수 검사 파일 없음)과 `unlisted`(Node 목록에 없는 검사 파일)는 실패, `skip`(선택 검사 파일 없음)은 건너뜀이다.
 2. 로그가 없거나 비어 있으면 실패다.
