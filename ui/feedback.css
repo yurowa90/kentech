@@ -65,6 +65,8 @@
   color: var(--ui-text);
   caret-color: var(--ui-cyan);
   font: inherit;
+  /* iOS Safari는 16px 미만 입력칸에 초점이 가면 화면을 확대한다. */
+  font-size: 16px;
   line-height: 1.6;
   resize: vertical;
 }

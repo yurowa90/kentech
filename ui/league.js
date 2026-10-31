@@ -613,7 +613,7 @@
       month: round,
       total: V ? C.roundsOf(V).length : 0,
       monthLabel: V && round ? monthName(V, round) : "",
-      phase: V?.phase === "review" ? KCP.fxTurn?.state?.()?.playing ? "운영" : "결과" : { lobby: "로비", plan: "계획", end: "끝" }[V?.phase] || "",
+      phase: V?.phase === "review" ? KCP.fxTurn?.state?.()?.playing ? "운영" : "결과" : { lobby: "로비", plan: "계획", run: "운영", end: "끝" }[V?.phase] || "",
       drawer: drawers[L?.panel] || L?.panel || "없음"
     };
   }

@@ -17,7 +17,7 @@ import re
 import sys
 
 from playwright.sync_api import expect, sync_playwright
-from econui import context_for, diagnostics, local_address, monitored_page, open_panel
+from econui import WAIT, context_for, diagnostics, local_address, monitored_page, open_panel
 from fx_end import dismiss_guide
 from league_flow import wait_unfolded
 from rev14 import Checks
@@ -229,13 +229,28 @@ def home(checks, page, base):
         checked = node.locator('input:checked').evaluate_all('es=>es.map(e=>e.value)')
         checks.ok(checked == ([] if key == 'role' else ['']), key + ' 초기 선택')
     checks.ok(page.locator('#fb-status').evaluate(
-        "e => e.getAttribute('role')==='status' || !!e.getAttribute('aria-live')"), '상태 접근성 알림')
+        "e => e.getAttribute('role')==='status' && e.getAttribute('aria-live')==='polite'"), '상태 role=status·aria-live=polite')
     checks.ok(page.locator('#fb-out').evaluate('e => e.readOnly && e.rows===10'), '출력 읽기 전용·10행')
     page.locator(DIALOG + ' [data-v2-close]').click()
     closed(checks, page, '#fb-open-home')
     home_open(checks, page)
     page.keyboard.press('Escape')
     closed(checks, page, '#fb-open-home')
+    # 총괄 보강(독립 검토 minor 7): §5.1 경로 변경 닫기·다시 그려진 단추로 초점, §5.3 storage:clear, §4.1 resize.
+    home_open(checks, page)
+    page.locator('#fb-good').fill('피드백검사-지우기신호')
+    page.evaluate('() => KCP.emit("storage:clear", {})')
+    checks.ok(page.locator('#fb-good').input_value() == '', 'storage:clear 뒤 열린 창 칸 비움')
+    checks.ok(page.evaluate('k => localStorage.getItem(k)', DRAFT_KEY) is None, 'storage:clear 뒤 임시 저장 없음')
+    page.set_viewport_size({'width': 1000, 'height': 800})
+    page.wait_for_function("() => document.querySelector('#fb-out').value.split('\\n').includes('화면 크기: 1000×800')")
+    checks.ok(True, 'resize 뒤 화면 크기 줄 갱신')
+    page.set_viewport_size({'width': 1280, 'height': 900})
+    old = page.locator('#fb-open-home').element_handle()
+    page.evaluate('() => KCP.rerender()')
+    expect(page.locator(DIALOG)).not_to_be_visible()
+    checks.ok(not old.evaluate('e => e.isConnected'), '다시 그려 연 단추가 문서에서 빠짐')
+    checks.test('경로 변경으로 닫힌 뒤 새 단추로 초점', lambda: focus(page, '#fb-open-home'))
 
 
 def settings(checks, page, base):
@@ -245,12 +260,21 @@ def settings(checks, page, base):
     checks.ok(True, '설정 창 보임')
     checks.shot(page, 'entry-settings', '#fb-open-settings')
     checks.ok(page.locator('#fb-open-settings').inner_text() == '테스터 의견 보내기', '설정 단추 고정 글')
+    checks.ok(page.locator('#fb-open-settings').evaluate(
+        "e => e.parentElement.matches('div.row.fb-entry') && e.parentElement.previousElementSibling?.id==='tm-url' && "
+        "!e.parentElement.nextElementSibling && e.closest('#timeset')"), '설정 창 맨 끝(#tm-url 뒤) 진입점')
     page.locator('#fb-open-settings').click()
     opened(checks, page)
     checks.ok('화면: #y2022' in output(page).split('\n'), '설정에서 연 화면 #y2022')
     page.keyboard.press('Escape')
     closed(checks, page, '#fb-open-settings')
     checks.ok(page.locator('#timeset').is_visible(), 'Esc 뒤 설정 창 유지')
+    # 총괄 보강(독립 검토 minor 7): 닫기 단추 경로도 설정 창을 그대로 둔다.
+    page.locator('#fb-open-settings').click()
+    opened(checks, page)
+    page.locator(DIALOG + ' [data-v2-close]').click()
+    closed(checks, page, '#fb-open-settings')
+    checks.ok(page.locator('#timeset').is_visible(), '닫기 단추 뒤 설정 창 유지')
 
 
 def league_state(page):
@@ -337,7 +361,9 @@ def league(checks, page, base):
         checks.blocked('리그 장면: ' + type(exc).__name__ + ': ' + str(exc).splitlines()[0][:180])
         return
     checks.ok(True, '리그 2월 결과·재생 끝·12달·혼자 하기·도움말 장면 확보')
-    checks.ok(len(private) >= 2, '2월 계획 기기 안 글·일지 실제 입력')
+    checks.ok(len(private) >= 2, '2월 기기 안 일지·이유 글 실제 입력')
+    checks.ok(page.locator('#lg-feedback').evaluate("e => e.previousElementSibling?.id==='lg-build-help'"),
+              '도움말 서랍 #lg-build-help 바로 뒤 진입점')
     checks.shot(page, 'entry-league', '#lg-feedback')
     checks.ok(page.locator('#lg-feedback').inner_text() == '의견 보내기(테스터)', '리그 단추 고정 글')
     page.locator('#lg-feedback').click()
@@ -351,11 +377,18 @@ def league(checks, page, base):
     for label, copied in (('출력', result), ('text()', page.evaluate('() => KCP.feedback.text()'))):
         checks.ok(all(value not in copied for value in private), label + ' 기기 안 고유 문장 없음')
         checks.ok(scene['room'] not in copied, label + ' 방 코드 없음')
+        checks.ok('pyeongtaek' not in copied, label + ' 도시 id 없음')
     checks.ok(page.evaluate("() => document.querySelector('#lg-panel:not([hidden])')?.dataset.tab") == 'help', '창 열어도 도움말 서랍 유지')
     page.keyboard.press('Escape')
     closed(checks, page, '#lg-feedback')
     checks.ok(page.locator('#lg-panel #lg-help').is_visible(), 'Esc 뒤 도움말 보임')
     checks.ok(page.evaluate("() => document.querySelector('#lg-panel:not([hidden])')?.dataset.tab") == 'help', 'Esc 뒤 도움말 상태 유지')
+    # 총괄 보강(독립 검토 minor 7): 닫기 단추 경로도 도움말 서랍을 그대로 둔다.
+    page.locator('#lg-feedback').click()
+    opened(checks, page)
+    page.locator(DIALOG + ' [data-v2-close]').click()
+    closed(checks, page, '#lg-feedback')
+    checks.ok(page.evaluate("() => document.querySelector('#lg-panel:not([hidden])')?.dataset.tab") == 'help', '닫기 단추 뒤 도움말 상태 유지')
 
 
 def clipboard_equal(checks, page, label):
@@ -392,6 +425,8 @@ def pii(checks, page, base):
     clipboard_equal(checks, page, '그대로 복사 클립보드 = 출력')
     expect(page.locator('#fb-pii')).not_to_be_visible()
     checks.ok(True, '확인 뒤 단계 숨김')
+    # 총괄 보강(독립 검토 minor 1): 숨은 단추에서 초점이 문서로 빠지지 않고 복사 단추로 돌아온다.
+    checks.test('그대로 복사 뒤 초점 #fb-copy', lambda: focus(page, '#fb-copy'))
     for value, label in (('가상 이메일 tester@example.com', '이메일'), ('가상 숫자 0000000', '7자리')):
         page.evaluate('s => navigator.clipboard.writeText(s)', marker)
         page.locator('#fb-hard').fill(value)
@@ -612,7 +647,8 @@ def run_case(checks, browser, base, label, action, width=1280, height=900,
     try:
         context, external = context_for(DeviceBrowser(browser, touch, touch and width == 390),
                                          base, width, height, scheme)
-        context.set_default_timeout(4000)
+        # 총괄 보정(독립 검토): 리그 장면 대기는 다른 리그 검사와 같은 econui WAIT(KCP_WAIT)을 쓴다.
+        context.set_default_timeout(WAIT)
         if clipboard:
             context.grant_permissions(['clipboard-read', 'clipboard-write'])
         if init:

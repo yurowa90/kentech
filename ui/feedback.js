@@ -73,10 +73,10 @@
   }
 
   function compose(info, fields) {
-    const build = info.build || { label: "개발판", sha: "", date: "" };
+    const build = info.build || {};
     const lines = [
       "[켄텍 연습실 테스터 의견]", `날짜: ${info.date}`,
-      `판: ${build.label}${build.sha ? " · 커밋 " + build.sha.slice(0, 12) : ""}${build.date ? " · " + build.date : ""}`,
+      `판: ${build.label || "개발판"}${build.sha ? " · 커밋 " + build.sha.slice(0, 12) : ""}${build.date ? " · " + build.date : ""}`,
       `화면: ${info.route}`, `화면 크기: ${info.size}`, `터치: ${info.touch}`,
       `화면 밝기: ${info.scheme}`, `브라우저: ${info.browser}`
     ];
@@ -206,6 +206,8 @@
       <div class="fb-actions"><button type="button" id="fb-copy" class="v2-btn primary">${esc(TEXT.copy)}</button><button type="button" id="fb-share" class="v2-btn" hidden>${esc(TEXT.share)}</button><button type="button" id="fb-clear" class="v2-btn">${esc(TEXT.clear)}</button></div>
       <p id="fb-status" role="status" aria-live="polite"></p>
       <p id="fb-draft-note">${esc(TEXT.draftNote)}</p>`;
+    // 학생이 테스터라 창을 열 때 경고 줄도 함께 읽히게 한다(첫 초점은 닫기 단추).
+    modal.el.setAttribute("aria-describedby", "fb-warn");
     document.body.appendChild(modal.el);
     modal.el.addEventListener("close", () => {
       // 서랍이 다시 그려져도 기존 처리기 뒤에서 새 단추로 초점을 돌린다.
@@ -234,7 +236,8 @@
     field("pii-go").onclick = () => {
       const action = pendingAction;
       hidePii();
-      if (action) perform(action);
+      // 누른 단추가 숨으면 초점이 문서로 빠진다. 먼저 원래 동작 단추로 옮기고(복사 실패면 perform이 글 상자로 옮김) 실행한다.
+      if (action) { field(action).focus(); perform(action); }
     };
   }
 
@@ -243,7 +246,8 @@
     const now = new Date(), build = KCP.BUILD || { label: "개발판", sha: "", date: "" };
     info = {
       date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
-      build: { label: build.label, sha: (build.sha || "").slice(0, 12), date: build.date || "" },
+      // 배포 사본이 label을 빠뜨려도 "판: undefined"가 되지 않게 기본 이름으로 받는다.
+      build: { label: String(build.label || "개발판"), sha: String(build.sha || "").slice(0, 12), date: String(build.date || "") },
       route: routeName(window.location.hash), size: `${window.innerWidth}×${window.innerHeight}`,
       touch: navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)").matches ? "예" : "아니요",
       scheme: KCP.v2.scheme() === "dark" ? "어두움" : "밝음",
