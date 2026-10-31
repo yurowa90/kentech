@@ -142,7 +142,9 @@ def expected_text(info, values):
 
 def units(checks, page, base):
     api_ready(checks, page)
-    checks.ok(page.evaluate('() => KCP.BUILD') == {'label': '개발판', 'sha': '', 'date': ''},
+    # 테스터판 2 명세 §1: 저장소 기본값에 빈 배포 설정(시트 주소·Supabase)을 더한다.
+    checks.ok(page.evaluate('() => KCP.BUILD') == {'label': '개발판', 'sha': '', 'date': '',
+                                                   'feedbackUrl': '', 'supabase': None},
               '저장소 BUILD 기본값')
     routes = (('', '#home'), ('#home', '#home'), ('#y2022', '#y2022'),
               ('#league', '#league'), ('#league/solo', '#league/solo'),
@@ -170,10 +172,11 @@ def units(checks, page, base):
     for ua, touch, wanted in browsers:
         checks.ok(page.evaluate('a => KCP.feedback.browserFamily(...a)', [ua, touch]) == wanted,
                   'browserFamily ' + wanted)
-    # 명세 §5.3 예시와 같은 패턴의 명백한 가상 번호·이메일만 사용한다.
+    # 테스터판 2 명세 §4·§10.8: 5자리부터 확인하며 예시는 명백한 가상 값이다.
     pii = (('010-0000-0000', ['phone']), ('01000000000', ['digits', 'phone']),
-           ('tester@example.com', ['email']), ('0000000', ['digits']), ('00000', []),
-           ('2026-10-31에 해 봤어요', []), ('3월 2/12달', []), ('1280×900', []))
+           ('tester@example.com', ['email']), ('0000000', ['digits']), ('00000', ['digits']),
+           ('0000', []), ('2026-10-31에 해 봤어요', []), ('3월 2/12달', []),
+           ('1280×900', []), ('가상 학번 20513번', ['digits']))
     for value, wanted in pii:
         checks.ok(page.evaluate('s => KCP.feedback.piiKinds(s)', value) == wanted,
                   'piiKinds ' + repr(value))
@@ -434,7 +437,8 @@ def pii(checks, page, base):
     checks.ok(True, '확인 뒤 단계 숨김')
     # 총괄 보강(독립 검토 minor 1): 숨은 단추에서 초점이 문서로 빠지지 않고 복사 단추로 돌아온다.
     checks.test('그대로 복사 뒤 초점 #fb-copy', lambda: focus(page, '#fb-copy'))
-    for value, label in (('가상 이메일 tester@example.com', '이메일'), ('가상 숫자 0000000', '7자리')):
+    for value, label in (('가상 이메일 tester@example.com', '이메일'),
+                         ('가상 숫자 0000000', '7자리'), ('가상 숫자 00000', '5자리')):
         page.evaluate('s => navigator.clipboard.writeText(s)', marker)
         page.locator('#fb-hard').fill(value)
         page.locator('#fb-copy').click()
@@ -442,12 +446,12 @@ def pii(checks, page, base):
         checks.ok(True, label + ' 확인 단계')
         checks.ok(page.evaluate('() => navigator.clipboard.readText()') == marker, label + ' 확인 전 복사 없음')
         checks.test(label + ' 확인 첫 초점', lambda: focus(page, '#fb-pii-edit'))
-    page.locator('#fb-hard').fill('가상 숫자 00000')
+    page.locator('#fb-hard').fill('가상 숫자 0000')
     expect(page.locator('#fb-pii')).not_to_be_visible()
     checks.ok(True, '입력 수정하면 확인 단계 숨김')
     page.locator('#fb-copy').click()
-    clipboard_equal(checks, page, '5자리 확인 없이 바로 복사')
-    checks.ok(not page.locator('#fb-pii').is_visible(), '5자리 확인 단계 없음')
+    clipboard_equal(checks, page, '4자리 확인 없이 바로 복사')
+    checks.ok(not page.locator('#fb-pii').is_visible(), '4자리 확인 단계 없음')
 
 
 def format_case(checks, page, base, width, height, scheme, touch):

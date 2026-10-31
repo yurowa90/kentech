@@ -341,6 +341,13 @@
   const validRoom = r => typeof r === "string" && (newRoom(r) || /^[A-Z2-9]{4,6}$/.test(r));
   const displayRoom = r => newRoom(r) ? r.slice(0, 4) + "-" + r.slice(4) : r;
   const netCfg = () => store.get(K_NET) || { kind: "local", url: "", key: "" };
+  function buildNetDefault() {
+    const cfg = KCP.BUILD?.supabase;
+    if (!cfg || typeof cfg !== "object" || ![Object.prototype, null].includes(Object.getPrototypeOf(cfg)) ||
+      typeof cfg.url !== "string" || typeof cfg.key !== "string" || !cfg.key.trim() ||
+      NET.publicKeyProblem(cfg.key) !== null || NET.wsUrl(cfg.url.trim(), cfg.key.trim()) === null) return null;
+    return { url: cfg.url.trim(), key: cfg.key.trim() };
+  }
   const b64e = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const b64d = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
 
@@ -1711,10 +1718,15 @@
     const rows = Object.entries(tdata().interview?.months || {}).filter(([, n]) => n.evidence);
     return rows.length ? `<details id="lg-promise-history"><summary>약속 일지 · 근거 유지와 변경</summary><ul>${rows.map(([t, n], i) => `<li>${esc(t)}달 · ${esc(n.evidence.text)} · ${i ? n.evidence.key === rows[i - 1][1].evidence.key ? "근거 유지" : "근거 변경" : "첫 근거"}${missedText(n) ? ` · ${esc(missedText(n))}` : ""}</li>`).join("")}</ul></details>` : "";
   }
+  function calibrationRows() {
+    return Object.values(tdata().interview?.months || {}).filter(n => n.outcome && Object.hasOwn(CONFIDENCE, n.confidence || ""));
+  }
   function calibrationHTML(id = "lg-calibration") {
     if (!["solo", "team"].includes(L.role)) return "";
-    const rows = Object.values(tdata().interview?.months || {}).filter(n => n.outcome && Object.hasOwn(CONFIDENCE, n.confidence || ""));
-    return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · 기기에만</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
+    const rows = calibrationRows();
+    // 시트 판의 끝 화면은 [결과 보내기]로 횟수가 나가므로 '기기에만'이라고 쓰지 않는다(D-94). 그 밖은 그대로.
+    const tag = id === "lg-final-calibration" && KCP.feedback?.sheetUrl() ? KCP.feedback.RESULT_TEXT.calibrationTag : "기기에만";
+    return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · ${esc(tag)}</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
       const group = rows.filter(n => n.confidence === key), wins = group.filter(n => n.outcome.hit).length;
       const brier = group.length ? group.reduce((sum, n) => sum + (p - Number(n.outcome.hit)) ** 2, 0) / group.length : null;
       return `<p data-calibration="${key}">'${label}'${withParticle(label, '을를').slice(label.length)} 고른 달 중 맞은 비율 ${group.length ? fmt(wins / group.length * 100, 1) + "%" : "기록 없음"} · ${group.length}번${brier == null ? "" : ` · 확신 점수 ${fmt(brier, 3)}(0에 가까울수록 정확)`}</p><meter min="0" max="1" value="${group.length ? wins / group.length : 0}" aria-label="${label} 적중 비율"></meter>`;
@@ -2227,11 +2239,67 @@
     const items = rounds.map(item).filter(Boolean), recent = items.slice(-3).join(""), older = items.slice(0, -3).join("");
     return `<section id="lg-decisions" class="lg-sec"><h3>결정과 결과 · 기기에 남은 기록</h3><ul>${recent || "<li>기기에 남은 결정 기록 없음</li>"}</ul>${older ? `<details data-decision-detail="older-months"><summary>앞의 ${items.length - 3}달 기록</summary><ul>${older}</ul></details>` : ""}</section>`;
   }
+  let sheetState = { key: "", sending: false, status: "" };
+  function sheetResultFields(V) {
+    const own = V.econ.score.by[L.team], rows = calibrationRows();
+    return {
+      "판": KCP.feedback.buildLabel(), "모드": L.role === "solo" ? "혼자 하기" : "팀", "도시": teamName(L.team),
+      "게임 길이(달)": C.roundsOf(V).length, "종합 점수": fmt(own.score, 1), "순위": own.rank,
+      "참가 도시 수": V.econ.score.rank.length, "예측 맞은 달": rows.filter(n => n.outcome.hit === true).length,
+      "예측한 달": rows.length,
+      "확신 보정": Object.entries(CONFIDENCE).map(([key, [label]]) => {
+        const group = rows.filter(n => n.confidence === key);
+        return `${label} ${group.filter(n => n.outcome.hit === true).length}/${group.length}`;
+      }).join(" · ")
+    };
+  }
+  function sheetResultHTML(V) {
+    if (!KCP.feedback?.sheetUrl() || !["solo", "team"].includes(L.role)) return "";
+    const RT = KCP.feedback.RESULT_TEXT, key = L.room + ":" + L.team, sent = !!tdata().sheetResultSent;
+    if (sheetState.key !== key) sheetState = { key, sending: false, status: "" };
+    const fields = sheetResultFields(V);
+    return `<section id="lg-sheet" class="lg-sec"><h3>${esc(RT.title)}</h3><p id="lg-sheet-note">${esc(RT.note)}</p><dl id="lg-sheet-values" aria-label="${esc(RT.valuesLabel)}">${Object.entries(fields).map(([name, value]) => `<div data-sheet-field="${esc(name)}"><dt>${esc(name)}</dt><dd>${esc(String(value))}</dd></div>`).join("")}</dl><button type="button" class="v2-btn primary" id="lg-sheet-send" aria-disabled="${sent || sheetState.sending}">${esc(sent ? RT.sentButton : RT.button)}</button><p id="lg-sheet-status" role="status" aria-live="polite">${esc(sheetState.status)}</p></section>`;
+  }
+  async function sendSheetResult(button) {
+    if (!L || !["solo", "team"].includes(L.role) || L.snap?.phase !== "end" || !KCP.feedback?.sheetUrl() ||
+      button.getAttribute("aria-disabled") === "true" || tdata().sheetResultSent) return;
+    const session = L, key = L.room + ":" + L.team, savedKey = dataKey(), RT = KCP.feedback.RESULT_TEXT;
+    if (sheetState.key === key && sheetState.sending) return;
+    const fields = sheetResultFields(L.snap);
+    const state = sheetState = { key, sending: true, status: RT.sending };
+    const update = sent => {
+      if (L !== session || L.room + ":" + L.team !== key) return;
+      const current = document.getElementById("lg-sheet-send"), status = document.getElementById("lg-sheet-status");
+      if (current) {
+        current.setAttribute("aria-disabled", String(sent || state.sending));
+        current.textContent = sent ? RT.sentButton : RT.button;
+      }
+      if (status) status.textContent = state.status;
+    };
+    update(false);
+    const sent = await KCP.feedback.send("result", fields);
+    state.sending = false;
+    state.status = sent ? RT.sent : RT.fail;
+    if (sent) {
+      if (L?.role === session.role && L.room + ":" + L.team === key) {
+        const d = tdata(); d.sheetResultSent = true; putData(d);
+      } else if (session.role === "team") {
+        const d = store.get(savedKey) || {}; d.sheetResultSent = true; teamSet(savedKey, d);
+      } else {
+        // 떠난 뒤에는 남아 있는 같은 판에만 기록해 새 판을 덮어쓰지 않는다.
+        const save = store.get(K_SOLO);
+        if (save?.state?.room === session.room && save.team === session.team) {
+          writeSolo({ ...save, interview: { ...save.interview, sheetResultSent: true } });
+        }
+      }
+    }
+    update(sent);
+  }
   function endHTML(V) {
     const { d } = monthNote(), inv = d.interview, end = inv.end || {};
     const crit = V.teams[L.team].crit, own = V.econ.score.by[L.team], top = V.econ.score.rank[0];
     const summary = `<section id="lg-final-summary" class="lg-sec"><h2>${esc(rev8Copy("M4Title"))}</h2><p>${esc(teamName(L.team))} ${esc(own.rank)}위 · ${esc(fmt(own.score, 1))}점 / 종합 1위 ${esc(top.name)} ${esc(fmt(top.score, 1))}점</p></section>`;
-    return `${summary}${decisionsHTML(V)}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team, L.role === "team" ? { savedGrid: tdata().interview?.metrics } : {}) || ""}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>`;
+    return `${summary}${decisionsHTML(V)}${KCP.fxEnd?.html(L.role === "solo" ? { ...V, results: L.S.results } : V, L.team, L.role === "team" ? { savedGrid: tdata().interview?.metrics } : {}) || ""}<p class="lg-season-chip">${esc(SEASON_NAME[curRound().season])} · ${esc(curRound().month)}월</p>${trendHTML(V, L.team, true)}${calibrationHTML("lg-final-calibration")}${finalCausesHTML(V)}${y2022LinkHTML("lg-y2022-end")}${rankHTML(V.econ, L.role !== "solo")}${L.role === "solo" ? soloReplayHTML(V) + debriefHTML(V.econ) : ""}<section id="lg-reflect" class="lg-sec"><h3>끝 성찰</h3><button class="v2-btn" type="button" id="lg-speak">말로 해 보기 · 2분</button><output id="lg-speak-time" aria-live="off">2:00</output><p>선언한 기준: ${esc(crit?.chips.map(k => SCORE_NAMES[k]).join(" · ") || "미선택")} · 지킬 선 ${esc(crit?.line ?? "–")}점</p><p>건너뛴 분기 질문 ${esc(Object.values(inv.months).filter(m => m.quarterSkip).length)}개</p>${END_Q.map((q, i) => `<label class="lg-jq"><span>${esc(L.role === "solo" ? q.replaceAll("우리", "내") : q)}</span><textarea data-end="${i}" rows="3" maxlength="1000">${esc(end[i] || "")}</textarea></label>`).join("")}<fieldset class="lg-pick"><legend>자기 점검 <span class="tag-mine">연습용 평가 기준</span></legend>${(KCP.HABITS || []).map(h => `<label class="lg-radio"><span><input type="checkbox" data-habit="${esc(h.k)}" ${inv.habits?.[h.k] ? "checked" : ""}>${esc(h.n)}</span></label>`).join("")}</fieldset><button class="v2-btn" type="button" id="lg-jcopy">활동지로 복사</button></section>${sheetResultHTML(V)}`;
   }
   function finalCausesHTML(V) {
     // 혼자 하기·진행자는 전체 보고서를 보관한다. 공개 스냅에는 마지막 보고서만 있어
@@ -2664,6 +2732,11 @@
     const soloSave = store.get(K_SOLO);
     const net = { ...netCfg() }, hostSave = store.get(K_HOST), lastTeam = store.get(K_TEAM);
     if (NET.publicKeyProblem(net.key)) net.key = ""; // 저장에 실패해도 거부 대상 키는 화면에 넣지 않는다.
+    const netDefault = buildNetDefault();
+    if (netDefault) {
+      if (!store.get(K_NET)) Object.assign(net, { kind: "supabase", ...netDefault });
+      else if (!String(net.url || "").trim() && !String(net.key || "").trim()) Object.assign(net, netDefault);
+    }
     const reg = R();
     let syncLobby = null;
     const mustCity = id => (reg.must || []).includes(id);
@@ -6549,6 +6622,8 @@
     if (e.target.closest("#lg-build-help")) { closePanel(); BG.openHelp?.(document.getElementById("bd-help")); return; }
     const feedback = e.target.closest("#lg-feedback");
     if (feedback) { KCP.feedback?.open({ league: feedbackContext() }, feedback); return; }
+    const sheetSend = e.target.closest("#lg-sheet-send");
+    if (sheetSend) { sendSheetResult(sheetSend); return; }
     if (e.target.closest("#lg-panel-fold")) { L.panelFolded = !L.panelFolded; document.getElementById("lg-panel").dataset.folded = String(L.panelFolded); renderPanel(); return; }
     if (techClick(e)) return;
     if (econClick(e)) return;

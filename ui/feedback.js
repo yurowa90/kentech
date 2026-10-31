@@ -5,6 +5,16 @@
     title: "의견 보내기",
     warn: "이름·학번·학교·연락처는 쓰지 마세요.",
     intro: "아래 칸을 쓰고 [글 복사]를 눌러 메신저나 메일로 직접 보내 주세요. 게임이 자동으로 보내지는 않아요.",
+    introSheet: "아래 칸을 쓰고 [보내기]를 누를 때만 선생님 시트로 보내요. [글 복사]로 메신저나 메일에 직접 보내도 돼요.",
+    outNoteSheet: "판·날짜·화면·기기 정보가 붙고, [보내기]로 보내면 시트에 받은 시각도 적혀요. 방 코드·참가 링크·저장된 진행·약속·이유·일지는 어느 쪽에도 없어요.",
+    fieldsHintSheet: "세 칸 중 하나 이상 써야 보내거나 복사할 수 있어요. 어느 화면에서 무엇을 하다가 그랬는지 함께 쓰면 좋아요.",
+    draftNoteSheet: "쓰던 글은 보내거나 복사한 뒤에도 이 기기에 임시로 남아요. 다 보냈으면 [지우기]를 눌러 주세요.",
+    send: "보내기",
+    sending: "보내는 중이에요.",
+    sent: "선생님 시트로 보냈어요.",
+    sendFail: "보내지 못했어요. [글 복사]로 직접 보내 주세요.",
+    sendDup: "같은 글이라 안 보냈어요. 고치거나 30초 뒤에 보낼 수 있어요.",
+    piiGoSend: "그대로 보내기",
     roleLegend: "역할(선택 사항)",
     good: "좋았던 점",
     hard: "헷갈리거나 어려웠던 점",
@@ -23,7 +33,7 @@
     copyFail: "자동 복사가 안 됐어요. 상자의 글이 선택되어 있으니 직접 복사해 주세요(아이패드는 길게 누르기, 컴퓨터는 Ctrl+C 또는 ⌘+C).",
     empty: "좋았던 점, 헷갈리거나 어려웠던 점, 고쳤으면 하는 점 가운데 하나 이상 써 주세요.",
     piiTitle: "개인정보일 수 있어요",
-    piiBody: "쓴 글에 6자리 이상 숫자, 전화번호, 이메일처럼 보이는 부분이 있어요. 이름·학번·연락처라면 지우고 보내 주세요.",
+    piiBody: "쓴 글에 5자리 이상 이어진 숫자나 전화번호·이메일 모양이 있어요. 학번·연락처 같은 개인정보라면 지우고 보내 주세요.",
     piiEdit: "고치러 가기",
     piiGoCopy: "그대로 복사",
     piiGoShare: "그대로 공유",
@@ -32,12 +42,62 @@
     roles: { student: "학생", teacher: "교사", other: "기타" },
     shareTitle: "켄텍 연습실 테스터 의견"
   };
+  const RESULT_TEXT = Object.freeze({
+    title: "결과 보내기(테스터)",
+    note: "[결과 보내기]를 누르면 아래 값만 선생님 시트로 보내요(한 판에 한 번). 예측·확신은 횟수만 가고 방 코드·참가 링크·이유·일지·끝 성찰은 안 가요.",
+    valuesLabel: "보낼 값",
+    button: "결과 보내기",
+    sentButton: "보냈어요",
+    sending: "보내는 중이에요.",
+    sent: "선생님 시트로 보냈어요.",
+    fail: "보내지 못했어요. 잠시 뒤 다시 눌러 주세요.",
+    // 시트 판의 끝 화면 확신 보정 제목 꼬리(결과 보내기로 횟수가 나가므로 '기기에만'이 아니다).
+    calibrationTag: "기기에 저장"
+  });
   const KCP = window.KCP;
   const DRAFT_KEY = "kcp:feedback-draft-v1";
   const WORD_FIELDS = ["good", "hard", "fix"];
   const RATE_VALUES = ["", "1", "2", "3", "4", "5"];
   let modal = null, info = null, opener = null, pendingAction = null;
+  let lastSend = null;
   const field = id => modal.el.querySelector("#fb-" + id);
+
+  function sheetUrl() {
+    const url = KCP.BUILD?.feedbackUrl;
+    return typeof url === "string" && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.trim()) ? url.trim() : "";
+  }
+
+  function buildLabel(build = KCP.BUILD || {}) {
+    build = build || {};
+    // 배포 사본의 값이 문자열이 아니어도 예외 없이 글로 만든다.
+    return `${build.label || "개발판"}${build.sha ? " · 커밋 " + String(build.sha).slice(0, 12) : ""}${build.date ? " · " + build.date : ""}`;
+  }
+
+  async function send(kind, fields) {
+    const url = sheetUrl();
+    if (!url) return false;
+    try {
+      await fetch(url, { method: "POST", mode: "no-cors", credentials: "omit", referrerPolicy: "no-referrer",
+        headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ kind, fields }) });
+      return true;
+    } catch (_) { return false; }
+  }
+
+  function sheetFields(info, fields) {
+    const league = info.league;
+    const word = key => (fields[key] || "").replace(/\r\n/g, "\n").trim();
+    const rate = value => RATE_VALUES.includes(value) && value ? Number(value) : "";
+    return {
+      "판": buildLabel(info.build), "화면 경로": info.route, "화면 크기": info.size,
+      "기기": `${info.browser} · 터치 ${info.touch} · ${info.scheme}`,
+      "모드": league ? league.mode : "", "도시": league?.city || "",
+      "달": league ? `${league.month}/${league.total}달${league.monthLabel ? " (" + league.monthLabel + ")" : ""}` : "",
+      "단계": league ? league.phase : "", "서랍": league ? league.drawer : "",
+      "역할": Object.hasOwn(TEXT.roles, fields.role) ? TEXT.roles[fields.role] : "",
+      "좋았던 점": word("good"), "헷갈리거나 어려웠던 점": word("hard"), "고쳤으면 하는 점": word("fix"),
+      "쉬웠나요": rate(fields.easy), "재미있었나요": rate(fields.fun)
+    };
+  }
 
   function routeName(hash) {
     const raw = String(hash || "").replace(/^#/, "");
@@ -66,17 +126,16 @@
 
   function piiKinds(text) {
     return [
-      ["digits", /\d{6,}/],
+      ["digits", /\d{5,}/],
       ["phone", /(?:^|[^\d])(?:\+82[-.\s]?|0)(?:1[016789]|[2-6]\d?)[-.\s)]?\d{3,4}[-.\s]?\d{4}(?!\d)/],
       ["email", /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/]
     ].filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind);
   }
 
   function compose(info, fields) {
-    const build = info.build || {};
     const lines = [
       "[켄텍 연습실 테스터 의견]", `날짜: ${info.date}`,
-      `판: ${build.label || "개발판"}${build.sha ? " · 커밋 " + build.sha.slice(0, 12) : ""}${build.date ? " · " + build.date : ""}`,
+      `판: ${buildLabel(info.build)}`,
       `화면: ${info.route}`, `화면 크기: ${info.size}`, `터치: ${info.touch}`,
       `화면 밝기: ${info.scheme}`, `브라우저: ${info.browser}`
     ];
@@ -160,6 +219,18 @@
         out.setSelectionRange(0, out.value.length);
         field("status").textContent = TEXT.copyFail;
       }
+    } else if (action === "send") {
+      const fields = values(), key = JSON.stringify(fields), at = Date.now();
+      if (lastSend?.key === key && at - lastSend.at < 30000) {
+        field("status").textContent = TEXT.sendDup;
+        return;
+      }
+      const attempt = { key, at };
+      lastSend = attempt;
+      field("status").textContent = TEXT.sending;
+      const sent = await send("feedback", sheetFields(info, fields));
+      field("status").textContent = sent ? TEXT.sent : TEXT.sendFail;
+      if (!sent && lastSend === attempt) lastSend = null;
     } else {
       try { await navigator.share({ title: TEXT.shareTitle, text: text() }); }
       catch (error) { if (error?.name !== "AbortError") field("status").textContent = TEXT.shareFail; }
@@ -177,7 +248,7 @@
     }
     if (piiKinds(WORD_FIELDS.map(key => fields[key]).join("\n")).length) {
       pendingAction = action;
-      field("pii-go").textContent = action === "copy" ? TEXT.piiGoCopy : TEXT.piiGoShare;
+      field("pii-go").textContent = action === "send" ? TEXT.piiGoSend : action === "copy" ? TEXT.piiGoCopy : TEXT.piiGoShare;
       field("pii").hidden = false;
       field("pii-edit").focus();
       return;
@@ -203,7 +274,7 @@
         <p id="fb-pii-title">${esc(TEXT.piiTitle)}</p><p>${esc(TEXT.piiBody)}</p>
         <div class="fb-actions"><button type="button" id="fb-pii-edit" class="v2-btn">${esc(TEXT.piiEdit)}</button><button type="button" id="fb-pii-go" class="v2-btn">${esc(TEXT.piiGoCopy)}</button></div>
       </div>
-      <div class="fb-actions"><button type="button" id="fb-copy" class="v2-btn primary">${esc(TEXT.copy)}</button><button type="button" id="fb-share" class="v2-btn" hidden>${esc(TEXT.share)}</button><button type="button" id="fb-clear" class="v2-btn">${esc(TEXT.clear)}</button></div>
+      <div class="fb-actions"><button type="button" id="fb-send" class="v2-btn primary" hidden>${esc(TEXT.send)}</button><button type="button" id="fb-copy" class="v2-btn primary">${esc(TEXT.copy)}</button><button type="button" id="fb-share" class="v2-btn" hidden>${esc(TEXT.share)}</button><button type="button" id="fb-clear" class="v2-btn">${esc(TEXT.clear)}</button></div>
       <p id="fb-status" role="status" aria-live="polite"></p>
       <p id="fb-draft-note">${esc(TEXT.draftNote)}</p>`;
     // 학생이 테스터라 창을 열 때 경고 줄도 함께 읽히게 한다(첫 초점은 닫기 단추).
@@ -221,6 +292,7 @@
       field(key).addEventListener("input", changed);
       field(key).addEventListener("change", changed);
     });
+    field("send").onclick = () => request("send");
     field("copy").onclick = () => request("copy");
     field("share").onclick = () => request("share");
     field("clear").onclick = () => {
@@ -258,6 +330,12 @@
     hidePii();
     field("status").textContent = "";
     field("share").hidden = typeof navigator.share !== "function";
+    const hasSheet = !!sheetUrl();
+    field("send").hidden = !hasSheet;
+    field("copy").classList.toggle("primary", !hasSheet);
+    [["intro", "intro"], ["out-note", "outNote"], ["fields-hint", "fieldsHint"], ["draft-note", "draftNote"]].forEach(([id, key]) => {
+      field(id).textContent = TEXT[key + (hasSheet ? "Sheet" : "")];
+    });
     refresh();
     if (!modal.el.open) {
       opener = from || document.activeElement;
@@ -267,7 +345,7 @@
 
   function close() { modal?.close(); }
   function text() { return modal ? field("out").value : ""; }
-  KCP.feedback = { open, close, text, DRAFT_KEY, routeName, browserFamily, piiKinds, compose };
+  KCP.feedback = { open, close, text, DRAFT_KEY, routeName, browserFamily, piiKinds, compose, sheetUrl, buildLabel, sheetFields, send, RESULT_TEXT };
   KCP.on?.("route:change", close);
   KCP.on?.("storage:clear", clearDraft);
   window.addEventListener?.("resize", () => {

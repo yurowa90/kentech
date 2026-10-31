@@ -107,3 +107,60 @@
 #kcp-feedback #fb-status {
   color: var(--ui-text);
 }
+
+#lg-sheet {
+  min-width: 0;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+
+#lg-sheet dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+#lg-sheet dl > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: var(--ui-panel);
+}
+
+#lg-sheet dt {
+  color: var(--ui-muted);
+}
+
+#lg-sheet dd {
+  margin: 4px 0 0;
+  color: var(--ui-text);
+}
+
+#lg-sheet button {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#lg-sheet button:focus-visible {
+  outline: 2px solid var(--ui-cyan);
+  outline-offset: 2px;
+}
+
+#lg-sheet button[aria-disabled="true"] {
+  cursor: default;
+}
+
+#lg-sheet #lg-sheet-status {
+  color: var(--ui-text);
+}
+
+@media (max-width: 600px) {
+  #lg-sheet dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
