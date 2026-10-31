@@ -376,8 +376,9 @@ def main():
                "smallTargets": sum(bool(s.get("small")) for s in acts),
                "stuck": r.stuck, "console": problems[:20], "scenes": r.scenes, "steps": r.steps}
     (out / f"ux-task-{a.cfg}.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
+    # console은 tests/ci/judge.py가 콘솔 error·warning·페이지 오류를 판정하는 근거다(이 검사는 늘 0으로 끝난다).
     print(json.dumps({k: summary[k] for k in ("cfg", "completed", "error", "totalSec", "actions",
-                                              "scrolls", "occluded", "smallTargets")}, ensure_ascii=False))
+                                              "scrolls", "occluded", "smallTargets", "console")}, ensure_ascii=False))
     for s in r.scenes:
         print(f" {s['scene']:9} {s['sec']:6}s 행동 {s['actions']:2} 스크롤 {s['scrolls']} 조작 {s['controls']:3} "
               f"작은조작 {s['smallCount']:2} 글자 {s['chars']:5} 넘침 {s['overflowX']} 가림 {s['occluded']}")

@@ -17,11 +17,14 @@ KENTECH 수시 창의성 면접을 연습하는 정적 웹앱(바닐라 JS, 빌�
 
 ## 일하는 방식
 - 사용자는 과학·생물 교사, 교육공학 박사, 교과서 편집자. 답은 한국어로, 근거와 수치로, 한계와 개선안을 함께. 돌리지 않은 검사를 통과라고 쓰지 않는다.
-- 분업: 총괄 세션이 범위·병합·통합 검사·push를 맡고, 갈래 세션(브랜치 하나씩)이 Codex Sol·Astra 작업 → Opus 독립 검토(opus-reviewer 에이전트)를 돈다. 절차는 스킬 `/codex-orchestrate`, 운영 기록은 docs/ORCHESTRATION.md.
+- 분업: 총괄 세션이 범위·판정·병합·통합 검사를 맡고, 이슈 브랜치마다 작업 세션이 구현 담당 → 다른 세션의 검사 담당 → 맥락 없는 독립 검토자(opus-reviewer 에이전트)를 돌린다. 절차는 docs/DEV-WORKFLOW.md와 스킬 `/codex-orchestrate`, 운영 기록은 docs/ORCHESTRATION.md.
 - 끝난 작업은 변경 내용, 검사 결과, 데스크톱 1280×900·모바일 390×844 캡처로 보고한다.
 
 ## 저장소 규칙
-- 모든 작업은 작업 줄기 `claude/kentech-league-econ-balance`에 모인다. 갈래는 자기 브랜치에서 커밋만 하고 PR을 열지 않는다. 합치기와 push는 총괄만 한다. 단계가 끝나면 전체 검사를 통과한 작업 줄기 커밋으로 main PR 하나를 열고 병합 커밋으로 합친다(squash·rebase 금지, D-78). 현황은 PROGRESS.md.
-- 커밋은 한국어 한 줄 요약 + 본문. 커밋·PR에 모델 이름을 쓰지 않는다. 스테이징은 파일을 명시한다.
-- push 외의 외부 동작(Supabase 재개, 외부 API, 저장소 설정)은 사용자 확인 뒤에 한다.
+- 작업 흐름은 docs/DEV-WORKFLOW.md(D-92). 결함·과제는 GitHub 이슈(마일스톤 'v1.0 2022 확장판'), 이슈마다 작업 줄기 `claude/kentech-league-econ-balance`에서 `<fix|feat|refactor|test|docs|chore>/<이슈번호>-<짧은말>` 브랜치를 만들고 작업 줄기로 PR을 연다. 작업 줄기가 앞서가면 병합으로 받는다.
+- 브랜치마다 총괄이 맡긴 작업 세션이 자기 브랜치에 커밋까지만 한다. 구현 담당·검사 담당·독립 검토자는 커밋하지 않는다. push·이슈·PR·리뷰 글·병합·태그는 총괄만 한다. 총괄의 인계·결정 문서(PROGRESS·ORCHESTRATION·DECISIONS) 갱신만 작업 줄기에 직접 커밋한다.
+- 병합 조건: CI 통과, 같은 SHA에서 맥 로컬 브라우저 검사 통과(샌드박스 밖, 최종 판정. 그 뒤 인계 문서 직접 커밋만 들어왔으면 차이 기록으로 갈음), 독립 검토 blocker·major 0. 병합은 `gh pr merge --merge --match-head-commit <병합할 머리 SHA>`. squash·rebase 금지(D-78).
+- 릴리스: 품질 8 목표와 통합 검사를 통과한 작업 줄기 커밋에 CHANGELOG를 정리하고 `vX.Y.Z-rc.N` 태그, main PR. main PR은 CI 녹색을 확인한 뒤 매번 사용자 확인을 받고 병합한다. 정식 판은 실제 태블릿 확인 뒤 CHANGELOG 절을 더한 커밋에 태그를 달고 main PR을 한 번 더 연다.
+- 커밋은 한국어 한 줄 요약 + 본문, 관련 이슈 번호. 커밋·PR·이슈에 모델 이름, 채점 점수, 저장소 밖 작업 폴더의 경로를 쓰지 않는다(점수는 저장소 밖). 커밋 끝 서명 줄과 PR 끝 생성 도구 표시 줄은 붙이지 않는다. 올리기 전 저장소 밖 금칙어 목록으로 거른다. 스테이징은 파일을 명시한다.
+- push·이슈·작업 줄기 대상 PR 외의 외부 동작(main 병합, GitHub 릴리스, 원격 브랜치 삭제, Supabase 재개, 외부 API, 저장소 설정, Cloudflare 배포)은 사용자 확인 뒤에 한다.
 - 세부 규칙은 경로별로 `.claude/rules/`에 있다(화면·게임, 검사, 리그·경제). 압축·인계 전에는 스킬 `kcp-handoff`.

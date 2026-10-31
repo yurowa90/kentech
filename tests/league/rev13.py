@@ -23,7 +23,7 @@ from rev11 import DOM, InputBrowser, frames, press, start
 from rev12 import choose_diesel, tile_press
 from rev8c import coach_step
 from s7 import current_note, plan_and_trial
-from solo import click_next, close_drawer, read
+from solo import CHANGED_JS, click_next, close_drawer, read
 from ux_coach import LINE_ENDS_JS, NEAR_TOWN_JS
 from ux_s2fix import reveal_tile
 from ux_task import TILE_XY_JS
@@ -176,7 +176,15 @@ def sample_result(checks, page, label):
 
 
 def promise_submit(page, touch):
-    """기존 submit_r2_promise 흐름. 양방향 모두 허용되는 예측을 화면에서 고른다."""
+    """기존 submit_r2_promise 흐름. 양방향 모두 허용되는 예측을 화면에서 고른다.
+
+    확정 단추를 누른 뒤 달 전환(달·단계·결과 수 변화)까지 기다리고 돌아온다. 앱은 달 계산을
+    한 프레임 미뤄 돌리므로(league.js deferMonthWork) 누른 직후의 상태는 아직 지난 '계획'이다.
+    그 상태로 reach_result를 부르면 계산이 끝나 '다음 달'로 바뀐 같은 #lg-ready를 눌러
+    1월 결과 단계를 건너뛰고, 1월 결과 단언이 2월 계획 화면에서 돌거나 RESULT_JS 대기가 끝나지 않는다.
+    """
+    S = read(page)['S']
+    previous = [S['round'], S['phase'], len(S.get('results') or [])]
     close_drawer(page)
     press(page, '#lg-ready', touch)
     pass_issue_check(page)
@@ -187,6 +195,7 @@ def promise_submit(page, touch):
     select.select_option('up')
     press(page, '[data-confidence="fairly"]', touch)
     press(page, '#lg-ready-confirm', touch)
+    page.wait_for_function(CHANGED_JS, arg=previous)
     return topic
 
 

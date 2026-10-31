@@ -261,7 +261,9 @@ PROBE_JS = r"""(() => {
         if (!deck.isConnected) return;
         if (!record.firstVisibleAt && displayed()) record.firstVisibleAt=performance.now();
         if (!record.later) trackLayout(dom.layout());
-        if (!record.later || (record.forecast && !record.firstVisibleAt)) requestAnimationFrame(frame);
+        // 결과 덱도 실제로 보일 때까지 첫 표시 시각을 찾는다. 일반 카드는 opacity 0에서 80ms 뒤 .3초 페이드로
+        // 나타나므로, 180ms(later)에서 고리를 끊으면 느린 실행기에서 기록을 놓친다(CI 5·7차 5월 결과, #56).
+        if (!record.later || !record.firstVisibleAt) requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
       setTimeout(() => {
@@ -1369,6 +1371,13 @@ def esc_one_layer(checks, page, base, label, reduced, fixture, coverage):
                     self.shown_at = time.monotonic() - age_ms / 1000
             elapsed = (time.monotonic() - self.shown_at
                        if self.shown_at is not None else None)
+            if elapsed is None and self.sample_key is not None:
+                # 기록이 끝내 없으면 덱 기록 상태를 남겨 다음 간헐 실패를 로그만으로 가른다(#56).
+                probe = page.evaluate("""([month, forecast]) => {
+                  const r=window.__fxEventProbe.filter(r=>r.round===month && r.forecast===forecast).pop();
+                  return r ? {first:r.first?.at, later:r.later?.at, firstVisibleAt:r.firstVisibleAt} : null;
+                }""", self.sample_key)
+                print(f'INFO {prefix} 첫 표시 기록 없음: {probe}', flush=True)
             if elapsed is not None and elapsed > 8:
                 print(f'INFO {prefix} 표시 후 {elapsed:.2f}초 > 8초: '
                       '10초 자동 닫힘과 구별 불가하므로 이 판의 단언은 채점하지 않음', flush=True)

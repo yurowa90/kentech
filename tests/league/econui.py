@@ -23,7 +23,9 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 SCORES = {"pop": "주민", "ind": "산업", "fin": "재정", "co2": "탄소",
           "appr": "지지", "rel": "전력 신뢰"}
 POLICIES = ("taxRes", "taxInd", "service", "incentive")
-WAIT = 12000  # 실행기 대기 한도. 경제 모형 계수가 아니다.
+# 실행기 대기 한도. 경제 모형 계수가 아니다. 검사가 멈추는 것을 막는 상한일 뿐 판정 기준이 아니다.
+# 맥 로컬 기본 12초. 느린 공유 실행기(CI)는 KCP_WAIT로 늘린다(.github/workflows/ci.yml).
+WAIT = int(os.environ.get("KCP_WAIT", "12000"))
 # 2026-10-13: 결과 서랍 0.43~0.69초, CPU 4배 감속 2.1~2.8초. 그리기 여유 포함.
 # 2026-10-17: CPU 4배 감속 전체 실행에서는 도시·도움말 서랍이 5초를 넘는 경우가 있었다(부하 116→46, 실패 5).
 # 감속 실행에서는 KCP_UI_WAIT로 늘린다. 기본은 감속 없는 실행 기준이다.
@@ -1050,8 +1052,18 @@ def ui_fixes(checks, context, base, label, pages):
     }""", other)
     checks.ok(proposal.count() == 1 and not proposal.is_disabled(), f'{label} #11 HVDC로 제안 활성')
     # 4배 감속에서 bounding_box가 다시 그려지는 순간의 옛 노드를 잡아 None을 돌려준 기록이 있다(같은 순간
-    # 새 노드는 231×44). 크기 판정은 연결된 노드의 실제 사각형으로 한다. 44px 기준은 그대로다.
-    box = proposal.evaluate("el => el.isConnected ? el.getBoundingClientRect().toJSON() : null")
+    # 새 노드는 231×44). locator로 잡은 뒤 재면 그 사이 다시 그리기로 떨어진 노드를 읽을 수 있으므로(CI 8·10차,
+    # #56), 연결된 노드를 찾아 재는 일을 한 번의 페이지 안 판정으로 한다. 44px 기준은 그대로다.
+    try:
+        box = team.wait_for_function("""other => {
+          const node = [...document.querySelectorAll(`[data-kind="hvdc"][data-other="${other}"][data-cap="2"]`)]
+            .find(el => el.isConnected);
+          if (!node) return false;
+          const rect = node.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 ? rect.toJSON() : false;
+        }""", arg=other, timeout=UI_WAIT).json_value()
+    except PlaywrightTimeoutError:
+        box = None
     checks.ok(box and box['height'] >= 44 and box['width'] >= 44, f'{label} #11 HVDC 44px 터치')
     proposal.focus(); proposal.press('Enter')
     host.wait_for_function("""([a,b]) => KCP.league.state().S.ties.some(t =>
