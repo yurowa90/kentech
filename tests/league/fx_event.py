@@ -36,7 +36,7 @@ from playwright.sync_api import sync_playwright
 from econui import (BOOT_JS, WAIT, Checks as BaseChecks, context_for, diagnostics,
                     local_address, monitored_page, overflow, screenshot)
 from league_flow import pass_issue_check, wait_unfolded
-from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer
+from solo import CHANGED_JS, PROGRESS_OR_PREDICT_JS, close_drawer, settle_progress
 
 
 class Checks(BaseChecks):
@@ -292,6 +292,11 @@ def click_progress(page, before, preserve_drawer=False, after_progress=None, key
     if not preserve_drawer:
         close_drawer(page)
     previous = [before['round'], before['phase'], before['count']]
+    # rev15 #53: 앞 조작으로 달이 이미 넘어갔으면(계산 중·가드 중이라 단추가 꺼져 있던 경우) 다시 누르지 않는다.
+    if settle_progress(page, previous):
+        if before['phase'] == 'plan':
+            return wait_state(page, before['round'], ['review', 'end'])
+        return observe(page)
     candidates = [page.locator('#lg-ready'), page.locator('#lg-next'),
                   page.get_by_role('button', name=re.compile(
                       r'^(?:준비(?: 완료)?|다음 (?:달|턴|라운드)(?:.*)?|'

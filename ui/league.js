@@ -359,6 +359,7 @@
     clearInterval(L.guidanceTimer); L.guidanceTimer = null; if (L.guidanceFrame) cancelAnimationFrame(L.guidanceFrame); L.guidanceFrame = 0;
     L.timers.forEach(t => clearInterval(t));
     clearTimeout(L.planT); clearTimeout(L.pending); clearTimeout(L.hostSaveT);
+    clearTimeout(L.readyGuardT); L.readyGuardT = 0; L.readyGuard = false; L.readyGuardFocus = false;
     if (L.conn) L.conn.close();
     if (L.escapeHandler) document.removeEventListener("keydown", L.escapeHandler, true);
     L = null;
@@ -724,7 +725,7 @@
       [build, "화력", '[data-group="fire"]'],
       [line, "송전선", '[data-tool="line"]'],
       ["시험 1주를 돌려 결과를 확인해요", "시험 1주", '[data-run="7"]'],
-      ["준비 → 근거·방향·확신 고르고 약속해요", L.snap?.phase === "plan" && document.querySelector("#lg-ready")?.disabled ? "남은 칸 채우기" : L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
+      ["준비 → 근거·방향·확신 고르고 약속해요", L.snap?.phase === "plan" && readyBlockedForCoach() ? "남은 칸 채우기" : L.awaitReady ? "약속하고 준비" : "준비", "#lg-ready"],
       // 결과 단계에서는 막대 '결과'가 서랍을 닫는 토글이라 판정 줄 단추를 짚는다(검토 major 2).
       ["운영 끝 · 결과 맨 위에서 내 예측과 실제를 비교해요", document.querySelector("#lg-promise-summary [data-promise-details]") ? "예측 자세히" : "결과", document.querySelector("#lg-promise-summary [data-promise-details]") ? "#lg-promise-summary [data-promise-details]" : '#lg-bar [data-panel="result"]'],
       coachHasCards()
@@ -797,8 +798,11 @@
     if (taskEl.textContent !== text) taskEl.textContent = text;
     const actionEl = el.querySelector("#lg-coach-action"), ready = document.getElementById("lg-ready");
     actionEl.textContent = action;
-    const hide = selector === "#lg-ready" && !!ready?.getClientRects().length && !ready.disabled;
-    if (hide && document.activeElement === actionEl) ready.focus({ preventScroll: true }); // 초점 유실 방지(검토 minor 7)
+    const hide = selector === "#lg-ready" && !!ready?.getClientRects().length && !readyBlockedForCoach(ready);
+    if (hide && document.activeElement === actionEl) {
+      if (L.readyGuard) L.readyGuardFocus = true;
+      else ready.focus({ preventScroll: true }); // 초점 유실 방지(검토 minor 7)
+    }
     actionEl.hidden = hide || reviewPromise;
     const root = document.getElementById("bd-root");
     const lineTarget = root && state.step === 2 ? coachLineTarget() : null;
@@ -838,7 +842,7 @@
     const step = L.coach?.step;
     if (step == null) return;
     if (step === 1) { closePanel(); BG.closeDrawer?.(); const group = document.querySelector('[data-group="fire"]'); if (group?.getAttribute("aria-expanded") !== "true") group?.click(); return; }
-    if (step === 4 && L.snap?.phase === "plan" && document.getElementById("lg-ready")?.disabled) {
+    if (step === 4 && L.snap?.phase === "plan" && readyBlockedForCoach()) {
       // 약속이 덜 찼으면 비활성 주 단추 대신 남은 단계(근거 → 방향 → 확신)의 첫 조작으로 초점을 옮긴다.
       if (L.panel !== "journal" || L.panelFolded) openPanel("journal");
       const { n } = monthNote(), topic = promiseTopic(L.snap, n);
@@ -2454,7 +2458,17 @@
   }
   function restartSolo() {
     if (!window.confirm("처음부터 시작하면 이 판의 진행과 일지·답변이 지워집니다. 다시 시작할까요?")) return;
-    close(); store.del(K_SOLO); location.hash = "#league";
+    close(); store.del(K_SOLO); pruneSoloTrials(); location.hash = "#league";
+  }
+  function pruneSoloTrials(room) {
+    const rooms = new Set([room, store.get(K_HOST)?.room, store.get(K_TEAM)?.room, tab.get()?.room].filter(r => typeof r === "string" && r));
+    BG.pruneTrials?.(scope => {
+      try {
+        const pair = JSON.parse(scope);
+        if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(v => typeof v === "string" && v)) return true;
+        return rooms.has(pair[0]);
+      } catch (e) { return true; }
+    });
   }
   function soloSummary(V) {
     const c = V.econ.cities[L.team], r = V.econ.score.by[L.team];
@@ -2766,9 +2780,10 @@
       check.ids.forEach(id => C.reduce(state, { type: "claim", team: id, token: `solo-city-${id}` }, 0, BG));
       if (soloSave?.state && !window.confirm("새 판을 시작하면 저장된 진행과 일지·답변이 지워집니다. 시작할까요?")) return;
       close(); pendingSolo = { v: 1, state, initial: structuredClone(state), team: player, style: $("#lg-solo-style").value, interview: { docs: {}, journal: {}, freeExperiment: $("#lg-solo-practice").value === "free" } }; writeSolo(pendingSolo);
+      pruneSoloTrials(state.room);
       location.hash = "#league/solo";
     });
-    $("#lg-solo-reset")?.addEventListener("click", () => { if (!window.confirm("저장된 진행과 일지·답변을 지우고 처음부터 시작할까요?")) return; store.del(K_SOLO); lobby(app); });
+    $("#lg-solo-reset")?.addEventListener("click", () => { if (!window.confirm("저장된 진행과 일지·답변을 지우고 처음부터 시작할까요?")) return; store.del(K_SOLO); pruneSoloTrials(); lobby(app); });
     $("#lg-join").addEventListener("click", () => {
       const room = normalizeRoom($("#lg-code").value);
       if (!newRoom(room)) { errEl.textContent = "새 방 코드는 8글자예요. 예전 방은 진행자가 이어서 진행한 뒤 새 코드로 참가해요."; $("#lg-code").focus(); return; }
@@ -4233,7 +4248,8 @@
     const inflow = (rep.flows?.pop || []).filter(f => f.to === id).reduce((sum, f) => sum + f.n, 0);
     const policy = city.policy || {};
     const tax = inflow * params("resTax") * (1 + params("taxStep") * (policy.taxRes || 0));
-    const service = inflow * params("svcCost") * (1 + params("svcStep") * (policy.service || 0));
+    const senior = city.shares?.senior;
+    const service = KCP.econ.serviceBase({ pop: inflow, groups: { senior: { share: Number.isFinite(senior) ? senior : 0 } } }, KCP.ECON_DATA) * (1 + params("svcStep") * (policy.service || 0));
     const demand = city.pop > 0 ? inflow / city.pop * 100 : null;
     return `<p id="lg-migration-benefit">이주 유입 ${esc(fmt(inflow))}명(순이동 ${esc(signed(net.pop))}명): 편익은 주민세 +${esc(fmt(tax, 2))}억/달, 부담은 주민 수요 +${esc(fmt(demand, 2))}%·서비스 +${esc(fmt(service, 2))}억/달(다음 운영, 정책 유지 가정·추정).</p>`;
   }
@@ -6003,15 +6019,38 @@
     });
     renderBar();
   }
+  // 두 번 클릭 약 500ms·두 번 탭 약 300ms라는 널리 쓰이는 기본값(공식 문서 재확인 안 함)에 여유를 둔다.
+  const READY_GUARD_MS = 600;
+  const readyBlockedForCoach = (ready = document.getElementById("lg-ready")) => !!ready?.disabled && !L.readyGuard;
   function syncReadyButton() {
     const V = L.snap, rb = document.getElementById("lg-ready");
-    if (!V || !rb) return;
+    // 관전 막대의 #lg-ready(읽기 전용)는 건드리지 않는다. 가드 해제가 관전 중에 와도 그대로 둔다(독립 검토 minor 1).
+    if (!V || !rb || L.away) return;
     const me = V.teams[L.team], promise = V.econ && V.phase === "plan" && L.awaitReady;
     const panel = document.getElementById("lg-panel");
     const open = promise && L.panel === "journal" && !L.panelFolded && panel && !panel.hidden && !!panel.querySelector("#lg-ready-confirm");
     rb.setAttribute("aria-pressed", String(!!me.ready));
-    rb.textContent = promise ? "약속하고 준비" : L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비";
-    rb.disabled = !readyAllowed(V) || (!!open && !promiseComplete(V, monthNote().n));
+    const label = promise ? "약속하고 준비" : L.role === "solo" && V.phase === "review" ? V.round === C.roundsOf(V).length ? "최종 결과" : "다음 달" : me.ready ? "준비 ✓" : "준비";
+    if (L.role === "solo" && V.econ && rb.textContent !== label && ["다음 달", "최종 결과"].includes(label)) {
+      const session = L;
+      clearTimeout(session.readyGuardT);
+      session.readyGuard = true;
+      const release = () => {
+        if (L !== session) return;
+        session.readyGuard = false; session.readyGuardT = 0;
+        syncReadyButton();
+        const ready = document.getElementById("lg-ready"), restore = session.readyGuardFocus;
+        session.readyGuardFocus = false;
+        if (restore && ready && !ready.disabled && (!document.activeElement || document.activeElement === document.body)) ready.focus({ preventScroll: true });
+      };
+      // 글자를 바꾼 작업(결과 서랍 그리기 등)이 끝난 뒤부터 센다. 입력은 그 작업이 끝나야 처리되므로 느린 기기에서도 가드가 줄지 않는다.
+      session.readyGuardT = setTimeout(() => { if (L === session && session.readyGuard) session.readyGuardT = setTimeout(release, READY_GUARD_MS); }, 0);
+    }
+    rb.textContent = label;
+    if (L.readyGuard && !rb.disabled && document.activeElement === rb) L.readyGuardFocus = true;
+    rb.disabled = !!L.readyGuard || !readyAllowed(V) || (!!open && !promiseComplete(V, monthNote().n));
+    // 가드 중에도 결과 단계 주 동작 모양(F2)은 그대로 두고 눌림만 막는다.
+    if (L.readyGuard) rb.dataset.readyGuard = "true"; else delete rb.dataset.readyGuard;
   }
   function closeWatchMore(focus = false) {
     const button = document.getElementById("lg-watch-more"), list = document.getElementById("lg-watch-more-list");
@@ -6557,7 +6596,7 @@
     infoTip, tipBox, bindInfoTips, grantHasRepair, grantRepairTail, calcDigits, calcLineTexts, highOutageHintText, outagePartShown, outageShownTotal, outageDisplayValues, outageWaterfallHTML, outageEvidenceSummary, ledgerShown,
     state: () => (L ? { role: L.role, room: L.room, team: L.team, S: L.S, snap: L.snap, rev: L.rev } : null),
     next: () => L && (L.role === "solo" ? soloNext() : L.role === "host" && hostNext()),
-    uiMath: { monthPoints, resultPeriod, gridFillMWh, fmt, cityTownLook, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },
+    uiMath: { monthPoints, resultPeriod, gridFillMWh, fmt, cityTownLook, trendHTML, techScaleHTML, withParticle, causeBreakdown, reweightScore, chooseQuestion, weightSimulation, publicCSV, speedText, recalHTML, migrationReason, migrationBenefitHTML, outageAttribution, outageAttributionMonthly, outageCardsHTML, replaySimulation, evidenceFocusHTML, predictionHTML, renderBar, renderPanel, onPanelClick },
     // 팀 기기에서 계획을 코드로 고친다(검사·시연 녹화용). 화면 조작과 같은 길(rev 올림 → 진행자에게 보냄).
     plan: fn => { const st = BG.current(); if (!st || !L || !["team", "solo"].includes(L.role) || lockMsg()) return false; fn(st);
       // 실제 화면 편집처럼 건설 문서도 저장한다(mountCity의 save와 같은 모양). 안 하면 새로고침 뒤 옛 문서가 실린다.

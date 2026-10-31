@@ -5,6 +5,7 @@
     http://127.0.0.1:<포트>/index.html
 결과/문구/DOM/CSS를 주입하지 않는다. M2/m4만 기존 events.push fixture 방식으로
 해당 달 사건 입력을 바꾼다(결과 계산 전). M1은 로비 기본 room 씨앗으로 실제 12달 진행.
+M1에서 2~11월에 원인 카드 달이 하나도 없는 방(씨앗)이면 새 컨텍스트·새 방으로 최대 3번 다시 시작한다(#63).
 SKIP 허용: M2 사건·교부세 생성 불가, M3 무더위 날 없음. 나머지 미확보는 BLOCKED.
 캡처 파일의 존재/브라우저 통과는 py_compile로 확인되지 않는다.
 """
@@ -265,13 +266,22 @@ def compare_month(checks, page, month, width, touch, capture):
     return {'share': share, 'capture': bool(chosen)}
 
 
+def carry_values(carry):
+    """다음 달 carry 줄의 '가장 큰 몫' 값들. 크기가 같은 가장 큰 몫이 여럿이면 앱이 ' / '로 모두 적는다
+    (league.js missedCarryHTML의 largestParts). 비용(억/일)은 VALUE 단위가 아니라 잡히지 않는다."""
+    found = re.search(r'가장 큰 몫(.*)', carry)
+    return [number(m[0]) for m in re.finditer(VALUE, found[1])] if found else []
+
+
 def next_carry(checks, page, width, month, result):
     if not result or not result['share']:
         return
     open_panel(page, 'journal')
     carry = text(page, '#lg-missed-carry')
-    got = number(carry, r'가장 큰 몫[^+−\d]*' + VALUE)
-    checks.ok(got == result['share'], f'{width} {month}월 M1 가장 큰 것 = 다음 달 carry: {result["share"]} / {got}: {carry}')
+    values = carry_values(carry)
+    # 공동 가장 큼이면 카드의 '가장 큰 것'(첫 공동 카드)이 carry에 적힌 공동 몫 가운데 하나여야 한다.
+    checks.ok(result['share'] in values if len(values) > 1 else values[:1] == [result['share']],
+              f'{width} {month}월 M1 가장 큰 것 = 다음 달 carry: {result["share"]} / {values}: {carry}')
     if result['capture']:
         checks.shot(page, f'm1-{width}-next', '#lg-missed-carry')
     close_drawer(page)
@@ -300,7 +310,12 @@ def finish_end(checks, page, width):
               p['maxRight'] is not None and p['maxRight'] <= p['width'], f'{width} O1 좌우 화면 안')
 
 
-def months(checks, page, base, width, touch):
+# room 씨앗에 따라 2~11월에 원인 카드 달이 한 번도 없는 방이 있다(모든 달이 단일 요약이거나 비교 대상 없음).
+# 카드 장면은 이 검사의 핵심이므로 SKIP으로 넘기지 않고 새 방으로 다시 시작한다. 마지막 시도에서도 없으면 실패.
+M1_TRIES = 3
+
+
+def months(checks, page, base, width, touch, last=True):
     start_room(checks, page, base)
     plan_and_trial(page)
     capture = {'kind': None, 'month': None, 'w1': 0, 'summary': False}
@@ -328,9 +343,14 @@ def months(checks, page, base, width, touch):
             click_next(page, state)
         attempt(checks, f'{width} {month}월 다음 carry', lambda: next_carry(checks, page, width, month, result))
     checks.ok(compared >= (10 if width == 390 else 3), f'{width} M1 월별 검사 확보 수 {compared}')
+    # 달 비교가 예외(BLOCKED)로 빠진 실행은 씨앗 탓이 아니므로 다시 시작하지 않는다.
+    if capture['kind'] is None and compared == 10 and not last:
+        print(f'INFO {width} M1 원인 카드 달 없음(room 씨앗) — 새 방으로 다시 시작', flush=True)
+        return False
     checks.ok(capture['kind'] is not None and capture['summary'], f'{width} M1 카드·m3 캡처 장면 확보')
     print(f'INFO {width} M1 W1 보인 달 수 {capture["w1"]}, 캡처 {capture["month"]}월/{capture["kind"]}', flush=True)
     overflow(checks, page, f'{width} 끝 화면')
+    return True
 
 
 # 기존 tests/league/econui.py·bots36.py의 사건 입력 fixture 방법. 엔진 실행 전에만 적용.
@@ -454,23 +474,29 @@ def main():
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
             try:
-                runs = [(390, 844, True, 'M1/O1', lambda p: months(checks, p, base, 390, True)),
-                        (1280, 900, False, 'M1/O1', lambda p: months(checks, p, base, 1280, False)),
-                        (390, 844, True, 'M2 rain', lambda p: event_case(checks, p, base, 'heavy_rain', 7)),
-                        (390, 844, True, 'M2 cold', lambda p: event_case(checks, p, base, 'coldwave_heating', 1)),
-                        (390, 844, True, 'M3', lambda p: summer(checks, p, base)),
-                        (390, 844, True, 'm4', lambda p: event_case(checks, p, base, 'heatwave_peak', 7))]
-                for width, height, touch, task, run in runs:
-                    label = f'{width}x{height} {task}'
-                    context, external = context_for(InputBrowser(browser, touch), base, width, height, 'light')
-                    page, logs = monitored_page(context)
-                    try:
-                        attempt(checks, label, lambda: run(page))
-                    finally:
-                        diagnostics(checks, logs, label)
-                        attempt(checks, label + ' 가로 넘침', lambda: overflow(checks, page, label))
-                        checks.ok(not external, label + ' 외부 요청 0: ' + repr(external))
-                        context.close()
+                runs = [(390, 844, True, 'M1/O1', M1_TRIES, lambda p, last: months(checks, p, base, 390, True, last)),
+                        (1280, 900, False, 'M1/O1', M1_TRIES, lambda p, last: months(checks, p, base, 1280, False, last)),
+                        (390, 844, True, 'M2 rain', 1, lambda p, last: event_case(checks, p, base, 'heavy_rain', 7)),
+                        (390, 844, True, 'M2 cold', 1, lambda p, last: event_case(checks, p, base, 'coldwave_heating', 1)),
+                        (390, 844, True, 'M3', 1, lambda p, last: summer(checks, p, base)),
+                        (390, 844, True, 'm4', 1, lambda p, last: event_case(checks, p, base, 'heatwave_peak', 7))]
+                for width, height, touch, task, tries, run in runs:
+                    for n in range(tries):
+                        label = f'{width}x{height} {task}' + (f' (시도 {n + 1}/{tries})' if n else '')
+                        # 다시 시작은 새 컨텍스트에서 한다(저장된 혼자 하기 판이 남지 않게).
+                        context, external = context_for(InputBrowser(browser, touch), base, width, height, 'light')
+                        page, logs = monitored_page(context)
+                        try:
+                            done = attempt(checks, label, lambda: run(page, n == tries - 1))
+                        finally:
+                            diagnostics(checks, logs, label)
+                            attempt(checks, label + ' 가로 넘침', lambda: overflow(checks, page, label))
+                            checks.ok(not external, label + ' 외부 요청 0: ' + repr(external))
+                            context.close()
+                        if done is not False:
+                            break
+                    if tries > 1:
+                        print(f'INFO {width}x{height} {task} M1 시도 {n + 1}회', flush=True)
             finally:
                 browser.close()
     except Exception as exc:

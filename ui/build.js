@@ -1399,6 +1399,29 @@
     if (!trial || trial.map !== map || trial.scope !== scope || ![trial.days, trial.unsPct, trial.outH, trial.co2, trial.cost].every(Number.isFinite)) return null;
     return JSON.parse(JSON.stringify(trial));
   }
+  function pruneTrials(keepScope) {
+    let all;
+    try {
+      all = JSON.parse(window.localStorage.getItem(TRIAL_KEY) || "{}");
+      if (!all || typeof all !== "object" || Array.isArray(all)) return;
+    } catch (e) { return; } // 손상된 저장은 메모리까지 그대로 둔다.
+    const stale = key => {
+      try {
+        const pair = JSON.parse(key);
+        return Array.isArray(pair) && pair.length === 2 && typeof pair[0] === "string" && pair[0] !== "" && !keepScope(pair[0]);
+      } catch (e) { return false; }
+    };
+    let changed = false;
+    for (const key of Object.keys(all)) {
+      if (stale(key)) { delete all[key]; changed = true; }
+    }
+    for (const key of Object.keys(trialMemory)) {
+      if (stale(key)) delete trialMemory[key];
+    }
+    if (changed) {
+      try { window.localStorage.setItem(TRIAL_KEY, JSON.stringify(all)); } catch (e) { /* 저장 불가 */ }
+    }
+  }
   KCP.on("storage:clear", () => { trialMemory = {}; try { window.localStorage.removeItem(TRIAL_KEY); } catch (e) { /* 저장 불가 */ } });
 
   /* ---------- 투영(2.5D) ---------- */
@@ -4433,6 +4456,8 @@
   //   leagueTrialGoals(R) 리그 성적표의 이번 달 목표 줄·사건 안내({rows, notes}). 리그 모드에서는 독립 시안 미션 줄을 대신한다.
   //   trialScope 방·팀별 시험 저장 구분 키. lastTrial(map?, scope?)는 days·unsPct·outH·co2·cost·capex·opex와 달·계획을 반환한다.
   const K_LENSES = "kcp-league-lenses-v1";
+  // 열린 서랍의 세로 태블릿 띠는 372~405px, 가로는 500px 이상. 고정 열 약 406px에 날씨 여유를 둔다.
+  const RUN_STRIP_NARROW_PX = 480;
   function syncRunStrip() {
     if (!S?.opts.league) return;
     const panel = $("#bd-run"), dock = $("#bd-dock").getBoundingClientRect();
@@ -4442,7 +4467,9 @@
     const drawer = S.root.querySelector("#lg-panel:not([hidden]):not([data-folded=\"true\"])")?.getBoundingClientRect();
     if (drawer && drawer.width && drawer.width < window.innerWidth * 0.9 && drawer.bottom > bottom - 130 && drawer.left > V.area.l) right = Math.min(right, drawer.left - 8);
     panel.style.left = `${V.area.l}px`;
-    panel.style.width = `${Math.max(0, right - V.area.l)}px`;
+    const width = Math.max(0, right - V.area.l);
+    panel.style.width = `${width}px`;
+    panel.dataset.narrow = String(width < RUN_STRIP_NARROW_PX);
     panel.style.bottom = `${Math.max(8, window.innerHeight - bottom + 8)}px`;
     const detail = $("#bd-run-detail");
     if (detail && !panel.hidden) {
@@ -4621,7 +4648,7 @@
   Object.assign(KCP.buildGame, {
     powerChipDefinition, replayMonth, skipReplay, mapMotion, setMapMood, setViewInset, syncLensKeyTop, syncResultToastPosition, hideTouchTip,
     finishTrial: () => { if (!S?.alive || !S.run || S.run.replay) return false; S.run.k = S.run.res.H - 1; updateRunPanel(1); finishRun({ quiet: true }); return true; },
-    mount, saveView, restoreView, lastTrial, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
+    mount, saveView, restoreView, lastTrial, pruneTrials, openHelp: trigger => { if (S?.alive) { S.opts.onDrawer?.(); openHelp(trigger); } }, clearTrialDisplay: () => { if (S?.alive) { S.result = null; placeBannerValues(); request(); } }, closeDrawer: () => { if (S?.alive) closeDrawer(true); },
     current: () => (S ? S.st : null), planIssues, townLook, nearestTown, focusTiles,
     lineState: () => ({ start: S?.lineStart ?? null, end: S?.pending?.end ?? null }),
     refresh: (opts = {}) => { if (S) { syncTownLook(); S.net = network(S.st); if (opts.static !== false || S.staticSeason !== currentMapSeason()) S.dirtyStatic = true; refreshHUD(); renderSeasons(); renderDrawer(); placeBannerValues(); updateAria(); request(); } },

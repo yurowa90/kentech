@@ -879,7 +879,7 @@
 
   KCP.econ = {
     initCities, calibrate, livability, industryAttract, yearStart, monthStep, demandMul, score, projectEnergyScore,
-    subsidyNewsPrefix, subsidyPayNote,
+    subsidyNewsPrefix, subsidyPayNote, serviceBase,
     evalOffer, acceptOffer, spendable, debtStage, outIdx, regionCtx, ctxOf, cleanInput,
     seasonOfMonth, monthsInGame, daysOf, weekMul, monthLabel, roundSum, pairFlows, hashStr, rng
   };
