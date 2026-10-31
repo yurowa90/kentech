@@ -14,7 +14,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-from econui import (BOOT_JS, Checks, context_for, diagnostics, local_address,
+from econui import (BOOT_JS, HIDDEN_JS, Checks, context_for, diagnostics, local_address,
                     monitored_page, open_panel, overflow, screenshot, shown)
 from league_flow import (confirm_seat, pass_issue_check, select_mode, start_solo,
                          wait_unfolded)
@@ -242,18 +242,31 @@ def prepare(page):
     close_drawer(page)
     page.locator('#lg-ready').click()
     pass_issue_check(page)
-    page.wait_for_function("""() => {
+    # 어느 카드가 보이는지를 한 번의 페이지 안 판정으로 정한다. 예전에는 DOM에 생긴 것만 기다린 뒤 shown()으로
+    # 다시 물었는데, shown()의 여러 왕복 사이에 진행자 snap이 서랍을 다시 그리면 떨어진 노드를 읽어 '안 보임'이
+    # 되고, 그러면 아무것도 누르지 않고 돌아가 팀이 준비를 보내지 않았다(CI endgrid 멀티 30초 대기 초과, #56).
+    kind = page.wait_for_function("""() => {
       const L=KCP.league.state(), V=L.S || L.snap;
-      return V.phase !== 'plan' || V.teams[L.team].ready ||
-        !!document.querySelector('#lg-ready-confirm');
-    }""")
-    if shown(page, '#lg-predict-skip'):
+      if (V.phase !== 'plan' || V.teams[L.team].ready) return 'done';
+      const hidden=(""" + HIDDEN_JS + """);
+      const seen=sel => [...document.querySelectorAll(sel)].some(el => !hidden(el) &&
+        el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0);
+      if (seen('#lg-predict-skip')) return 'skip';
+      if (seen('#lg-ready-confirm')) return 'confirm';
+      return false;
+    }""").json_value()
+    if kind == 'skip':
         page.locator('#lg-predict-skip').click()
-    elif shown(page, '#lg-ready-confirm'):
+    elif kind == 'confirm':
         page.locator('[data-evidence="evening"]').click()
         page.locator('[data-pred]').select_option('down')
         page.locator('[data-confidence="fairly"]').click()
         page.locator('#lg-ready-confirm').click()
+    # 준비가 실제로 반영될 때까지(혼자 하기는 단계 전환, 팀은 진행자 snap의 ready) 이 도우미가 책임진다.
+    page.wait_for_function("""() => {
+      const L=KCP.league.state(), V=L.S || L.snap;
+      return V.phase !== 'plan' || !!V.teams[L.team].ready;
+    }""")
 
 
 def solo_end(checks, page, base, label):
