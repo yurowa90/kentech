@@ -11,10 +11,10 @@ import json
 import re
 import sys
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from league_flow import select_mode, start_solo
 
-from econui import (Checks, WAIT, context_for, diagnostics, local_address,
+from econui import (Checks, UI_WAIT, WAIT, context_for, diagnostics, local_address,
                     monitored_page, open_panel, overflow, rank_checks,
                     screenshot, shown)
 
@@ -100,8 +100,25 @@ def close_drawer(page):
         close.first.click()
 
 
+def settle_progress(page, previous):
+    """rev15 명세 #53-1: 달 운영 계산 중이거나 결과 직후 600ms 가드 중에는 #lg-ready가 잠깐 꺼진다.
+    꺼져 있으면 최대 3초 기다린다(다른 이유로 계속 꺼져 있으면 예전처럼 다른 후보를 찾게 넘긴다).
+    그 사이 단계가 이미 바뀌었으면 True: 다시 누르면 결과를 건너뛰므로 누르지 않는다."""
+    ready_button = page.locator("#lg-ready")
+    if ready_button.count() and ready_button.is_visible() and not ready_button.is_enabled():
+        try:
+            # 재검토 minor 2: 감속 실행(KCP_UI_WAIT)에서는 계산 시간도 늘어나므로 대기도 비례해 늘린다(기본 3초).
+            expect(ready_button).to_be_enabled(timeout=max(3000, int(UI_WAIT * 0.6)))
+        except AssertionError:
+            pass
+    return page.evaluate(CHANGED_JS, previous)
+
+
 def click_next(page, state):
     close_drawer(page)
+    if settle_progress(page, [state["round"], state["phase"], len(state.get("results", []))]):
+        page.wait_for_timeout(400)
+        return read(page)
     # 기존 팀 '준비'가 우선. 결과→다음 달도 UI에 있는 버튼만 누른다.
     candidates = [page.locator("#lg-ready"), page.locator("#lg-next"),
                   page.get_by_role("button", name=re.compile(
