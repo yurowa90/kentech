@@ -1724,8 +1724,8 @@
   function calibrationHTML(id = "lg-calibration") {
     if (!["solo", "team"].includes(L.role)) return "";
     const rows = calibrationRows();
-    // 시트 판의 끝 화면은 [결과 보내기]로 횟수가 나가므로 '기기에만'이라고 쓰지 않는다(D-94). 그 밖은 그대로.
-    const tag = id === "lg-final-calibration" && KCP.feedback?.sheetUrl() ? KCP.feedback.RESULT_TEXT.calibrationTag : "기기에만";
+    // 시트 판의 끝 화면(접힌 지난달 결과 안 사본 포함)은 [결과 보내기]로 횟수가 나가므로 '기기에만'이라고 쓰지 않는다(D-94). 그 밖은 그대로.
+    const tag = KCP.feedback?.sheetUrl() && (L.S || L.snap)?.phase === "end" ? KCP.feedback.RESULT_TEXT.calibrationTag : "기기에만";
     return `<section id="${esc(id)}" class="lg-calibration"><h4>내 확신 보정 · ${esc(tag)}</h4>${Object.entries(CONFIDENCE).map(([key, [label, p]]) => {
       const group = rows.filter(n => n.confidence === key), wins = group.filter(n => n.outcome.hit).length;
       const brier = group.length ? group.reduce((sum, n) => sum + (p - Number(n.outcome.hit)) ** 2, 0) / group.length : null;
@@ -2239,7 +2239,8 @@
     const items = rounds.map(item).filter(Boolean), recent = items.slice(-3).join(""), older = items.slice(0, -3).join("");
     return `<section id="lg-decisions" class="lg-sec"><h3>결정과 결과 · 기기에 남은 기록</h3><ul>${recent || "<li>기기에 남은 결정 기록 없음</li>"}</ul>${older ? `<details data-decision-detail="older-months"><summary>앞의 ${items.length - 3}달 기록</summary><ul>${older}</ul></details>` : ""}</section>`;
   }
-  let sheetState = { key: "", sending: false, status: "" };
+  // 보내는 중·상태 글은 이 리그 세션(L)에만 묶는다. '같은 조건으로 다시'는 방 코드가 같아 방·도시만으로는 판을 가르지 못한다.
+  let sheetState = { session: null, key: "", sending: false, status: "" };
   function sheetResultFields(V) {
     const own = V.econ.score.by[L.team], rows = calibrationRows();
     return {
@@ -2256,7 +2257,7 @@
   function sheetResultHTML(V) {
     if (!KCP.feedback?.sheetUrl() || !["solo", "team"].includes(L.role)) return "";
     const RT = KCP.feedback.RESULT_TEXT, key = L.room + ":" + L.team, sent = !!tdata().sheetResultSent;
-    if (sheetState.key !== key) sheetState = { key, sending: false, status: "" };
+    if (sheetState.session !== L || sheetState.key !== key) sheetState = { session: L, key, sending: false, status: "" };
     const fields = sheetResultFields(V);
     return `<section id="lg-sheet" class="lg-sec"><h3>${esc(RT.title)}</h3><p id="lg-sheet-note">${esc(RT.note)}</p><dl id="lg-sheet-values" aria-label="${esc(RT.valuesLabel)}">${Object.entries(fields).map(([name, value]) => `<div data-sheet-field="${esc(name)}"><dt>${esc(name)}</dt><dd>${esc(String(value))}</dd></div>`).join("")}</dl><button type="button" class="v2-btn primary" id="lg-sheet-send" aria-disabled="${sent || sheetState.sending}">${esc(sent ? RT.sentButton : RT.button)}</button><p id="lg-sheet-status" role="status" aria-live="polite">${esc(sheetState.status)}</p></section>`;
   }
@@ -2264,9 +2265,9 @@
     if (!L || !["solo", "team"].includes(L.role) || L.snap?.phase !== "end" || !KCP.feedback?.sheetUrl() ||
       button.getAttribute("aria-disabled") === "true" || tdata().sheetResultSent) return;
     const session = L, key = L.room + ":" + L.team, savedKey = dataKey(), RT = KCP.feedback.RESULT_TEXT;
-    if (sheetState.key === key && sheetState.sending) return;
+    if (sheetState.session === L && sheetState.key === key && sheetState.sending) return;
     const fields = sheetResultFields(L.snap);
-    const state = sheetState = { key, sending: true, status: RT.sending };
+    const state = sheetState = { session, key, sending: true, status: RT.sending };
     const update = sent => {
       if (L !== session || L.room + ":" + L.team !== key) return;
       const current = document.getElementById("lg-sheet-send"), status = document.getElementById("lg-sheet-status");
@@ -2281,14 +2282,15 @@
     state.sending = false;
     state.status = sent ? RT.sent : RT.fail;
     if (sent) {
-      if (L?.role === session.role && L.room + ":" + L.team === key) {
+      // 같은 판이 끝 화면에 있을 때만 지금 세션에 기록한다(기다리는 사이 같은 방으로 다시 시작한 새 판에는 쓰지 않는다).
+      if (L?.role === session.role && L.room + ":" + L.team === key && (L.S || L.snap)?.phase === "end") {
         const d = tdata(); d.sheetResultSent = true; putData(d);
       } else if (session.role === "team") {
         const d = store.get(savedKey) || {}; d.sheetResultSent = true; teamSet(savedKey, d);
       } else {
         // 떠난 뒤에는 남아 있는 같은 판에만 기록해 새 판을 덮어쓰지 않는다.
         const save = store.get(K_SOLO);
-        if (save?.state?.room === session.room && save.team === session.team) {
+        if (save?.state?.room === session.room && save.team === session.team && save.state.phase === "end") {
           writeSolo({ ...save, interview: { ...save.interview, sheetResultSent: true } });
         }
       }

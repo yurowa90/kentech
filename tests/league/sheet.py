@@ -25,11 +25,11 @@ from endgrid import team_end
 from feedback import (DIALOG, DRAFT_KEY, DeviceBrowser, StopCase, choose_radio,
                       fill_private_notes, focus, home_open, league as february,
                       opened, require, SHARE_JS)
-from fx_end import solo_end
+from fx_end import dismiss_guide, prepare, solo_end
 from league_flow import select_mode, wait_unfolded
 from rev14 import Checks
 from rev15 import skip_replay
-from solo import CHANGED_JS, close_drawer
+from solo import CHANGED_JS, close_drawer, read
 
 
 SECTIONS = ('units', 'off', 'feedback', 'league', 'result', 'team', 'supabase')
@@ -258,7 +258,11 @@ def units(checks, page, base):
         empty = dict(role='', good='', hard='', fix='', easy='', fun='')
         checks.ok(page.evaluate('a=>KCP.feedback.compose(...a)', [info, empty]).split('\n')[2] == '판: ' + wanted,
                   'compose 셋째 줄 = buildLabel 계약')
-    checks.ok(page.evaluate('()=>KCP.feedback.buildLabel()') == '개발판', 'buildLabel 생략 → 배포 설정')
+    # 총괄 보강(독립 검토 minor 5): 주입 label이 기본값과 같으면 구별이 안 되므로 다른 값으로 바꿔 읽는지 본다.
+    checks.ok(page.evaluate("""()=>{const old=KCP.BUILD;
+      KCP.BUILD={...old,label:'가상 배포판',sha:'fedcba9876543210',date:'가상 날짜'};
+      try{return KCP.feedback.buildLabel();}finally{KCP.BUILD=old;}}""") ==
+              '가상 배포판 · 커밋 fedcba987654 · 가상 날짜', 'buildLabel 생략 → 지금 KCP.BUILD를 읽음')
     for i, role in enumerate(('', 'student', 'teacher', 'other', 'invalid', '')):
         for has_league in (False, True):
             info = dict(build={'label': '', 'sha': '0123456789abcdef', 'date': ''}, route='#home',
@@ -721,6 +725,64 @@ def result(checks, run, base, saved_result, check_off):
     checks.ok(result_scene(checks, page) == displayed, '새로고침 뒤 보낼 값 유지')
     button.click(force=True)  # 총괄 보강: aria-disabled 단추도 실제로 누른다(Playwright는 비활성으로 보고 기다림)
     count_requests(checks, page, run.requests, 2, '새로고침 뒤 중복 없음')
+    replay(checks, run, page)
+
+
+def play_to_end(page):
+    """fx_end.solo_end의 달 진행 고리만(단언 없이). 같은 조건으로 다시 시작한 판을 끝까지 돌린다."""
+    dismiss_guide(page)
+    for _ in range(40):
+        state = read(page)['S']
+        if state['phase'] == 'end':
+            return
+        wait_unfolded(page)
+        previous = [state['round'], state['phase'], len(state.get('results', []))]
+        if state['phase'] == 'plan':
+            prepare(page)
+        else:
+            close_drawer(page)
+            button = page.locator('#lg-ready')
+            if not button.count() or not button.is_visible() or not button.is_enabled():
+                button = page.get_by_role('button', name=re.compile(
+                    r'^(?:다음 (?:달|턴|라운드).*|최종 (?:결과|순위).*|리그 끝|끝내기)$')).first
+            button.click()
+        page.wait_for_function(CHANGED_JS, arg=previous)
+    raise AssertionError('다시 한 판 12달 완주 실패')
+
+
+def replay(checks, run, page):
+    """총괄 보강(독립 검토 minor 1): '같은 조건으로 다시'는 방 코드가 같다. 새 판은 보낸 상태·상태 글을
+    물려받지 않고, 보내는 중에 다시 시작해도 새 판에 보냄이 기록되지 않아야 한다."""
+    rt = page.evaluate('() => KCP.feedback.RESULT_TEXT')
+    sent_flag = 'k=>JSON.parse(localStorage.getItem(k))?.interview?.sheetResultSent===true'
+    before = len(run.requests.records)
+    page.locator('#lg-solo-same').click()
+    page.wait_for_function("()=>KCP.league.state().S.phase!=='end'")
+    checks.ok(page.evaluate(sent_flag, SOLO_KEY) is False, '다시 한 판 저장값에 보냄 표시 없음')
+    try:
+        play_to_end(page)
+        wait_unfolded(page)
+        if not page.locator('#lg-sheet-send').is_visible():
+            open_panel(page, 'result')
+        page.wait_for_selector('#lg-sheet-send')
+    except Exception as exc:
+        checks.blocked('다시 한 판 끝 화면: ' + str(exc).splitlines()[0][:180])
+        return
+    button = page.locator('#lg-sheet-send')
+    checks.ok(button.get_attribute('aria-disabled') == 'false' and button.inner_text() == rt['button'],
+              '다시 한 판 결과 단추 처음 활성·원래 글')
+    checks.ok(page.locator('#lg-sheet-status').inner_text() == '', '다시 한 판 상태 글 물려받지 않음')
+    run.requests.hold = True
+    button.click()
+    expect_result_status(page, 'sending')
+    count_requests(checks, page, run.requests, before + 1, '다시 한 판 보내기 시작')
+    # 보내는 중에 또 같은 조건으로 다시 시작한다. 늦게 온 성공이 새 판에 기록되면 안 된다.
+    page.locator('#lg-solo-same').click()
+    page.wait_for_function("()=>KCP.league.state().S.phase!=='end'")
+    run.requests.release()
+    run.requests.wait_done(page, len(run.requests.records))
+    checks.ok(page.evaluate(sent_flag, SOLO_KEY) is False, '보내는 중 다시 시작한 새 판에 보냄 기록 없음')
+    count_requests(checks, page, run.requests, before + 1, '다시 시작 경합 요청')
 
 
 def result_mobile(checks, run, base):
